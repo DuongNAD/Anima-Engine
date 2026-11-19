@@ -85,8 +85,10 @@ This README carries no measurements.
 - **Mortality, ecological fitness, continuous reproduction and locomotion steering are in the code but off by
   default.** A default world still has no death, and fitness is scored by distance. The land-only walking rule is on
   in the app; in experiments the manifest key `live.land_mask` turns it on.
-- **Distribution is still blocked** by one unresolved third-party licence text:
-  [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
+- **No third-party licence text is unresolved any more, but one row was closed by a choice.** `utf8-chars`
+  3.0.7 ships no licence file at all, so the project elects Apache-2.0 under the `MIT OR Apache-2.0` it declares;
+  [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md) is empty. Whether a bare Cargo `license` field is the
+  author's grant remains a legal question; this is not legal advice.
 
 ## What is in the code
 

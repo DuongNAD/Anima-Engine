@@ -31,6 +31,38 @@
 // mapping naming a component that is not in the graph, or is not distributed, or is not currently
 // unresolved, stops the run.
 //
+// # The third source: an elected licence
+//
+// One component (`utf8-chars` 3.0.7) ships no licence file, no NOTICE and no copyright line, in its
+// artifact or at the commit it was published from — so there is nothing to vendor. It declares
+// `MIT OR Apache-2.0`, which leaves the choice to the distributor. MIT's text is a template whose
+// notice condition points at "the above copyright notice", and this crate has no holder's notice to
+// reproduce: an MIT text could only ship with no holder line or an invented one, and this generator
+// never writes one. Apache-2.0's text is complete as published, and its conditions (§4) are (a) give
+// recipients a copy of the License; (b) mark modified files, which does not apply to a crate compiled
+// unmodified; (c) retain the notices in the Source form, of which there are none; (d) carry the work's
+// NOTICE file, which it does not have. So electing Apache-2.0 meets those conditions with nothing
+// synthesised. The text published is the Apache-2.0 text the inventory already ships most widely,
+// byte for byte; what is checked about it is that its appendix placeholder line is present and
+// unfilled and that no copyright line in it carries a year.
+//
+// The conditions are narrow and each is enforced fail-closed in `scripts/lib/upstream_licenses.mjs`
+// (`elections` in `licensing/upstream/sources.json`): a pure `A OR B` disjunction offering
+// Apache-2.0 as a whole operand; Apache-2.0 as the only electable licence; one resolution per
+// component; the declared expression and the manifest's authors and repository matching the
+// installed crate; the installed crate directory, walked to the bottom, holding no licence-like file
+// or directory and no copyright notice in any file; the pinned text hash being that most widely
+// shipped Apache-2.0 text; every election used. **Installed text wins** here too: the day the graph
+// moves to a release that ships a licence file of any kind, the election fails the run (unused for
+// the old version, refused for the new one) and is deleted. The bundle says plainly which licence was
+// elected, from what, and why.
+//
+// One question no check can settle: an election presupposes that the crate's bare Cargo `license`
+// field is the author's grant. Whether it is, with no licence text or notice anywhere, is a legal
+// question; the project treats the published crate's declared licence as the grant, as the Rust
+// ecosystem does. The owner authorised this choice on 2026-11-19 (QD-C2 in
+// `docs/how-to/AGENT_WORKFLOW.md`). None of this is legal advice.
+//
 // # Outputs
 //
 //   licensing/THIRD_PARTY_LICENSES.txt   the document that ships: identity block per component,
@@ -63,7 +95,12 @@ import {
   provenancePath,
   sha256hex,
 } from './lib/licensing.mjs';
-import { loadUpstreamStore, storeProvenancePath } from './lib/upstream_licenses.mjs';
+import {
+  electionSelfTest,
+  loadUpstreamStore,
+  resolveElections,
+  storeProvenancePath,
+} from './lib/upstream_licenses.mjs';
 
 const ROOT = process.cwd();
 const OUT_DIR = join(ROOT, 'licensing');
@@ -102,9 +139,9 @@ const entries = [];
  * same text found inside another package's artifact collapse into one entry — which is correct, and
  * which is why the *source* hash stays per-entry: the text is shared, the provenance is not.
  */
-function addText(textSha256, text, component, filename) {
+function addText(textSha256, text, component, filename, origin) {
   if (!textsBySha.has(textSha256)) textsBySha.set(textSha256, { text, users: [] });
-  textsBySha.get(textSha256).users.push({ component, filename });
+  textsBySha.get(textSha256).users.push({ component, filename, origin });
 }
 
 /** A licence file read out of the artifact that was actually installed. */
@@ -143,6 +180,13 @@ function blocked(component, reason) {
 /** Purls the vendored store claims, so an unused or unknown mapping can be reported at the end. */
 const usedMappings = new Set();
 
+/**
+ * Components resolved by an election, held back until every installed text has been read: the
+ * elected bytes are chosen from what the rest of the inventory ships, so the pool must be complete
+ * before one can be picked. Each entry is already in `entries`, and its `texts` are filled in below.
+ */
+const electedEntries = new Map();
+
 for (const component of components) {
   // Only what ships carries an obligation. `node_modules/` is not distributed, so an install-only
   // package's licence text is not required — it is listed in the index for completeness and marked
@@ -157,6 +201,8 @@ for (const component of components) {
           `distributed. Only what ships carries an obligation; remove the mapping.`,
       );
     }
+    // An election here is caught by `resolveElections` below, which is handed every component and
+    // rejects one that does not ship with its own message.
     entries.push({ component, texts: [] });
     continue;
   }
@@ -166,6 +212,17 @@ for (const component of components) {
   // `@oxc-project/runtime` is the case: rolldown compiles its helpers into the output and it is
   // never installed, so there is no manifest here to read a licence from — the registry publishes
   // one for that exact version, and the mapping records it with the evidence.
+  // An elected component is set aside here and nothing about its artifact is passed along:
+  // `resolveElections` walks the component's own `sourceDir` to the bottom and refuses the election
+  // on any licence-like file, any copyright notice, or a directory that is not there. With no
+  // hand-off to drop, the generator cannot blind that check by forgetting to pass something.
+  if (upstream.electionsByPurl.has(component.purl)) {
+    const entry = { component, texts: [] };
+    entries.push(entry);
+    electedEntries.set(component.purl, entry);
+    continue;
+  }
+
   const declared = component.declaredLicense ?? mapping?.declaredSpdx ?? null;
   const files = component.sourceDir ? collectLicenseTexts(component.sourceDir) : [];
 
@@ -195,7 +252,7 @@ for (const component of components) {
           `delete the mapping and its now-unused sources.`,
       );
     }
-    for (const f of installed) addText(f.textSha256, f.text, component, f.filename);
+    for (const f of installed) addText(f.textSha256, f.text, component, f.filename, 'installed');
     entries.push({ component, texts: installed.map((f) => asInstalledText(component, f)) });
     continue;
   }
@@ -212,7 +269,7 @@ for (const component of components) {
             `verbatim or not at all; re-fetch it or leave ${component.purl} unresolved.`,
         );
       }
-      addText(sha256hex(Buffer.from(text, 'utf8')), text, component, source.filename);
+      addText(sha256hex(Buffer.from(text, 'utf8')), text, component, source.filename, 'upstream');
       return {
         origin: 'upstream',
         filename: source.filename,
@@ -260,6 +317,54 @@ if (strandedMappings.length > 0) {
   );
 }
 
+// ---- elections ---------------------------------------------------------------------------------
+//
+// The pool is every distinct text read out of an installed artifact, with the components carrying
+// it. Vendored texts are left out on purpose: the elected copy must be one that ships inside some
+// other package's own artifact, not one this repository reconstructed. `resolveElections` throws
+// with every problem listed, including an election for a component the graph does not have.
+//
+// The rules are first made to fire on known-bad input. Exit 2, as `check_docs_metadata.mjs` does,
+// distinguishes "the validator is broken" from "the inventory is wrong", which exits 1.
+const selfTest = electionSelfTest();
+if (selfTest.failures.length > 0) {
+  for (const f of selfTest.failures) console.error(`election self-test: ${f}`);
+  console.error('The election rules did not reject what they must. No election can be trusted; stopping.');
+  process.exit(2);
+}
+const electionPool = [...textsBySha.entries()]
+  .map(([textSha256, { text, users }]) => ({
+    textSha256,
+    text,
+    purls: new Set(users.filter((u) => u.origin === 'installed').map((u) => u.component.purl)),
+  }))
+  .filter((t) => t.purls.size > 0);
+const elections = resolveElections(upstream.electionsByPurl, components, electionPool);
+for (const [purl, { election, text, textSha256 }] of elections) {
+  const entry = electedEntries.get(purl);
+  addText(textSha256, text, entry.component, election.chosen, 'elected');
+  entry.texts = [
+    {
+      origin: 'elected',
+      // There is no file: the name is the SPDX id that was elected, and the provenance says so
+      // rather than borrowing the path of the package whose identical copy was matched.
+      filename: election.chosen,
+      provenance: `elected:${entry.component.name}-${entry.component.version}/${election.chosen}`,
+      sourceSha256: textSha256,
+      sourceBytes: Buffer.byteLength(text, 'utf8'),
+      textSha256,
+      election,
+      sameTextCarriers: electionPool.find((t) => t.textSha256 === textSha256).purls.size,
+    },
+  ];
+}
+// Every election either resolved above or threw; this asserts it, so a future branch that skips one
+// cannot leave a component silently textless while the store claims it is covered.
+const strandedElections = [...electedEntries.keys()].filter((purl) => !elections.has(purl));
+if (strandedElections.length > 0) {
+  throw new Error(`elections were set aside but never applied:\n  ${strandedElections.join('\n  ')}`);
+}
+
 // Ids depend only on the set of texts, so the same graph yields the same ids regardless of the
 // order components were visited in.
 const textIds = new Map();
@@ -287,6 +392,7 @@ if (staleBlocked.length > 0) {
 
 /** Components whose text came out of the artifact that was installed, and those from the store. */
 const vendoredEntries = entries.filter((e) => e.texts.some((t) => t.origin === 'upstream'));
+const electedList = entries.filter((e) => e.texts.some((t) => t.origin === 'elected'));
 const vendoredSourceIds = new Set(
   vendoredEntries.flatMap((e) => e.texts.filter((t) => t.origin === 'upstream').map((t) => t.upstream.id)),
 );
@@ -303,6 +409,7 @@ const counts = {
   vendoredSources: vendoredSourceIds.size,
   vendoredRepositories: new Set([...vendoredSourceIds].map((id) => id.split('/').slice(0, 3).join('/'))).size,
   vendoredCommits: new Set([...vendoredSourceIds].map((id) => id.split('/')[3])).size,
+  fromElection: electedList.length,
   unresolved: unresolved.length,
 };
 
@@ -321,6 +428,12 @@ function spdxOf(component, texts) {
   if (component.declaredLicense) return component.declaredLicense;
   const fromStore = texts.find((t) => t.origin === 'upstream');
   return fromStore ? fromStore.mapping.declaredSpdx : null;
+}
+
+/** The attribution an election records, as one line: what, which version, by whom, from where. */
+function attributionLine(election) {
+  const a = election.attribution;
+  return `${a.name} ${a.version}, by ${a.authors.join(', ')}, ${a.repository}`;
 }
 
 function renderBundle() {
@@ -347,6 +460,7 @@ function renderBundle() {
   out.push(`Distinct licence texts                       : ${counts.texts}`);
   out.push(`  read from the installed artifact           : ${counts.fromInstalledArtifact} component(s)`);
   out.push(`  vendored from pinned upstream revisions    : ${counts.fromVendoredUpstream} component(s)`);
+  out.push(`  Apache-2.0 elected from a disjunction      : ${counts.fromElection} component(s)`);
   out.push(`Components with no obtainable text           : ${counts.unresolved}`);
   out.push('');
   out.push('The only transforms applied to a licence text are removal of a UTF-8 byte-order mark and');
@@ -356,6 +470,13 @@ function renderBundle() {
   out.push('repository at the immutable commit that release was published from, stored verbatim under');
   out.push('licensing/upstream/ and hashed. Those are enumerated below with their exact revision. A');
   out.push('licence text read out of the installed artifact is always preferred to a vendored one.');
+  out.push('');
+  out.push('Where a component offers a choice (an SPDX `OR` that includes Apache-2.0) and neither its');
+  out.push('artifact nor its upstream carries any licence file or notice, the distribution elects');
+  out.push('Apache-2.0: its text is complete as published and the same for every licensee, and the work');
+  out.push('has no notices for Apache-2.0 section 4 to retain. MIT is not used there, because its notice');
+  out.push("condition points at a holder's notice and none exists to reproduce. Those are enumerated");
+  out.push('under ELECTED LICENCES.');
   out.push('');
   out.push(rule);
   out.push('VENDORED UPSTREAM SOURCES');
@@ -386,6 +507,39 @@ function renderBundle() {
   }
 
   out.push(rule);
+  out.push('ELECTED LICENCES');
+  out.push(rule);
+  out.push('');
+  if (electedList.length === 0) {
+    out.push('None. No component is distributed under a licence chosen on its behalf.');
+    out.push('');
+  } else {
+    out.push(`${counts.fromElection} component(s) offer a choice of licences and publish no licence file and no`);
+    out.push('notice at all: the installed crate holds no licence-like file at any depth and no copyright');
+    out.push('notice in any file. For each, the distribution elects Apache-2.0 and publishes the Apache-2.0');
+    out.push('text that the other distributed components already ship most widely, byte for byte. Its');
+    out.push('appendix placeholder line is present and unfilled, and no copyright line in it carries a');
+    out.push('year. Nothing is attributed that the component did not declare. The evidence for each is in');
+    out.push('licensing/upstream/sources.json under `elections`. The owner authorised the choice on');
+    out.push('2026-11-19. An election presupposes that the crate\'s declared Cargo `license` field is the');
+    out.push("author's grant; whether a bare field is one is a legal question, and the project treats it");
+    out.push('as the grant, as the Rust ecosystem does. This is a record of what the distribution chose,');
+    out.push('not legal advice.');
+    out.push('');
+  }
+  for (const { component, texts } of electedList) {
+    const t = texts[0];
+    const { election } = t;
+    out.push(`${component.purl}`);
+    out.push(`    declared   : ${election.declaredSpdx}`);
+    out.push(`    elected    : ${election.chosen}  (text ${textIds.get(t.textSha256)}, shipped by ${t.sameTextCarriers} other component(s))`);
+    out.push(`    attribution: ${attributionLine(election)}`);
+    out.push(`    searched   : ${election.attribution.repository} @ ${election.commit}`);
+    out.push(`                 ${election.tag === null ? 'no release tag at that commit' : `tag ${election.tag}`}; investigated ${election.investigated}`);
+    out.push('');
+  }
+
+  out.push(rule);
   out.push('COMPONENT INDEX');
   out.push(rule);
   out.push('');
@@ -397,6 +551,15 @@ function renderBundle() {
     out.push(`    ecosystem  : ${component.ecosystem} (${component.origin})`);
     out.push(`    SPDX       : ${spdxOf(component, texts) ?? '(none declared)'}`);
     if (component.repository) out.push(`    repository : ${component.repository}`);
+    const elected = texts.find((t) => t.origin === 'elected');
+    if (elected) {
+      const kind = component.ecosystem === 'cargo' ? 'crate' : 'package';
+      out.push(
+        `    licence    : ${elected.election.chosen}, elected from ${elected.election.declaredSpdx}; ` +
+          `the published ${kind} ships no licence file`,
+      );
+      out.push(`    attribution: ${attributionLine(elected.election)}`);
+    }
     if (texts.length > 0) {
       for (const t of texts) {
         out.push(`    text       : ${textIds.get(t.textSha256)}  ${t.provenance}`);
@@ -421,7 +584,9 @@ function renderBundle() {
     out.push(thin);
     out.push(`${id}   sha256:${sha}`);
     out.push(`applies to ${sorted.length} component file(s):`);
-    for (const u of sorted) out.push(`  ${u.component.purl}  (${u.filename})`);
+    for (const u of sorted) {
+      out.push(`  ${u.component.purl}  (${u.origin === 'elected' ? `elected: ${u.filename}` : u.filename})`);
+    }
     out.push(thin);
     out.push('');
     out.push(text.replace(/\n+$/, ''));
@@ -440,7 +605,11 @@ function renderIndex() {
         'the hash of the licence file as installed — or, where `origin` is `upstream`, of the file ' +
         'vendored under licensing/upstream/ — so any entry can be re-verified against the package ' +
         'it came from or re-fetched from `upstreamUrl`; `textSha256` is the hash after BOM removal ' +
-        'and LF normalisation, and is what THIRD_PARTY_LICENSES.txt deduplicates on.',
+        'and LF normalisation, and is what THIRD_PARTY_LICENSES.txt deduplicates on. Where `origin` ' +
+        'is `elected` there is no source file: the component offers a licence choice and ships no ' +
+        'text, the distribution elected Apache-2.0, and the text is the Apache-2.0 copy other ' +
+        'components ship most widely, so `sourceSha256` equals `textSha256`; `elected` lists each ' +
+        'election with its evidence.',
       counts,
       components: entries.map(({ component, texts }) => ({
         purl: component.purl,
@@ -471,6 +640,12 @@ function renderIndex() {
                 provenanceKind: t.mapping.provenance.kind,
                 materialType: t.upstream.materialType,
                 retrieved: t.upstream.retrieved,
+              }
+            : {}),
+          ...(t.origin === 'elected'
+            ? {
+                electedFrom: t.election.declaredSpdx,
+                electionRecord: 'licensing/upstream/sources.json',
               }
             : {}),
         })),
@@ -506,6 +681,25 @@ function renderIndex() {
             sha256: t.sourceSha256,
             retrieved: t.upstream.retrieved,
           })),
+        };
+      }),
+      // Every election, with the evidence for it, so a consumer can see that a licence was chosen on
+      // the component's behalf — and from what — without reading the store.
+      elected: electedList.map(({ component, texts }) => {
+        const t = texts[0];
+        const { election } = t;
+        return {
+          purl: component.purl,
+          declaredSpdx: election.declaredSpdx,
+          chosen: election.chosen,
+          textId: textIds.get(t.textSha256),
+          textSha256: t.textSha256,
+          sameTextCarriers: t.sameTextCarriers,
+          attribution: election.attribution,
+          commit: election.commit,
+          tag: election.tag,
+          investigated: election.investigated,
+          evidence: election.evidence,
         };
       }),
       texts: [...textsBySha.keys()]
@@ -553,6 +747,16 @@ function renderUnresolved() {
   out.push('[`upstream/sources.json`](upstream/sources.json), and re-running the generator. A row');
   out.push('survives here only when no such file exists upstream at all.');
   out.push('');
+  out.push('One narrower route exists for exactly that case. A component that offers Apache-2.0 as a');
+  out.push('whole operand of an SPDX `OR`, and whose artifact and upstream carry no licence file and no');
+  out.push('notice at all, can be closed by **electing Apache-2.0** under `elections` in');
+  out.push('[`upstream/sources.json`](upstream/sources.json): Apache-2.0 asks for its own text, which is');
+  out.push('complete as published, plus the notices the work carries, and there are none, so nothing is');
+  out.push('invented. MIT is never elected, because its notice condition points at a holder’s notice that');
+  out.push('does not exist. Elections are listed at the end of this file. Whether a bare Cargo `license`');
+  out.push('field is the author’s grant is a legal question this does not answer. This is a record of an');
+  out.push('engineering decision, not legal advice.');
+  out.push('');
   out.push(
     `**${counts.fromVendoredUpstream} of the original 32 have been closed that way**, from ` +
       `${counts.vendoredSources} vendored file(s)`,
@@ -560,7 +764,9 @@ function renderUnresolved() {
   out.push(`across ${counts.vendoredCommits} commit(s) in ${counts.vendoredRepositories} repositories.`);
   out.push('');
   if (unresolved.length === 0) {
-    out.push('_Every distributed component supplies its licence text. Nothing is unresolved._');
+    out.push(`**${unresolved.length} component(s) unresolved.** Every distributed component supplies its`);
+    out.push('licence text.');
+    renderElections(out);
     return `${out.join('\n').replace(/\n+$/, '')}\n`;
   }
   out.push(`**${unresolved.length} component(s) unresolved.** Distribution of the affected components`);
@@ -597,7 +803,39 @@ function renderUnresolved() {
       for (const line of b.evidence) out.push(`- ${line}`);
     }
   }
+  renderElections(out);
   return `${out.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+/**
+ * The rows that were closed by an election rather than by a text, with the search and the reason.
+ * Kept in this file because it is where a reader looks for "what could not simply be read", and a
+ * closed row that vanished without a trace would hide the one place a licence was chosen.
+ */
+function renderElections(out) {
+  if (electedList.length === 0) return;
+  out.push('');
+  out.push('## Closed by electing Apache-2.0');
+  out.push('');
+  out.push('Recorded in [`upstream/sources.json`](upstream/sources.json) under `elections`, and');
+  out.push('re-checked on every run: the election fails the run if the installed crate holds a');
+  out.push('licence-like file or directory at any depth or a copyright notice in any file, or if the');
+  out.push('pinned text stops being the Apache-2.0 copy the inventory ships most widely. The owner');
+  out.push('authorised the choice on 2026-11-19 (QD-C2 in `docs/how-to/AGENT_WORKFLOW.md`).');
+  for (const { component, texts } of electedList) {
+    const { election } = texts[0];
+    out.push('');
+    out.push(`### \`${component.name}\` ${component.version} — declares ${election.declaredSpdx}, elected ${election.chosen}`);
+    out.push('');
+    out.push(`Attribution: ${attributionLine(election)}. Searched at \`${election.attribution.repository}\``);
+    out.push(
+      `commit \`${election.commit}\` (${election.tag === null ? 'no release tag at that commit' : `tag \`${election.tag}\``}), ` +
+        `${election.investigated}. Text \`${textIds.get(texts[0].textSha256)}\` in`,
+    );
+    out.push('[`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).');
+    out.push('');
+    for (const line of election.evidence) out.push(`- ${line}`);
+  }
 }
 
 // ---- emit -------------------------------------------------------------------------------------
@@ -624,7 +862,8 @@ if (CHECK) {
   }
   console.log(
     `third-party licences check: up to date (${counts.distributed} distributed components, ` +
-      `${counts.texts} distinct texts, ${counts.unresolved} unresolved)`,
+      `${counts.texts} distinct texts, ${counts.fromElection} elected, ${counts.unresolved} unresolved; ` +
+      `election self-test ${selfTest.controls} controls ok)`,
   );
 } else {
   mkdirSync(OUT_DIR, { recursive: true });

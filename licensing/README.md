@@ -7,9 +7,9 @@ Everything here except [`upstream/`](upstream/) is **generated**. Do not edit an
 |---|---|---|
 | [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt) | `npm run gen:licenses` | **The file that ships.** Component identity block for every distributed component, then each distinct licence text once. |
 | [`third-party-index.json`](third-party-index.json) | `npm run gen:licenses` | Machine-readable provenance: SPDX, ecosystem, origin, and the SHA-256 of every source licence file — as installed, or as vendored. |
-| [`UNRESOLVED.md`](UNRESOLVED.md) | `npm run gen:licenses` | Distributed components whose licence text could not be obtained, with the exact reason **and the search that failed**. |
+| [`UNRESOLVED.md`](UNRESOLVED.md) | `npm run gen:licenses` | Distributed components whose licence text could not be obtained, with the exact reason **and the search that failed**, and the rows closed by electing Apache-2.0. |
 | [`bundle-closure.json`](bundle-closure.json) | `npm run build` | The npm distribution boundary, measured from the real module graph by a plugin in `vite.config.ts`. |
-| [`upstream/`](upstream/) | **hand-maintained, reviewed** | Vendored upstream licence texts, with [`upstream/sources.json`](upstream/sources.json) recording where every byte came from. The one thing here a human writes. |
+| [`upstream/`](upstream/) | **hand-maintained, reviewed** | Vendored upstream licence texts, with [`upstream/sources.json`](upstream/sources.json) recording where every byte came from, plus the `elections` made for components that publish no licence file at all. The one thing here a human writes. |
 
 Two more artifacts live outside this directory because they are read at the repository root:
 [`../NOTICE`](../NOTICE) (the attribution inventory) and [`../sbom.cdx.json`](../sbom.cdx.json)
@@ -99,28 +99,83 @@ mapping is marked `project-repository` rather than `release-tree`, carries a wri
 and records the component's own repository and commit alongside. The loader requires all of that; the
 test suite asserts this is still the only one.
 
+## The third route: electing Apache-2.0, and why it is not synthesis
+
+Vendoring needs a text to exist somewhere. `utf8-chars` 3.0.7 has none: no licence file, no NOTICE
+and no copyright line, in the published crate or at the commit it was published from (the search is
+recorded in [`upstream/sources.json`](upstream/sources.json)). It declares `MIT OR Apache-2.0`, and
+that `OR` leaves the choice to whoever distributes it.
+
+The two choices are not equal here. MIT's text is a template whose notice condition points at "the
+above copyright notice", and this crate has no holder's notice to reproduce: an MIT text could only
+ship with no holder line or with one this repository invented. Apache-2.0's text is complete as
+published, and its conditions (section 4) are (a) a copy of the License; (b) prominent notices on
+modified files, which do not apply because the crate is compiled unmodified; (c) the copyright,
+patent, trademark and attribution notices present in the work, of which there are none; and (d) its
+NOTICE file if it has one, which it does not. Electing Apache-2.0 therefore meets every condition
+with nothing synthesised. The bundle says so in the component's own block (`licence: Apache-2.0,
+elected from MIT OR Apache-2.0; the published crate ships no licence file`), with an attribution
+line naming the crate, its version, the author string from its `Cargo.toml` and its repository.
+
+**The question the election does not answer.** Electing a licence presupposes that the crate's bare
+Cargo `license = "MIT OR Apache-2.0"` field is the author's grant; whether it is, with no licence
+text or notice anywhere in the crate, is a legal question — the project treats the published crate's
+declared licence as the grant, as the Rust ecosystem does, and this is not legal advice.
+
+The election is recorded under `elections` in [`upstream/sources.json`](upstream/sources.json) and
+enforced by `scripts/lib/upstream_licenses.mjs`, fail-closed, under narrow conditions:
+
+- The declared expression is a **pure disjunction** (`A OR B [OR C]` of whole SPDX identifiers) with
+  `Apache-2.0` as an operand. `AND`, `WITH`, a `+` suffix and any parenthesis are refused.
+- **Only Apache-2.0** may be chosen, and it must be one of the operands. MIT is never elected.
+- **One resolution per component:** an elected component may not also be mapped or blocked.
+- **The installed crate is the evidence, and it is read to the bottom.** Its declared expression,
+  `authors` and repository must match the election. The election check walks the crate's own
+  directory recursively and refuses the election on any file or directory whose name starts with
+  `LICENSE`, `LICENCE`, `COPYING`, `NOTICE`, `COPYRIGHT` or `UNLICENSE` (any case, any depth), on
+  any line in any file matching `copyright`, `(c) <year>` or the copyright sign, on a symlink it does
+  not follow, and on a directory that is not there. Installed text wins here exactly as it does for
+  a mapping. A published crate never changes, so in practice this fires when the lockfile moves to a
+  release that ships its texts: the old election is then unused, one moved to the new version is
+  refused, and either way the run fails until it is deleted.
+- **No downloaded or private text.** The elected bytes are the Apache-2.0 text the inventory already
+  ships most widely from other crates' own artifacts (101 installed copies today; 5 vendored copies
+  of the same bytes for the `unic-*` crates are not counted). What is checked about it: the appendix
+  placeholder line `Copyright [yyyy] [name of copyright owner]` is present and unfilled, and no line
+  mentioning copyright, `(c)` or the copyright sign carries a year. Its SHA-256 is pinned in the
+  entry; a dependency update that changes which copy is most common fails the run.
+- **Every election is used.** One naming a component that is not in the graph, or does not ship,
+  stops the run.
+
+The generator runs negative controls for these rules before it trusts any election and exits 2 if
+one is accepted; [`../tests/frontend/upstreamLicenses.test.ts`](../tests/frontend/upstreamLicenses.test.ts)
+breaks each rule on purpose as well, including against real crate directories built on disk. The
+owner authorised this choice in chat on 2026-11-19 ("giấy phép có cách nào k, bạn có thể tự nhắn hỏi
+hoặc làm j tuỳ"; QD-C2 in [`../docs/how-to/AGENT_WORKFLOW.md`](../docs/how-to/AGENT_WORKFLOW.md)).
+This is an engineering record of a choice the declared licence permits. **It is not legal advice.**
+
 ## What is and is not established
 
 **Established.** Every distributed component is named with its exact locked version, its declared
-SPDX expression, and — for 442 of 443 — the verbatim text of its licence: 411 read out of the
-installed artifact, 31 vendored from a pinned upstream commit, each with a SHA-256 that can be
-re-checked against the package or re-fetched from its URL. The SBOM validates against the official
+SPDX expression, and the verbatim text of its licence — measured 2026-11-19, 545 of 545: 493 read
+out of the installed artifact, 51 vendored from a pinned upstream commit, and 1 (`utf8-chars`)
+covered by the Apache-2.0 text elected from the `MIT OR Apache-2.0` it offers, each with a SHA-256
+that can be re-checked against the package, re-fetched from its URL, or matched against the other
+crates that ship the same bytes. The SBOM validates against the official
 CycloneDX 1.5 schema, vendored in [`../schemas/cyclonedx/`](../schemas/cyclonedx/) and pinned to a
 specification commit. All of it regenerates deterministically: no timestamps, byte-order sorting, a
 serial number derived from content.
 
 **Not established.**
 
-- **1 component still has no obtainable licence text.** `hexf-parse` 0.2.1 declares CC0-1.0 and
-  neither its artifact nor its repository — at the release commit, or at any commit before it —
-  contains a licence file of any kind; the only `LICENSE` that project has ever committed arrived
-  three and a half years later and is a *different* licence. The search is recorded in
-  [`UNRESOLVED.md`](UNRESOLVED.md) with its evidence. No CC0-1.0 text is substituted from a licence
-  list: CC0 imposes no attribution condition, so the omission carries no notice obligation, but
-  engineering does not get to package a text a project has never published and record it as that
-  project's licence file. **Closing that row is a legal decision, not an engineering one.** The gate
-  is `npm run check:licenses-complete`, which exits non-zero while any remain — deliberately not in
-  CI, because a permanently-red required check is one people learn to ignore.
+- **No component is left without a licence text, but one is covered by an election.** The last
+  open row, `utf8-chars` 3.0.7, was closed on 2026-11-19 by electing Apache-2.0 as described above;
+  `npm run check:licenses-complete` now exits 0. That is the distributor's choice under the
+  component's declared `OR`, recorded with its evidence, not a text the project published. (The row
+  before it, `hexf-parse` 0.2.1, left the graph; when it was open, no CC0-1.0 text was substituted
+  for a licence file that project never published.) The gate stays out of CI on purpose: a
+  permanently-red required check is one people learn to ignore, and a future dependency can open a
+  new row.
 - **`neo4rs` and `neo4rs-macros` are packaged from a licence *statement*, not a licence text.** That
   project has never published a licence file at any revision. Its `README.md` at the release commit
   states dual Apache-2.0/MIT and links `LICENSE-APACHE` and `LICENSE-MIT`, neither of which exists,
@@ -131,7 +186,8 @@ serial number derived from content.
 - **`zune-inflate` declares `MIT OR Apache-2.0 OR Zlib` and upstream publishes only the Zlib text**
   (plus a copyright notice covering all three). Every licence-bearing file present at the pinned
   release is packaged; no option is selected on the owner's behalf, and no MIT or Apache-2.0 text is
-  supplied for options upstream did not publish.
+  supplied for options upstream did not publish. The election route does not apply to it: it
+  publishes a licence text, and installed or vendored text always wins.
 - **No legal review has been performed.** This is an inventory and a text bundle, not an assessment
   of whether each third-party licence is compatible with the project's `MIT OR Apache-2.0`
   distribution. The MPL-2.0 and
