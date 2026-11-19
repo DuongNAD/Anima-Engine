@@ -1,7 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { makeFloraGeometry } from '../utils/floraGeometry';
 import { FloraType } from '../utils/worldGen';
 import type { QualityTier } from '../utils/qualityTiers';
@@ -21,7 +18,6 @@ export interface FloraGeomEntry {
 }
 
 const TERRAIN_LAYERS = ['grass', 'forest', 'rock', 'sand', 'snow', 'mud'] as const;
-const BASIS_TRANSCODER_PATH = '/assets/basis/';
 
 const FLORA_STYLE_MAP: Record<
   FloraType,
@@ -45,22 +41,10 @@ const FLORA_STYLE_MAP: Record<
 
 const pbrPromises = new Map<string, Promise<TerrainPbrArrays | null>>();
 const floraPromises = new Map<string, Promise<FloraGeomEntry[] | null>>();
-let sharedKtx2: KTX2Loader | null = null;
 
-/** Initialize optional KTX2Loader pointing strictly at self-hosted `/assets/basis/`. */
-export function getSelfKtx2Loader(renderer?: THREE.WebGLRenderer): KTX2Loader | null {
-  if (typeof window === 'undefined') return null;
-  if (!sharedKtx2) {
-    sharedKtx2 = new KTX2Loader().setTranscoderPath(BASIS_TRANSCODER_PATH);
-  }
-  if (renderer) {
-    try {
-      sharedKtx2.detectSupport(renderer);
-    } catch {
-      // Non-WebGL test environment; leave uninitialized cleanly.
-    }
-  }
-  return sharedKtx2;
+export function clearAssetCachesForTest(): void {
+  pbrPromises.clear();
+  floraPromises.clear();
 }
 
 async function decodeImageToRgba(url: string, targetSize: number): Promise<Uint8Array | null> {
@@ -127,10 +111,12 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
       });
       await Promise.all(jobs);
 
+      // Keep `RGBA8` (`NoColorSpace`) on the DataArrayTexture so WebGL2 `gl.generateMipmap(TEXTURE_2D_ARRAY)`
+      // is valid without `SRGB8_ALPHA8` completeness errors; the shader applies sRGB -> linear decode.
       const albedoArray = new THREE.DataArrayTexture(albedoBuf, tileSize, tileSize, layerCount);
       albedoArray.format = THREE.RGBAFormat;
       albedoArray.type = THREE.UnsignedByteType;
-      albedoArray.colorSpace = THREE.SRGBColorSpace;
+      albedoArray.colorSpace = THREE.NoColorSpace;
       albedoArray.wrapS = THREE.RepeatWrapping;
       albedoArray.wrapT = THREE.RepeatWrapping;
       albedoArray.minFilter = THREE.LinearMipmapLinearFilter;
@@ -241,9 +227,15 @@ function bakeBakedVertexColorGeometry(
   return out;
 }
 
+type MergeGeometriesFn = (
+  geometries: THREE.BufferGeometry[],
+  useGroups?: boolean,
+) => THREE.BufferGeometry | null;
+
 function extractGlbBaseGeometry(
   scene: THREE.Object3D,
   slug: 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern',
+  mergeFn: MergeGeometriesFn,
 ): THREE.BufferGeometry | null {
   scene.updateMatrixWorld(true);
   const parts: THREE.BufferGeometry[] = [];
@@ -271,7 +263,7 @@ function extractGlbBaseGeometry(
     cloned.dispose();
   }
 
-  const merged = parts.length === 1 ? parts[0] : mergeGeometries(parts, false);
+  const merged = parts.length === 1 ? parts[0] : mergeFn(parts, false);
   if (!merged) {
     parts.forEach((p) => p.dispose());
     return null;
@@ -364,6 +356,10 @@ export function loadFloraAssetGeometries(
 
   const task = (async (): Promise<FloraGeomEntry[] | null> => {
     try {
+      const [{ GLTFLoader }, { mergeGeometries }] = await Promise.all([
+        import('three/examples/jsm/loaders/GLTFLoader.js'),
+        import('three/examples/jsm/utils/BufferGeometryUtils.js'),
+      ]);
       const loader = new GLTFLoader();
       const slugs: Array<'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern'> = [
         'pine',
@@ -376,7 +372,7 @@ export function loadFloraAssetGeometries(
       await Promise.all(
         slugs.map(async (slug) => {
           const gltf = await loader.loadAsync(`/assets/world/models/${slug}.glb`);
-          const extracted = extractGlbBaseGeometry(gltf.scene, slug);
+          const extracted = extractGlbBaseGeometry(gltf.scene, slug, mergeGeometries);
           if (extracted) baseBySlug.set(slug, extracted);
         }),
       );

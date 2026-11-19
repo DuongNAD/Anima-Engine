@@ -547,6 +547,7 @@ export const WorldShowcase: React.FC = () => {
             skirtDepth={TERRAIN_SKIRT}
             dynamicLod={TERRAIN_DYNAMIC_LOD}
             loadRadius={TERRAIN_LOAD_RADIUS}
+            tier={effectiveQuality}
           />
         ) : (
           <WorldTerrain
@@ -554,6 +555,7 @@ export const WorldShowcase: React.FC = () => {
             renderSize={RENDER_SIZE}
             heightRatio={HEIGHT_RATIO}
             meshResolution={MESH_RES}
+            tier={effectiveQuality}
           />
         )}
 

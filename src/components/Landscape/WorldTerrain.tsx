@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
@@ -9,8 +9,13 @@ import {
   buildNormalTexture,
   buildRiverMaskTexture,
   buildRoughnessTexture,
+  buildSplatTexture,
 } from './utils/worldTerrainTextures';
 import { sceneElapsed } from './utils/sceneClock';
+import { isCaptureRequested } from './utils/captureMode';
+import type { QualityTier } from './utils/qualityTiers';
+import { loadTerrainPbrArrays } from './assets/worldAssets';
+import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 
 export interface WorldTerrainProps {
   world: World;
@@ -20,6 +25,8 @@ export interface WorldTerrainProps {
   heightRatio?: number;
   /** Mesh resolution (segments per side). Decoupled from the data resolution. */
   meshResolution?: number;
+  /** Quality tier controlling CC0 PBR array resolution (`512` on low, `1024` on medium/high). */
+  tier?: QualityTier;
 }
 
 /**
@@ -35,6 +42,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
   renderSize = 400,
   heightRatio = 0.13,
   meshResolution = 256,
+  tier = 'high',
 }) => {
   const geometry = useMemo(() => {
     const res = meshResolution;
@@ -94,40 +102,40 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
 
   // River-ribbon mask (feathered), so the shader knows where flowing water lies.
   const riverMaskMap = useMemo(() => buildRiverMaskTexture(world), [world]);
+  const splatMap = useMemo(() => buildSplatTexture(world), [world]);
 
-  // Inject (1) the high-repeat detail multiply and (2) a two-layer counter-scrolling shimmer
-  // over the river ribbons, right after the base map sample. Standard onBeforeCompile patch;
-  // the shader ref lets useFrame drive uTime so the rivers visibly FLOW.
-  const shaderRef = useRef<{ uniforms: Record<string, { value: unknown }> } | null>(null);
-  const onBeforeCompile = useMemo(
-    () => (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
-      shader.uniforms.uDetail = { value: detailMap };
-      shader.uniforms.uRiverMask = { value: riverMaskMap };
-      shader.uniforms.uTime = { value: 0 };
-      shader.fragmentShader =
-        'uniform sampler2D uDetail;\nuniform sampler2D uRiverMask;\nuniform float uTime;\n' +
-        shader.fragmentShader.replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-          {
-            float dtl = texture2D(uDetail, vMapUv * 220.0).r * 2.0;
-            diffuseColor.rgb *= mix(1.0, dtl, 0.34);
-            float riv = texture2D(uRiverMask, vMapUv).r;
-            if (riv > 0.01) {
-              float flow1 = texture2D(uDetail, vMapUv * 260.0 + vec2(uTime * 0.025, uTime * 0.045)).r * 2.0;
-              float flow2 = texture2D(uDetail, vMapUv * 140.0 - vec2(uTime * 0.018, uTime * 0.03)).r * 2.0;
-              diffuseColor.rgb *= mix(1.0, flow1 * 0.55 + flow2 * 0.45, riv * 0.3);
-            }
-          }`,
-        );
-      shaderRef.current = shader;
-    },
-    [detailMap, riverMaskMap],
+  const terrainMat = useMemo(
+    () =>
+      createTerrainPbrMaterial({
+        colorMap,
+        normalMap,
+        roughnessMap,
+        detailMap,
+        riverMaskMap,
+        splatMap,
+        heightUnits: renderSize * heightRatio,
+      }),
+    [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, splatMap, renderSize, heightRatio],
   );
 
+  useEffect(() => {
+    terrainMat.handle.applyPbrArrays(null);
+    if (typeof window !== 'undefined' && isCaptureRequested(window.location.search)) {
+      return;
+    }
+    let cancelled = false;
+    void loadTerrainPbrArrays(tier).then((arrays) => {
+      if (!cancelled && arrays) {
+        terrainMat.handle.applyPbrArrays(arrays);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [terrainMat, tier]);
+
   useFrame((state) => {
-    const sh = shaderRef.current;
-    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = sceneElapsed(state.clock);
+    terrainMat.handle.updateTime(sceneElapsed(state.clock));
   });
 
   useEffect(() => {
@@ -137,21 +145,14 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       roughnessMap.dispose();
       detailMap.dispose();
       riverMaskMap.dispose();
+      splatMap.dispose();
+      terrainMat.handle.dispose();
+      geometry.dispose();
     };
-  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap]);
+  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, splatMap, terrainMat, geometry]);
 
   return (
-    <mesh geometry={geometry} name="world-terrain" receiveShadow>
-      <meshStandardMaterial
-        map={colorMap}
-        normalMap={normalMap}
-        normalScale={new THREE.Vector2(1, 1)}
-        roughnessMap={roughnessMap}
-        roughness={1.0}
-        metalness={0.0}
-        onBeforeCompile={onBeforeCompile}
-      />
-    </mesh>
+    <mesh geometry={geometry} material={terrainMat.material} name="world-terrain" receiveShadow />
   );
 };
 
