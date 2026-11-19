@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/anima-logo.svg" width="168" alt="Logo Anima Engine: một sinh vật nhiều đốt có mắt, uốn mình quanh một quần đảo nhỏ giữa biển">
+  <img src=".github/assets/anima-logo.svg" width="168" alt="Logo Anima Engine: thân một sinh vật nhiều đốt lớn dần theo đường xoắn ốc, từ chiếc đuôi mảnh ở tâm đến cái đầu có mắt">
 </p>
 
 <h1 align="center">Anima Engine</h1>

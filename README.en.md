@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/anima-logo.svg" width="168" alt="Anima Engine logo: a segmented creature with one eye curls around a small archipelago in a dark sea">
+  <img src=".github/assets/anima-logo.svg" width="168" alt="Anima Engine logo: a segmented creature's body grows along a spiral, from a thin tail at the centre to a head with one eye">
 </p>
 
 <h1 align="center">Anima Engine</h1>
