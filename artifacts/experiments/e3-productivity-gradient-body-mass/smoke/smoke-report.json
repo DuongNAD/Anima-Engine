@@ -1,0 +1,188 @@
+{
+  "all_27_observables_emitted_and_finite": true,
+  "body_mass_consulted": false,
+  "demographics_and_conservation": {
+    "control": {
+      "agent_count_final": 13.0,
+      "agent_count_max": 193.0,
+      "agent_count_min": 13.0,
+      "births_sum": 375.0,
+      "closed_eu_first": 165587.24986362425,
+      "closed_eu_max": 165587.24986362454,
+      "closed_eu_max_abs_drift": 1.076841726899147e-9,
+      "closed_eu_min": 165587.24986362318,
+      "deaths_dehydration_sum": 382.0,
+      "deaths_starvation_sum": 100.0,
+      "deaths_sum": 482.0,
+      "final_checksum": 1266395716,
+      "herbivore_count_final": 13.0,
+      "predator_count_final": 0.0,
+      "status": "completed"
+    },
+    "treatment": {
+      "agent_count_final": 99.0,
+      "agent_count_max": 192.0,
+      "agent_count_min": 9.0,
+      "births_sum": 370.0,
+      "closed_eu_first": 165587.24986362457,
+      "closed_eu_max": 165587.249863625,
+      "closed_eu_max_abs_drift": 4.656612873077393e-10,
+      "closed_eu_min": 165587.2498636241,
+      "deaths_dehydration_sum": 333.0,
+      "deaths_starvation_sum": 58.0,
+      "deaths_sum": 391.0,
+      "final_checksum": 2891653359,
+      "herbivore_count_final": 99.0,
+      "predator_count_final": 0.0,
+      "status": "completed"
+    }
+  },
+  "duration_ticks": 18000,
+  "integrity": {
+    "checksums_differ": true,
+    "control_final_checksum": 1266395716,
+    "ecology_stream_identical": true,
+    "treatment_final_checksum": 2891653359,
+    "world_identity_identical": true
+  },
+  "kind": "e3-smoke-report-EXCLUDED-FROM-ANALYSIS",
+  "sample_period": 600,
+  "smoke_seed": 999979,
+  "tail_window_ticks": [
+    14400,
+    18000
+  ],
+  "warmup_ticks": 3000,
+  "wp2_a_resource_field": {
+    "bounds_x": [
+      -100.0,
+      100.0
+    ],
+    "bounds_z": [
+      -100.0,
+      100.0
+    ],
+    "height": 256,
+    "initial_east_biomass_eu": 64829.499945282936,
+    "initial_east_capacity_eu": 64829.499945282936,
+    "initial_ecosystem_biomass": {
+      "animals": 0.0,
+      "detritus": 0.0,
+      "dormant": 0.0,
+      "plants": 153587.24986362457
+    },
+    "initial_total_biomass_eu": 153587.24986362457,
+    "initial_total_capacity_eu": 153587.24986362457,
+    "initial_west_biomass_eu": 88757.74991834164,
+    "initial_west_capacity_eu": 88757.74991834164,
+    "passed": true,
+    "width": 256
+  },
+  "wp2_b_standing_crop_intervention": {
+    "control_add_nutrient_eu_added": 0.0,
+    "control_add_nutrient_ledger_count": 0,
+    "control_deforest_eu_moved": 0.0,
+    "control_deforest_ledger_count": 0,
+    "control_standing_crop_final": 123300.83728024106,
+    "control_standing_crop_post_warmup_mean": 134866.6595674591,
+    "control_standing_crop_tail_mean": 124085.04243589146,
+    "final_delta_treatment_minus_control": -60018.78389082563,
+    "max_abs_sample_diff": 86992.33749733593,
+    "passed": true,
+    "post_warmup_mean_delta": -70768.13870459108,
+    "post_warmup_relative_shift": -0.524726711045983,
+    "tail_mean_delta": -60703.12552163473,
+    "treatment_add_nutrient_eu_added": 33642.28750495448,
+    "treatment_add_nutrient_ledger_count": 300,
+    "treatment_deforest_eu_moved": 93891.59735265336,
+    "treatment_deforest_ledger_count": 300,
+    "treatment_standing_crop_final": 63282.05338941543,
+    "treatment_standing_crop_post_warmup_mean": 64098.52086286802,
+    "treatment_standing_crop_tail_mean": 63381.91691425673
+  },
+  "wp2_c_detritus_before_3000": {
+    "control_detritus_at_3000": 12530.86161665315,
+    "control_detritus_final": 41904.14130572277,
+    "control_early_samples": [
+      [
+        600,
+        1647.807546613461
+      ],
+      [
+        1200,
+        3365.437489939844
+      ],
+      [
+        1800,
+        6624.690355587068
+      ],
+      [
+        2400,
+        9182.101459711657
+      ],
+      [
+        3000,
+        12530.86161665315
+      ]
+    ],
+    "control_first_positive_before_3000": [
+      600,
+      1647.807546613461
+    ],
+    "passed": true,
+    "treatment_detritus_at_3000": 97795.36642170392,
+    "treatment_detritus_final": 97200.53448166176,
+    "treatment_early_samples": [
+      [
+        600,
+        86709.16853561654
+      ],
+      [
+        1200,
+        90785.14526585277
+      ],
+      [
+        1800,
+        94169.75165717684
+      ],
+      [
+        2400,
+        95790.68691375655
+      ],
+      [
+        3000,
+        97795.36642170392
+      ]
+    ],
+    "treatment_first_positive_before_3000": [
+      600,
+      86709.16853561654
+    ]
+  },
+  "wp3_schedule_lock": {
+    "projected_24_runs_minutes_by_rung": [
+      {
+        "duration_ticks": 18000,
+        "projected_minutes": 2.3280245600000002
+      },
+      {
+        "duration_ticks": 12000,
+        "projected_minutes": 1.5520163733333336
+      },
+      {
+        "duration_ticks": 6000,
+        "projected_minutes": 0.7760081866666668
+      }
+    ],
+    "recommended_duration_ticks": 18000,
+    "sample_period": 600,
+    "tail_window_ticks": [
+      14400,
+      18000
+    ],
+    "us_per_tick": 323.3367444444445,
+    "wall_clock_seconds": 11.6401228,
+    "warmup_ticks": 3000,
+    "within_budget": true
+  }
+}

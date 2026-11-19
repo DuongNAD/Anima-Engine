@@ -32,7 +32,7 @@ phải tài liệu dự án.
 | ↳ Từ genome tới mesh | | [`proposed`](design/2026-08-25-feature-genome-to-mesh.md) | | | | |
 | ↳ Animation sinh vật | | [`proposed`](design/2026-08-25-feature-creature-animation.md) | | | | |
 | ↳ Tính toán phân tán theo thiết bị | | [`proposed`](design/2026-08-25-feature-federated-compute.md) | | | | |
-| **Thí nghiệm E3** — gradient năng suất và khối lượng cơ thể (08-26) | — | — | [`proposed`](planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md) | — | — | — |
+| **Thí nghiệm E3** — gradient năng suất và khối lượng cơ thể; tiền đăng ký đóng băng (WP-1..WP-4, smoke đạt, 0 hạt giống thí nghiệm chạy) (08-26 → 11-19) | — | — | [`active`](planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md) | — | — | — |
 | **Thí nghiệm E-SEL1** — khan hiếm thức ăn và khối lượng cơ thể; tiền đăng ký đóng băng rồi đóng tại smoke, không có thí nghiệm (11-16 → 11-17) | — | — | [`completed`](planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md) | — | — | — |
 | **Thế giới nhìn rõ** — sinh vật và bản đồ đẹp, nhẹ, mượt (11-16; yêu cầu và thiết kế nằm trong §1 và §3 của kế hoạch, không có file riêng) | — | — | [`active`](planning/2026-11-16-feature-readable-world.md) | — | [`completed`](testing/2026-11-16-rw-c3-flora-lod.md) | — |
 
