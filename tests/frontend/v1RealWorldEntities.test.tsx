@@ -1,5 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, cleanup, act, fireEvent, screen } from '@testing-library/react';
 import * as THREE from 'three';
 import type { EnvironmentalElement } from '../../src/types/generated/EnvironmentalElement';
@@ -145,6 +146,7 @@ function createManualTickSource(): {
 }
 
 describe('V1 — 3D map renders simulation lakes, trees, food and labels decoration', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   const renderSize = 1200;
   const heightRatio = 0.14;
   const meshResolution = 64;

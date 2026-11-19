@@ -32,6 +32,11 @@ import {
   SHARED_WORLD_SHAPE,
   SHARED_WORLD_SIZE,
 } from '@/utils/sharedWorld';
+import {
+  compositionViolations,
+  measureComposition,
+  type WorldComposition,
+} from '@/components/Landscape/utils/worldComposition';
 
 // Evidence gate for the committed navigation and collision record.
 //
@@ -59,7 +64,10 @@ const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
 const TIMEOUT = 180_000;
 
-type Record_ = MapEvidenceRecord & { _generated: Record<string, unknown> };
+type Record_ = MapEvidenceRecord & {
+  _generated: Record<string, unknown>;
+  composition: WorldComposition;
+};
 
 /** The precision `gen_map_evidence.ts` writes at. */
 const round3 = (n: number): number => Math.round(n * 1000) / 1000;
@@ -319,5 +327,28 @@ describe('collision evidence — the rig\'s own resolver, recorded', () => {
     expect(clear).toBeDefined();
     expect(clear!.to.x).toBeCloseTo(clear!.from.x, 6);
     expect(clear!.to.z).toBeCloseTo(clear!.from.z, 6);
+  });
+});
+
+// The shared world's composition, recorded and held inside COMPOSITION_BANDS (C5).
+//
+// PR #161 moved the shared world from 62% ocean with the hot biomes almost absent and 450 waterfalls
+// to the supercontinent with every environment visible. Nothing recorded that, so a later generator
+// edit could undo it without failing anything. The bands and why they are where they are:
+// `utils/worldComposition.ts`. The checks themselves are unit-tested in worldComposition.test.ts.
+describe('map evidence — the shared world composition', () => {
+  it('records the composition of the world the app renders', { timeout: TIMEOUT }, () => {
+    const rec = loadRecord();
+    const { world } = scene();
+    expect(rec.composition, 'regenerate with `npm run gen:map-evidence`').toEqual(
+      measureComposition(world),
+    );
+  });
+
+  it('keeps every environment visible: ocean, biome regions, waterfalls and caves inside their bands', {
+    timeout: TIMEOUT,
+  }, () => {
+    const { world } = scene();
+    expect(compositionViolations(measureComposition(world), world.size)).toEqual([]);
   });
 });
