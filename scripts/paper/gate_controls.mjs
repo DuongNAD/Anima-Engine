@@ -97,7 +97,8 @@ function cargoEnv() {
   return {
     ...process.env,
     ...winDebugDefaults,
-    CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS || '4',
+    CARGO_BUILD_JOBS:
+      process.env.CARGO_BUILD_JOBS || (process.platform === 'win32' ? '2' : '4'),
     CARGO_INCREMENTAL: '0',
     ANIMA_USE_GPU: '0',
     CARGO_TARGET_DIR:
@@ -107,17 +108,46 @@ function cargoEnv() {
   };
 }
 
-function ensureNoExternalCargo() {
+function ensureSafeAnimaCargo() {
   if (process.platform !== 'win32') return;
-  for (let attempt = 0; attempt < 18; attempt += 1) {
-    const res = spawnSync('cmd.exe', ['/d', '/c', 'tasklist /NH'], { encoding: 'utf8' });
-    const lines = (res.stdout || '').split(/\r?\n/);
-    const active = lines.filter((line) => /^(cargo|rustc)\.exe\s/i.test(line.trim()));
-    if (active.length === 0) return;
-    if (attempt === 17) {
-      throw new Error(`External cargo/rustc process still running:\n${active.join('\n')}`);
+  try {
+    os.setPriority(process.pid, os.constants.priority.PRIORITY_LOW);
+  } catch {
+    // Best-effort low priority so concurrent host tasks keep headroom.
+  }
+  const psScript = [
+    '$os = Get-CimInstance Win32_OperatingSystem;',
+    '$freeKb = [int64]$os.FreePhysicalMemory;',
+    '$procs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match "^(cargo|rustc)\\.exe$" });',
+    '$anima = @($procs | Where-Object { $_.CommandLine -match "Anima-Engine|anima-wt|anima-m2-wt|anima_engine" });',
+    '$other = @($procs | Where-Object { $_.CommandLine -notmatch "Anima-Engine|anima-wt|anima-m2-wt|anima_engine" });',
+    'Write-Output ("FREE_KB=" + $freeKb + ";ANIMA=" + $anima.Count + ";OTHER=" + $other.Count);',
+    'foreach ($p in $anima) { Write-Output ("ANIMA_PROC=" + $p.ProcessId + " " + $p.Name + " " + $p.CommandLine) }',
+  ].join(' ');
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const res = spawnSync('powershell.exe', ['-NoProfile', '-Command', psScript], {
+      encoding: 'utf8',
+    });
+    const out = res.stdout || '';
+    const m = /FREE_KB=(\d+);ANIMA=(\d+);OTHER=(\d+)/.exec(out);
+    if (!m) {
+      if (attempt === 59) {
+        throw new Error(`Could not inspect Windows cargo/RAM state:\n${out}\n${res.stderr || ''}`);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+      continue;
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+    const freeKb = Number(m[1]);
+    const animaCount = Number(m[2]);
+    const otherCount = Number(m[3]);
+    const ramReady = otherCount === 0 || freeKb >= 5_000_000;
+    if (animaCount === 0 && ramReady) return;
+    if (attempt === 59) {
+      throw new Error(
+        `Shared Dell cargo guard timed out (FREE_KB=${freeKb}, ANIMA=${animaCount}, OTHER=${otherCount}):\n${out}`,
+      );
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15_000);
   }
 }
 
@@ -233,7 +263,7 @@ function unlinkNodeModules(createdLinks) {
 }
 
 function withTempWorktree(patchFile, { needsNodeModules = false, needsCargo = false }, fn) {
-  if (needsCargo) ensureNoExternalCargo();
+  if (needsCargo) ensureSafeAnimaCargo();
 
   const tmpBase = mkdtempSync(join(os.tmpdir(), 'anima-m2-'));
   const wt = join(os.tmpdir(), 'anima-m2-wt');
