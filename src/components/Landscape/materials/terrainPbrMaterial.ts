@@ -184,7 +184,11 @@ void w3ComputeLayerWeights(
 
               vec3 pbrLin = pow(max(pbrSrgb, vec3(0.001)), vec3(2.2));
               float pbrLuma = dot(pbrLin, vec3(0.299, 0.587, 0.114));
-              vec3 pbrBlended = diffuseColor.rgb * mix(0.62, 1.48, clamp(pbrLuma * 1.45, 0.0, 1.0)) * 0.56 + pbrLin * 0.44;
+              float pbrDistFade = 1.0 - smoothstep(180.0, 620.0, length(vViewPosition));
+              float microContrast = mix(0.68, 1.36, clamp(pbrLuma * 1.5, 0.0, 1.0));
+              vec3 tintedPbr = diffuseColor.rgb * microContrast;
+              float rawMix = mix(0.05, 0.22, pbrDistFade);
+              vec3 pbrBlended = mix(tintedPbr, pbrLin * mix(0.75, 1.2, microContrast), rawMix);
               pbrBlended *= mix(1.0, dtl, 0.16);
               diffuseColor.rgb = mix(pbrBlended, diffuseColor.rgb, clamp(riv * 0.85, 0.0, 0.85));
             } else {
@@ -221,7 +225,7 @@ void w3ComputeLayerWeights(
         );
   };
 
-  material.customProgramCacheKey = () => 'w3-lite-terrain-pbr-v1';
+  material.customProgramCacheKey = () => 'w3-lite-terrain-pbr-v2';
 
   const handle: TerrainPbrShaderHandle = {
     applyPbrArrays(arrays) {

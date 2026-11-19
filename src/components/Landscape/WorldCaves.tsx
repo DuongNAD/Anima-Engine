@@ -39,8 +39,14 @@ export const WorldCaves: React.FC<WorldCavesProps> = ({
 
   if (!geom) return null;
   return (
-    <mesh geometry={geom} name="world-caves" frustumCulled={false}>
-      <meshStandardMaterial vertexColors roughness={1} metalness={0} side={THREE.DoubleSide} />
+    <mesh geometry={geom} name="world-caves" receiveShadow frustumCulled={false}>
+      <meshStandardMaterial
+        vertexColors
+        roughness={0.94}
+        metalness={0}
+        flatShading
+        side={THREE.DoubleSide}
+      />
     </mesh>
   );
 };

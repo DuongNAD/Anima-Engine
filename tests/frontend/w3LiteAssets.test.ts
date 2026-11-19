@@ -1,10 +1,18 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import React from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import * as THREE from 'three';
-import { generateWorld, Biome } from '../../src/components/Landscape/utils/worldGen';
-import { buildSplatTexture } from '../../src/components/Landscape/utils/worldTerrainTextures';
+import { BIOME_COUNT, Biome, generateWorld } from '../../src/components/Landscape/utils/worldGen';
+import {
+  BIOME_DISPLAY_RGB,
+  buildRoughnessTexture,
+  buildSplatTexture,
+} from '../../src/components/Landscape/utils/worldTerrainTextures';
+import { buildCavesGeometry } from '../../src/components/Landscape/utils/caveGeometry';
+import WorldMinimap, { type CameraView } from '../../src/components/Landscape/WorldMinimap';
 import {
   clearAssetCachesForTest,
   loadFloraAssetGeometries,
@@ -49,6 +57,7 @@ function listFilesRecursive(dir: string): string[] {
 
 describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback', () => {
   afterEach(() => {
+    cleanup();
     clearAssetCachesForTest();
     vi.restoreAllMocks();
   });
@@ -184,5 +193,132 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
     expect(fShader.uniforms.uWindTime.value).toBeCloseTo(2.5, 5);
     expect(fShader.vertexShader).toContain('instanceMatrix');
     floraBundle.dispose();
+  });
+
+  it('gives all 22 biomes distinct display colours, distinct roughness tiers, and complete splat coverage', () => {
+    expect(BIOME_DISPLAY_RGB.length).toBe(BIOME_COUNT);
+    const uniqueRgb = new Set(BIOME_DISPLAY_RGB.map((c) => c.join(',')));
+    expect(uniqueRgb.size).toBe(BIOME_COUNT);
+
+    // Construct a 512x512 world so buildRoughnessTexture (res = size >> 1 = 256) and
+    // buildSplatTexture (res = 512) map grid indices cleanly in four corners.
+    const world = generateWorld('w3-biome-rough-test', { size: 512, shape: 'island' });
+    const n = world.size;
+    world.riverAmt.fill(0);
+    world.water.fill(0);
+    world.shore.fill(0);
+    world.elevation.fill(0.55);
+
+    const tl = 0;
+    const tr = n - 1;
+    const bl = (n - 1) * n;
+    const br = n * n - 1;
+    world.biome[tl] = Biome.Glacier;
+    world.biome[tr] = Biome.Bog;
+    world.biome[bl] = Biome.Badlands;
+    world.biome[br] = Biome.Desert;
+
+    const rough = buildRoughnessTexture(world);
+    const rImg = rough.image as { width: number; height: number; data: Uint8Array };
+    const rw = rImg.width;
+    const rh = rImg.height;
+    const gGlacier = rImg.data[1];
+    const gBog = rImg.data[(rw - 1) * 4 + 1];
+    const gBadlands = rImg.data[((rh - 1) * rw) * 4 + 1];
+    const gDesert = rImg.data[((rh - 1) * rw + (rw - 1)) * 4 + 1];
+    expect(gGlacier).toBeLessThan(gBog);
+    expect(gBog).toBeLessThan(gBadlands);
+    expect(gDesert).toBeGreaterThanOrEqual(245);
+    rough.dispose();
+
+    const splat = buildSplatTexture(world);
+    const sImg = splat.image as { width: number; height: number; data: Uint8Array };
+    const sw = sImg.width;
+    const sh = sImg.height;
+    const pxGlacierA = sImg.data[3];
+    const pxBogB = sImg.data[(sw - 1) * 4 + 2];
+    const pxBadlandsG = sImg.data[((sh - 1) * sw) * 4 + 1];
+    const pxDesertG = sImg.data[((sh - 1) * sw + (sw - 1)) * 4 + 1];
+    expect(pxGlacierA).toBeGreaterThan(240);
+    expect(pxBogB).toBeGreaterThan(220);
+    expect(pxBadlandsG).toBeGreaterThan(150);
+    expect(pxDesertG).toBeGreaterThan(230);
+    splat.dispose();
+  });
+
+  it('builds visible high-contrast rocky cave mouths seated at centred world UVs', () => {
+    const world = generateWorld('w3-cave-test', { size: 64, shape: 'island' });
+    // Put high cliff plateau ONLY in the negative-X quadrant where the old uncentred UV bug clamped to u=0.
+    world.elevation.fill(world.seaLevel * 0.5);
+    for (let y = 8; y < 24; y++) {
+      for (let x = 8; x < 24; x++) {
+        world.elevation[y * world.size + x] = 0.8;
+      }
+    }
+    world.caveX = new Float32Array([-16]); // cell x = 16 -> u = (16-32+32)/64 = 0.25 (inside high plateau!)
+    world.caveZ = new Float32Array([-16]);
+    world.caveE = new Float32Array([0.8]);
+    world.caveYaw = new Float32Array([0]);
+    world.caveCount = 1;
+
+    const geom = buildCavesGeometry(world, 1200, 168, 64);
+    expect(geom).not.toBeNull();
+    if (!geom) return;
+    geom.computeBoundingBox();
+    const bb = geom.boundingBox!;
+    const heightUnits = 168;
+    // Cave must sit up at plateau height (~0.8 * 168 = 134.4), not clamped down near sea level.
+    expect(bb.min.y).toBeGreaterThan(0.6 * heightUnits);
+    expect(bb.max.x - bb.min.x).toBeGreaterThanOrEqual(3.2);
+    expect(bb.max.y - bb.min.y).toBeGreaterThanOrEqual(2.8);
+
+    const colAttr = geom.getAttribute('color');
+    let minLuma = 1;
+    let maxLuma = 0;
+    for (let i = 0; i < colAttr.count; i++) {
+      const lum = colAttr.getX(i) * 0.3 + colAttr.getY(i) * 0.59 + colAttr.getZ(i) * 0.11;
+      minLuma = Math.min(minLuma, lum);
+      maxLuma = Math.max(maxLuma, lum);
+    }
+    expect(minLuma).toBeLessThan(0.03);
+    expect(maxLuma).toBeGreaterThan(0.18);
+    geom.dispose();
+  });
+
+  it('renders WorldMinimap legend by default showing only biomes present in the world', () => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    const world = generateWorld('w3-minimap-legend', { size: 32, shape: 'island' });
+    world.biome.fill(Biome.Desert);
+    world.biome[0] = Biome.Ocean;
+    world.biome[1] = Biome.Badlands;
+    world.biome[2] = Biome.Glacier;
+    world.riverAmt.fill(0);
+    world.water.fill(0);
+
+    const viewRef = {
+      current: { targetX: 0, targetZ: 0, camX: 10, camZ: 10 } satisfies CameraView,
+    };
+
+    render(
+      React.createElement(WorldMinimap, {
+        world,
+        renderSize: 1200,
+        viewRef,
+        onTeleport: () => {},
+      }),
+    );
+
+    const legend = screen.getByTestId('minimap-biome-legend');
+    expect(legend.textContent).toContain('Desert');
+    expect(legend.textContent).toContain('Badlands');
+    expect(legend.textContent).toContain('Glacier');
+    expect(legend.textContent).toContain('Ocean');
+    // Biomes absent from world must NOT appear in the compact minimap legend.
+    expect(legend.textContent).not.toContain('Mangrove');
+    expect(legend.textContent).not.toContain('Jungle');
+
+    const toggle = screen.getByTestId('minimap-legend-toggle');
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId('minimap-biome-legend')).toBeNull();
   });
 });

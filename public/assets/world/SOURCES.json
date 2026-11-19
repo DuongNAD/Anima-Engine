@@ -154,8 +154,8 @@
       "license": "CC0-1.0",
       "downloadDate": "2026-11-19",
       "originalResolution": "1024x1024 glTF",
-      "bytes": 57100,
-      "processing": "weld + simplify (ratio 0.0012, error 0.6) + resize textures 128x128 + WebP GLB via @gltf-transform/cli; primary variant centered at runtime"
+      "bytes": 5160,
+      "processing": "Quantized & simplified bark trunk via @gltf-transform/cli + 4 tiered conifer bough hulls sampled from original needle point cloud with baked linear COLOR_0"
     },
     {
       "file": "models/tree_broad.glb",
@@ -166,8 +166,8 @@
       "license": "CC0-1.0",
       "downloadDate": "2026-11-19",
       "originalResolution": "1024x1024 glTF",
-      "bytes": 65324,
-      "processing": "quantize + weld + simplify (ratio 0.0025, error 1.0) + resize textures 128x128 + WebP GLB via @gltf-transform/cli"
+      "bytes": 7316,
+      "processing": "Segmented convex-hull trunk + 4 K-means canopy lobe hulls sampled from original leaf point cloud with baked linear COLOR_0"
     },
     {
       "file": "models/shrub.glb",
@@ -178,8 +178,8 @@
       "license": "CC0-1.0",
       "downloadDate": "2026-11-19",
       "originalResolution": "1024x1024 glTF",
-      "bytes": 30100,
-      "processing": "weld + simplify (ratio 0.002, error 0.5) + resize textures 128x128 + WebP GLB via @gltf-transform/cli"
+      "bytes": 3588,
+      "processing": "3 rotated organic convex-hull foliage mounds sampled from primary shrub_01 cluster with baked linear COLOR_0"
     },
     {
       "file": "models/rock.glb",
@@ -190,8 +190,8 @@
       "license": "CC0-1.0",
       "downloadDate": "2026-11-19",
       "originalResolution": "1024x1024 glTF",
-      "bytes": 145628,
-      "processing": "quantize + weld + simplify (ratio 0.0025, error 1.0) + resize textures 128x128 + WebP GLB via @gltf-transform/cli"
+      "bytes": 4728,
+      "processing": "Quantized + welded + simplified via @gltf-transform/cli (118 tris) with baked linear rock COLOR_0"
     },
     {
       "file": "models/fern.glb",
@@ -202,8 +202,8 @@
       "license": "CC0-1.0",
       "downloadDate": "2026-11-19",
       "originalResolution": "1024x1024 glTF",
-      "bytes": 17848,
-      "processing": "weld + simplify (ratio 0.04, error 0.5) + resize textures 128x128 + WebP GLB via @gltf-transform/cli; primary cluster centered at runtime"
+      "bytes": 3208,
+      "processing": "Quantized + welded + simplified primary rosette via @gltf-transform/cli (74 tris) with baked linear leaf COLOR_0"
     }
   ]
 }

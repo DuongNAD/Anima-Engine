@@ -20,9 +20,10 @@ export function createFloraWindMaterial(
   const windTimeUniform = { value: 0 };
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: smoothShading ? 0.82 : 0.9,
+    roughness: smoothShading ? 0.8 : 0.88,
     metalness: 0.0,
     flatShading: !smoothShading,
+    side: enableWind ? THREE.DoubleSide : THREE.FrontSide,
   });
 
   if (enableWind) {

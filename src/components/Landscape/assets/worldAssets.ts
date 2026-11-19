@@ -21,22 +21,27 @@ const TERRAIN_LAYERS = ['grass', 'forest', 'rock', 'sand', 'snow', 'mud'] as con
 
 const FLORA_STYLE_MAP: Record<
   FloraType,
-  { model: 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern'; tint: string; keepNaturalColor: boolean }
+  {
+    model: 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern';
+    tint: string;
+    keepNaturalColor: boolean;
+    hasWoodyTrunk?: boolean;
+  }
 > = {
-  [FloraType.Pine]: { model: 'pine', tint: '#d8edd2', keepNaturalColor: true },
-  [FloraType.Round]: { model: 'shrub', tint: '#5fa44e', keepNaturalColor: false },
-  [FloraType.Jungle]: { model: 'shrub', tint: '#3f8a43', keepNaturalColor: false },
-  [FloraType.Cactus]: { model: 'tree_broad', tint: '#5c8c4a', keepNaturalColor: false },
-  [FloraType.Acacia]: { model: 'tree_broad', tint: '#8ca84a', keepNaturalColor: false },
-  [FloraType.Palm]: { model: 'tree_broad', tint: '#54964f', keepNaturalColor: true },
-  [FloraType.DeadTree]: { model: 'tree_broad', tint: '#7b6855', keepNaturalColor: false },
-  [FloraType.Bush]: { model: 'shrub', tint: '#86a662', keepNaturalColor: true },
-  [FloraType.Rock]: { model: 'rock', tint: '#b5b2ac', keepNaturalColor: true },
-  [FloraType.Reed]: { model: 'fern', tint: '#9fb070', keepNaturalColor: true },
-  [FloraType.Tuft]: { model: 'fern', tint: '#d4dfb2', keepNaturalColor: false },
-  [FloraType.Coral]: { model: 'rock', tint: '#dcd3cc', keepNaturalColor: false },
-  [FloraType.Kelp]: { model: 'fern', tint: '#597a42', keepNaturalColor: false },
-  [FloraType.Seagrass]: { model: 'fern', tint: '#639a74', keepNaturalColor: false },
+  [FloraType.Pine]: { model: 'pine', tint: '#f3faef', keepNaturalColor: true },
+  [FloraType.Round]: { model: 'tree_broad', tint: '#57a846', keepNaturalColor: false, hasWoodyTrunk: true },
+  [FloraType.Jungle]: { model: 'tree_broad', tint: '#2d8c3c', keepNaturalColor: false, hasWoodyTrunk: true },
+  [FloraType.Cactus]: { model: 'tree_broad', tint: '#63994d', keepNaturalColor: false },
+  [FloraType.Acacia]: { model: 'tree_broad', tint: '#8fb048', keepNaturalColor: false, hasWoodyTrunk: true },
+  [FloraType.Palm]: { model: 'tree_broad', tint: '#4da34e', keepNaturalColor: false, hasWoodyTrunk: true },
+  [FloraType.DeadTree]: { model: 'tree_broad', tint: '#87725d', keepNaturalColor: false },
+  [FloraType.Bush]: { model: 'shrub', tint: '#f2f7ec', keepNaturalColor: true },
+  [FloraType.Rock]: { model: 'rock', tint: '#f2f0ec', keepNaturalColor: true },
+  [FloraType.Reed]: { model: 'fern', tint: '#e4edd0', keepNaturalColor: true },
+  [FloraType.Tuft]: { model: 'fern', tint: '#cde09b', keepNaturalColor: false },
+  [FloraType.Coral]: { model: 'rock', tint: '#f2e8e2', keepNaturalColor: false },
+  [FloraType.Kelp]: { model: 'fern', tint: '#638c46', keepNaturalColor: false },
+  [FloraType.Seagrass]: { model: 'fern', tint: '#64a87c', keepNaturalColor: false },
 };
 
 const pbrPromises = new Map<string, Promise<TerrainPbrArrays | null>>();
@@ -155,68 +160,28 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
   return task;
 }
 
-interface TexturePixels {
-  width: number;
-  height: number;
-  data: Uint8ClampedArray;
-}
-
-function readTexturePixels(texture: THREE.Texture | null | undefined): TexturePixels | null {
-  if (!texture || typeof document === 'undefined') return null;
-  const img = texture.image as CanvasImageSource & { width?: number; height?: number };
-  if (!img || !img.width || !img.height) return null;
-  const w = Math.min(128, Math.max(1, Math.trunc(img.width)));
-  const h = Math.min(128, Math.max(1, Math.trunc(img.height)));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(img, 0, 0, w, h);
-  return { width: w, height: h, data: ctx.getImageData(0, 0, w, h).data };
-}
-
 function bakeBakedVertexColorGeometry(
   rawGeom: THREE.BufferGeometry,
   materialColor: THREE.Color,
-  pixels: TexturePixels | null,
 ): THREE.BufferGeometry {
   const geom = rawGeom.index ? rawGeom.toNonIndexed() : rawGeom.clone();
   const posAttr = geom.getAttribute('position');
   const normAttr = geom.getAttribute('normal');
-  const uvAttr = geom.getAttribute('uv');
+  const colAttr = geom.getAttribute('color');
   if (!posAttr) return geom;
 
   if (!normAttr) geom.computeVertexNormals();
   const finalNorm = geom.getAttribute('normal');
   const vCount = posAttr.count;
   const colors = new Float32Array(vCount * 3);
-  const cTmp = new THREE.Color();
 
   for (let i = 0; i < vCount; i++) {
-    let r = materialColor.r;
-    let g = materialColor.g;
-    let b = materialColor.b;
-    if (pixels && uvAttr) {
-      const u = ((uvAttr.getX(i) % 1) + 1) % 1;
-      const v = ((1 - (uvAttr.getY(i) % 1)) + 1) % 1;
-      const px = Math.min(pixels.width - 1, Math.max(0, Math.floor(u * pixels.width)));
-      const py = Math.min(pixels.height - 1, Math.max(0, Math.floor(v * pixels.height)));
-      const off = (py * pixels.width + px) * 4;
-      cTmp.setRGB(
-        pixels.data[off] / 255,
-        pixels.data[off + 1] / 255,
-        pixels.data[off + 2] / 255,
-        THREE.SRGBColorSpace,
-      );
-      // Slight brightness lift avoids crushing dark green/bark albedo under foliage lighting.
-      r *= Math.min(1.0, cTmp.r * 1.18 + 0.04);
-      g *= Math.min(1.0, cTmp.g * 1.18 + 0.04);
-      b *= Math.min(1.0, cTmp.b * 1.18 + 0.04);
-    }
-    colors[i * 3] = Math.min(1, r);
-    colors[i * 3 + 1] = Math.min(1, g);
-    colors[i * 3 + 2] = Math.min(1, b);
+    const r = colAttr ? colAttr.getX(i) : materialColor.r;
+    const g = colAttr ? colAttr.getY(i) : materialColor.g;
+    const b = colAttr ? colAttr.getZ(i) : materialColor.b;
+    colors[i * 3] = Math.max(0, Math.min(1, r));
+    colors[i * 3 + 1] = Math.max(0, Math.min(1, g));
+    colors[i * 3 + 2] = Math.max(0, Math.min(1, b));
   }
 
   const out = new THREE.BufferGeometry();
@@ -227,15 +192,61 @@ function bakeBakedVertexColorGeometry(
   return out;
 }
 
-type MergeGeometriesFn = (
-  geometries: THREE.BufferGeometry[],
-  useGroups?: boolean,
-) => THREE.BufferGeometry | null;
+function concatNonIndexedGeometries(parts: THREE.BufferGeometry[]): THREE.BufferGeometry | null {
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+  let totalVerts = 0;
+  for (const p of parts) {
+    const pos = p.getAttribute('position');
+    if (pos) totalVerts += pos.count;
+  }
+  if (totalVerts === 0) return null;
+
+  const posOut = new Float32Array(totalVerts * 3);
+  const nrmOut = new Float32Array(totalVerts * 3);
+  const colOut = new Float32Array(totalVerts * 3);
+  let cursor = 0;
+  for (const p of parts) {
+    const pos = p.getAttribute('position');
+    if (!pos) continue;
+    const nrm = p.getAttribute('normal');
+    const col = p.getAttribute('color');
+    const n = pos.count;
+    for (let i = 0; i < n; i++) {
+      const o = (cursor + i) * 3;
+      posOut[o] = pos.getX(i);
+      posOut[o + 1] = pos.getY(i);
+      posOut[o + 2] = pos.getZ(i);
+      if (nrm) {
+        nrmOut[o] = nrm.getX(i);
+        nrmOut[o + 1] = nrm.getY(i);
+        nrmOut[o + 2] = nrm.getZ(i);
+      } else {
+        nrmOut[o + 1] = 1;
+      }
+      if (col) {
+        colOut[o] = col.getX(i);
+        colOut[o + 1] = col.getY(i);
+        colOut[o + 2] = col.getZ(i);
+      } else {
+        colOut[o] = 0.5;
+        colOut[o + 1] = 0.5;
+        colOut[o + 2] = 0.5;
+      }
+    }
+    cursor += n;
+  }
+
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.BufferAttribute(posOut, 3));
+  merged.setAttribute('normal', new THREE.BufferAttribute(nrmOut, 3));
+  merged.setAttribute('color', new THREE.BufferAttribute(colOut, 3));
+  return merged;
+}
 
 function extractGlbBaseGeometry(
   scene: THREE.Object3D,
   slug: 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern',
-  mergeFn: MergeGeometriesFn,
 ): THREE.BufferGeometry | null {
   scene.updateMatrixWorld(true);
   const parts: THREE.BufferGeometry[] = [];
@@ -256,14 +267,13 @@ function extractGlbBaseGeometry(
     const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
     const std = mat as THREE.MeshStandardMaterial | undefined;
     const color = std?.color ? std.color.clone() : new THREE.Color(1, 1, 1);
-    const pixels = readTexturePixels(std?.map);
     const cloned = mesh.geometry.clone();
     cloned.applyMatrix4(mesh.matrixWorld);
-    parts.push(bakeBakedVertexColorGeometry(cloned, color, pixels));
+    parts.push(bakeBakedVertexColorGeometry(cloned, color));
     cloned.dispose();
   }
 
-  const merged = parts.length === 1 ? parts[0] : mergeFn(parts, false);
+  const merged = concatNonIndexedGeometries(parts);
   if (!merged) {
     parts.forEach((p) => p.dispose());
     return null;
@@ -287,6 +297,7 @@ function adaptModelToFloraType(
   type: FloraType,
   tintHex: string,
   keepNaturalColor: boolean,
+  hasWoodyTrunk = false,
 ): THREE.BufferGeometry {
   const ref = makeFloraGeometry(type);
   ref.computeBoundingBox();
@@ -317,11 +328,18 @@ function adaptModelToFloraType(
   const col = geom.getAttribute('color') as THREE.BufferAttribute | undefined;
   if (col) {
     for (let i = 0; i < col.count; i++) {
-      if (keepNaturalColor) {
-        col.setXYZ(i, col.getX(i) * tint.r, col.getY(i) * tint.g, col.getZ(i) * tint.b);
+      const rx = col.getX(i);
+      const gx = col.getY(i);
+      const bx = col.getZ(i);
+      const isBark = hasWoodyTrunk && rx >= gx * 1.05 && rx > 0.08;
+      if (isBark) {
+        col.setXYZ(i, Math.min(1, rx * 1.12), Math.min(1, gx * 1.06), Math.min(1, bx * 1.02));
+      } else if (keepNaturalColor) {
+        col.setXYZ(i, Math.min(1, rx * tint.r), Math.min(1, gx * tint.g), Math.min(1, bx * tint.b));
       } else {
-        // Preserve grayscale light/bark shading while applying biome/species colour identity.
-        const lum = 0.45 + 0.55 * (col.getX(i) * 0.3 + col.getY(i) * 0.59 + col.getZ(i) * 0.11);
+        // Preserve sunlit light/canopy shading while applying species colour identity.
+        const origLum = rx * 0.3 + gx * 0.59 + bx * 0.11;
+        const lum = 0.58 + 0.42 * origLum;
         col.setXYZ(
           i,
           Math.min(1, tint.r * lum),
@@ -356,10 +374,7 @@ export function loadFloraAssetGeometries(
 
   const task = (async (): Promise<FloraGeomEntry[] | null> => {
     try {
-      const [{ GLTFLoader }, { mergeGeometries }] = await Promise.all([
-        import('three/examples/jsm/loaders/GLTFLoader.js'),
-        import('three/examples/jsm/utils/BufferGeometryUtils.js'),
-      ]);
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const loader = new GLTFLoader();
       const slugs: Array<'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern'> = [
         'pine',
@@ -372,7 +387,7 @@ export function loadFloraAssetGeometries(
       await Promise.all(
         slugs.map(async (slug) => {
           const gltf = await loader.loadAsync(`/assets/world/models/${slug}.glb`);
-          const extracted = extractGlbBaseGeometry(gltf.scene, slug, mergeGeometries);
+          const extracted = extractGlbBaseGeometry(gltf.scene, slug);
           if (extracted) baseBySlug.set(slug, extracted);
         }),
       );
@@ -387,7 +402,13 @@ export function loadFloraAssetGeometries(
         }
         return {
           type,
-          geometry: adaptModelToFloraType(base, type, spec.tint, spec.keepNaturalColor),
+          geometry: adaptModelToFloraType(
+            base,
+            type,
+            spec.tint,
+            spec.keepNaturalColor,
+            Boolean(spec.hasWoodyTrunk),
+          ),
         };
       });
 

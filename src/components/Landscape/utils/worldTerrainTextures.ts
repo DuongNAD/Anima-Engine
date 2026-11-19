@@ -9,8 +9,68 @@
 
 import * as THREE from 'three';
 import type { World } from './worldGen';
-import { Biome, BIOME_RGB } from './worldGen';
+import { Biome, BIOME_COUNT, BIOME_RGB } from './worldGen';
 import { sampleElevation, sampleMeshHeight } from './worldSample';
+
+/**
+ * Enhanced display palette for the 22 biomes (`AMEND W3-lite`) — tuned so every adjacent
+ * biome (Desert/Savanna/Steppe/Chaparral/Badlands, Jungle/Forest/Grassland/Shrubland,
+ * Swamp/Bog/Mangrove, Tundra/Taiga/Alpine, Glacier/Snow) reads unmistakably at overview
+ * distance while remaining naturalistic under ACES + PBR micro-contrast.
+ */
+export const BIOME_DISPLAY_RGB: ReadonlyArray<readonly [number, number, number]> = [
+  [22, 58, 118], // 0 Ocean
+  [242, 228, 184], // 1 Beach — warm bright sand
+  [234, 186, 88], // 2 Desert — golden dune sand
+  [198, 174, 72], // 3 Savanna — warm dry ochre-gold grass
+  [128, 200, 78], // 4 Grassland — fresh lime-meadow green
+  [152, 162, 82], // 5 Shrubland — sage olive scrub
+  [56, 138, 56], // 6 Forest — vibrant mid-forest green
+  [14, 86, 40], // 7 Jungle — deep saturated rainforest emerald
+  [34, 96, 88], // 8 Taiga — cool dark blue-spruce teal-green
+  [160, 166, 146], // 9 Tundra — pale frost-lichen grey-green
+  [58, 90, 56], // 10 Swamp — dark mossy wetland green
+  [122, 118, 114], // 11 Rock — slate highland grey
+  [246, 250, 255], // 12 Snow — crisp alpine snow white
+  [48, 132, 192], // 13 River — river cobalt blue
+  [36, 116, 178], // 14 Lake — deep lake azure
+  [38, 118, 98], // 15 Mangrove — coastal teal-olive
+  [166, 126, 74], // 16 Chaparral — warm tawny-bronze scrub
+  [188, 194, 134], // 17 Steppe — pale straw-sage steppe
+  [90, 158, 126], // 18 Alpine — cool high-altitude emerald-sage
+  [186, 86, 52], // 19 Badlands — iron-rich terracotta red-ochre
+  [204, 228, 244], // 20 Glacier — cool pale ice-blue-white
+  [112, 76, 50], // 21 Bog — rich rusty peat-brown
+];
+
+const BIOME_ROUGHNESS: ReadonlyArray<number> = [
+  84, // 0 Ocean
+  246, // 1 Beach
+  250, // 2 Desert
+  244, // 3 Savanna
+  234, // 4 Grassland
+  238, // 5 Shrubland
+  224, // 6 Forest
+  184, // 7 Jungle (humid broadleaves / wet humus)
+  214, // 8 Taiga
+  218, // 9 Tundra
+  128, // 10 Swamp (wet mud sheen)
+  228, // 11 Rock
+  192, // 12 Snow (soft crystalline sheen)
+  84, // 13 River
+  84, // 14 Lake
+  122, // 15 Mangrove (tidal flats)
+  242, // 16 Chaparral
+  246, // 17 Steppe
+  208, // 18 Alpine
+  248, // 19 Badlands (dry sandstone)
+  68, // 20 Glacier (icy specular glint)
+  118, // 21 Bog (saturated peat)
+];
+
+function biomeDisplayColor(bio: number): readonly [number, number, number] {
+  return BIOME_DISPLAY_RGB[bio] ?? BIOME_RGB[bio] ?? [255, 0, 255];
+}
 
 /** Deterministic per-cell hash in [0, 1) — cheap brightness jitter, stable across runs. */
 function hash01(x: number, y: number): number {
@@ -29,7 +89,7 @@ function hash01(x: number, y: number): number {
 export function buildColorTexture(world: World): THREE.DataTexture {
   const { size, biome, riverAmt, shore, elevation, slope, water, temperature } = world;
   const data = new Uint8Array(size * size * 4);
-  const RIVER_RGB = BIOME_RGB[Biome.River];
+  const RIVER_RGB = biomeDisplayColor(Biome.River);
   // Curvature AO ring radii (world-space constant regardless of data resolution).
   const R1 = Math.max(2, Math.round(size / 680));
   const R2 = Math.max(6, Math.round(size / 228));
@@ -41,12 +101,10 @@ export function buildColorTexture(world: World): THREE.DataTexture {
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       const bio = biome[i];
-      let [r, g, b] = BIOME_RGB[bio] ?? [255, 0, 255];
+      let [r, g, b] = biomeDisplayColor(bio);
 
-      // Ecotone blending: average in the biome colours a couple of cells away, so brown
-      // meets green through a soft transition band instead of a hard majority-filter edge.
-      // Water/river/ice keep crisp shorelines (their neighbours contribute the CELL'S own
-      // colour instead).
+      // Ecotone blending: gently feather borders between terrestrial biomes while preserving
+      // distinct water/ice edges so all 22 biomes stay crisp and readable.
       if (
         x >= 2 &&
         y >= 2 &&
@@ -64,17 +122,17 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         let differs = false;
         for (let k = 0; k < 4; k++) {
           let nb = biome[nIdx[k]];
-          if (nb === Biome.Ocean || nb === Biome.River || nb === Biome.Lake) nb = bio;
+          if (nb === Biome.Ocean || nb === Biome.River || nb === Biome.Lake || nb === Biome.Glacier) nb = bio;
           if (nb !== bio) differs = true;
-          const c = BIOME_RGB[nb] ?? [r, g, b];
+          const c = biomeDisplayColor(nb);
           ar += c[0];
           ag += c[1];
           ab += c[2];
         }
         if (differs) {
-          r = r * 0.56 + ar * 0.11;
-          g = g * 0.56 + ag * 0.11;
-          b = b * 0.56 + ab * 0.11;
+          r = r * 0.72 + ar * 0.07;
+          g = g * 0.72 + ag * 0.07;
+          b = b * 0.72 + ab * 0.07;
         }
       }
 
@@ -133,18 +191,26 @@ export function buildColorTexture(world: World): THREE.DataTexture {
       if (bio === Biome.Snow || bio === Biome.Glacier) {
         const macroN = hash01(x >> 2, y >> 2);
         const microN = hash01(x, y);
-        const rockShed = Math.min(0.82, Math.max(0, (sVal - 0.32 + (macroN - 0.5) * 0.18) * 1.9));
+        const rockThreshold = bio === Biome.Glacier ? 0.44 : 0.32;
+        const rockShed = Math.min(0.82, Math.max(0, (sVal - rockThreshold + (macroN - 0.5) * 0.18) * 1.9));
         if (rockShed > 0) {
-          const rockRgb = BIOME_RGB[Biome.Rock] ?? [110, 108, 104];
+          const rockRgb = biomeDisplayColor(Biome.Rock);
           r = r * (1 - rockShed) + rockRgb[0] * rockShed;
           g = g * (1 - rockShed) + rockRgb[1] * rockShed;
           b = b * (1 - rockShed) + rockRgb[2] * rockShed;
         }
-        // Subtle cool-sky tint & grain so snow plateaus read with soft relief instead of flat grey-white.
-        const snowLift = 0.94 + microN * 0.06;
-        r *= snowLift * 0.97;
-        g *= snowLift * 0.99;
-        b = Math.min(255, b * snowLift * 1.03 + 6);
+        if (bio === Biome.Glacier) {
+          const crevasse = 0.94 + microN * 0.08;
+          r *= crevasse * 0.97;
+          g *= crevasse * 1.0;
+          b = Math.min(255, b * crevasse * 1.03 + 4);
+        } else {
+          // Subtle cool-sky tint & grain so snow plateaus read with soft relief instead of flat grey-white.
+          const snowLift = 0.94 + microN * 0.06;
+          r *= snowLift * 0.97;
+          g *= snowLift * 0.99;
+          b = Math.min(255, b * snowLift * 1.03 + 6);
+        }
       }
 
       // Rock / Badlands mineral tone variation without synthetic `sin(e * 320.0)` contour stripes.
@@ -271,12 +337,13 @@ export function buildRoughnessTexture(world: World): THREE.DataTexture {
   for (let y = 0; y < res; y++) {
     for (let x = 0; x < res; x++) {
       const i = Math.min(size - 1, Math.round(y * scale)) * size + Math.min(size - 1, Math.round(x * scale));
-      let rough = 242; // matte land (0.95)
       const bio = biome[i];
+      const baseRough = bio < BIOME_COUNT ? BIOME_ROUGHNESS[bio] : 234;
+      let rough = baseRough;
       if (bio === Biome.Lake || bio === Biome.River || (water?.[i] ?? 0) > 0) {
         rough = 84; // open inland water (0.33)
       } else if ((riverAmt?.[i] ?? 0) > 0 && bio !== Biome.Glacier && bio !== Biome.Snow) {
-        rough = 242 - ((riverAmt[i] / 255) * 158) | 0; // feathered banks blend matte->glossy
+        rough = Math.max(84, baseRough - (((riverAmt[i] / 255) * (baseRough - 84)) | 0)); // feathered banks blend matte->glossy
       } else if (elevation[i] < seaLevel) {
         rough = 128; // submerged shelf under the transparent shallows
       } else if (bio === Biome.Beach && (shore?.[i] ?? 0) > 0.72) {
@@ -398,30 +465,50 @@ export function buildSplatTexture(world: World): THREE.DataTexture {
       let snow = 0;
 
       if (bio === Biome.Forest || bio === Biome.Taiga || bio === Biome.Jungle) {
-        forest = bio === Biome.Jungle ? 0.92 : bio === Biome.Taiga ? 0.72 : 0.85;
-      } else if (bio === Biome.Shrubland || bio === Biome.Savanna) {
-        forest = 0.28 + moist * 0.22;
+        forest = bio === Biome.Jungle ? 0.94 : bio === Biome.Taiga ? 0.78 : 0.85;
+        if (bio === Biome.Jungle) mud = 0.14;
+      } else if (bio === Biome.Shrubland || bio === Biome.Chaparral) {
+        forest = bio === Biome.Chaparral ? 0.3 : 0.28 + moist * 0.22;
+      } else if (bio === Biome.Savanna) {
+        forest = 0.18 + moist * 0.14;
       }
 
       if (bio === Biome.Beach || bio === Biome.Desert || bio === Biome.Ocean) {
-        sand = bio === Biome.Desert ? 0.92 : bio === Biome.Beach ? 0.95 : 0.72;
-      } else if (sh > 0.35 && bio !== Biome.Rock && bio !== Biome.Badlands) {
+        sand = bio === Biome.Desert ? 0.95 : bio === Biome.Beach ? 0.95 : 0.72;
+      } else if (bio === Biome.Badlands) {
+        sand = 0.68;
+        mud = 0.22;
+      } else if (bio === Biome.Chaparral) {
+        sand = 0.42;
+      } else if (bio === Biome.Savanna) {
+        sand = 0.45;
+      } else if (bio === Biome.Steppe) {
+        sand = 0.3;
+      } else if (bio === Biome.Rock) {
+        sand = 0.18;
+        mud = 0.18;
+      } else if (sh > 0.35) {
         sand = Math.max(sand, (sh - 0.35) * 1.1);
       }
-      if (bio === Biome.Savanna) {
-        sand = Math.max(sand, 0.35);
-      }
 
-      if (bio === Biome.Swamp || bio === Biome.Lake || bio === Biome.River || (water?.[i] ?? 0) > 0) {
-        mud = 0.9;
+      if (bio === Biome.Bog || bio === Biome.Swamp || bio === Biome.Mangrove) {
+        mud = Math.max(mud, bio === Biome.Bog ? 0.94 : bio === Biome.Swamp ? 0.88 : 0.82);
+        forest = Math.max(forest, bio === Biome.Mangrove ? 0.24 : 0.12);
+      } else if (bio === Biome.Lake || bio === Biome.River || (water?.[i] ?? 0) > 0) {
+        mud = Math.max(mud, 0.9);
       } else if (riv > 0.08 && bio !== Biome.Snow && bio !== Biome.Glacier) {
-        mud = Math.min(0.85, riv * 0.95);
+        mud = Math.min(0.85, Math.max(mud, riv * 0.95));
       }
 
       if (bio === Biome.Snow || bio === Biome.Glacier) {
         snow = 1.0;
-      } else if (bio === Biome.Alpine && elevation[i] > 0.7) {
-        snow = Math.min(0.85, (elevation[i] - 0.7) * 4.5);
+      } else if (bio === Biome.Taiga) {
+        snow = 0.16;
+      } else if (bio === Biome.Tundra) {
+        snow = 0.26;
+        mud = Math.max(mud, 0.18);
+      } else if (bio === Biome.Alpine) {
+        snow = elevation[i] > 0.7 ? Math.min(0.85, (elevation[i] - 0.7) * 4.5) : 0.08;
       }
 
       const o = (y * res + x) * 4;
