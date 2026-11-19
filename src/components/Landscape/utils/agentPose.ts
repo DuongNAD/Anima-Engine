@@ -19,6 +19,8 @@ import { SIM_BOUNDS_HALF, isInsideSimBounds, simScale, simToRender } from './liv
 export const MIN_SIM_SEGMENT_LENGTH = 0.08;
 export const MIN_SIM_SEGMENT_RADIUS = 0.04;
 export const FAR_MARKER_DISTANCE_FACTOR = 0.45;
+// prototype: visual body scale factor (0.32x) so rendered creatures fit WorldVegetation trees and lakes instead of towering at raw simScale(1200)=6 (MSG_20261119_042316).
+export const CREATURE_BODY_SCALE = 0.32;
 
 export interface EulerAnglesYXZ {
   yaw: number;
@@ -36,6 +38,8 @@ export interface SegmentRenderPose {
   quaternion: [number, number, number, number];
   renderLength: number;
   renderRadius: number;
+  /** Scaled rest joint offset relative to parent center (`[0, 0, 0]` on root). */
+  jointAnchor: [number, number, number];
   /** Column-major 16-element matrix for a unit Z-aligned cylinder (length=1 on Z, radius=1 on XY). */
   matrixElements: number[];
   /** World-space rear attachment point (`pos - R * (0, 0, length / 2)`) for child segments. */
@@ -54,6 +58,10 @@ export interface AgentRenderPose {
   rootQuaternion: [number, number, number, number];
   rootRenderLength: number;
   rootRenderRadius: number;
+  /** World-space bounding radius centred on `rootPosition` for LOD/frustum culling. */
+  boundingRadius: number;
+  /** Deterministic cache key for this creature's scaled segment & joint morphology. */
+  morphologyKey: string;
   headDirection: [number, number, number];
   segments: SegmentRenderPose[];
 }
@@ -216,10 +224,14 @@ export function buildAgentPoses(
   renderSize: number,
   sampleGroundY: GroundHeightSampler,
   headDirections?: Readonly<Record<number, [number, number, number] | undefined>>,
+  bodyScaleFactor = 1,
 ): AgentRenderPose[] {
   if (!Array.isArray(segments) || segments.length === 0) return [];
   const scale = simScale(renderSize);
   if (!Number.isFinite(scale) || scale <= 0) return [];
+  const safeBodyFactor =
+    Number.isFinite(bodyScaleFactor) && bodyScaleFactor > 0 ? bodyScaleFactor : 1;
+  const bodyScale = scale * safeBodyFactor;
 
   const grouped = new Map<number, SegmentState[]>();
   for (let i = 0; i < segments.length; i++) {
@@ -279,19 +291,19 @@ export function buildAgentPoses(
 
     const rootY = finiteOr(root.y);
     const rootRenderLength =
-      positiveDimOr(root.length, DEFAULT_FALLBACK_LENGTH, MIN_SIM_SEGMENT_LENGTH) * scale;
+      positiveDimOr(root.length, DEFAULT_FALLBACK_LENGTH, MIN_SIM_SEGMENT_LENGTH) * bodyScale;
     const rootRenderRadius =
-      positiveDimOr(root.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * scale;
+      positiveDimOr(root.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale;
 
     // Ground the lowest segment sphere/body bottom onto terrain surfaceHeight while preserving exact
-    // intra-creature vertical differences `(seg.y - root.y) * scale`.
+    // scaled intra-creature vertical differences `(seg.y - root.y) * bodyScale`.
     let minBottomOffset = -rootRenderRadius;
     const segById = new Map<number, SegmentState>();
     for (let i = 0; i < validSegs.length; i++) {
       const s = validSegs[i];
       segById.set(s.segment_id, s);
-      const r = positiveDimOr(s.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * scale;
-      const bottomOffset = (finiteOr(s.y, rootY) - rootY) * scale - r;
+      const r = positiveDimOr(s.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale;
+      const bottomOffset = (finiteOr(s.y, rootY) - rootY) * bodyScale - r;
       if (bottomOffset < minBottomOffset) minBottomOffset = bottomOffset;
     }
     const rootRy = groundY - minBottomOffset;
@@ -300,16 +312,17 @@ export function buildAgentPoses(
     resolveHeadDirectionVector(root, rootQuat, headDirections, headVec);
 
     const segmentPoses: SegmentRenderPose[] = [];
+    let boundingRadius = Math.max(rootRenderLength * 0.5 + rootRenderRadius, rootRenderRadius * 2, 1.5);
     for (let i = 0; i < validSegs.length; i++) {
       const s = validSegs[i];
       const segLength =
-        positiveDimOr(s.length, DEFAULT_FALLBACK_LENGTH, MIN_SIM_SEGMENT_LENGTH) * scale;
+        positiveDimOr(s.length, DEFAULT_FALLBACK_LENGTH, MIN_SIM_SEGMENT_LENGTH) * bodyScale;
       const segRadius =
-        positiveDimOr(s.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * scale;
+        positiveDimOr(s.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale;
 
-      const rx = rootRx + (s.x - root.x) * scale;
-      const ry = rootRy + (finiteOr(s.y, rootY) - rootY) * scale;
-      const rz = rootRz + (s.z - root.z) * scale;
+      const rx = rootRx + (s.x - root.x) * bodyScale;
+      const ry = rootRy + (finiteOr(s.y, rootY) - rootY) * bodyScale;
+      const rz = rootRz + (s.z - root.z) * bodyScale;
 
       eulerYXZToQuaternion(s.yaw, s.pitch, s.roll, quat, euler);
       posVec.set(rx, ry, rz);
@@ -317,6 +330,13 @@ export function buildAgentPoses(
       matrix.compose(posVec, quat, scaleVec);
 
       const isRootSeg = s === root;
+      const anchorX = isRootSeg ? 0 : finiteOr(s.joint_anchor_x) * bodyScale;
+      const anchorY = isRootSeg ? 0 : finiteOr(s.joint_anchor_y) * bodyScale;
+      const anchorZ = isRootSeg ? 0 : finiteOr(s.joint_anchor_z) * bodyScale;
+
+      const segReach = Math.hypot(rx - rootRx, ry - rootRy, rz - rootRz) + segLength * 0.5 + segRadius;
+      if (segReach > boundingRadius) boundingRadius = segReach;
+
       let jointRenderPosition: [number, number, number] | null = null;
       let jointRenderRadius = 0;
       if (!isRootSeg) {
@@ -331,7 +351,7 @@ export function buildAgentPoses(
             ? segById.get(s.parent_segment_id)
             : undefined;
         const parentRadius = parent
-          ? positiveDimOr(parent.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * scale
+          ? positiveDimOr(parent.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale
           : rootRenderRadius;
         jointRenderRadius = Math.min(parentRadius, segRadius) * 0.92;
       }
@@ -344,11 +364,28 @@ export function buildAgentPoses(
         quaternion: [quat.x, quat.y, quat.z, quat.w],
         renderLength: segLength,
         renderRadius: segRadius,
+        jointAnchor: [anchorX, anchorY, anchorZ],
         matrixElements: Array.from(matrix.elements),
         jointRenderPosition,
         jointRenderRadius,
       });
     }
+
+    const sortedSegs = segmentPoses
+      .slice()
+      .sort((a, b) => (a.isRoot === b.isRoot ? a.segmentId - b.segmentId : a.isRoot ? -1 : 1));
+    const slotBySegId = new Map<number, number>();
+    for (let i = 0; i < sortedSegs.length; i++) {
+      slotBySegId.set(sortedSegs[i].segmentId, i);
+    }
+    const keyParts: string[] = new Array(sortedSegs.length);
+    for (let i = 0; i < sortedSegs.length; i++) {
+      const sp = sortedSegs[i];
+      const pSlot =
+        sp.parentSegmentId !== null ? (slotBySegId.get(sp.parentSegmentId) ?? -1) : -1;
+      keyParts[i] = `${pSlot}:${Math.round(sp.renderLength * 100)}:${Math.round(sp.renderRadius * 100)}:${Math.round(sp.jointAnchor[0] * 100)}:${Math.round(sp.jointAnchor[1] * 100)}:${Math.round(sp.jointAnchor[2] * 100)}`;
+    }
+    const morphologyKey = keyParts.join('|');
 
     poses.push({
       agentId,
@@ -361,6 +398,8 @@ export function buildAgentPoses(
       rootQuaternion: [rootQuat.x, rootQuat.y, rootQuat.z, rootQuat.w],
       rootRenderLength,
       rootRenderRadius,
+      boundingRadius,
+      morphologyKey,
       headDirection: [headVec.x, headVec.y, headVec.z],
       segments: segmentPoses,
     });

@@ -81,8 +81,22 @@ function getDrawnPose(el: MockInstancedElement): {
   return { count, draws };
 }
 
+/**
+ * Mid-LOD positioned camera (`250..354` units across `[-120..+72, -90..+48]` and initial synthetic
+ * anchors) so `RW0-*` instanced-mesh assertions exercise `live-agents-segments` after B1 near LOD.
+ */
+function makeMidLodCamera(): THREE.PerspectiveCamera {
+  const cam = new THREE.PerspectiveCamera(120, 16 / 9, 0.5, 3000);
+  cam.position.set(-140, 250, -40);
+  cam.lookAt(-140, 0, -40);
+  cam.updateMatrixWorld();
+  cam.updateProjectionMatrix();
+  return cam;
+}
+
 function advanceFrames(): void {
   const state = frameStateAt(0.5);
+  state.camera = makeMidLodCamera();
   for (const cb of frameCallbacks) {
     cb(state, 1 / 60);
   }

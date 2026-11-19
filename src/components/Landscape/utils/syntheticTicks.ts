@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { AgentType } from '../../../types/generated/AgentType';
+import type { EnvironmentalElement } from '../../../types/generated/EnvironmentalElement';
 import type { SegmentState } from '../../../types/generated/SegmentState';
 import type { SimulationTickPayload } from '../../../types/generated/SimulationTickPayload';
 import { SIM_BOUNDS_HALF } from './liveAgentTransform';
@@ -118,6 +119,44 @@ const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
   [-67.3, 64.0], // lake shore
 ];
 
+/**
+ * Deterministically generate clearly-labelled synthetic `environmental_state` elements
+ * (`lake`, `tree`, `food`) near `LAND_ANCHORS` from an independent PRNG stream so agent
+ * kinematics stay bit-for-bit identical.
+ */
+function buildSyntheticEnvironmentalElements(seed: number): EnvironmentalElement[] {
+  const envRand = mulberry32((seed ^ 0x517e0e1e) >>> 0);
+  const elements: EnvironmentalElement[] = [];
+  const bound = Math.min(80, SIM_BOUNDS_HALF - 16);
+
+  const pushSpec = (
+    count: number,
+    type: 'lake' | 'tree' | 'food',
+    minRadius: number,
+    radiusSpan: number,
+    minResources: number,
+    resourcesSpan: number,
+    spread: number,
+    anchorOffset: number,
+  ): void => {
+    for (let i = 0; i < count; i++) {
+      const anchor = LAND_ANCHORS[(i + anchorOffset) % LAND_ANCHORS.length];
+      elements.push({
+        type,
+        x: clamp(anchor[0] + (envRand() - 0.5) * spread * 2, -bound, bound),
+        y: clamp(anchor[1] + (envRand() - 0.5) * spread * 2, -bound, bound),
+        radius: minRadius + envRand() * radiusSpan,
+        resources: minResources + envRand() * resourcesSpan,
+      });
+    }
+  };
+
+  pushSpec(3, 'lake', 2.6, 1.4, 75, 25, 16, 0);
+  pushSpec(8, 'tree', 1.0, 0.5, 65, 35, 18, 1);
+  pushSpec(10, 'food', 0.42, 0.18, 45, 50, 14, 2);
+  return elements;
+}
+
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -194,7 +233,7 @@ function buildAgentMorphology(
   const specs: SyntheticSegmentSpec[] = [];
   const scale = isPredator ? 1.15 : 0.95;
   const rootLength = (0.78 + rand() * 0.42) * scale;
-  const rootRadius = (0.24 + rand() * 0.14) * scale;
+  const rootRadius = (0.20 + rand() * 0.09) * scale;
 
   specs.push({
     segmentId: 0,
@@ -209,22 +248,22 @@ function buildAgentMorphology(
     jointCycles: 1,
   });
 
-  // Axial body spine (up to 6 segments) followed by paired lateral limbs or tail tips to span
-  // morphologies from 3 to 15 segments cleanly.
+  // Axial body spine (up to 6 segments) chained cleanly rearward behind parent (`jointAnchor` matches
+  // `dynamics.rs:148-150`: P_child = P_parent + anchor + R_child * (0, 0, +segLen / 2)).
   const spineTarget = Math.min(segmentCount, 1 + Math.max(2, Math.ceil((segmentCount - 1) * 0.45)));
   for (let idx = 1; idx < spineTarget; idx++) {
     const parentIndex = idx - 1;
     const parent = specs[parentIndex];
     const taper = Math.max(0.42, 1 - idx * 0.12);
     const segLen = (0.58 + rand() * 0.34) * scale * (0.85 + 0.15 * taper);
-    const segRad = Math.max(0.11, parent.radius * (0.76 + rand() * 0.14));
+    const segRad = Math.max(0.08, parent.radius * (0.76 + rand() * 0.12));
     specs.push({
       segmentId: idx,
       parentIndex,
       parentSegmentId: parent.segmentId,
       length: segLen,
       radius: segRad,
-      jointAnchor: [0, 0, -parent.length * 0.48],
+      jointAnchor: [0, 0, -(parent.length * 0.48 + segLen * 0.96)],
       jointAxis: [0, 1, 0],
       swingAmplitude: 0.24 + rand() * 0.24,
       phaseOffset: agentIndex * 0.47 + idx * 0.75,
@@ -232,7 +271,7 @@ function buildAgentMorphology(
     });
   }
 
-  // Remaining segments attach as lateral limb chains off the root/spine segments.
+  // Remaining segments attach as paired lateral limb chains beside/below torso.
   for (let idx = spineTarget; idx < segmentCount; idx++) {
     const limbSlot = idx - spineTarget;
     const side = limbSlot % 2 === 0 ? 1 : -1;
@@ -240,14 +279,14 @@ function buildAgentMorphology(
     const parentIndex = pairIndex % spineTarget;
     const parent = specs[parentIndex];
     const segLen = (0.45 + rand() * 0.32) * scale;
-    const segRad = Math.max(0.1, parent.radius * (0.52 + rand() * 0.12));
+    const segRad = Math.max(0.08, parent.radius * 0.42);
     specs.push({
       segmentId: idx,
       parentIndex,
       parentSegmentId: parent.segmentId,
       length: segLen,
       radius: segRad,
-      jointAnchor: [side * parent.radius * 0.9, -parent.radius * 0.35, 0],
+      jointAnchor: [side * parent.radius * 0.85, -parent.radius * 0.5, -segLen * 0.5],
       jointAxis: [1, 0, 0],
       swingAmplitude: 0.35 + rand() * 0.25,
       phaseOffset: agentIndex * 0.37 + limbSlot * Math.PI * 0.5,
@@ -313,6 +352,7 @@ export function createSyntheticTickGenerator(
 ): SyntheticTickGenerator {
   const options = normalizeSyntheticOptions(opts);
   const agents = buildAgentSpecs(options);
+  const syntheticEnvElements = buildSyntheticEnvironmentalElements(options.seed);
 
   // Scratch math objects reused inside synchronous `tickAt` calls.
   const qParent = new THREE.Quaternion();
@@ -462,14 +502,14 @@ export function createSyntheticTickGenerator(
 
     return {
       segments,
-      environmental_state: { elements: [] },
+      environmental_state: { elements: syntheticEnvElements },
       head_directions: headDirections,
     };
   };
 
   return {
     options,
-    screenLabel: `${SYNTHETIC_SCREEN_LABEL} · ${options.agents} agents`,
+    screenLabel: `${SYNTHETIC_SCREEN_LABEL} · ${options.agents} agents · ${syntheticEnvElements.length} synthetic env`,
     tickAt,
   };
 }

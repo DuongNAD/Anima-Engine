@@ -252,12 +252,14 @@ export function preparePoseSnapshot(
   receivedAtMs: number,
   renderSize: number,
   sampleGroundY: GroundHeightSampler,
+  bodyScaleFactor = 1,
 ): PreparedPoseSnapshot {
   const poses = buildAgentPoses(
     payload.segments,
     renderSize,
     sampleGroundY,
     payload.head_directions,
+    bodyScaleFactor,
   );
   const agentById = new Map<number, AgentRenderPose>();
   const segmentByKey = new Map<number, SegmentRenderPose>();
@@ -280,11 +282,13 @@ export function preparePoseSnapshot(
 
 export interface InterpolatedSegmentView {
   segmentId: number;
+  parentSegmentId: number | null;
   isRoot: boolean;
   renderPosition: [number, number, number];
   quaternion: [number, number, number, number];
   renderLength: number;
   renderRadius: number;
+  jointAnchor: [number, number, number];
   hasJoint: boolean;
   jointRenderPosition: [number, number, number];
   jointRenderRadius: number;
@@ -300,6 +304,8 @@ export interface InterpolatedAgentView {
   rootPosition: [number, number, number];
   rootRenderLength: number;
   rootRenderRadius: number;
+  boundingRadius: number;
+  morphologyKey: string;
   headDirection: [number, number, number];
   segments: InterpolatedSegmentView[];
 }
@@ -314,11 +320,13 @@ export interface InterpolatedFrameView {
 function createEmptySegmentView(): InterpolatedSegmentView {
   return {
     segmentId: 0,
+    parentSegmentId: null,
     isRoot: false,
     renderPosition: [0, 0, 0],
     quaternion: [0, 0, 0, 1],
     renderLength: 0,
     renderRadius: 0,
+    jointAnchor: [0, 0, 0],
     hasJoint: false,
     jointRenderPosition: [0, 0, 0],
     jointRenderRadius: 0,
@@ -336,6 +344,8 @@ function createEmptyAgentView(): InterpolatedAgentView {
     rootPosition: [0, 0, 0],
     rootRenderLength: 0,
     rootRenderRadius: 0,
+    boundingRadius: 0,
+    morphologyKey: '',
     headDirection: [0, 0, 1],
     segments: [],
   };
@@ -343,6 +353,7 @@ function createEmptyAgentView(): InterpolatedAgentView {
 
 function copySegmentInto(src: SegmentRenderPose, dst: InterpolatedSegmentView): void {
   dst.segmentId = src.segmentId;
+  dst.parentSegmentId = src.parentSegmentId;
   dst.isRoot = src.isRoot;
   dst.renderPosition[0] = src.renderPosition[0];
   dst.renderPosition[1] = src.renderPosition[1];
@@ -353,6 +364,9 @@ function copySegmentInto(src: SegmentRenderPose, dst: InterpolatedSegmentView): 
   dst.quaternion[3] = src.quaternion[3];
   dst.renderLength = src.renderLength;
   dst.renderRadius = src.renderRadius;
+  dst.jointAnchor[0] = src.jointAnchor[0];
+  dst.jointAnchor[1] = src.jointAnchor[1];
+  dst.jointAnchor[2] = src.jointAnchor[2];
   if (src.jointRenderPosition) {
     dst.hasJoint = true;
     dst.jointRenderPosition[0] = src.jointRenderPosition[0];
@@ -377,6 +391,8 @@ function copyAgentInto(src: AgentRenderPose, dst: InterpolatedAgentView): number
   dst.rootPosition[2] = src.rootPosition[2];
   dst.rootRenderLength = src.rootRenderLength;
   dst.rootRenderRadius = src.rootRenderRadius;
+  dst.boundingRadius = src.boundingRadius;
+  dst.morphologyKey = src.morphologyKey;
   dst.headDirection[0] = src.headDirection[0];
   dst.headDirection[1] = src.headDirection[1];
   dst.headDirection[2] = src.headDirection[2];
@@ -419,6 +435,7 @@ export class TickInterpolationBuffer {
   private curr: PreparedPoseSnapshot | null = null;
   private windowStartMs = 0;
   private windowEndMs = 0;
+  private lastBodyScaleFactor = 1;
 
   private readonly view: InterpolatedFrameView = {
     agentCount: 0,
@@ -494,6 +511,7 @@ export class TickInterpolationBuffer {
     receivedAtMs: number,
     renderSize: number,
     sampleGroundY: GroundHeightSampler,
+    bodyScaleFactor = this.lastBodyScaleFactor,
   ): boolean {
     if (!Number.isFinite(receivedAtMs)) return false;
 
@@ -502,7 +520,18 @@ export class TickInterpolationBuffer {
       return false;
     }
 
-    const nextSnap = preparePoseSnapshot(payload, receivedAtMs, renderSize, sampleGroundY);
+    const safeFactor =
+      Number.isFinite(bodyScaleFactor) && bodyScaleFactor > 0
+        ? bodyScaleFactor
+        : this.lastBodyScaleFactor;
+    this.lastBodyScaleFactor = safeFactor;
+    const nextSnap = preparePoseSnapshot(
+      payload,
+      receivedAtMs,
+      renderSize,
+      sampleGroundY,
+      safeFactor,
+    );
 
     if (this.curr === null) {
       this.prev = null;
@@ -527,13 +556,23 @@ export class TickInterpolationBuffer {
   }
 
   /** Re-prepare cached snapshots when terrain sampling / world scale props change. */
-  rebuildForWorld(renderSize: number, sampleGroundY: GroundHeightSampler): void {
+  rebuildForWorld(
+    renderSize: number,
+    sampleGroundY: GroundHeightSampler,
+    bodyScaleFactor = this.lastBodyScaleFactor,
+  ): void {
+    const safeFactor =
+      Number.isFinite(bodyScaleFactor) && bodyScaleFactor > 0
+        ? bodyScaleFactor
+        : this.lastBodyScaleFactor;
+    this.lastBodyScaleFactor = safeFactor;
     if (this.prev) {
       this.prev = preparePoseSnapshot(
         this.prev.payload,
         this.prev.receivedAtMs,
         renderSize,
         sampleGroundY,
+        safeFactor,
       );
     }
     if (this.curr) {
@@ -542,6 +581,7 @@ export class TickInterpolationBuffer {
         this.curr.receivedAtMs,
         renderSize,
         sampleGroundY,
+        safeFactor,
       );
     }
     this.ensurePoolCapacity();
@@ -660,6 +700,8 @@ export class TickInterpolationBuffer {
         prevAgent.rootRenderLength + (currAgent.rootRenderLength - prevAgent.rootRenderLength) * alpha;
       dst.rootRenderRadius =
         prevAgent.rootRenderRadius + (currAgent.rootRenderRadius - prevAgent.rootRenderRadius) * alpha;
+      dst.boundingRadius = Math.max(prevAgent.boundingRadius, currAgent.boundingRadius);
+      dst.morphologyKey = currAgent.morphologyKey;
       slerpDirection3Into(prevAgent.headDirection, currAgent.headDirection, alpha, dst.headDirection);
 
       const currSegs = currAgent.segments;
@@ -680,6 +722,7 @@ export class TickInterpolationBuffer {
         }
 
         dSeg.segmentId = cSeg.segmentId;
+        dSeg.parentSegmentId = cSeg.parentSegmentId;
         dSeg.isRoot = cSeg.isRoot;
         lerpTuple3Into(pSeg.renderPosition, cSeg.renderPosition, alpha, dSeg.renderPosition);
         dSeg.renderPosition[1] += groundDelta;
@@ -688,6 +731,9 @@ export class TickInterpolationBuffer {
           pSeg.renderLength + (cSeg.renderLength - pSeg.renderLength) * alpha;
         dSeg.renderRadius =
           pSeg.renderRadius + (cSeg.renderRadius - pSeg.renderRadius) * alpha;
+        dSeg.jointAnchor[0] = cSeg.jointAnchor[0];
+        dSeg.jointAnchor[1] = cSeg.jointAnchor[1];
+        dSeg.jointAnchor[2] = cSeg.jointAnchor[2];
 
         if (!cSeg.isRoot) {
           dSeg.hasJoint = true;
