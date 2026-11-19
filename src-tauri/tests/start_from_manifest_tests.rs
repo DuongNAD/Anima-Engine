@@ -2,14 +2,14 @@
 //!
 //! Covers every requirement of W2-lite WHAT #5:
 //! - (a) At tick 0 on the same machine, the world built by `apply_live_genesis_and_policies`
-//!       equals `LiveExperimentAdapter`'s world (agents, lakes, trees, resource field, biomass,
-//!       and all world-law policy resources; compared directly, never pinning a hardcoded checksum).
+//!   equals `LiveExperimentAdapter`'s world (agents, lakes, trees, resource field, biomass,
+//!   and all world-law policy resources; compared directly, never pinning a hardcoded checksum).
 //! - (a') Headless `SimulationEngine::start::<tauri::test::MockRuntime>` via
-//!        `start_from_manifest_with_engine` builds the SEL2-P selected-arm world (100 prey, 0
-//!        predators, 16 spread lakes, 8 trees, scale 0.63, seed 780001).
+//!   `start_from_manifest_with_engine` builds the SEL2-P selected-arm world (100 prey, 0
+//!   predators, 16 spread lakes, 8 trees, scale 0.63, seed 780001).
 //! - (b) Every preflight refusal (`laws.exotic_energy`, exotic forcings, unknown initial condition
-//!       key, `lake_layout = 1` with `lakes = 0`, `drift_control = 1`, unsupported observables,
-//!       malformed JSON) is propagated verbatim without starting or stopping the engine.
+//!   key, `lake_layout = 1` with `lakes = 0`, `drift_control = 1`, unsupported observables,
+//!   malformed JSON) is propagated verbatim without starting or stopping the engine.
 //! - (c) Legacy `SimulationEngine::start` with `pending_manifest = None` keeps today's genesis.
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
@@ -21,7 +21,9 @@ use anima_engine_lib::core::agent_systems::{AgentGenotype, AgentLineageId};
 use anima_engine_lib::core::components::{Agent, Lake, Position, Predator, Prey, Tree};
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
 use anima_engine_lib::core::ecs::{init_world, FoodSpawnSettings, MapBounds};
-use anima_engine_lib::core::exotic_energy::{ExoticEnergyLaw, ExoticIntervention, ExoticInterventionKind};
+use anima_engine_lib::core::exotic_energy::{
+    ExoticEnergyLaw, ExoticIntervention, ExoticInterventionKind,
+};
 use anima_engine_lib::core::experiment::{
     ExperimentError, ExperimentManifest, InitialConditionSet, ObserverPolicy, WorldLawSet,
     MANIFEST_SCHEMA_VERSION,
@@ -218,14 +220,29 @@ fn assert_worlds_equal_at_tick_zero(app_world: &mut World, adapter_world: &mut W
     let rf_app = app_world.resource::<ResourceField>();
     let rf_adp = adapter_world.resource::<ResourceField>();
     assert_eq!(rf_app.r, rf_adp.r, "{label}: standing crop r must match");
-    assert_eq!(rf_app.r_max, rf_adp.r_max, "{label}: capacity r_max must match");
+    assert_eq!(
+        rf_app.r_max, rf_adp.r_max,
+        "{label}: capacity r_max must match"
+    );
 
     let bio_app = app_world.resource::<EcosystemBiomass>();
     let bio_adp = adapter_world.resource::<EcosystemBiomass>();
-    assert_eq!(bio_app.plants, bio_adp.plants, "{label}: plants EU must match");
-    assert_eq!(bio_app.detritus, bio_adp.detritus, "{label}: detritus EU must match");
-    assert_eq!(bio_app.animals, bio_adp.animals, "{label}: animals EU must match");
-    assert_eq!(bio_app.dormant, bio_adp.dormant, "{label}: dormant EU must match");
+    assert_eq!(
+        bio_app.plants, bio_adp.plants,
+        "{label}: plants EU must match"
+    );
+    assert_eq!(
+        bio_app.detritus, bio_adp.detritus,
+        "{label}: detritus EU must match"
+    );
+    assert_eq!(
+        bio_app.animals, bio_adp.animals,
+        "{label}: animals EU must match"
+    );
+    assert_eq!(
+        bio_app.dormant, bio_adp.dormant,
+        "{label}: dormant EU must match"
+    );
 
     assert_eq!(
         app_world.resource::<BrainPolicy>(),

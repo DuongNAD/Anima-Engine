@@ -880,9 +880,8 @@ pub fn parse_and_validate_manifest_for_viewer(
             MAX_MANIFEST_JSON_BYTES
         ));
     }
-    let manifest: crate::core::experiment::ExperimentManifest =
-        serde_json::from_str(manifest_json)
-            .map_err(|e| format!("invalid experiment manifest JSON: {e}"))?;
+    let manifest: crate::core::experiment::ExperimentManifest = serde_json::from_str(manifest_json)
+        .map_err(|e| format!("invalid experiment manifest JSON: {e}"))?;
     let registry = crate::core::experiment::ObservableRegistry::live_default();
     registry.validate().map_err(|e| e.to_string())?;
     manifest.validate(&registry).map_err(|e| e.to_string())?;
@@ -911,10 +910,11 @@ pub fn parse_and_validate_manifest_for_viewer(
     .map_err(|e| e.to_string())?;
     if config.drift_control {
         return Err(crate::core::experiment::ExperimentError::InvalidLaw {
-            reason: "live.drift_control = 1.0 requires a recorded TurnoverSchedule from the paired \
+            reason:
+                "live.drift_control = 1.0 requires a recorded TurnoverSchedule from the paired \
                      selected run; use LiveExperimentAdapter::from_manifest_with_drift_schedule or \
                      run_live_drift_pair / run_live_drift_ensemble"
-                .into(),
+                    .into(),
         }
         .to_string());
     }
