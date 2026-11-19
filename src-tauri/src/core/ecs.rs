@@ -3,7 +3,7 @@ pub use crate::core::environmental_systems::*;
 pub use crate::core::resources::*;
 pub use crate::core::world_systems::*;
 
-use crate::core::terrain::{MapSettings, TerrainMap};
+use crate::core::terrain::{MapConfig, MapSettings, TerrainMap};
 use crate::core::world_artifact::{WorldArtifact, WorldIdentity};
 use bevy_ecs::prelude::World;
 
@@ -41,8 +41,9 @@ fn load_shared_world_artifact(settings: &MapSettings) -> Option<(TerrainMap, Wor
 /// desktop app keeps [`init_world`] (`AppArtifactOrGenerated`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerrainSource {
-    /// Generate deterministically in-process from `MapSettings::default()`, reading no
-    /// environment variables or artifact/cache files (`OnceLock`-memoized per process).
+    /// Generate deterministically in-process from `MapSettings::default()` and
+    /// `MapConfig::default()`, reading no environment variables, `map_config.json`, or
+    /// artifact/cache files (`OnceLock`-memoized per process).
     Generated,
     /// Desktop app behaviour: load `ANIMA_WORLD_ARTIFACT` or
     /// `<temp_dir>/anima_world_artifact.anmw` when present and valid, else generate+cache.
@@ -62,7 +63,8 @@ pub fn init_world_with(terrain_source: TerrainSource) -> World {
     let (terrain_map, world_identity) = match terrain_source {
         TerrainSource::Generated => GENERATED_DEFAULT_TERRAIN
             .get_or_init(|| {
-                let terrain = TerrainMap::generate(&map_settings);
+                let terrain =
+                    TerrainMap::generate_with_config(&map_settings, &MapConfig::default());
                 let identity = WorldIdentity::from_terrain(
                     &terrain,
                     map_settings.seed,
