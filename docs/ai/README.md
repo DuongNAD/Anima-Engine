@@ -35,6 +35,7 @@ phải tài liệu dự án.
 | **Thí nghiệm E3** — gradient năng suất và khối lượng cơ thể (08-26) | — | — | [`proposed`](planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md) | — | — | — |
 | **Thí nghiệm E-SEL1** — khan hiếm thức ăn và khối lượng cơ thể; tiền đăng ký đóng băng rồi đóng tại smoke, không có thí nghiệm (11-16 → 11-17) | — | — | [`completed`](planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md) | — | — | — |
 | **Thế giới nhìn rõ** — sinh vật và bản đồ đẹp, nhẹ, mượt (11-16; yêu cầu và thiết kế nằm trong §1 và §3 của kế hoạch, không có file riêng) | — | — | [`active`](planning/2026-11-16-feature-readable-world.md) | — | [`completed`](testing/2026-11-16-rw-c3-flora-lod.md) | — |
+| **Thế giới thật và thân sinh vật** — bản đồ là thế giới mô phỏng, bán hiện thực; thân liền mọc từ hình thái (11-19) | — | [`proposed`](design/2026-11-19-feature-real-world-and-bodies.md) | — | — | — | — |
 
 ## Bản giao việc, bản ghi phiên và đo lường
 
