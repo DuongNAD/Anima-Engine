@@ -634,23 +634,26 @@ pub const DEFAULT_MUTATION_RATE: f64 = 0.05;
 /// hard-coded before `live.prey_cap` existed.
 pub const DEFAULT_PREY_CAP: usize = 80;
 
-/// Prey reproduction ceiling (QD-SEL1b = A, card S6, `live.prey_cap`). **Absent resource ==
-/// [`DEFAULT_PREY_CAP`]**, so the desktop app and every earlier manifest are bit-identical.
+/// Prey reproduction ceiling (QD-SEL1b = A, card S6, `live.prey_cap`) and optional strict
+/// per-birth counting (`live.strict_prey_cap`, card FIX-CAP / F-052). **Absent resource ==
+/// [`DEFAULT_PREY_CAP`] with `strict = false`**, so the desktop app and every earlier manifest
+/// remain bit-identical.
 ///
-/// Why it is declarable: with the ceiling at 80 the prey population never grows large enough to
-/// graze the pasture down, so food scarcity cannot limit it (the E-SEL1 diagnosis,
-/// `docs/ai/planning/2026-11-17-esel1-scarcity-diagnosis.md` §2). The predator rules (at most 8
-/// predators, and at least 5 prey per predator) are unchanged. The ceiling is soft: prey are counted
-/// once per tick, so a tick in which many prey are eligible can overshoot it.
+/// With `strict = false` (default), `prey_count` and `pred_count` are counted once per tick so a
+/// tick in which many mothers are eligible can overshoot the ceiling. With `strict = true`,
+/// `autonomous_reproduction_system` increments `prey_count` and `pred_count` each time a birth is
+/// queued so one tick never overshoots `cap`, the 8-predator ceiling, or the 5:1 prey/predator gate.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreyCapPolicy {
     pub cap: usize,
+    pub strict: bool,
 }
 
 impl Default for PreyCapPolicy {
     fn default() -> Self {
         Self {
             cap: DEFAULT_PREY_CAP,
+            strict: false,
         }
     }
 }

@@ -222,3 +222,5 @@ Thứ tự là bắt buộc. Cả WP-2 (b1) và (b2) đều đạt chặt chẽ 
 - Mọi cặp bị loại (do `Failed`, `live.agent_count == 0`, `< 2`, hoặc nửa bản đồ trống `0.0`) được liệt kê đầy đủ theo từng tương phản (`per_contrast`), không bao giờ lặng lẽ bỏ hoặc đưa sentinel `0.0` vào thống kê.
 - **Dân số là biến trung gian (*mediator*):** báo cáo đầy đủ `live.agent_count` tại `T = 18.000` cho từng arm kèm kết quả phân tích độ nhạy hiệu chỉnh Bessel `var · n/(n − 1)` cạnh `H1`.
 - **Kết quả âm là một kết quả.** "Gradient năng suất không làm phương sai khối lượng hay trung bình Tây/Đông khác nhau trong harness này" là một câu trả lời dùng được và được viết ra y như một kết quả dương.
+
+2026-11-19 amendment (FIX-CAP): new live key live.strict_prey_cap registered as default-absent (0 = legacy); E3 runs are unaffected.

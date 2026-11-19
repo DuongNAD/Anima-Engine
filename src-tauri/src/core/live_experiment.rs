@@ -217,9 +217,15 @@ pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
 /// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
 /// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
 pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
+/// Card FIX-CAP (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`] in
+/// `autonomous_reproduction_system`, incrementing `prey_count` and `pred_count` each time a birth
+/// is queued so one tick never overshoots `prey_cap`, the 8-predator ceiling, or the 5:1
+/// prey-to-predator ratio gate; `0.0`/absent keeps the legacy soft gate bit-identical so frozen E3
+/// and historical manifests stay reproducible.
+pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 26] = [
+pub const LIVE_KEYS: [&str; 27] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -246,6 +252,7 @@ pub const LIVE_KEYS: [&str; 26] = [
     LIVE_KEY_DRIFT_CONTROL,
     LIVE_KEY_DRIFT_RESET_TICKS,
     LIVE_KEY_LAND_MASK,
+    LIVE_KEY_STRICT_PREY_CAP,
 ];
 
 /// The genesis the manifest asked for.
@@ -327,6 +334,10 @@ pub struct LiveWorldConfig {
     /// `0.0`/absent keeps terrain navigation disabled (bit-identical to trunk).
     #[serde(default)]
     pub land_mask: bool,
+    /// Card FIX-CAP (F-052): `1.0` enforces strict per-birth cap counting in
+    /// `autonomous_reproduction_system`; `0.0`/absent keeps the legacy soft gate bit-identical.
+    #[serde(default)]
+    pub strict_prey_cap: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -390,6 +401,7 @@ impl Default for LiveWorldConfig {
             drift_reset_ticks: 0,
             lake_layout: 0,
             land_mask: false,
+            strict_prey_cap: false,
         }
     }
 }
@@ -640,6 +652,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_LAND_MASK => match *value {
                     0.0 => config.land_mask = false,
                     1.0 => config.land_mask = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_STRICT_PREY_CAP => match *value {
+                    0.0 => config.strict_prey_cap = false,
+                    1.0 => config.strict_prey_cap = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -2401,9 +2425,11 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     world.insert_resource(crate::core::resources::MutationPolicy {
         rate: config.mutation_rate,
     });
-    // Prey reproduction ceiling (`live.prey_cap`, card S6); absent == the historical 80.
+    // Prey reproduction ceiling (`live.prey_cap`, card S6) and optional strict per-birth
+    // counting (`live.strict_prey_cap`, card FIX-CAP / F-052); absent == 80, soft gate.
     world.insert_resource(crate::core::resources::PreyCapPolicy {
         cap: config.prey_cap,
+        strict: config.strict_prey_cap,
     });
     // Plant reserve (`live.plant_reserve`, card S10); absent == 0.0 == both grazing paths run the
     // pre-S10 arithmetic. Inserted before the restore branch, so a resumed run keeps its reserve.
