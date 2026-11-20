@@ -11,6 +11,12 @@
 #[cfg(feature = "generate")]
 pub mod config;
 #[cfg(feature = "generate")]
+pub mod erosion_fluvial;
+#[cfg(feature = "generate")]
+pub mod erosion_thermal;
+#[cfg(feature = "generate")]
+pub mod hydrology;
+#[cfg(feature = "generate")]
 pub mod rng;
 #[cfg(feature = "generate")]
 pub mod tectonic;
