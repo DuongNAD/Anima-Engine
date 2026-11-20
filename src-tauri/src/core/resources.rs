@@ -939,6 +939,12 @@ pub mod sim_stream {
     /// Isolated from `SimRng` so choosing random victims or parents never shifts ecology or mutation
     /// draws when `live.drift_control` is toggled on.
     pub const LIVE_DRIFT_SELECTION: u64 = 4;
+    /// Random founder placement in a headless experiment run when `live.founder_layout = 2`
+    /// ([`crate::core::live_experiment`], card FOUNDER-LAYOUT).
+    ///
+    /// Isolated from `SimRng` and `LIVE_GENESIS_BRAINS` so toggling founder scatter never shifts
+    /// ecology, mutation, or brain-weight draw sequences.
+    pub const LIVE_GENESIS_FOUNDERS: u64 = 5;
 }
 
 /// An independent, reproducible stream for code that is not a Bevy system (setup paths and worker
