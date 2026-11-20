@@ -222,7 +222,15 @@ QD-SEL2P2 = the SEL2-P smoke failed its preregistered gate (founder boom and cra
 QD-MACSHARE = the Mac is shared with OxideSwarm: each project may run one cargo process at the same time; an
             Anima cargo there runs as CARGO_BUILD_JOBS=4 nice -n 10, only with at least 30% memory and 20 GB
             disk free, and never touches an OxideSwarm process (owner in chat, 2026-11-19: "Xếp lịch xen kẽ
-            song song đi"; hub AGENT_RULES §5)
+            song song đi"; hub AGENT_RULES §5). The Dell does NOT share: after it ran out of RAM and shut down on
+            2026-11-20 while building in parallel, an Anima cargo runs there only when no other cargo or rustc runs
+            on the machine
+QD-E3HOST = Windows 1 is the single E3-X host (owner in chat, 2026-11-20: "Win 1 (sau W11)"); E3-X ran there at
+            24c6fb1c and ended at insufficient_evidence (6/12 valid pairs), merged in #181
+QD-VIAB   = after E3 (insufficient_evidence) and SEL2-P (smoke failed) hit the same collapse of the scarce arms, one
+            shared measurement-only viability exploration (VIAB-1) comes first, then new preregistrations E3b and
+            SEL2-P2 with fresh seeds, designed from survival and gate metrics only, never from body mass (owner in
+            chat, 2026-11-20: "Khảo sát chung rồi đăng ký lại cả hai")
 QD-MAPV2  = the map aims for the most realistic world possible, over a long horizon (owner in chat, 2026-11-20:
             "Tôi muốn làm tốt nhất có thể, làm trong thời gian dài cx đc"). The plan is World v2: an offline,
             deterministic Rust generator with real erosion, hydrology and climate, written as a pinned artifact. Then a
