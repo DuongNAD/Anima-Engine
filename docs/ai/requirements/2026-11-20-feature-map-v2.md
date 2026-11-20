@@ -26,7 +26,7 @@ last_reviewed: 2026-11-20
 | **G-REF** — giống tham chiếu | Mỗi biome có một bộ ảnh tham chiếu thật. Ảnh chụp chuẩn của Anima được đặt cạnh ảnh tham chiếu, và chủ dự án duyệt bằng mắt. Duyệt bằng mắt là bắt buộc; nó là thước đo, không phải thủ tục |
 | **G-SHAPE** — địa hình thật | Mạng sông dendritic, tức hình cành cây: số Strahler, mật độ lưới sông và tỉ lệ dài–diện tích Hack nằm trong khoảng của địa hình thật. Thung lũng hình chữ V ở thượng nguồn và hình chữ U hoặc đồng bằng ở hạ lưu. Không có hố nội lưu vô lý. Mỗi chỉ tiêu đo bằng script, không chỉ nhìn |
 | **G-COMP** — thành phần thế giới | Mọi môi trường có vùng nhìn thấy được. Mở rộng cổng thành phần hiện có (`utils/worldComposition.ts`) |
-| **G-PERF** — chạy được trên máy yếu | Iris Xe ở mức Thấp: tối thiểu 30 FPS, có 1.000 sinh vật, p5 được báo cáo. RTX 5060 Ti ở mức Cao: tối thiểu 60 FPS. Đo trong app desktop, không phải trong trình duyệt |
+| **G-PERF** — nhẹ | Iris Xe ở mức Thấp: tối thiểu 30 FPS, có 1.000 sinh vật, p5 được báo cáo. RTX 5060 Ti ở mức Cao: tối thiểu 60 FPS. Đo trong app desktop, không phải trong trình duyệt. Mỗi hệ thống nằm trong ngân sách mili-giây của nó (§3b) |
 | **G-SIM** — mô phỏng còn đúng | Lưới 256² của mô phỏng sinh từ cùng nguồn. Kiểm bất biến sinh thái và năng lượng EU khép kín. Các thí nghiệm ghim `world_identity`, nên đổi thế giới thì cần manifest mới, và không có kết quả cũ nào bị đổi lặng lẽ |
 
 ## 2. Vì sao bản đồ hiện tại chưa chân thực
@@ -70,6 +70,68 @@ World v2 generator (Rust, offline, deterministic)
   chắc là ta không bỏ qua đường nhanh hơn.
 - **Asset dùng chung** (texture PBR, mô hình thực vật, KTX2): chỉ CC0 từ ambientCG và Poly Haven (QĐ-ASSETS).
   Dùng được cho mọi renderer.
+
+## 3b. Nhẹ mà đẹp: ngân sách khung hình và kỹ thuật
+
+> **Yêu cầu của chủ dự án (trong chat, 2026-11-20):** "vừa nhẹ vừa đẹp, tối ưu". Đây là ràng buộc cứng cho
+> mọi pha. Mỗi mili-giây GPU phải đổi được ra nhiều chất lượng nhìn thấy nhất có thể.
+
+**Nguyên tắc.**
+
+1. **Cái gì không đổi thì tính trước, đừng tính mỗi khung hình.**
+   - Hình dạng địa hình, xói mòn, sông và khí hậu được sinh ngoại tuyến (World v2), nên không tốn gì lúc chạy.
+     Đây là phần làm tăng chất lượng nhiều nhất với giá rẻ nhất.
+   - Phần chiếu sáng tĩnh của địa hình được nướng sẵn vào texture: che khuất (AO), tầm nhìn bầu trời, bóng của
+     núi lên thung lũng.
+   - Tán xạ khí quyển dùng bảng tra tính sẵn, theo kiểu Bruneton hoặc Hillaire. Giá mỗi pixel vì thế rất nhỏ.
+2. **Chi phí không đổi theo kích thước thế giới.**
+   - Địa hình dùng clipmap hoặc CDLOD, có virtual texture hoặc mảng texture. Bộ nhớ và số lệnh vẽ giữ nguyên
+     dù thế giới lớn bao nhiêu.
+   - Mọi thứ được tải theo tile quanh camera.
+3. **Vật liệu: ít lớp, chọn khôn.**
+   - Mỗi pixel pha tối đa 2–4 lớp: dùng control map, rồi pha theo chiều cao.
+   - Triplanar chỉ dùng ở vách dốc.
+   - Một texture màu macro độ phân giải thấp tạo biến thiên ở xa.
+   - Texture nén GPU (KTX2/Basis, BCn), có mipmap.
+4. **Thực vật: đắt ở gần, rẻ ở xa.**
+   - Dùng instancing, và việc loại bỏ vật thể khuất do GPU làm.
+   - LOD theo khoảng cách, impostor bát diện ở xa, mật độ giảm dần theo khoảng cách.
+   - Cỏ phủ chỉ có quanh camera.
+   - Gió tính trong vertex shader.
+5. **Nước giả khéo, không mô phỏng.**
+   - Fresnel cộng phản chiếu bầu trời.
+   - Màu nước theo độ sâu, đọc từ depth buffer.
+   - Bọt bờ lấy từ trường khoảng cách tới bờ, nướng sẵn.
+   - Phản chiếu theo màn hình (SSR) chỉ ở mức Cao.
+6. **Vẽ ít pixel hơn rồi phóng lên.** Upscale theo thời gian (FSR, mã nguồn mở, hoặc TAAU) giúp Iris Xe vẽ ở
+   độ phân giải thấp hơn mà vẫn nét.
+7. **Cùng một nghệ thuật, nhiều mức đồ hoạ.**
+   - Mức Thấp: ánh sáng và bóng nướng sẵn, impostor, không có shadow map.
+   - Mức Cao: bóng nhiều tầng thời gian thực, AO, sương khối.
+   - Hai mức không được trông như hai trò chơi khác nhau.
+8. **Đo, không đoán.**
+   - Mỗi hệ thống đo bằng GPU timer query trong app desktop, trên Iris Xe và RTX.
+   - Mỗi mốc báo cáo số mili-giây của từng phần so với ngân sách bên dưới.
+
+**Ngân sách khung hình**
+
+Đây là điểm xuất phát; P2 hiệu chỉnh lại bằng số đo.
+
+| Hệ thống | Iris Xe, mức Thấp (33,3 ms, vẽ 720p rồi phóng lên) | RTX 5060 Ti, mức Cao (16,6 ms) |
+|---|---|---|
+| Địa hình | 6 ms | 3 ms |
+| Thực vật | 6 ms | 4 ms |
+| Nước | 3 ms | 2 ms |
+| Bầu trời và khí quyển | 1,5 ms | 1 ms |
+| Sinh vật (1.000) | 5 ms | 2,5 ms |
+| Hậu kỳ, upscale | 4 ms | 2 ms |
+| Dự phòng: CPU, mô phỏng, UI | 7,8 ms | 2,1 ms |
+
+Một mốc vượt ngân sách phần của nó thì chưa xong. Muốn đổi ngân sách thì phải ghi lý do, đúng như quy định đã
+có cho ngân sách gói JS.
+
+**Đo "đẹp trên mỗi mili-giây".** Ở mỗi mốc, ảnh chụp chuẩn được đặt cạnh bảng tham chiếu G-REF, kèm số
+mili-giây của mốc đó. Hai phương án cùng đạt G-REF thì chọn phương án nhẹ hơn.
 
 ## 4. Lộ trình theo pha
 

@@ -228,7 +228,10 @@ QD-MAPV2  = the map aims for the most realistic world possible, over a long hori
             deterministic Rust generator with real erosion, hydrology and climate, written as a pinned artifact. Then a
             native-renderer spike and ADR-0011, then the renderer milestones R1-R6. Each phase has a gate (G-REF, G-SHAPE,
             G-COMP, G-PERF, G-SIM). The Three.js viewer stays as the fallback until parity. This LIFTS the graphics
-            freeze in QD-SCOPE; science continues under QD-VIAB on other machines.
+            freeze in QD-SCOPE; science continues under QD-VIAB on other machines. "Light and beautiful,
+            optimized" ("vừa nhẹ vừa đẹp, tối ưu", owner, 2026-11-20) is a hard requirement. Every system has a
+            per-frame millisecond budget on Iris Xe (Low) and RTX (High), measured by GPU timers in the desktop
+            app (plan §3b). When two options both pass G-REF, the lighter one wins.
             docs/ai/requirements/2026-11-20-feature-map-v2.md
 QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
             downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
