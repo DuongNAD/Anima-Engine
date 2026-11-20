@@ -4,6 +4,7 @@ use anima_worldgen::config::WorldV2Config;
 use anima_worldgen::erosion_fluvial::{
     erode_fluvial_step_f32, step_explicit_forward_euler_dag, step_fastscape_sd_dag, AreaWeightMode,
     FluvialDagView, FluvialError, FluvialGridStep, FluvialParams, FluvialSolverMode,
+    DEFAULT_MAX_TOTAL_SWEEPS, MAX_ALLOWED_DT_HALVINGS,
 };
 use anima_worldgen::erosion_thermal::{
     deg_to_slope, relax_thermal_and_hillslope, slope_to_deg, ThermalHillslopeParams,
@@ -767,22 +768,77 @@ fn single_step_4096_timing_or_64_smoke() {
     .expect("timing smoke step converges");
     let dt_fs = t_fs.elapsed();
     assert!(stats.converged);
+    assert!(!stats.used_fallback_order);
+    assert_eq!(stats.substeps, 1);
     assert_eq!(stats.non_finite_count, 0);
 
     eprintln!(
-        "WV2-1b timing size={size}x{size}: s1={:.3}s priority_flood_d8={:.3}s fastscape_sd_g085={:.3}s (gs_iters={}, substeps={})",
+        "WV2-1b/c timing size={size}x{size}: s1={:.3}s priority_flood_d8={:.3}s fastscape_sd_g085={:.3}s (gs_iters={}, substeps={}, total_sweeps={}, used_fallback={})",
         dt_s1.as_secs_f64(),
         dt_pf.as_secs_f64(),
         dt_fs.as_secs_f64(),
         stats.gs_iterations,
-        stats.substeps
+        stats.substeps,
+        stats.total_gs_iterations,
+        stats.used_fallback_order
     );
+}
+
+/// Independent check of the coupled Fastscape-SD implicit equations for one (sub)step `h_t -> h1`
+/// with step `dt_yr`, accumulating `A_tilde` and `Phi_incl` by walking `d8_receiver` in the test.
+fn independent_implicit_residual(
+    dag: &FluvialDagView<'_>,
+    h_t: &[f64],
+    h1: &[f64],
+    params: &FluvialParams,
+    dt_yr: f64,
+) -> f64 {
+    let n = dag.width * dag.height;
+    let dx2 = params.dx_m * params.dx_m;
+    let mut a_tilde = vec![0.0_f64; n];
+    let mut phi_incl = vec![0.0_f64; n];
+
+    for s in 0..n {
+        let nu = dag.precip_m_yr[s].max(params.min_precip_m_yr);
+        let local = if dag.fixed_outlet[s] {
+            0.0
+        } else {
+            (h_t[s] + dt_yr * dag.uplift_m_yr[s] - h1[s]) * dx2
+        };
+        let mut cur = s;
+        loop {
+            a_tilde[cur] += nu * dx2;
+            phi_incl[cur] += local;
+            let rec = dag.d8_receiver[cur];
+            if rec == NO_RECEIVER {
+                break;
+            }
+            cur = rec as usize;
+        }
+    }
+
+    let mut worst = 0.0_f64;
+    for i in 0..n {
+        if dag.fixed_outlet[i] || dag.d8_receiver[i] == NO_RECEIVER {
+            continue;
+        }
+        let r = dag.d8_receiver[i] as usize;
+        let d = params.dx_m * f64::from(dag.receiver_dist_factor[i]);
+        let a = dag.k_erodibility[i] * libm::pow(a_tilde[i], params.m) * dt_yr / d;
+        let b = params.g_deposition * dx2 / a_tilde[i];
+        let lhs = h1[i] - h_t[i];
+        let rhs = dt_yr * dag.uplift_m_yr[i] - a * (h1[i] - h1[r])
+            + (params.g_deposition / a_tilde[i]) * phi_incl[i];
+        worst = worst.max(libm::fabs(lhs - rhs) / (1.0 + a + b));
+    }
+    worst
 }
 
 #[test]
 fn arid_512_and_long_chain_converge_via_adaptive_halving_and_report_failures() {
-    // R1a: Realistic 512x512 S1 network (~300-cell channels) in rain shadow (nu = 0.15, PET = 1.0)
-    // previously failed silently at the 32-iter cap and blew up to ~1e8 m at large dt.
+    // R1a / WV2-1c: Realistic 512x512 S1 network (~405-cell chains) in both humid and arid regimes.
+    // Humid solves fast via Phase A (r0 receiver-first, no sub-stepping); arid falls back cleanly to
+    // Phase B (in-place donor-first + dt halving) and satisfies the independent implicit residual < 1e-5 m.
     let cfg = WorldV2Config::for_size(0x5756_3201, 512);
     let s1 = generate_uplift(&cfg).expect("S1 512x512");
     let w = 512usize;
@@ -796,9 +852,51 @@ fn arid_512_and_long_chain_converge_via_adaptive_halving_and_report_failures() {
         .collect();
     let uplift: Vec<f64> = s1.uplift_u.iter().map(|&u| f64::from(u) * 1e-6).collect();
     let k_erod: Vec<f64> = s1.stratum_k.iter().map(|&k| f64::from(k) * 2e-5).collect();
-    let precip = vec![0.15_f64; n];
     let pet = vec![1.0_f64; n];
-    let dag = FluvialDagView {
+    let dx = f64::from(cfg.cell_size_m());
+
+    // Humid 512x512: must converge via Phase A fast path (`used_fallback_order == false`, `substeps == 1`).
+    for &(nu, dt) in &[(1.0_f64, 1_000.0_f64), (1.0, 10_000.0), (2.0, 1_000.0)] {
+        let p_hum = vec![nu; n];
+        let dag_hum = FluvialDagView {
+            width: w,
+            height: w,
+            d8_receiver: &pf.d8_receiver,
+            receiver_dist_factor: &pf.receiver_dist_factor,
+            order_downstream_to_upstream: &pf.order_downstream_to_upstream,
+            fixed_outlet: &fixed,
+            uplift_m_yr: &uplift,
+            k_erodibility: &k_erod,
+            precip_m_yr: &p_hum,
+            pet_m_yr: &pet,
+        };
+        let h0: Vec<f64> = pf.filled_h.iter().map(|&v| f64::from(v)).collect();
+        let mut h = h0.clone();
+        let hum_params = FluvialParams {
+            dx_m: dx,
+            dt_yr: dt,
+            g_deposition: 0.85,
+            min_precip_m_yr: 0.15,
+            ..FluvialParams::default()
+        };
+        let st = step_fastscape_sd_dag(&mut h, &dag_hum, &hum_params)
+            .expect("humid 512x512 must converge cleanly via Phase A");
+        assert!(st.converged);
+        assert!(
+            !st.used_fallback_order && st.substeps == 1,
+            "humid 512x512 nu={nu} dt={dt} needlessly fell back: {st:?}"
+        );
+        let res_m = independent_implicit_residual(&dag_hum, &h0, &h, &hum_params, dt);
+        assert!(
+            res_m < 1e-5,
+            "humid 512x512 nu={nu} dt={dt} implicit residual {res_m:.3e} >= 1e-5 m"
+        );
+    }
+
+    // Arid 512x512 (nu = 0.15 < PET = 1.0): Phase A fails -> falls back to Phase B; verify exact
+    // manual sub-step replay agreement + independent implicit residual < 1e-5 m on the final sub-step.
+    let p_arid = vec![0.15_f64; n];
+    let dag_arid = FluvialDagView {
         width: w,
         height: w,
         d8_receiver: &pf.d8_receiver,
@@ -807,43 +905,59 @@ fn arid_512_and_long_chain_converge_via_adaptive_halving_and_report_failures() {
         fixed_outlet: &fixed,
         uplift_m_yr: &uplift,
         k_erodibility: &k_erod,
-        precip_m_yr: &precip,
+        precip_m_yr: &p_arid,
         pet_m_yr: &pet,
     };
-
     for &dt in &[1_000.0_f64, 10_000.0_f64, 100_000.0_f64] {
         let h0: Vec<f64> = pf.filled_h.iter().map(|&v| f64::from(v)).collect();
         let mut h = h0.clone();
-        let st = step_fastscape_sd_dag(
-            &mut h,
-            &dag,
-            &FluvialParams {
-                dx_m: f64::from(cfg.cell_size_m()),
-                dt_yr: dt,
-                g_deposition: 0.85,
-                min_precip_m_yr: 0.15,
-                ..FluvialParams::default()
-            },
-        )
-        .expect("arid 512x512 must converge via adaptive dt halving");
+        let params = FluvialParams {
+            dx_m: dx,
+            dt_yr: dt,
+            g_deposition: 0.85,
+            min_precip_m_yr: 0.15,
+            ..FluvialParams::default()
+        };
+        let st = step_fastscape_sd_dag(&mut h, &dag_arid, &params)
+            .expect("arid 512x512 must converge via adaptive dt halving");
         assert!(st.converged);
+        assert!(st.used_fallback_order);
         assert_eq!(st.non_finite_count, 0);
-        if dt >= 100_000.0 {
+        if dt >= 10_000.0 {
             assert!(
                 st.substeps > 1,
-                "expected adaptive dt halving at large dt={dt}, got substeps={}",
+                "expected adaptive dt halving at dt={dt}, got substeps={}",
                 st.substeps
             );
         }
-        let max_dh = h
+
+        let dt_sub = dt / (st.substeps as f64);
+        let mut hh = h0.clone();
+        let mut prev = hh.clone();
+        let replay_params = FluvialParams {
+            dt_yr: dt_sub,
+            max_dt_halvings: 0,
+            ..params.clone()
+        };
+        for _ in 0..st.substeps {
+            prev.copy_from_slice(&hh);
+            let sub_st = step_fastscape_sd_dag(&mut hh, &dag_arid, &replay_params)
+                .expect("manual sub-step replay must converge");
+            assert!(sub_st.converged);
+        }
+        let auto_vs_manual = hh
             .iter()
-            .zip(h0.iter())
+            .zip(h.iter())
             .map(|(&a, &b)| libm::fabs(a - b))
             .fold(0.0_f64, f64::max);
-        let max_allowed_dh = 50.0 + 0.02 * dt;
         assert!(
-            max_dh < max_allowed_dh,
-            "arid 512x512 dt={dt} exceeded bound {max_allowed_dh}: max_dh={max_dh:.3e}"
+            auto_vs_manual < 1e-12,
+            "arid 512x512 dt={dt} auto vs manual replay mismatch: {auto_vs_manual:.3e}"
+        );
+        let res_m = independent_implicit_residual(&dag_arid, &prev, &hh, &params, dt_sub);
+        assert!(
+            res_m < 1e-5,
+            "arid 512x512 dt={dt} independent implicit residual {res_m:.3e} >= 1e-5 m"
         );
     }
 
@@ -914,8 +1028,8 @@ fn arid_512_and_long_chain_converge_via_adaptive_halving_and_report_failures() {
         other => panic!("unexpected error variant: {other:?}"),
     }
 
-    // R1d: Single-attempt GS without halving at nu = 1.0, dt = 10 kyr converges cleanly (~22 iters)
-    // under in-place upstream-first GS and catches wrong-order sweep mutations (M2a).
+    // R1d: Single-attempt GS without halving at nu = 1.0, dt = 10 kyr converges cleanly via Phase A
+    // (no fallback, substeps == 1), while dt = 100 kyr solves cleanly within 1e-5 m residual.
     let n64 = 64usize;
     let (r64, df64, o64, f64x) = make_1d_stream_dag(n64);
     let up64 = vec![5e-4_f64; n64];
@@ -947,8 +1061,13 @@ fn arid_512_and_long_chain_converge_via_adaptive_halving_and_report_failures() {
             ..FluvialParams::default()
         },
     )
-    .expect("in-place upstream-first GS converges without halving at nu=1.0 dt=10kyr");
-    assert!(st64.converged && st64.substeps == 1 && st64.max_gs_delta_m < 1e-6);
+    .expect("Phase A GS converges without halving at nu=1.0 dt=10kyr");
+    assert!(
+        st64.converged
+            && !st64.used_fallback_order
+            && st64.substeps == 1
+            && st64.max_gs_delta_m < 1e-6
+    );
 
     let mut h64_large: Vec<f64> = (0..n64).map(|i| i as f64 * 0.5).collect();
     let st64_large = step_fastscape_sd_dag(
@@ -961,8 +1080,8 @@ fn arid_512_and_long_chain_converge_via_adaptive_halving_and_report_failures() {
             ..FluvialParams::default()
         },
     )
-    .expect("large dt=100kyr converges with adaptive halving");
-    assert!(st64_large.converged && st64_large.substeps > 1);
+    .expect("large dt=100kyr converges cleanly via fallback + halving");
+    assert!(st64_large.converged && st64_large.used_fallback_order && st64_large.substeps > 1);
 }
 
 #[test]
@@ -1631,6 +1750,103 @@ fn fluvial_params_validation_rejects_non_unit_n_and_non_positive_min_precip() {
             },
         );
         assert!(matches!(res, Err(FluvialError::InvalidMinPrecip { .. })));
+    }
+    // WV2-1c bounds: reject max_dt_halvings above MAX_ALLOWED_DT_HALVINGS (incl. >= 64 shift overflow)
+    // and reject max_total_sweeps == 0.
+    for &bad_halvings in &[MAX_ALLOWED_DT_HALVINGS + 1, 64, 100, u32::MAX] {
+        let mut h = vec![1.0_f64; 8];
+        let res = step_fastscape_sd_dag(
+            &mut h,
+            &dag,
+            &FluvialParams {
+                max_dt_halvings: bad_halvings,
+                ..FluvialParams::default()
+            },
+        );
+        assert!(matches!(
+            res,
+            Err(FluvialError::InvalidParameter {
+                name: "max_dt_halvings",
+                ..
+            })
+        ));
+    }
+    let mut h_zero_budget = vec![1.0_f64; 8];
+    let res_zero_budget = step_fastscape_sd_dag(
+        &mut h_zero_budget,
+        &dag,
+        &FluvialParams {
+            max_total_sweeps: 0,
+            ..FluvialParams::default()
+        },
+    );
+    assert!(matches!(
+        res_zero_budget,
+        Err(FluvialError::InvalidParameter {
+            name: "max_total_sweeps",
+            ..
+        })
+    ));
+    const { assert!(DEFAULT_MAX_TOTAL_SWEEPS <= 8_192) };
+}
+
+#[test]
+fn sweep_budget_halts_loudly_without_mutating_h() {
+    let n = 300usize;
+    let (rec, df, order, fixed) = make_1d_stream_dag(n);
+    let up = vec![5e-4_f64; n];
+    let kk = vec![2e-5_f64; n];
+    let p = vec![0.15_f64; n];
+    let e = vec![1.0_f64; n];
+    let dag = FluvialDagView {
+        width: n,
+        height: 1,
+        d8_receiver: &rec,
+        receiver_dist_factor: &df,
+        order_downstream_to_upstream: &order,
+        fixed_outlet: &fixed,
+        uplift_m_yr: &up,
+        k_erodibility: &kk,
+        precip_m_yr: &p,
+        pet_m_yr: &e,
+    };
+
+    let h0: Vec<f64> = (0..n).map(|i| i as f64 * 2.0).collect();
+    let mut h = h0.clone();
+    let budget = 24usize;
+    let err = step_fastscape_sd_dag(
+        &mut h,
+        &dag,
+        &FluvialParams {
+            dt_yr: 100_000.0,
+            g_deposition: 0.85,
+            max_dt_halvings: MAX_ALLOWED_DT_HALVINGS,
+            max_total_sweeps: budget,
+            ..FluvialParams::default()
+        },
+    )
+    .expect_err("small sweep budget must halt unconverged retries loudly");
+    assert_eq!(
+        h, h0,
+        "exhausted sweep budget must leave input h unmodified"
+    );
+    match err {
+        FluvialError::NonConvergence {
+            total_sweeps,
+            budget_exhausted,
+            ..
+        } => {
+            assert!(budget_exhausted);
+            assert!(total_sweeps <= budget);
+            let msg = err.to_string();
+            assert!(
+                msg.contains("budget_exhausted=true")
+                    && msg.contains("cell ")
+                    && msg.contains("last_delta_m=")
+                    && msg.contains("sub_dt_yr=")
+            );
+        }
+        other => panic!("unexpected error variant: {other:?}"),
     }
 }
 
