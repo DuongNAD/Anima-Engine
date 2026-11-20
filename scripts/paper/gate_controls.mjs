@@ -456,7 +456,7 @@ function runCheckTestTargetsFromCi(wt, tmpBase, ctx, profileArg, cacheKey = null
 
   const rawFeatures = extractCiCargoTestFeatures(wt);
   const tauriDir = join(wt, 'src-tauri');
-  const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '10' };
+  const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '1000' };
 
   const metaRes = spawnSync('cargo', ['metadata', '--no-deps', '--format-version', '1'], {
     cwd: tauriDir,
@@ -918,10 +918,14 @@ const GATES = [
       return runShell(
         'cargo test --test energy_conservation_tests -- --nocapture',
         join(wt, 'src-tauri'),
-        { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '60' },
+        { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '1000' },
       );
     },
-    matchers: [/closed EU drifted/i, /assertion .*failed/i, /test .* FAILED/],
+    matchers: [
+      /closed EU drifted|changed the closed total|moved the closed total/i,
+      /assertion .*failed/i,
+      /test .* FAILED/,
+    ],
   },
   {
     id: 'live_experiment_fork',
