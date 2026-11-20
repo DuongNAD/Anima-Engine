@@ -244,6 +244,16 @@ QD-MAPV2  = the map aims for the most realistic world possible, over a long hori
             static lighting, impostors, mesh LODs, texture compression, tile pyramids and vegetation placement.
             Viewers only stream and draw (plan §3c; owner, 2026-11-20: "để các máy khác gánh").
             docs/ai/requirements/2026-11-20-feature-map-v2.md
+            AMENDED 2026-11-20 (owner in chat: "oke đồng ý cho bạn tự làm"): the World v2 design is accepted
+            (card WV2-D, four independent review rounds), with the lead decisions LD-1 to LD-5: one regional
+            physical scale, 40.96 km at one fixed latitude, creatures drawn at a declared stylised size (LD-1);
+            sim_world_identity = sha256(sim_256.anmw3) pinned by experiments and saves, bundle_identity =
+            sha256(index.json) for viewer tiles, a viewer re-bake never changes the former (LD-2); sim_256 and
+            index.json committed, tile packs a release asset fetched at build time only, never at runtime (LD-3);
+            the desktop switchover card WV2-7 lands before or with the new viewer WV2-6, and a v3 file is an
+            explicit error until then (LD-4); the setting is a tropical coastal massif modelled on the Sierra
+            Nevada de Santa Marta, with biome variety from altitude and rain shadow (LD-5).
+            docs/ai/design/2026-11-20-world-v2-design.md
 QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
             downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
             per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
