@@ -1,0 +1,13 @@
+diff --git a/src/__tests__/floraClearance.test.ts b/src/__tests__/floraClearance.test.ts
+index 310eeed..3857d50 100644
+--- a/src/__tests__/floraClearance.test.ts
++++ b/src/__tests__/floraClearance.test.ts
+@@ -75,7 +75,7 @@ describe('flora clearance policy — the shared definition of "a tree is in the
+   it('keeps the walk-mode collider radius the rig already used', () => {
+     // Not a new number: `r = 0.45 + floraScale * 0.25`, lifted verbatim so the manifest, the
+     // spawn picker and the runtime cannot drift apart.
+-    expect(FLORA_COLLIDER_BASE_RADIUS).toBe(0.45);
++    expect(FLORA_COLLIDER_BASE_RADIUS).toBe(0.99);
+     expect(FLORA_COLLIDER_SCALE_COEFF).toBe(0.25);
+     expect(floraColliderRadius(0)).toBeCloseTo(0.45, 10);
+     expect(floraColliderRadius(1)).toBeCloseTo(0.7, 10);

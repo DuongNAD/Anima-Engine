@@ -1,0 +1,13 @@
+diff --git a/licensing/upstream/sources.json b/licensing/upstream/sources.json
+index 686bb89..f80b820 100644
+--- a/licensing/upstream/sources.json
++++ b/licensing/upstream/sources.json
+@@ -12,7 +12,7 @@
+       "materialType": "licence-text",
+       "spdx": "MIT",
+       "bytes": 1073,
+-      "sha256": "db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1",
++      "sha256": "0b7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1",
+       "retrieved": "2026-07-27"
+     },
+     {

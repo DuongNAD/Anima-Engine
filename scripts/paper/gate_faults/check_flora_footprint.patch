@@ -1,0 +1,13 @@
+diff --git a/src/components/Landscape/utils/floraClearance.ts b/src/components/Landscape/utils/floraClearance.ts
+index 7a6b7a1..d121bcb 100644
+--- a/src/components/Landscape/utils/floraClearance.ts
++++ b/src/components/Landscape/utils/floraClearance.ts
+@@ -132,7 +132,7 @@ export function convertFloraRadius(radius: number, extent: number): number {
+  * here and proven there.
+  */
+ export const FLORA_FOOTPRINT_UNIT_RADIUS: Readonly<Record<number, number>> = Object.freeze({
+-  [FloraType.Pine]: 0.55,
++  [FloraType.Pine]: 0.99,
+   [FloraType.Round]: 0.7628,
+   [FloraType.Jungle]: 0.7595,
+   [FloraType.Cactus]: 0.5952,

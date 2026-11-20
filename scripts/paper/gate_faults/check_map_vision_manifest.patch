@@ -1,0 +1,12 @@
+diff --git a/animal-map.manifest.json b/animal-map.manifest.json
+--- a/animal-map.manifest.json
++++ b/animal-map.manifest.json
+@@ -7,7 +7,7 @@
+     "size": 2048,
+     "shape": "supercontinent",
+     "worldGenVersion": 22,
+-    "seaLevel": 0.12,
++    "seaLevel": 0.99,
+     "tempMapping": "°C = -25 + norm*60 (documented climate proxy, not physically calibrated)",
+     "asserted": [
+       "colliders — the 7 trunked flora types are solid with the real walk-mode collider radius (WorldCameraRig treeGrid: r=0.45+floraScale*0.25)",

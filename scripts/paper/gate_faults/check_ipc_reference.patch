@@ -1,0 +1,12 @@
+diff --git a/docs/reference/IPC_CONTRACT.md b/docs/reference/IPC_CONTRACT.md
+index 62b818b..38cc8fb 100644
+--- a/docs/reference/IPC_CONTRACT.md
++++ b/docs/reference/IPC_CONTRACT.md
+@@ -39,6 +39,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v
+ | Lệnh | Tham số JS | Trả về | Ghi chú |
+ |---|---|---|---|
+ | `get_simulation_status` | — | `SimulationStatus` | |
++| `m2_ghost_cmd` | — | `bool` | m2 fault |
+ | `toggle_simulation` | — | `bool` | Bật/tắt vòng mô phỏng |
+ | `save_simulation_state` | `filePath: string` | `bool` | Một **tên** save, không phải đường dẫn — xem `commands/save_paths.rs` |
+ | `load_simulation_state` | `filePath: string` | `bool` | Như trên |
