@@ -137,13 +137,13 @@ jobs:
         shell: bash
         run: |
           cargo clippy --all-targets --no-default-features -- -D warnings
-          leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|wgpu) v' || true)
+          leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu) v' || true)
           echo "gated crates present in --no-default-features workspace tree: $leaked"
           test "$leaked" -eq 0
-          engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|wgpu|anima-worldgen) v' || true)
+          engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu|anima-worldgen) v' || true)
           echo "gated crates present in default anima-engine tree: $engine_leaked"
           test "$engine_leaked" -eq 0
-          worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu) v' || true)
+          worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu(-[a-z0-9-]+)?) v' || true)
           echo "forbidden engine/GPU crates present in anima-worldgen tree: $worldgen_leaked"
           test "$worldgen_leaked" -eq 0
 
