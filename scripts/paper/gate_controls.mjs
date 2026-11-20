@@ -499,7 +499,7 @@ function runCheckTestTargetsFromCi(wt, tmpBase, ctx, profileArg, cacheKey = null
     if (!target) {
       throw new Error(`Expected policy test target \`${name}\` missing from cargo metadata`);
     }
-    const req = target.required_features || [];
+    const req = target['required-features'] || target.required_features || [];
     return req.every((f) => activeFeatures.has(f));
   });
 
