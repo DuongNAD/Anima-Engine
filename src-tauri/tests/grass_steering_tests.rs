@@ -89,7 +89,7 @@ fn uniform_field(side: usize, r: f32, r_max: f32) -> ResourceField {
 }
 
 fn run_steering_once(world: &mut World) {
-    let _ = world.run_system_once(steering_drive_system);
+    world.run_system_once(steering_drive_system);
 }
 
 // ---- 1. Registration, validation, and serde backward compatibility ------------------------------
