@@ -2559,6 +2559,25 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     });
 }
 
+/// Fallible variant of [`apply_live_genesis_and_policies`], returning [`ExperimentError`] when a
+/// manifest's genesis layout cannot be satisfied (for example `live.founder_layout = 1 | 2` with
+/// `live.land_mask = 1` when walkable cells number zero or fewer than `founders`).
+pub fn try_apply_live_genesis_and_policies(
+    world: &mut World,
+    seed: u64,
+    config: &LiveWorldConfig,
+    bounds: crate::core::ecs::MapBounds,
+) -> Result<(), ExperimentError> {
+    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
+    insert_policy_resources(world, config);
+    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
+        max_food_count: config.food_cap,
+        ..Default::default()
+    });
+    scale_pasture_capacity(world, config.resource_capacity_scale);
+    genesis(world, config, bounds, seed)
+}
+
 /// Apply a manifest's declared world-law policy resources, `SimRng`, food cap, pasture capacity
 /// scale, and deterministic lattice genesis (founders, trees, lakes) to an initialized `World`.
 ///
@@ -2573,14 +2592,8 @@ pub fn apply_live_genesis_and_policies(
     config: &LiveWorldConfig,
     bounds: crate::core::ecs::MapBounds,
 ) {
-    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
-    insert_policy_resources(world, config);
-    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
-        max_food_count: config.food_cap,
-        ..Default::default()
-    });
-    scale_pasture_capacity(world, config.resource_capacity_scale);
-    genesis(world, config, bounds, seed);
+    try_apply_live_genesis_and_policies(world, seed, config, bounds)
+        .unwrap_or_else(|e| panic!("{e}"));
 }
 
 /// Build the world the schedule runs on with `TerrainSource::Generated`, and replace every other
@@ -2700,7 +2713,7 @@ fn build_live_world(
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
-            apply_live_genesis_and_policies(&mut world, seed, config, bounds);
+            try_apply_live_genesis_and_policies(&mut world, seed, config, bounds)?;
         }
     }
 
@@ -2786,7 +2799,7 @@ fn genesis(
     config: &LiveWorldConfig,
     bounds: crate::core::ecs::MapBounds,
     seed: u64,
-) {
+) -> Result<(), ExperimentError> {
     use crate::core::agent_systems::{
         AgentEvaluation, AgentGeneration, AgentGenotype, AgentLineageId,
     };
@@ -2794,6 +2807,38 @@ fn genesis(
     use crate::evolution::genotype::{
         decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
     };
+
+    let terrain_map = if config.land_mask {
+        world
+            .get_resource::<crate::core::terrain::TerrainMap>()
+            .cloned()
+    } else {
+        None
+    };
+
+    if config.founders > 0
+        && config.land_mask
+        && (config.founder_layout == FOUNDER_LAYOUT_GRID
+            || config.founder_layout == FOUNDER_LAYOUT_SCATTER)
+    {
+        let walkable_cells = terrain_map.as_ref().map(walkable_cell_count).unwrap_or(0);
+        if walkable_cells == 0 {
+            return Err(ExperimentError::InvalidPopulation {
+                reason: format!(
+                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s): terrain has 0 walkable cells (no walkable land)",
+                    config.founder_layout, config.founders
+                ),
+            });
+        }
+        if walkable_cells < config.founders {
+            return Err(ExperimentError::InvalidPopulation {
+                reason: format!(
+                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s) without stacking: terrain has only {} distinct walkable cell(s)",
+                    config.founder_layout, config.founders, walkable_cells
+                ),
+            });
+        }
+    }
 
     let mut genotype = MorphologyGenotype::new();
     for (id, mass) in [(0u32, 1.5f32), (1, 1.0), (2, 0.8)] {
@@ -2824,13 +2869,6 @@ fn genesis(
         crate::core::resources::sim_stream::LIVE_GENESIS_BRAINS,
     );
 
-    let terrain_map = if config.land_mask {
-        world
-            .get_resource::<crate::core::terrain::TerrainMap>()
-            .cloned()
-    } else {
-        None
-    };
     let snap_if_masked = |pos: glam::Vec3| -> glam::Vec3 {
         if let Some(ref tm) = terrain_map {
             crate::core::terrain_navigation::snap_to_nearest_walkable(tm, &bounds, pos)
@@ -2924,6 +2962,8 @@ fn genesis(
             crate::physics::spatial::IndexedInGrid(false),
         ));
     }
+
+    Ok(())
 }
 
 /// The `i`-th of `n` points evenly spread along X at a fixed fraction of the Z span.
@@ -3010,6 +3050,18 @@ fn unmasked_grid_positions(n: usize, bounds: crate::core::ecs::MapBounds) -> Vec
         .collect()
 }
 
+fn walkable_cell_count(tm: &crate::core::terrain::TerrainMap) -> usize {
+    let total = tm.width.saturating_mul(tm.height);
+    if total == 0 || tm.biomes.len() < total {
+        return 0;
+    }
+    tm.biomes
+        .iter()
+        .take(total)
+        .filter(|&&b| crate::core::terrain_navigation::is_biome_walkable(b))
+        .count()
+}
+
 fn walkable_cell_centers(
     tm: &crate::core::terrain::TerrainMap,
     bounds: &crate::core::ecs::MapBounds,
@@ -3066,7 +3118,7 @@ fn greedy_fill_from_candidates(
             if placed.len() >= n {
                 return;
             }
-            if !used[idx] {
+            if !used[idx] && placed.iter().all(|&p| p != cand) {
                 placed.push(cand);
                 used[idx] = true;
             }
@@ -3092,24 +3144,16 @@ fn founder_grid_positions(
     let Some(tm) = terrain_map else {
         return unmasked_grid_positions(n, bounds);
     };
-    let total = tm.width * tm.height;
-    if tm.width == 0 || tm.height == 0 || tm.biomes.len() < total {
-        return unmasked_grid_positions(n, bounds);
-    }
-    let walkable_count = tm
-        .biomes
-        .iter()
-        .take(total)
-        .filter(|&&b| crate::core::terrain_navigation::is_biome_walkable(b))
-        .count();
+    let total = tm.width.saturating_mul(tm.height);
+    let walkable_count = walkable_cell_count(tm);
     if walkable_count == 0 {
-        return unmasked_grid_positions(n, bounds);
+        return Vec::new();
     }
 
     let span_x = bounds.max.x - bounds.min.x;
     let span_z = bounds.max.z - bounds.min.z;
     if span_x <= 0.0 || span_z <= 0.0 {
-        return unmasked_grid_positions(n, bounds);
+        return Vec::new();
     }
     let min_span = span_x.min(span_z);
     let safe_step = FOUNDER_MIN_SPACING * 1.0001;

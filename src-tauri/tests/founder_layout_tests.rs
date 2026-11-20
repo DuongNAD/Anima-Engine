@@ -22,15 +22,17 @@
 //!    diagnostic comparison across modes `0`, `1`, `2`.
 
 use anima_engine_lib::core::components::{Agent, AgentBrain, Lake, ParentLink, Position, Tree};
+use anima_engine_lib::core::ecs::{init_world_with, TerrainSource};
 use anima_engine_lib::core::experiment::{ExperimentError, InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
 use anima_engine_lib::core::live_experiment::{
-    apply_live_genesis_and_policies, live_observables, LiveExperimentAdapter, LiveWorldConfig,
-    FOUNDER_MIN_SPACING, LIVE_KEYS, LIVE_KEY_DRIFT_CONTROL, LIVE_KEY_DRIVE_FLOOR,
-    LIVE_KEY_EVOLVED_BRAINS, LIVE_KEY_FOOD_CAP, LIVE_KEY_FOUNDERS, LIVE_KEY_FOUNDER_LAYOUT,
-    LIVE_KEY_GRASS_STEERING, LIVE_KEY_LAKES, LIVE_KEY_LAKE_LAYOUT, LIVE_KEY_LAND_MASK,
-    LIVE_KEY_LOCOMOTION, LIVE_KEY_MORTALITY, LIVE_KEY_PREDATOR_FRACTION, LIVE_KEY_REPRODUCTION,
-    LIVE_KEY_RESOURCE_CAPACITY_SCALE, LIVE_KEY_THIRST_STEERING, LIVE_KEY_TREES,
+    apply_live_genesis_and_policies, live_observables, try_apply_live_genesis_and_policies,
+    LiveExperimentAdapter, LiveWorldConfig, FOUNDER_MIN_SPACING, LIVE_KEYS, LIVE_KEY_DRIFT_CONTROL,
+    LIVE_KEY_DRIVE_FLOOR, LIVE_KEY_EVOLVED_BRAINS, LIVE_KEY_FOOD_CAP, LIVE_KEY_FOUNDERS,
+    LIVE_KEY_FOUNDER_LAYOUT, LIVE_KEY_GRASS_STEERING, LIVE_KEY_LAKES, LIVE_KEY_LAKE_LAYOUT,
+    LIVE_KEY_LAND_MASK, LIVE_KEY_LOCOMOTION, LIVE_KEY_MORTALITY, LIVE_KEY_PREDATOR_FRACTION,
+    LIVE_KEY_REPRODUCTION, LIVE_KEY_RESOURCE_CAPACITY_SCALE, LIVE_KEY_THIRST_STEERING,
+    LIVE_KEY_TREES,
 };
 use anima_engine_lib::core::resources::{MapBounds, SimRng};
 use anima_engine_lib::core::terrain::{BiomeType, TerrainMap};
@@ -763,5 +765,137 @@ fn multi_process_determinism_closed_eu_and_crowded_diagnostic() {
             "FOUNDER_LAYOUT_DIAG mode={mode} tick=500 agents={agents} standing_crop={crop:.2} checksum={:#010x}",
             a.checksum()
         );
+    }
+}
+
+fn synthetic_walkable_terrain(width: usize, height: usize, walkable_cells: usize) -> TerrainMap {
+    let total = width * height;
+    let mut biomes = vec![BiomeType::Ocean as u8; total];
+    for cell in biomes.iter_mut().take(walkable_cells.min(total)) {
+        *cell = BiomeType::Grassland as u8;
+    }
+    TerrainMap {
+        width,
+        height,
+        elevations: vec![0.0; total],
+        moistures: vec![0.0; total],
+        temperatures: vec![0.5; total],
+        biomes,
+        flows: vec![0.0; total],
+        pois: Vec::new(),
+    }
+}
+
+#[test]
+fn layout_one_and_two_fail_loudly_when_no_walkable_land() {
+    let tm = synthetic_walkable_terrain(8, 8, 0);
+    for mode in [1.0, 2.0] {
+        let config = LiveWorldConfig::from_initial_conditions(&initial(&[
+            (LIVE_KEY_FOUNDERS, 4.0),
+            (LIVE_KEY_LAND_MASK, 1.0),
+            (LIVE_KEY_FOUNDER_LAYOUT, mode),
+        ]))
+        .expect("valid LiveWorldConfig");
+
+        let mut world = init_world_with(TerrainSource::Generated);
+        let bounds = MapBounds::default();
+        world.insert_resource(bounds);
+        world.insert_resource(tm.clone());
+
+        let err = try_apply_live_genesis_and_policies(&mut world, 70_001, &config, bounds)
+            .expect_err("all-ocean terrain with land_mask=1 must fail loudly");
+        match err {
+            ExperimentError::InvalidPopulation { reason } => {
+                assert!(
+                    reason.contains("4") && reason.contains("0"),
+                    "mode={mode}: error reason should name founders=4 and walkable_cells=0, got: {reason}"
+                );
+            }
+            other => panic!("mode={mode}: expected InvalidPopulation, got {other:?}"),
+        }
+        let spawned = world
+            .query_filtered::<&Position, With<Agent>>()
+            .iter(&world)
+            .count();
+        assert_eq!(
+            spawned, 0,
+            "mode={mode}: failed genesis must spawn 0 agents"
+        );
+    }
+}
+
+#[test]
+fn layout_one_and_two_fail_loudly_when_fewer_walkable_cells_than_founders() {
+    let insufficient_tm = synthetic_walkable_terrain(8, 8, 3);
+    let exact_boundary_tm = synthetic_walkable_terrain(8, 8, 4);
+
+    for mode in [1.0, 2.0] {
+        let config = LiveWorldConfig::from_initial_conditions(&initial(&[
+            (LIVE_KEY_FOUNDERS, 4.0),
+            (LIVE_KEY_LAND_MASK, 1.0),
+            (LIVE_KEY_FOUNDER_LAYOUT, mode),
+        ]))
+        .expect("valid LiveWorldConfig");
+
+        // Negative case: 3 walkable cells < 4 founders must fail loudly rather than stack.
+        let mut world = init_world_with(TerrainSource::Generated);
+        let bounds = MapBounds::default();
+        world.insert_resource(bounds);
+        world.insert_resource(insufficient_tm.clone());
+
+        let err = try_apply_live_genesis_and_policies(&mut world, 70_002, &config, bounds)
+            .expect_err("3 walkable cells < 4 founders must fail loudly");
+        match err {
+            ExperimentError::InvalidPopulation { reason } => {
+                assert!(
+                    reason.contains("4") && reason.contains("3"),
+                    "mode={mode}: error reason should name founders=4 and walkable_cells=3, got: {reason}"
+                );
+            }
+            other => panic!("mode={mode}: expected InvalidPopulation, got {other:?}"),
+        }
+        let spawned = world
+            .query_filtered::<&Position, With<Agent>>()
+            .iter(&world)
+            .count();
+        assert_eq!(
+            spawned, 0,
+            "mode={mode}: failed genesis must spawn 0 agents"
+        );
+
+        // Positive boundary control: 4 walkable cells == 4 founders succeeds without stacking or water.
+        let mut ok_world = init_world_with(TerrainSource::Generated);
+        ok_world.insert_resource(bounds);
+        ok_world.insert_resource(exact_boundary_tm.clone());
+
+        try_apply_live_genesis_and_policies(&mut ok_world, 70_002, &config, bounds).unwrap_or_else(
+            |e| panic!("mode={mode}: exact 4==4 walkable boundary should succeed: {e}"),
+        );
+
+        let positions: Vec<Vec3> = ok_world
+            .query_filtered::<&Position, With<Agent>>()
+            .iter(&ok_world)
+            .map(|p| p.0)
+            .collect();
+        assert_eq!(
+            positions.len(),
+            4,
+            "mode={mode}: expected 4 spawned founders"
+        );
+        for (idx, &pos) in positions.iter().enumerate() {
+            assert!(
+                is_pos_walkable(&exact_boundary_tm, &bounds, pos),
+                "mode={mode}: founder {idx} at {pos:?} is not walkable"
+            );
+        }
+        for i in 0..positions.len() {
+            for j in (i + 1)..positions.len() {
+                assert!(
+                    positions[i].distance_squared(positions[j]) > 1e-6,
+                    "mode={mode}: founders {i} and {j} stacked at {:?}",
+                    positions[i]
+                );
+            }
+        }
     }
 }

@@ -27,7 +27,7 @@ last_reviewed: 2026-11-20
 
 ## 3. Kiểm chứng, số đo tham khảo và 6 đột biến (`ML1`–`ML5`, `MR1`)
 
-- **`src-tauri/tests/founder_layout_tests.rs` (6/6):** kiểm tra đăng ký/validation/founders=0, tương đương từng bit `absent == 0.0` (có và không `land_mask`), cách ly hoàn toàn `SimRng`/`AgentBrain`/cây/hồ qua cả 3 chế độ `0/1/2`, kiểm tra lưới `1` (cả quần đảo & đảo nhỏ `6x6`) và rải ngẫu nhiên `2` (cả bản đồ `40x40` 80 khởi sinh & 80% đại dương), định thức đa tiến trình + bảo toàn EU kín (`< 1e-6`), và chẩn đoán 500 tick SEL2-P (`100` khởi sinh, `trees=8`, `scale=0.63`, không chốt số):
+- **`src-tauri/tests/founder_layout_tests.rs` (8/8):** kiểm tra đăng ký/validation/founders=0, tương đương từng bit `absent == 0.0` (có và không `land_mask`), cách ly hoàn toàn `SimRng`/`AgentBrain`/cây/hồ qua cả 3 chế độ `0/1/2`, kiểm tra lưới `1` (cả quần đảo & đảo nhỏ `6x6`) và rải ngẫu nhiên `2` (cả bản đồ `40x40` 80 khởi sinh & 80% đại dương), failure ồn ào khi `walkable_cells == 0` hoặc `walkable_cells < founders` (cộng biên `4 == 4`), định thức đa tiến trình + bảo toàn EU kín (`< 1e-6`), và chẩn đoán 500 tick SEL2-P (`100` khởi sinh, `trees=8`, `scale=0.63`, không chốt số; số đo minh hoạ trên máy Mac `arm64`, không phải chuẩn cross-arch):
   - `mode=0`: `agents=100`, `standing_crop=95784.74`, `checksum=0x6c217ba7`
   - `mode=1`: `agents=100`, `standing_crop=95768.09`, `checksum=0x2aa28ba8`
   - `mode=2`: `agents=100`, `standing_crop=95722.15`, `checksum=0x9999c80e`
@@ -38,3 +38,9 @@ last_reviewed: 2026-11-20
   - `ML4` (bỏ `FOUNDER_MIN_SPACING` trong mode `2`): fail tại `founder_layout_tests.rs:518`.
   - `ML5` (rút ngẫu nhiên mode `2` chạm `SimRng`): fail tại `founder_layout_tests.rs:322`.
   - `MR1` (luôn ghi `missed_births_capped` dù bằng 0): fail tại `prereg_sel2p_manifest_tests.rs:1031`.
+
+## 4. Follow-up `r1`
+
+- **`scripts/verify_e3_artifacts.mjs`:** khi `provenance.build.git_commit` không có cục bộ (shallow depth-1 clone), ngoài kiểm `provenance.manifests.sha256_as_committed`, đối chiếu chéo `manifests/e3-preregistration.json` với `manifests/e3-preregistration.json` trong working-tree/`HEAD` và chỉ chấp nhận khác biệt nếu là khóa mới thêm vào `default_keys_left_absent` mang giá trị `0`; đồng thời đối chiếu 3 manifest nhánh với bản trong working-tree/`HEAD`. Khi fallback được kích hoạt, dòng cuối trên stdout phân biệt rõ: `verify_e3_artifacts OK (fallback: commit <sha8> unavailable; preregistration matched HEAD up to added default-0 keys)`.
+- **`tests/frontend/verifyE3Artifacts.test.ts` & `--self-test`:** kiểm chứng dòng fallback OK qua CLI và thêm negative control giả mạo nhất quán (`thresholds.dz_min`: `0.8 -> 0.5` kèm cập nhật `effects.json`, `sha256_as_committed` và `checksums.sha256`) đều bị từ chối ở chế độ shallow depth-1.
+- **`src-tauri/src/core/live_experiment.rs` & `founder_layout_tests.rs`:** `live.founder_layout = 1 | 2` dưới `live.land_mask = 1` trả về `ExperimentError::InvalidPopulation` nêu rõ số founder và số ô đi bộ được khi `walkable_cells == 0` hoặc `walkable_cells < founders` (không còn đặt trên nước hay chồng lấn); tách `try_apply_live_genesis_and_policies` và bỏ nhánh fallback im lặng về `unmasked_grid_positions` khi có `TerrainMap`.

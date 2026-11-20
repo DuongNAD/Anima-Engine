@@ -458,18 +458,27 @@ describe('verify_e3_artifacts — preregistration threshold boundaries, Bessel, 
       expect(dirtyRes.ok).toBe(false);
       expect(dirtyRes.failures.some((m: string) => m.includes('disallowed dirty working tree path'))).toBe(true);
 
-      // N4: unavailable recorded commit falls back to provenance.manifests.sha256_as_committed with explicit note.
+      // N4: unavailable recorded commit falls back to provenance.manifests.sha256_as_committed + HEAD cross-check with explicit note and distinct OK line.
       const fallbackBundle = join(root, 'n4_fallback');
       writeRecomputedBundleFiles(fallbackBundle, prereg, buildSyntheticE3Data(prereg));
       const fallbackRes = verifyArtifactDir(fallbackBundle);
       expect(fallbackRes.ok).toBe(true);
+      expect(fallbackRes.usedRecordedFallback).toBe(true);
       expect(
         fallbackRes.notes.some((n: string) =>
           n.includes('fell back to recorded provenance.manifests.sha256_as_committed'),
         ),
       ).toBe(true);
+      const fallbackSha8 = String(prereg.wp2_smoke_calibration.parent_commit).slice(0, 8);
+      const cliOutFallback = execFileSync('node', [resolve(repoRoot, 'scripts/verify_e3_artifacts.mjs'), fallbackBundle], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+      }).trim();
+      expect(cliOutFallback).toBe(
+        `verify_e3_artifacts OK (fallback: commit ${fallbackSha8} unavailable; preregistration matched HEAD up to added default-0 keys)`,
+      );
 
-      // N4: pre-amendment prereg copy differing from HEAD verifies against recorded sha256_as_committed.
+      // N4: pre-amendment prereg copy differing from HEAD only by added default-0 keys passes via recorded sha256_as_committed.
       const editJsonFile = (
         filePath: string,
         mutator: (doc: Record<string, unknown>) => void,
@@ -495,11 +504,32 @@ describe('verify_e3_artifacts — preregistration threshold boundaries, Bessel, 
       rehashBundle(priorAmendmentBundle, mFiles);
       const priorAmendmentRes = verifyArtifactDir(priorAmendmentBundle);
       expect(priorAmendmentRes.ok).toBe(true);
+      expect(priorAmendmentRes.usedRecordedFallback).toBe(true);
       expect(
         priorAmendmentRes.notes.some((n: string) =>
           n.includes('fell back to recorded provenance.manifests.sha256_as_committed'),
         ),
       ).toBe(true);
+
+      // N4 negative control (r1): consistent tamper rewriting thresholds.dz_min 0.8 -> 0.5 with
+      // recomputed effects.json + updated sha256_as_committed + checksums.sha256 MUST fail in fallback.
+      const consistentTamperBundle = join(root, 'n4_consistent_threshold_tamper');
+      const tamperedPrereg = structuredClone(prereg);
+      tamperedPrereg.thresholds.dz_min = 0.5;
+      writeRecomputedBundleFiles(consistentTamperBundle, tamperedPrereg, buildSyntheticE3Data(tamperedPrereg));
+      const tamperedPreregCopy = join(consistentTamperBundle, 'manifests', 'e3-preregistration.json');
+      writeFileSync(tamperedPreregCopy, `${JSON.stringify(tamperedPrereg, null, 2)}\n`);
+      const consistentPreregSha = createHash('sha256')
+        .update(readFileSync(tamperedPreregCopy, 'utf8').replace(/\r\n/g, '\n'), 'utf8')
+        .digest('hex');
+      editJsonFile(join(consistentTamperBundle, 'provenance.json'), (doc) => {
+        const manifests = doc.manifests as { sha256_as_committed: Record<string, string> };
+        manifests.sha256_as_committed['e3-preregistration.json'] = consistentPreregSha;
+      });
+      rehashBundle(consistentTamperBundle, mFiles);
+      const consistentTamperRes = verifyArtifactDir(consistentTamperBundle);
+      expect(consistentTamperRes.ok).toBe(false);
+      expect(consistentTamperRes.failures.some((m: string) => m.includes('thresholds.dz_min'))).toBe(true);
 
       // N4 negative control: tampered prereg copy mismatching recorded sha256_as_committed fails.
       const tamperedCopyBundle = join(root, 'n4_tampered_copy');
