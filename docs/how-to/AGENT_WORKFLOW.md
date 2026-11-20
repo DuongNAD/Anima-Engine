@@ -223,6 +223,13 @@ QD-MACSHARE = the Mac is shared with OxideSwarm: each project may run one cargo 
             Anima cargo there runs as CARGO_BUILD_JOBS=4 nice -n 10, only with at least 30% memory and 20 GB
             disk free, and never touches an OxideSwarm process (owner in chat, 2026-11-19: "Xếp lịch xen kẽ
             song song đi"; hub AGENT_RULES §5)
+QD-MAPV2  = the map aims for the most realistic world possible, over a long horizon (owner in chat, 2026-11-20:
+            "Tôi muốn làm tốt nhất có thể, làm trong thời gian dài cx đc"). The plan is World v2: an offline,
+            deterministic Rust generator with real erosion, hydrology and climate, written as a pinned artifact. Then a
+            native-renderer spike and ADR-0011, then the renderer milestones R1-R6. Each phase has a gate (G-REF, G-SHAPE,
+            G-COMP, G-PERF, G-SIM). The Three.js viewer stays as the fallback until parity. This LIFTS the graphics
+            freeze in QD-SCOPE; science continues under QD-VIAB on other machines.
+            docs/ai/requirements/2026-11-20-feature-map-v2.md
 QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
             downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
             per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
@@ -249,7 +256,8 @@ QD-SCOPE  = scope freeze for about 3 months from 2026-11-19: continue SEL2-P, E3
             trial cards; paused: native renderer, exotic-energy extensions, W4 streaming, the full tiled
             artifact (W1-W3 full), Inhabit federation; after the trial, graphics = bug fixes only. Public
             docs and papers in English; an external reviewer before the island preregistration (owner in
-            chat, 2026-11-19: "Đồng ý", "Cả hai")
+            chat, 2026-11-19: "Đồng ý", "Cả hai"). AMENDED 2026-11-20 by QD-MAPV2: the native renderer, the full
+            tiled world artifact and graphics work are no longer paused; they follow the Map v2 phases
 QD-REALMS = real ecosystems in water, sky and underground are added one at a time after the SEL2-P
             result, each with its own ADR: water first, then sky, then underground (walk-in caves);
             until then fish, birds, wildlife and caves stay labelled decoration (owner in chat,
