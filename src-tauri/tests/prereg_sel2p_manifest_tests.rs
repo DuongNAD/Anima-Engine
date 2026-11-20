@@ -1023,5 +1023,23 @@ fn sel2p_runner_records_terrain_source_and_world_identity_in_provenance() {
         );
     }
 
+    let smoke_report = parse_json(odir.join("smoke/smoke-report.json"));
+    let effects_doc = parse_json(odir.join("effects.json"));
+    let drift_diags = effects_doc["drift_diagnostics_by_seed"]
+        .as_array()
+        .expect("effects.json drift_diagnostics_by_seed array");
+    assert!(
+        smoke_report["drift_diagnostics"]
+            .as_object()
+            .is_some_and(|o| !o.contains_key("missed_births_capped"))
+            && !drift_diags.is_empty()
+            && drift_diags.iter().all(|entry| {
+                entry["diagnostics"]
+                    .as_object()
+                    .is_some_and(|o| !o.contains_key("missed_births_capped"))
+            }),
+        "SEL2-P runner must omit missed_births_capped when zero"
+    );
+
     let _ = std::fs::remove_dir_all(&tmp);
 }

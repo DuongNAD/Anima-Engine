@@ -86,6 +86,21 @@ pub const LIVE_KEY_PREFIX: &str = "live.";
 
 /// Founding population size.
 pub const LIVE_KEY_FOUNDERS: &str = "live.founders";
+/// Card FOUNDER-LAYOUT: genesis founder placement layout (`0.0`/absent = legacy line at
+/// `z_fraction = 0.35` with zero extra RNG draws; `1.0` = even 2-D grid over walkable land;
+/// `2.0` = random scatter over walkable land from dedicated sub-stream
+/// [`crate::core::resources::sim_stream::LIVE_GENESIS_FOUNDERS`]).
+///
+/// Layouts `1` and `2` respect `live.land_mask = 1.0` (only walkable cells are chosen) and keep
+/// founders separated by at least [`FOUNDER_MIN_SPACING`] whenever geometrically feasible.
+pub const LIVE_KEY_FOUNDER_LAYOUT: &str = "live.founder_layout";
+/// Minimum pairwise spacing (in world units, measured toroidally over `MapBounds`) enforced for
+/// `live.founder_layout` modes `1` and `2` whenever feasible (`> 2` cells on a `200x200` /
+/// `256x256` world).
+pub const FOUNDER_MIN_SPACING: f32 = 2.0;
+const FOUNDER_LAYOUT_LINE: u8 = 0;
+const FOUNDER_LAYOUT_GRID: u8 = 1;
+const FOUNDER_LAYOUT_SCATTER: u8 = 2;
 /// Fraction of founders that are predators, in `[0, 1]`.
 pub const LIVE_KEY_PREDATOR_FRACTION: &str = "live.predator_fraction";
 /// Trees placed at genesis.
@@ -237,8 +252,9 @@ pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 28] = [
+pub const LIVE_KEYS: [&str; 29] = [
     LIVE_KEY_FOUNDERS,
+    LIVE_KEY_FOUNDER_LAYOUT,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
@@ -272,6 +288,11 @@ pub const LIVE_KEYS: [&str; 28] = [
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LiveWorldConfig {
     pub founders: usize,
+    /// Card FOUNDER-LAYOUT: genesis founder layout (`0` = legacy line at `z_fraction = 0.35`,
+    /// `1` = even 2-D grid over walkable land, `2` = seeded random scatter over walkable land
+    /// from [`crate::core::resources::sim_stream::LIVE_GENESIS_FOUNDERS`]).
+    #[serde(default)]
+    pub founder_layout: u8,
     pub predator_fraction: f64,
     pub trees: usize,
     pub lakes: usize,
@@ -393,6 +414,7 @@ impl Default for LiveWorldConfig {
     fn default() -> Self {
         Self {
             founders: 10,
+            founder_layout: 0,
             predator_fraction: 0.3,
             trees: 8,
             lakes: 2,
@@ -448,6 +470,19 @@ impl LiveWorldConfig {
             }
             match key.as_str() {
                 LIVE_KEY_FOUNDERS => config.founders = bounded_count(key, *value, 0.0, 4096.0)?,
+                LIVE_KEY_FOUNDER_LAYOUT => match *value {
+                    0.0 => config.founder_layout = FOUNDER_LAYOUT_LINE,
+                    1.0 => config.founder_layout = FOUNDER_LAYOUT_GRID,
+                    2.0 => config.founder_layout = FOUNDER_LAYOUT_SCATTER,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 2.0,
+                        })
+                    }
+                },
                 LIVE_KEY_TREES => config.trees = bounded_count(key, *value, 0.0, 4096.0)?,
                 LIVE_KEY_LAKES => config.lakes = bounded_count(key, *value, 0.0, 1024.0)?,
                 LIVE_KEY_FOOD_CAP => config.food_cap = bounded_count(key, *value, 0.0, 65536.0)?,
@@ -2524,6 +2559,25 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     });
 }
 
+/// Fallible variant of [`apply_live_genesis_and_policies`], returning [`ExperimentError`] when a
+/// manifest's genesis layout cannot be satisfied (for example `live.founder_layout = 1 | 2` with
+/// `live.land_mask = 1` when walkable cells number zero or fewer than `founders`).
+pub fn try_apply_live_genesis_and_policies(
+    world: &mut World,
+    seed: u64,
+    config: &LiveWorldConfig,
+    bounds: crate::core::ecs::MapBounds,
+) -> Result<(), ExperimentError> {
+    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
+    insert_policy_resources(world, config);
+    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
+        max_food_count: config.food_cap,
+        ..Default::default()
+    });
+    scale_pasture_capacity(world, config.resource_capacity_scale);
+    genesis(world, config, bounds, seed)
+}
+
 /// Apply a manifest's declared world-law policy resources, `SimRng`, food cap, pasture capacity
 /// scale, and deterministic lattice genesis (founders, trees, lakes) to an initialized `World`.
 ///
@@ -2538,14 +2592,8 @@ pub fn apply_live_genesis_and_policies(
     config: &LiveWorldConfig,
     bounds: crate::core::ecs::MapBounds,
 ) {
-    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
-    insert_policy_resources(world, config);
-    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
-        max_food_count: config.food_cap,
-        ..Default::default()
-    });
-    scale_pasture_capacity(world, config.resource_capacity_scale);
-    genesis(world, config, bounds, seed);
+    try_apply_live_genesis_and_policies(world, seed, config, bounds)
+        .unwrap_or_else(|e| panic!("{e}"));
 }
 
 /// Build the world the schedule runs on with `TerrainSource::Generated`, and replace every other
@@ -2665,7 +2713,7 @@ fn build_live_world(
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
-            apply_live_genesis_and_policies(&mut world, seed, config, bounds);
+            try_apply_live_genesis_and_policies(&mut world, seed, config, bounds)?;
         }
     }
 
@@ -2751,7 +2799,7 @@ fn genesis(
     config: &LiveWorldConfig,
     bounds: crate::core::ecs::MapBounds,
     seed: u64,
-) {
+) -> Result<(), ExperimentError> {
     use crate::core::agent_systems::{
         AgentEvaluation, AgentGeneration, AgentGenotype, AgentLineageId,
     };
@@ -2759,6 +2807,38 @@ fn genesis(
     use crate::evolution::genotype::{
         decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
     };
+
+    let terrain_map = if config.land_mask {
+        world
+            .get_resource::<crate::core::terrain::TerrainMap>()
+            .cloned()
+    } else {
+        None
+    };
+
+    if config.founders > 0
+        && config.land_mask
+        && (config.founder_layout == FOUNDER_LAYOUT_GRID
+            || config.founder_layout == FOUNDER_LAYOUT_SCATTER)
+    {
+        let walkable_cells = terrain_map.as_ref().map(walkable_cell_count).unwrap_or(0);
+        if walkable_cells == 0 {
+            return Err(ExperimentError::InvalidPopulation {
+                reason: format!(
+                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s): terrain has 0 walkable cells (no walkable land)",
+                    config.founder_layout, config.founders
+                ),
+            });
+        }
+        if walkable_cells < config.founders {
+            return Err(ExperimentError::InvalidPopulation {
+                reason: format!(
+                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s) without stacking: terrain has only {} distinct walkable cell(s)",
+                    config.founder_layout, config.founders, walkable_cells
+                ),
+            });
+        }
+    }
 
     let mut genotype = MorphologyGenotype::new();
     for (id, mass) in [(0u32, 1.5f32), (1, 1.0), (2, 0.8)] {
@@ -2789,13 +2869,6 @@ fn genesis(
         crate::core::resources::sim_stream::LIVE_GENESIS_BRAINS,
     );
 
-    let terrain_map = if config.land_mask {
-        world
-            .get_resource::<crate::core::terrain::TerrainMap>()
-            .cloned()
-    } else {
-        None
-    };
     let snap_if_masked = |pos: glam::Vec3| -> glam::Vec3 {
         if let Some(ref tm) = terrain_map {
             crate::core::terrain_navigation::snap_to_nearest_walkable(tm, &bounds, pos)
@@ -2806,8 +2879,25 @@ fn genesis(
     };
 
     let predators = config.predators();
+    let custom_founder_positions = match config.founder_layout {
+        FOUNDER_LAYOUT_GRID => Some(founder_grid_positions(
+            config.founders,
+            bounds,
+            terrain_map.as_ref(),
+        )),
+        FOUNDER_LAYOUT_SCATTER => Some(founder_scatter_positions(
+            config.founders,
+            bounds,
+            terrain_map.as_ref(),
+            seed,
+        )),
+        _ => None,
+    };
     for i in 0..config.founders {
-        let pos = snap_if_masked(lattice_point(i, config.founders.max(1), bounds, 0.35));
+        let pos = match custom_founder_positions {
+            Some(ref positions) => positions[i],
+            None => snap_if_masked(lattice_point(i, config.founders.max(1), bounds, 0.35)),
+        };
         let entity = decode_genotype(world, &genotype, pos, glam::Quat::IDENTITY);
         if let Some(brain) = policy.new_brain(&mut brain_rng) {
             world.entity_mut(entity).insert(brain);
@@ -2872,6 +2962,8 @@ fn genesis(
             crate::physics::spatial::IndexedInGrid(false),
         ));
     }
+
+    Ok(())
 }
 
 /// The `i`-th of `n` points evenly spread along X at a fixed fraction of the Z span.
@@ -2914,6 +3006,311 @@ fn lake_lattice_point(i: usize, n: usize, bounds: crate::core::ecs::MapBounds) -
         0.0,
         bounds.min.z + z_frac * span_z,
     )
+}
+
+fn toroidal_dist_sq(a: glam::Vec3, b: glam::Vec3, bounds: &crate::core::ecs::MapBounds) -> f32 {
+    let span_x = bounds.max.x - bounds.min.x;
+    let span_z = bounds.max.z - bounds.min.z;
+    let mut dx = (a.x - b.x).abs();
+    if span_x > 0.0 {
+        dx = dx.rem_euclid(span_x);
+        dx = dx.min(span_x - dx);
+    }
+    let mut dz = (a.z - b.z).abs();
+    if span_z > 0.0 {
+        dz = dz.rem_euclid(span_z);
+        dz = dz.min(span_z - dz);
+    }
+    dx * dx + dz * dz
+}
+
+fn unmasked_grid_positions(n: usize, bounds: crate::core::ecs::MapBounds) -> Vec<glam::Vec3> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let k = (1..=n)
+        .find(|&k| k.checked_mul(k).is_some_and(|sq| sq >= n))
+        .unwrap_or(1);
+    let m = n.div_ceil(k);
+    let span_x = bounds.max.x - bounds.min.x;
+    let span_z = bounds.max.z - bounds.min.z;
+    (0..n)
+        .map(|i| {
+            let c = i % k;
+            let r = i / k;
+            let cols_in_row = if r + 1 == m { n - (m - 1) * k } else { k };
+            let x_frac = (c as f32 + 0.5) / cols_in_row as f32;
+            let z_frac = (r as f32 + 0.5) / m as f32;
+            glam::Vec3::new(
+                bounds.min.x + x_frac * span_x,
+                0.0,
+                bounds.min.z + z_frac * span_z,
+            )
+        })
+        .collect()
+}
+
+fn walkable_cell_count(tm: &crate::core::terrain::TerrainMap) -> usize {
+    let total = tm.width.saturating_mul(tm.height);
+    if total == 0 || tm.biomes.len() < total {
+        return 0;
+    }
+    tm.biomes
+        .iter()
+        .take(total)
+        .filter(|&&b| crate::core::terrain_navigation::is_biome_walkable(b))
+        .count()
+}
+
+fn walkable_cell_centers(
+    tm: &crate::core::terrain::TerrainMap,
+    bounds: &crate::core::ecs::MapBounds,
+) -> Vec<glam::Vec3> {
+    let total = tm.width * tm.height;
+    let mut out = Vec::new();
+    if tm.width == 0 || tm.height == 0 || tm.biomes.len() < total {
+        return out;
+    }
+    for row in 0..tm.height {
+        for col in 0..tm.width {
+            if crate::core::terrain_navigation::is_biome_walkable(tm.biomes[row * tm.width + col]) {
+                out.push(crate::core::terrain_navigation::cell_center(
+                    tm, bounds, col, row,
+                ));
+            }
+        }
+    }
+    out
+}
+
+fn greedy_fill_from_candidates(
+    candidates: &[glam::Vec3],
+    n: usize,
+    bounds: &crate::core::ecs::MapBounds,
+    placed: &mut Vec<glam::Vec3>,
+) {
+    if candidates.is_empty() || placed.len() >= n {
+        return;
+    }
+    let mut used = vec![false; candidates.len()];
+    for &scale in &[1.0_f32, 0.75, 0.5625, 0.421875, 0.3164, 0.001] {
+        let min_d = FOUNDER_MIN_SPACING * scale;
+        let min_sq = min_d * min_d;
+        for (idx, &cand) in candidates.iter().enumerate() {
+            if placed.len() >= n {
+                return;
+            }
+            if used[idx] {
+                continue;
+            }
+            if placed
+                .iter()
+                .all(|&p| toroidal_dist_sq(cand, p, bounds) >= min_sq)
+            {
+                placed.push(cand);
+                used[idx] = true;
+            }
+        }
+    }
+    while placed.len() < n {
+        let base_len = placed.len().max(1);
+        for (idx, &cand) in candidates.iter().enumerate() {
+            if placed.len() >= n {
+                return;
+            }
+            if !used[idx] && placed.iter().all(|&p| p != cand) {
+                placed.push(cand);
+                used[idx] = true;
+            }
+        }
+        if placed.len() == base_len {
+            break;
+        }
+    }
+    let seed_len = placed.len();
+    for i in seed_len..n {
+        placed.push(placed[i % seed_len]);
+    }
+}
+
+fn founder_grid_positions(
+    n: usize,
+    bounds: crate::core::ecs::MapBounds,
+    terrain_map: Option<&crate::core::terrain::TerrainMap>,
+) -> Vec<glam::Vec3> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let Some(tm) = terrain_map else {
+        return unmasked_grid_positions(n, bounds);
+    };
+    let total = tm.width.saturating_mul(tm.height);
+    let walkable_count = walkable_cell_count(tm);
+    if walkable_count == 0 {
+        return Vec::new();
+    }
+
+    let span_x = bounds.max.x - bounds.min.x;
+    let span_z = bounds.max.z - bounds.min.z;
+    if span_x <= 0.0 || span_z <= 0.0 {
+        return Vec::new();
+    }
+    let min_span = span_x.min(span_z);
+    let safe_step = FOUNDER_MIN_SPACING * 1.0001;
+    let gx_max = if span_x >= safe_step {
+        (span_x / safe_step).floor() as usize
+    } else {
+        1
+    }
+    .max(1)
+    .min(tm.width);
+    let gz_max = if span_z >= safe_step {
+        (span_z / safe_step).floor() as usize
+    } else {
+        1
+    }
+    .max(1)
+    .min(tm.height);
+
+    let land_frac = (walkable_count as f64) / (total as f64);
+    let ratio = (span_x.max(span_z) / min_span) as f64;
+    let g_start = (((n as f64) / (land_frac * ratio).max(1e-6)).sqrt().floor() as usize)
+        .saturating_sub(1)
+        .max(1);
+    let g_cap = gx_max.max(gz_max);
+
+    for g in g_start..=g_cap {
+        let gx = ((g as f32) * (span_x / min_span))
+            .round()
+            .clamp(1.0, gx_max as f32) as usize;
+        let gz = ((g as f32) * (span_z / min_span))
+            .round()
+            .clamp(1.0, gz_max as f32) as usize;
+        let mut candidates = Vec::new();
+        for r in 0..gz {
+            let z = bounds.min.z + ((r as f32 + 0.5) / gz as f32) * span_z;
+            for c in 0..gx {
+                let x = bounds.min.x + ((c as f32 + 0.5) / gx as f32) * span_x;
+                let pos = glam::Vec3::new(x, 0.0, z);
+                if crate::core::terrain_navigation::is_pos_walkable(tm, &bounds, pos) {
+                    candidates.push(pos);
+                }
+            }
+        }
+        if candidates.len() >= n {
+            let m = candidates.len();
+            return (0..n).map(|i| candidates[(i * m + m / 2) / n]).collect();
+        }
+        if gx == gx_max && gz == gz_max {
+            break;
+        }
+    }
+
+    let centers = walkable_cell_centers(tm, &bounds);
+    let mut placed = Vec::with_capacity(n);
+    greedy_fill_from_candidates(&centers, n, &bounds, &mut placed);
+    placed
+}
+
+fn sample_bound_point<R: rand::Rng + ?Sized>(
+    rng: &mut R,
+    bounds: &crate::core::ecs::MapBounds,
+) -> glam::Vec3 {
+    let x = if bounds.max.x > bounds.min.x {
+        rng.gen_range(bounds.min.x..bounds.max.x)
+    } else {
+        bounds.min.x
+    };
+    let z = if bounds.max.z > bounds.min.z {
+        rng.gen_range(bounds.min.z..bounds.max.z)
+    } else {
+        bounds.min.z
+    };
+    glam::Vec3::new(x, 0.0, z)
+}
+
+fn founder_scatter_positions(
+    n: usize,
+    bounds: crate::core::ecs::MapBounds,
+    terrain_map: Option<&crate::core::terrain::TerrainMap>,
+    seed: u64,
+) -> Vec<glam::Vec3> {
+    use rand::Rng;
+
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut rng = crate::core::resources::derived_rng(
+        seed,
+        crate::core::resources::sim_stream::LIVE_GENESIS_FOUNDERS,
+    );
+    let min_sq = FOUNDER_MIN_SPACING * FOUNDER_MIN_SPACING;
+    const MAX_SCATTER_TRIES: usize = 256;
+
+    let mut placed = Vec::with_capacity(n);
+    for _ in 0..n {
+        let mut chosen = None;
+        for _ in 0..MAX_SCATTER_TRIES {
+            let cand = sample_bound_point(&mut rng, &bounds);
+            let walkable = terrain_map.is_none_or(|tm| {
+                crate::core::terrain_navigation::is_pos_walkable(tm, &bounds, cand)
+            });
+            if walkable
+                && placed
+                    .iter()
+                    .all(|&p| toroidal_dist_sq(cand, p, &bounds) >= min_sq)
+            {
+                chosen = Some(cand);
+                break;
+            }
+        }
+        let Some(pos) = chosen else {
+            break;
+        };
+        placed.push(pos);
+    }
+
+    if placed.len() == n {
+        return placed;
+    }
+
+    if let Some(tm) = terrain_map {
+        let mut centers = walkable_cell_centers(tm, &bounds);
+        if !centers.is_empty() {
+            for i in (1..centers.len()).rev() {
+                let j = rng.gen_range(0..=i);
+                centers.swap(i, j);
+            }
+            greedy_fill_from_candidates(&centers, n, &bounds, &mut placed);
+            return placed;
+        }
+    }
+
+    for &scale in &[0.75_f32, 0.5625, 0.421875, 0.3164, 0.0] {
+        let relax_sq = (FOUNDER_MIN_SPACING * scale).powi(2);
+        while placed.len() < n {
+            let mut chosen = None;
+            for _ in 0..MAX_SCATTER_TRIES {
+                let cand = sample_bound_point(&mut rng, &bounds);
+                if scale == 0.0
+                    || placed
+                        .iter()
+                        .all(|&p| toroidal_dist_sq(cand, p, &bounds) >= relax_sq)
+                {
+                    chosen = Some(cand);
+                    break;
+                }
+            }
+            match chosen {
+                Some(pos) => placed.push(pos),
+                None => break,
+            }
+        }
+    }
+    while placed.len() < n {
+        placed.push(sample_bound_point(&mut rng, &bounds));
+    }
+    placed
 }
 
 /// Insert every resource the live schedule's systems require but `init_world` does not build,
