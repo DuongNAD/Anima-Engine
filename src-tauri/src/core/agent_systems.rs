@@ -635,6 +635,16 @@ pub fn agent_mortality_system(
 /// 0.95 for predators) and exceeds its safe reserve, it invests part of that reserve, funds an
 /// offspring through `ecology::REPRODUCTION_EFFICIENCY` (eta = 0.60), routes the remainder
 /// (1 - eta) directly to detritus with zero leakage, and queues a SpawnOffspringCommand.
+///
+/// Population caps (`live.prey_cap` for prey; `pred_count >= 8 || prey_count < pred_count * 5` for
+/// predators) are checked before each birth against snapshot counts (`strict = false`, legacy
+/// default, bypassed during neutral-drift `Replay`) or against running counts incremented when
+/// a birth is queued (`strict = true`, both normal and neutral-drift `Replay` modes). Because the
+/// predator 5:1 ratio is evaluated *before* each birth against the running count, prey queued
+/// earlier in the same tick count toward it and `prey_count / pred_count` may sit below 5:1
+/// immediately after the final allowed predator birth. In `Replay` mode with `strict = true`,
+/// cap-blocked scheduled births increment `DriftDiagnostics::missed_births_capped` and mark
+/// tick divergence instead of drawing parents or marking insolvency.
 /// The numbers live in the body below and in `ecology.rs`; this comment only names them.
 pub fn autonomous_reproduction_system(
     mut commands: Commands,
@@ -696,6 +706,7 @@ pub fn autonomous_reproduction_system(
         let mut actual_total = 0u64;
         let mut missed_extinct = 0u64;
         let mut missed_insolvent = 0u64;
+        let mut missed_capped = 0u64;
         let mut missed_any_this_tick = false;
 
         {
@@ -710,6 +721,8 @@ pub fn autonomous_reproduction_system(
                     prey_buf.push(e);
                 }
             }
+            let mut prey_count = prey_buf.len();
+            let mut pred_count = pred_buf.len();
 
             for (is_predator, req, guild_buf) in
                 [(false, req_prey, prey_buf), (true, req_pred, pred_buf)]
@@ -750,6 +763,18 @@ pub fn autonomous_reproduction_system(
 
                 let invest_fraction = if is_predator { 0.65 } else { 0.50 };
                 for _ in 0..req {
+                    if strict_cap {
+                        let capped = if is_predator {
+                            pred_count >= 8 || prey_count < pred_count * 5
+                        } else {
+                            prey_count >= prey_cap
+                        };
+                        if capped {
+                            missed_capped += 1;
+                            missed_any_this_tick = true;
+                            continue;
+                        }
+                    }
                     if solvent_buf.is_empty() {
                         missed_insolvent += 1;
                         missed_any_this_tick = true;
@@ -844,6 +869,13 @@ pub fn autonomous_reproduction_system(
                     }
                     if spawned {
                         actual_total += 1;
+                        if strict_cap {
+                            if is_predator {
+                                pred_count += 1;
+                            } else {
+                                prey_count += 1;
+                            }
+                        }
                     } else {
                         missed_insolvent += 1;
                         missed_any_this_tick = true;
@@ -856,6 +888,7 @@ pub fn autonomous_reproduction_system(
         drift_res.diagnostics.actual_births += actual_total;
         drift_res.diagnostics.missed_births_extinct += missed_extinct;
         drift_res.diagnostics.missed_births_insolvent += missed_insolvent;
+        drift_res.diagnostics.missed_births_capped += missed_capped;
         if missed_any_this_tick {
             drift_res.diagnostics.ticks_with_missed_births += 1;
             drift_res.diagnostics.note_divergence(world_tick);

@@ -1,0 +1,187 @@
+{
+  "ended_utc": "2026-11-20T00:16:29Z",
+  "per_run_seconds": [
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 7.5492156999999995,
+      "seed": 730001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 2.4395964,
+      "seed": 730001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 3.0221038,
+      "seed": 730001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 6.183356,
+      "seed": 731001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.4976718,
+      "seed": 731001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 5.1760114999999995,
+      "seed": 731001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 2.6536311,
+      "seed": 732001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 2.2264720000000002,
+      "seed": 732001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 3.0337073,
+      "seed": 732001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 5.9056908,
+      "seed": 733001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.6426334000000002,
+      "seed": 733001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 4.4124877,
+      "seed": 733001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 4.9050017,
+      "seed": 734001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 2.2798266,
+      "seed": 734001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 5.0976312,
+      "seed": 734001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 6.3995756,
+      "seed": 735001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.4462855,
+      "seed": 735001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 4.2062379,
+      "seed": 735001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 6.1629362,
+      "seed": 736001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 2.2533929,
+      "seed": 736001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 2.8524693,
+      "seed": 736001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 4.1230209,
+      "seed": 737001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.1121336,
+      "seed": 737001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 4.2286741,
+      "seed": 737001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 6.2501756,
+      "seed": 738001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.4778794,
+      "seed": 738001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 4.4356227,
+      "seed": 738001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 5.9259455,
+      "seed": 739001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.4934238,
+      "seed": 739001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 5.2172741,
+      "seed": 739001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 5.4723358,
+      "seed": 740001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 3.7967627999999998,
+      "seed": 740001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 5.1043538,
+      "seed": 740001
+    },
+    {
+      "arm": "control_uniform",
+      "elapsed_seconds": 4.9841425,
+      "seed": 741001
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "elapsed_seconds": 2.2793398,
+      "seed": 741001
+    },
+    {
+      "arm": "treatment_gradient",
+      "elapsed_seconds": 3.0015165,
+      "seed": 741001
+    }
+  ],
+  "started_utc": "2026-11-20T00:13:57Z",
+  "wall_clock_seconds": 152.248569
+}

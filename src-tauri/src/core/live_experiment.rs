@@ -142,6 +142,13 @@ pub const LIVE_KEY_DRIVE_FLOOR: &str = "live.drive_floor";
 /// A). Exact boolean; absent/`0.0` = off, bit-identical. **Only takes effect when
 /// `live.locomotion = 1`.**
 pub const LIVE_KEY_THIRST_STEERING: &str = "live.thirst_steering";
+/// Card SEL2P2-PREP (ported from S11 `226d4b2`/`95044c4b`): `1.0` enables
+/// [`crate::core::resources::GrassSteeringPolicy`] in `locomotion::steering_drive_system` for
+/// prey with explicit priority: thirst (`> 50%` deficit) -> local `Food` -> `ResourceField`
+/// grass (`GRASS_STAY_FRACTION` / `7x7` scan respecting `PlantReservePolicy` and LAND1
+/// walkability) -> global `Food` fallback. `0.0`/absent keeps legacy trajectories bit-identical.
+/// **Requires `live.locomotion = 1.0`.**
+pub const LIVE_KEY_GRASS_STEERING: &str = "live.grass_steering";
 /// ADR-0007 option B (thẻ B): a predator strike that credits it `ΔE` EU also adds `k × ΔE` to its
 /// hydration, capped at its hydration target. `k >= 0`; absent/`0.0` = off, bit-identical.
 /// Hydration is outside the EU ledger. Acts in `combat_system`, so it does not need
@@ -217,15 +224,20 @@ pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
 /// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
 /// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
 pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
-/// Card FIX-CAP (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`] in
-/// `autonomous_reproduction_system`, incrementing `prey_count` and `pred_count` each time a birth
-/// is queued so one tick never overshoots `prey_cap`, the 8-predator ceiling, or the 5:1
-/// prey-to-predator ratio gate; `0.0`/absent keeps the legacy soft gate bit-identical so frozen E3
-/// and historical manifests stay reproducible.
+/// Card FIX-CAP / FIX-CAP2 (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`]
+/// in `autonomous_reproduction_system`, checking `prey_count >= prey_cap` and `pred_count >= 8 ||
+/// prey_count < pred_count * 5` against running counts before each birth and incrementing
+/// `prey_count`/`pred_count` after each queued birth in both normal and neutral-drift replay modes
+/// (recording replay cap-blocked births in
+/// [`crate::core::drift_control::DriftDiagnostics::missed_births_capped`]). Because the 5:1 ratio is
+/// checked *before* each birth against the running count, prey queued earlier in the same tick count
+/// toward it and after the final permitted predator birth `prey_count / pred_count` can fall below
+/// 5:1. `0.0`/absent keeps the legacy soft/uncapped path bit-identical so frozen E3 and historical
+/// manifests stay reproducible.
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 27] = [
+pub const LIVE_KEYS: [&str; 28] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -238,6 +250,7 @@ pub const LIVE_KEYS: [&str; 27] = [
     LIVE_KEY_LOCOMOTION,
     LIVE_KEY_DRIVE_FLOOR,
     LIVE_KEY_THIRST_STEERING,
+    LIVE_KEY_GRASS_STEERING,
     LIVE_KEY_MUTATION_RATE,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
@@ -286,6 +299,10 @@ pub struct LiveWorldConfig {
     /// ADR-0007 option A: thirsty agents steer to the nearest lake. Needs `locomotion`.
     #[serde(default)]
     pub thirst_steering: bool,
+    /// Card SEL2P2-PREP (S11): prey steer toward pasture grass (`1.0` on, `0.0`/absent off). Needs
+    /// `locomotion`.
+    #[serde(default)]
+    pub grass_steering: bool,
     /// Offspring body-mutation probability (see [`LIVE_KEY_MUTATION_RATE`]); absent reads back as
     /// the historical `0.05`.
     #[serde(default = "default_mutation_rate")]
@@ -386,6 +403,7 @@ impl Default for LiveWorldConfig {
             locomotion: false,
             drive_floor: 0.0,
             thirst_steering: false,
+            grass_steering: false,
             mutation_rate: default_mutation_rate(),
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
@@ -511,6 +529,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_THIRST_STEERING => match *value {
                     0.0 => config.thirst_steering = false,
                     1.0 => config.thirst_steering = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_GRASS_STEERING => match *value {
+                    0.0 => config.grass_steering = false,
+                    1.0 => config.grass_steering = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -691,6 +721,11 @@ impl LiveWorldConfig {
         if config.drift_reset_ticks > 0 && !config.drift_control {
             return Err(ExperimentError::InvalidLaw {
                 reason: "live.drift_reset_ticks > 0 requires live.drift_control = 1.0".into(),
+            });
+        }
+        if config.grass_steering && !config.locomotion {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.grass_steering = 1.0 requires live.locomotion = 1.0".into(),
             });
         }
         Ok(config)
@@ -2460,6 +2495,9 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
         drive_floor: config.drive_floor,
         thirst_steering: config.thirst_steering,
     });
+    world.insert_resource(crate::core::resources::GrassSteeringPolicy {
+        enabled: config.grass_steering,
+    });
     // Card LAND1 (`live.land_mask`): absent/0 keeps land navigation disabled so pre-LAND1
     // manifests stay bit-identical.
     world.insert_resource(crate::core::resources::TerrainNavigation {
@@ -3288,14 +3326,20 @@ fn shortfall_warning(diag: &crate::core::drift_control::DriftDiagnostics) -> Opt
     if !diag.has_shortfall() {
         return None;
     }
+    let capped_suffix = if diag.missed_births_capped > 0 {
+        format!(", capped={}", diag.missed_births_capped)
+    } else {
+        String::new()
+    };
     Some(format!(
         "neutral-drift schedule shortfall: missed_deaths={} (ticks={}), missed_births={} \
-         (extinct={}, insolvent={}, ticks={}), first_divergence_tick={:?}",
+         (extinct={}, insolvent={}{}, ticks={}), first_divergence_tick={:?}",
         diag.missed_deaths,
         diag.ticks_with_missed_deaths,
         diag.missed_births(),
         diag.missed_births_extinct,
         diag.missed_births_insolvent,
+        capped_suffix,
         diag.ticks_with_missed_births,
         diag.first_divergence_tick,
     ))
