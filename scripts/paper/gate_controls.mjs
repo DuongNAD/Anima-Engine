@@ -676,7 +676,8 @@ const GATES = [
     patch: null,
     staticResult: {
       exitCode: '—',
-      namingLine: 'NOT RUN (time: full clean desktop suite exceeds 30 min budget per fault; covered via targeted suites)',
+      namingLine:
+        'NOT RUN (time: quiet-machine clean compile took 30m 13s and partial run took 38m 08s [2288.12s] across 52 targets before environmental_elements_stress_tests hit 65.1366ms vs <50ms debug timing limit under Idle priority; >30 min per fault)',
       verdict: 'NOT RUN (time)',
     },
   },
@@ -688,7 +689,8 @@ const GATES = [
     patch: null,
     staticResult: {
       exitCode: '—',
-      namingLine: 'NOT RUN (time: 5x sequential cargo test --release runs exceed 30 min budget per fault)',
+      namingLine:
+        'NOT RUN (time: single quiet-machine cargo test --release --quiet took 56m 38s [3398.22s; 159 targets, 1583 passed, 2 ignored, test_exec=264.87s]; 5x implies ~74m+ [compile + 5*test_exec] or ~283m cold, >30 min per fault)',
       verdict: 'NOT RUN (time)',
     },
   },
