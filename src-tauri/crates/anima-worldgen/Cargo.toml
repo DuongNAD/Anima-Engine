@@ -35,3 +35,7 @@ bake = ["generate"]
 [[test]]
 name = "wv2_1a_tectonic_tests"
 required-features = ["generate"]
+
+[[test]]
+name = "wv2_1b_solver_hydro_tests"
+required-features = ["generate"]

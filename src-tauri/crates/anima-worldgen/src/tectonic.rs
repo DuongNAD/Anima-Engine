@@ -114,8 +114,8 @@ impl TectonicParams {
             ridge_bend: rng.gen_range(0.04..0.08),
             volcano_u: rng.gen_range(0.68..0.76),
             volcano_v: rng.gen_range(0.18..0.28),
-            plateau_u: rng.gen_range(0.72..0.82),
-            plateau_v: rng.gen_range(0.66..0.76),
+            plateau_u: rng.gen_range(0.71..0.77),
+            plateau_v: rng.gen_range(0.54..0.68),
             rift_angle_rad: rng.gen_range(0.35..0.60),
             rift_offset_u: rng.gen_range(0.56..0.64),
             phase_x: rng.gen_range(0.0..TAU),
@@ -241,13 +241,15 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     };
     let near_rift = rift_len > 0.45 && libm::fabs(rift_u) < 0.045;
 
-    // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland).
-    let du_plat = (u - p.plateau_u) / 0.15;
-    let dv_plat = (v - p.plateau_v) / 0.16;
+    // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland, ~14% area).
+    let du_plat = (u - p.plateau_u) / 0.245;
+    let dv_plat = (v - p.plateau_v) / 0.255;
     let r_plat = libm::hypot(du_plat, dv_plat);
-    let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 14.0));
-    let caprock_target_m = 0.55 * f64::from(cfg.caprock_min_m + cfg.caprock_max_m);
-    let plateau_lift = plateau_mask * caprock_target_m * (1.0 + 0.06 * fbm_detail);
+    let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 16.0));
+    let land_gate = 1.0 / (1.0 + libm::exp(-(d_coast - 0.06) * 35.0));
+    let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_400.0) / 300.0));
+    let plateau_blend = plateau_mask * land_gate * core_gate;
+    let caprock_target_m = 0.52 * f64::from(cfg.caprock_min_m + cfg.caprock_max_m) + 120.0;
 
     // 5. Volcanic stratocone & collapsed caldera crater rim (`BasaltVolcanic`).
     let r_volc = libm::hypot(u - p.volcano_u, v - p.volcano_v);
@@ -256,15 +258,16 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     let volcano_h = cone + caldera;
     let in_volcano = r_volc < 0.085;
 
-    let raw_h_m = shelf_and_margin
-        + massif_h
-        + plateau_lift
+    let base_surface = shelf_and_margin + massif_h;
+    let plateau_surface = caprock_target_m + 35.0 * fbm_detail;
+    let raw_h_m = (1.0 - plateau_blend) * base_surface
+        + plateau_blend * plateau_surface
         + volcano_h
         + rift_drop
         + 140.0 * fbm_detail * libm::exp(-0.3 * d_coast * d_coast);
 
     let uplift = (f64::from(cfg.massif_uplift_amplitude) * massif_uplift
-        + 350.0 * plateau_mask
+        + 350.0 * plateau_blend
         + if d_coast > 0.0 { 120.0 } else { 0.0 })
     .max(0.0);
 
@@ -275,7 +278,7 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
         raw_h_m,
         uplift,
         in_volcano,
-        in_plateau: plateau_mask > 0.55 && !in_volcano,
+        in_plateau: plateau_blend > 0.35 && !in_volcano,
         in_karst,
         near_rift,
         ridge_core_dist: libm::fabs(d_ridge),
