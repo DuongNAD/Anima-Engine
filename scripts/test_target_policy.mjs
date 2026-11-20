@@ -43,6 +43,14 @@ export const EMPTY_TARGETS = [
       'deliberately small and pure: its behaviour is covered by 20 unit tests in the same file as ' +
       'the code, which is where a reader of `anima-domain` looks.',
   },
+  {
+    name: 'doc-tests:anima_worldgen',
+    profiles: ['default', 'desktop', 'worldgen-cpu'],
+    reason:
+      'Doc-test target for the offline World v2 generator crate. Behaviour is guarded by ' +
+      'unit tests in `src/` and feature-gated integration tests in `tests/` rather than ' +
+      'runnable rustdoc examples, keeping `anima-worldgen` default-zero-dependency clean.',
+  },
 ];
 
 /**
@@ -111,10 +119,12 @@ export const FEATURE_GATED_TARGETS = [
   { name: 'tests/migration_stress_tests.rs', feature: 'networking' },
   { name: 'tests/phase5_websocket_reuse.rs', feature: 'networking' },
   { name: 'tests/phase5_burn_wgpu_fallback.rs', feature: 'ml-wgpu' },
+  { name: 'tests/wv2_1a_tectonic_tests.rs', feature: 'generate' },
 ];
 
 /** Which features each named profile turns on. Used to decide "absent" vs "must run". */
 export const PROFILES = {
   default: [],
   desktop: ['neo4j', 'networking', 'ml-wgpu'],
+  'worldgen-cpu': ['reader', 'generate', 'bake'],
 };

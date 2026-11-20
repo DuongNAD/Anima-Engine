@@ -52,7 +52,7 @@ const profile = profileIdx >= 0 ? args[profileIdx + 1] : null;
 
 if (!file) {
   console.error(
-    'usage: node scripts/check_test_targets.mjs <cargo-test-output.txt> [--profile default|desktop]',
+    `usage: node scripts/check_test_targets.mjs <cargo-test-output.txt> [--profile ${Object.keys(PROFILES).join('|')}]`,
   );
   process.exit(2);
 }
@@ -153,8 +153,15 @@ if (ignoredTests.length !== reportedIgnored) {
   );
 }
 
+// Entries without an explicit `profiles` list belong to full workspace profiles (`default`/`desktop`).
+// Crate-scoped runs such as `worldgen-cpu` (`cargo test -p anima-worldgen ...`) only schedule
+// targets from that crate, so empty/ignored entries outside its `profiles` list are filtered out.
+const activeProfile = profile ?? 'desktop';
+const appliesToProfile = entry => (entry.profiles ?? ['default', 'desktop']).includes(activeProfile);
+
 // ---- empty targets ---------------------------------------------------------------------------
-const allowedEmpty = new Map(EMPTY_TARGETS.map(e => [e.name, e]));
+const activeEmpty = EMPTY_TARGETS.filter(appliesToProfile);
+const allowedEmpty = new Map(activeEmpty.map(e => [e.name, e]));
 const empty = targets.filter(t => t.count === 0);
 
 for (const t of empty) {
@@ -184,7 +191,8 @@ for (const entry of allowedEmpty.values()) {
 }
 
 // ---- ignored tests ---------------------------------------------------------------------------
-const allowedIgnored = new Map(IGNORED_TESTS.map(e => [e.name, e]));
+const activeIgnored = IGNORED_TESTS.filter(appliesToProfile);
+const allowedIgnored = new Map(activeIgnored.map(e => [e.name, e]));
 for (const t of ignoredTests) {
   const entry = allowedIgnored.get(t.name);
   if (!entry) {
@@ -249,8 +257,8 @@ const gatedRunning = profile
   ? FEATURE_GATED_TARGETS.filter(g => PROFILES[profile].includes(g.feature)).length
   : 0;
 console.log(
-  `test targets: ${targets.length}, empty: ${empty.length} (allow-listed ${EMPTY_TARGETS.length}), ` +
-    `ignored: ${ignoredTests.length} (allow-listed ${IGNORED_TESTS.length})` +
+  `test targets: ${targets.length}, empty: ${empty.length} (allow-listed ${activeEmpty.length}), ` +
+    `ignored: ${ignoredTests.length} (allow-listed ${activeIgnored.length})` +
     (profile ? `, feature-gated running under "${profile}": ${gatedRunning}` : ''),
 );
 
