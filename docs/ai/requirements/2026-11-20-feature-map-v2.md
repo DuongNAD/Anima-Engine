@@ -133,6 +133,41 @@ có cho ngân sách gói JS.
 **Đo "đẹp trên mỗi mili-giây".** Ở mỗi mốc, ảnh chụp chuẩn được đặt cạnh bảng tham chiếu G-REF, kèm số
 mili-giây của mốc đó. Hai phương án cùng đạt G-REF thì chọn phương án nhẹ hơn.
 
+## 3c. Máy khác gánh phần nặng: lò nướng trên OxideSwarm
+
+> **Chủ dự án (trong chat, 2026-11-20):** "hoàn toàn có thể để các máy khác gánh, dự án OxideSwarm sinh ra để làm việc đó".
+> Quyết định QĐ-OXS đã cho phép đưa lên grid các việc tạo bản đồ ngoại tuyến có đầu ra là artifact ghim hash.
+
+**Cách chia việc.** Mọi thứ không phụ thuộc vào camera đều được tính trước trên grid, ở độ phân giải và chất
+lượng mà một máy yếu không bao giờ tự tính nổi. Máy người xem chỉ nạp tile đã nướng sẵn và vẽ. Đây là cách để
+"nhẹ" (§3b) không phải đánh đổi "đẹp".
+
+| Việc trên grid (ngoại tuyến) | Máy người xem nhận được |
+|---|---|
+| Sinh World v2 ở độ phân giải cao: xói mòn, thuỷ văn, khí hậu, có thể tới 8192² | Tile địa hình nhiều mức chi tiết |
+| Nướng ánh sáng tĩnh: che khuất (AO), tầm nhìn bầu trời, bóng của núi, chiếu sáng gián tiếp (probe hoặc lightmap của địa hình) | Ánh sáng đẹp với giá gần như bằng 0 ở mức Thấp |
+| Nướng impostor bát diện cho từng loài cây và đá | Thực vật ở xa rẻ như một tấm ảnh |
+| Sinh LOD lưới và nén bằng meshopt | Mô hình nhỏ, tải nhanh |
+| Nén texture (KTX2/Basis, BCn) và dựng tháp tile | Bộ nhớ GPU nhỏ, tải theo vùng |
+| Đặt thực vật theo sinh thái (mật độ, loài, cụm) | Danh sách instance theo tile |
+| Trường khoảng cách tới bờ, hướng dòng chảy, mặt nạ bọt | Nước đẹp mà rẻ |
+
+**Ràng buộc.**
+
+- **Tái lập được.** Mỗi việc nướng có lệnh, đầu vào và commit rõ ràng; đầu ra ghim SHA-256 theo ADR-0010. Việc nào
+  tất định trên CPU thì kiểm bằng một bản sao trên máy thứ hai, so từng byte. Việc nào chạy trên GPU và không tất
+  định từng bit thì ghim hash của lần chạy được chọn, kèm ghi máy, driver và lệnh, rồi kiểm bằng ngưỡng sai số có
+  ghi trước.
+- **Chỉ máy của chủ dự án.** Theo QĐ-OXS, việc chỉ chạy trên `GRID WORKER`, không bao giờ trên máy bạn bè. Máy
+  có RTX (Windows 1) hợp nhất cho các việc nướng trên GPU.
+- **Vẽ lúc chạy vẫn ở máy người xem.** Không truyền hình ảnh qua mạng: quy tắc trung thực và độ trễ đều đòi hỏi
+  bản đồ được vẽ tại chỗ từ dữ liệu thật.
+- Về sau (chặng 7, "thế giới nhiều máy"), chính mô phỏng cũng có thể chạy trên máy mạnh và chỉ gửi trạng thái về
+  máy người xem. Khi đó máy yếu chỉ còn việc vẽ. Phần này ngoài phạm vi Map v2 và cần ADR riêng.
+
+**Điều kiện để bắt đầu.** Grid hiện mới chỉ có Mac nối vào (hub ghi `GRID: AUTO` nhưng chưa sẵn sàng). Windows 1
+cần được chủ dự án nối vào cụm OxideSwarm rồi mới nhận việc nướng.
+
 ## 4. Lộ trình theo pha
 
 Mỗi pha có cổng ra riêng. Thời gian là ước lượng, không phải cam kết.

@@ -232,6 +232,9 @@ QD-MAPV2  = the map aims for the most realistic world possible, over a long hori
             optimized" ("vừa nhẹ vừa đẹp, tối ưu", owner, 2026-11-20) is a hard requirement. Every system has a
             per-frame millisecond budget on Iris Xe (Low) and RTX (High), measured by GPU timers in the desktop
             app (plan §3b). When two options both pass G-REF, the lighter one wins.
+            Heavy, camera-independent work is baked offline on the OxideSwarm grid: World v2 at high resolution,
+            static lighting, impostors, mesh LODs, texture compression, tile pyramids and vegetation placement.
+            Viewers only stream and draw (plan §3c; owner, 2026-11-20: "để các máy khác gánh").
             docs/ai/requirements/2026-11-20-feature-map-v2.md
 QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
             downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
