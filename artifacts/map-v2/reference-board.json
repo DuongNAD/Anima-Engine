@@ -1,0 +1,2203 @@
+{
+  "board": "Anima-Engine Map v2 - G-REF visual reference board",
+  "generated": "2026-11-20",
+  "licence_rule": "Only CC0 or public domain (NASA, USGS, NOAA and other US federal works; Commons files tagged PD or CC0; Poly Haven; ambientCG). Excluded: CC BY, CC BY-SA, Unsplash, Pexels, anything mixed or unclear.",
+  "method": "Candidates from Commons search (structured-data licence filters), Poly Haven public API and NASA EO. Every source page was opened and its licence box read; preview sizes come from HTTP HEAD. No image file was downloaded.",
+  "milestones": {
+    "P1": "P1 World v2 (landforms, hydrology, climate)",
+    "R1": "R1 terrain material",
+    "R2": "R2 water",
+    "R3": "R3 atmosphere/lighting",
+    "R4": "R4 vegetation"
+  },
+  "categories": {
+    "desert": "1. Desert (sand dunes, rocky desert)",
+    "savanna": "2. Savanna",
+    "rainforest": "3. Tropical rainforest (from above and canopy level)",
+    "temperate": "4. Temperate deciduous / mixed forest",
+    "taiga": "5. Taiga / boreal forest",
+    "tundra": "6. Tundra",
+    "wetland": "7. Swamp, marsh, mangrove",
+    "mountain": "8. High mountains, snow, glaciers (treeline, snowline)",
+    "coast": "9. Coast and beach (rocky coast, surf, foam)",
+    "river": "10. River valleys and waterfalls",
+    "lake": "11. Lakes in a landscape",
+    "aerial": "12. Aerial/satellite drainage (G-SHAPE)",
+    "atmo": "13. Atmosphere / aerial perspective / golden hour (optional)"
+  },
+  "totals": {
+    "images": 53,
+    "by_category": {
+      "desert": 4,
+      "savanna": 3,
+      "rainforest": 3,
+      "temperate": 4,
+      "taiga": 3,
+      "tundra": 3,
+      "wetland": 4,
+      "mountain": 6,
+      "coast": 4,
+      "river": 4,
+      "lake": 3,
+      "aerial": 8,
+      "atmo": 4
+    },
+    "by_licence": {
+      "CC0": 21,
+      "Public domain": 32
+    },
+    "by_source": {
+      "Wikimedia Commons": 45,
+      "Poly Haven": 7,
+      "NASA Earth Observatory": 1
+    },
+    "by_rights_holder": {
+      "individual": 15,
+      "BLM": 3,
+      "Poly Haven": 7,
+      "NASA": 9,
+      "NPS": 9,
+      "USFWS": 6,
+      "USFS": 1,
+      "USGS": 1,
+      "NOAA": 1,
+      "USDA": 1
+    },
+    "preview_bytes_total": 22129333,
+    "preview_mb_total": 22.13,
+    "larger_polyhaven_previews_bytes_if_used_instead": 8296429
+  },
+  "excluded_after_check": [
+    {
+      "file": "https://commons.wikimedia.org/wiki/File:Espuma_de_playa_en_Bahia_de_Plata.jpg",
+      "reason": "Licence box says CC0 but the Permission field still reads 'Multi-license with GFDL and CC-BY-SA-2.5'; mixed, so excluded."
+    },
+    {
+      "file": "https://commons.wikimedia.org/wiki/File:Line5070_-_Flickr_-_NOAA_Photo_Library.jpg",
+      "reason": "API says public domain but the page licence box is CC BY 2.0 (Flickr); mixed, so excluded."
+    },
+    {
+      "file": "https://commons.wikimedia.org/wiki/File:Line5093_-_Flickr_-_NOAA_Photo_Library.jpg",
+      "reason": "Same as Line5070: CC BY 2.0 on the page; excluded."
+    },
+    {
+      "file": "https://commons.wikimedia.org/wiki/File:Lena_Delta_Shakes_off_Winter_(51283979975).jpg",
+      "reason": "Page licence box is CC BY 2.0 (NASA Goddard Flickr upload, checked by FlickreviewR); excluded. The PD 'Lena River Delta - Landsat 2000' is false colour and was not used."
+    },
+    {
+      "file": "Any Commons file whose name ends in '(Unsplash).jpg'",
+      "reason": "Unsplash-origin; excluded by rule even when tagged CC0."
+    }
+  ],
+  "images": [
+    {
+      "id": "DES-01",
+      "category": "desert",
+      "category_label": "1. Desert (sand dunes, rocky desert)",
+      "title": "Sand dunes of Khongoryn Els, Gobi Desert, Mongolia",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Khongoryn_Els_10.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e0/Khongoryn_Els_10.jpg/1280px-Khongoryn_Els_10.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        811
+      ],
+      "preview_bytes": 96294,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5184,
+        3285
+      ],
+      "author_credit": "Bernard Gagnon (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "dune crests form continuous sharp ridgelines: sunlit windward slope vs darker slip face, never flat-coloured dune blobs",
+        "crest spacing is regular and crests share one dominant orientation (one wind regime)",
+        "sand tone changes smoothly with slope aspect/lighting, not per-tile colour patches"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R3"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "DES-02",
+      "category": "desert",
+      "category_label": "1. Desert (sand dunes, rocky desert)",
+      "title": "Utah dunes landscape (Little Sahara Recreation Area), BLM West Desert District",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Utah_Dunes_Landscape_-_West_Desert_District.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Utah_Dunes_Landscape_-_West_Desert_District.jpg/1280px-Utah_Dunes_Landscape_-_West_Desert_District.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        841
+      ],
+      "preview_bytes": 262619,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4000,
+        2628
+      ],
+      "author_credit": "Bob Wick / Bureau of Land Management - Utah",
+      "rights_holder_type": "BLM",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a Bureau of Land Management employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "lee (slip) faces are steep (~30-34 deg, angle of repose) while stoss slopes are gentle; the asymmetry is visible",
+        "dune field edge breaks up into scattered scrub over a transition band, not a hard biome line",
+        "shadowed lee faces are darker and cooler in hue than sunlit faces"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R4"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R4 vegetation"
+      ],
+      "notes": "Commons Featured picture.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "DES-03",
+      "category": "desert",
+      "category_label": "1. Desert (sand dunes, rocky desert)",
+      "title": "Desert in Wadi Rum, Jordan",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Wadi_rum_desert.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Wadi_rum_desert.jpg/1280px-Wadi_rum_desert.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        960
+      ],
+      "preview_bytes": 354101,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4608,
+        3456
+      ],
+      "author_credit": "Peter Chisholm (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "rock massifs rise abruptly from flat sand floors: sharp break of slope at the foot, not a smooth cone",
+        "sand collects on valley floors and low ground; bare rock only on steep faces",
+        "reddish sand and darker rock are distinct materials blending at the base, not one desert colour"
+      ],
+      "milestones": [
+        "P1",
+        "R1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "DES-04",
+      "category": "desert",
+      "category_label": "1. Desert (sand dunes, rocky desert)",
+      "title": "Goegap (HDRI, Namaqualand, South Africa) - clear midday desert, rocky outcrops",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/goegap",
+      "api_url": "https://api.polyhaven.com/info/goegap",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/goegap.png?width=630&v=fc1866ea",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 335773,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/goegap.png?height=760&v=fc1866ea",
+      "larger_preview_bytes": 1312192,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Greg Zaal / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Desert & Arid/Karoo & Scrubland/Rocky Outcrops",
+      "polyhaven_description": "Free 16K unclipped HDRI: clear midday desert sun with natural, high-contrast lighting, hard shadows and warm sandy rock tones, dry, desolate mood.",
+      "visual_criteria": [
+        "sparse shrubs spaced apart with bare ground showing between them (low cover), not a uniform carpet",
+        "ground mixes sand, gravel and rock at metre scale",
+        "hard midday shadows; sky deep blue at zenith, paler toward the horizon"
+      ],
+      "milestones": [
+        "R1",
+        "R3",
+        "R4"
+      ],
+      "milestone_labels": [
+        "R1 terrain material",
+        "R3 atmosphere/lighting",
+        "R4 vegetation"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama: compare the horizon band, not the stretched poles.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "SAV-01",
+      "category": "savanna",
+      "category_label": "2. Savanna",
+      "title": "Mpumalanga veld (HDRI, South Africa) - low sun over windswept grass",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/mpumalanga_veld",
+      "api_url": "https://api.polyhaven.com/info/mpumalanga_veld",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/mpumalanga_veld.png?width=630&v=c826ee8b",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 357487,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/mpumalanga_veld.png?height=760&v=c826ee8b",
+      "larger_preview_bytes": 1364159,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Greg Zaal / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Fields & Countryside/Grassland & Meadows/Savanna & Bushveld",
+      "polyhaven_description": "Free 16K unclipped HDRI of Mpumalanga veld: warm low sun, clear blue sky, high-contrast light, windswept grass, long crisp shadows and soft haze.",
+      "visual_criteria": [
+        "continuous grass layer whose colour varies golden-to-green at metre scale (no single flat grass colour)",
+        "low sun gives long shadows and warm rim light on grass tips",
+        "soft haze lowers contrast of distant hills"
+      ],
+      "milestones": [
+        "R4",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "SAV-02",
+      "category": "savanna",
+      "category_label": "2. Savanna",
+      "title": "Safari sunset (HDRI) - African veld, dry grass with sparse bushes",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/safari_sunset",
+      "api_url": "https://api.polyhaven.com/info/safari_sunset",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/safari_sunset.png?width=630&v=2aeec508",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 413222,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/safari_sunset.png?height=760&v=2aeec508",
+      "larger_preview_bytes": 1789636,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Dimitrios Savva (photography), Jarod Guest (processing) / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Fields & Countryside/Grassland & Meadows/Savanna & Bushveld",
+      "polyhaven_description": "Free 20K HDRI, unclipped, warm low-contrast African veld sunset with soft golden rim light, clear sky gradient and muted dry grass with sparse bushes.",
+      "visual_criteria": [
+        "bushes and trees are isolated and irregularly spaced with open grass between (no grid, no forest)",
+        "dry-season grass is muted yellow-brown, not saturated green",
+        "sky gradient runs warm at the horizon to blue at the zenith"
+      ],
+      "milestones": [
+        "R4",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "SAV-03",
+      "category": "savanna",
+      "category_label": "2. Savanna",
+      "title": "Dikhololo sunset (HDRI) - veld, trees and bushes at sunset",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/dikhololo_sunset",
+      "api_url": "https://api.polyhaven.com/info/dikhololo_sunset",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/dikhololo_sunset.png?width=630&v=f7620bdd",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 329680,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/dikhololo_sunset.png?height=760&v=f7620bdd",
+      "larger_preview_bytes": 1178243,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Greg Zaal / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Fields & Countryside/Grassland & Meadows/Savanna & Bushveld",
+      "polyhaven_description": "Free, unclipped 16K HDRI: warm, low-contrast sunset over veld and dirt road with trees and bushes, soft natural light under a partly cloudy sky.",
+      "visual_criteria": [
+        "tree density varies across the view (clumps and gaps), not uniform spacing",
+        "tree crowns are irregular, flattened silhouettes of varied size",
+        "low warm light: lit sides warm, shadows cool"
+      ],
+      "milestones": [
+        "R4",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RNF-01",
+      "category": "rainforest",
+      "category_label": "3. Tropical rainforest (from above and canopy level)",
+      "title": "Afternoon 'popcorn' clouds over the Amazon rainforest (MODIS)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Afternoon_Clouds_over_the_Amazon_Rainforest.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e5/Afternoon_Clouds_over_the_Amazon_Rainforest.jpg/1280px-Afternoon_Clouds_over_the_Amazon_Rainforest.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1646
+      ],
+      "preview_bytes": 1269222,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5600,
+        7200
+      ],
+      "author_credit": "NASA image courtesy Jeff Schmaltz, MODIS Rapid Response, NASA GSFC (NASA Earth Observatory)",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "from orbit intact forest reads as near-uniform dark green; the texture comes from clouds, not from individual trees",
+        "a field of small cumulus forms over forest but leaves cloud-free lanes over large rivers",
+        "rivers are meandering ribbons whose width grows downstream"
+      ],
+      "milestones": [
+        "P1",
+        "R3",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R3 atmosphere/lighting",
+        "R2 water"
+      ],
+      "notes": "Satellite view (from above).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RNF-02",
+      "category": "rainforest",
+      "category_label": "3. Tropical rainforest (from above and canopy level)",
+      "title": "Aerial view of Unuamen tropical rainforest and the Ovia-Osse River, Nigeria",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Aerial_View_of_Unuamen_tropical_rainforest_and_the_Ovia_-_Osse_River.png",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Aerial_View_of_Unuamen_tropical_rainforest_and_the_Ovia_-_Osse_River.png/1280px-Aerial_View_of_Unuamen_tropical_rainforest_and_the_Ovia_-_Osse_River.png?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        720
+      ],
+      "preview_bytes": 1983908,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        1672,
+        941
+      ],
+      "author_credit": "Evelynkins (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "closed canopy is a lumpy mosaic of crowns of different sizes and greens; no repeated identical tree",
+        "the river opens a gap in the canopy and bank vegetation differs from the interior",
+        "saturation drops with distance (aerial haze)"
+      ],
+      "milestones": [
+        "R4",
+        "R2",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R2 water",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "Oblique aerial view (from above). PNG preview is heavy (~2 MB).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RNF-03",
+      "category": "rainforest",
+      "category_label": "3. Tropical rainforest (from above and canopy level)",
+      "title": "Multi-stratified canopy of the forest of Dzanga-Ndoki National Park, Central African Republic",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Dzanga-Ndoki_National_Park_(10.3897-zookeys.951.53814)_Figure_27.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c9/Dzanga-Ndoki_National_Park_%2810.3897-zookeys.951.53814%29_Figure_27.jpg/1280px-Dzanga-Ndoki_National_Park_%2810.3897-zookeys.951.53814%29_Figure_27.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        960
+      ],
+      "preview_bytes": 527083,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        1512,
+        1134
+      ],
+      "author_credit": "Photo P. Annoyer, in Massa B (2020) ZooKeys 951: 47-65",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "several vertical strata are visible: emergent crowns above a continuous main canopy, understorey below",
+        "emergent crowns are broad and stand clear above the canopy surface",
+        "no ground visible; deep shadow gaps between crowns"
+      ],
+      "milestones": [
+        "R4"
+      ],
+      "milestone_labels": [
+        "R4 vegetation"
+      ],
+      "notes": "Canopy-level view. Small original (1512x1134); the ZooKeys article page also declares CC0 (dc.rights).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TMP-01",
+      "category": "temperate",
+      "category_label": "4. Temperate deciduous / mixed forest",
+      "title": "Ridge upon ridge of forest, Great Smoky Mountains National Park",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Great_Smoky_Mountains_National_Park_GRSM1783.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/21/Great_Smoky_Mountains_National_Park_GRSM1783.jpg/1280px-Great_Smoky_Mountains_National_Park_GRSM1783.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 369671,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3072,
+        2048
+      ],
+      "author_credit": "National Park Service Digital Image Archives",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work)",
+      "visual_criteria": [
+        "forest covers every ridge continuously; ridges stack with each farther one lighter and bluer",
+        "sunlit and shaded slopes differ in forest tone (aspect shading), not one flat green",
+        "ridge profiles are rounded and old, not spiky"
+      ],
+      "milestones": [
+        "R3",
+        "R4",
+        "P1"
+      ],
+      "milestone_labels": [
+        "R3 atmosphere/lighting",
+        "R4 vegetation",
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TMP-02",
+      "category": "temperate",
+      "category_label": "4. Temperate deciduous / mixed forest",
+      "title": "Beech, ostrich ferns and wood horsetail in Gullmarsskogen nature reserve, Sweden",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Beech_and_ferns_in_Gullmarsskogen.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Beech_and_ferns_in_Gullmarsskogen.jpg/1280px-Beech_and_ferns_in_Gullmarsskogen.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 544184,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5472,
+        3648
+      ],
+      "author_credit": "W.carter (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "the forest floor is covered by understorey (ferns, herbs), not bare ground under trees",
+        "trunks vary in diameter, lean and spacing; no cloned trees",
+        "light under the canopy is dappled and green-tinted"
+      ],
+      "milestones": [
+        "R4",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "Commons Quality image.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TMP-03",
+      "category": "temperate",
+      "category_label": "4. Temperate deciduous / mixed forest",
+      "title": "Wooded hills in autumn colours above a meadow, Quebec City",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Autumn_forest_near_Avenue_du_Bourg-Royal,_Quebec_City.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b0/Autumn_forest_near_Avenue_du_Bourg-Royal%2C_Quebec_City.jpg/1280px-Autumn_forest_near_Avenue_du_Bourg-Royal%2C_Quebec_City.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        634
+      ],
+      "preview_bytes": 333335,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6829,
+        3380
+      ],
+      "author_credit": "Wilfredor (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "autumn colour mixes red, orange, yellow and evergreen crown by crown (fine-grained), not one biome-wide colour",
+        "the forest-meadow edge is irregular with shrubs and outliers, not a straight boundary",
+        "at distance crowns read as a bumpy rounded texture"
+      ],
+      "milestones": [
+        "R4",
+        "R1"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R1 terrain material"
+      ],
+      "notes": "Commons Quality image; wide aspect (preview 1280x634).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TMP-04",
+      "category": "temperate",
+      "category_label": "4. Temperate deciduous / mixed forest",
+      "title": "Nature reserve forest (HDRI) - mixed forest at low sun",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/nature_reserve_forest",
+      "api_url": "https://api.polyhaven.com/info/nature_reserve_forest",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/nature_reserve_forest.png?width=630&v=991131ae",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 622278,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/nature_reserve_forest.png?height=760&v=991131ae",
+      "larger_preview_bytes": 2551566,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Dimitrios Savva (photography), Jarod Guest (processing) / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Forest & Woodland/Forest/Mixed Forest",
+      "polyhaven_description": "Free 24K unclipped HDRI: soft, low-contrast sunrise/sunset forest light with warm rim highlights, cool shaded undergrowth and a subtle sky - tranquil.",
+      "visual_criteria": [
+        "conifer and broadleaf silhouettes occur in the same stand (mixed forest)",
+        "low sun rim-lights crowns while the undergrowth stays cool and dark"
+      ],
+      "milestones": [
+        "R4",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TAI-01",
+      "category": "taiga",
+      "category_label": "5. Taiga / boreal forest",
+      "title": "Fall in the boreal forest of Nowitna NWR, Alaska (aerial; Yukon River, Kokrine Hills)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Fall_in_the_boreal_forest_of_Nowitna_National_Wildlife_Refuge_(51124330979).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Fall_in_the_boreal_forest_of_Nowitna_National_Wildlife_Refuge_%2851124330979%29.jpg/1280px-Fall_in_the_boreal_forest_of_Nowitna_National_Wildlife_Refuge_%2851124330979%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 486269,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3000,
+        2000
+      ],
+      "author_credit": "Keith Ramos / USFWS",
+      "rights_holder_type": "USFWS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a U.S. Fish and Wildlife Service employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "boreal mosaic: dark spruce patches interleaved with yellow deciduous patches; patch edges irregular",
+        "a large river with sandbars runs along the base of the hills",
+        "background hills are lower in contrast and bluer"
+      ],
+      "milestones": [
+        "R4",
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Aerial view.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TAI-02",
+      "category": "taiga",
+      "category_label": "5. Taiga / boreal forest",
+      "title": "Riparian boreal forest in spring, Yukon Delta NWR, Alaska (aerial)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Riparian_boreal_forest_(9527251560).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6d/Riparian_boreal_forest_%289527251560%29.jpg/1280px-Riparian_boreal_forest_%289527251560%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        920
+      ],
+      "preview_bytes": 436590,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3749,
+        2696
+      ],
+      "author_credit": "Kristine Sowl / USFWS",
+      "rights_holder_type": "USFWS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a U.S. Fish and Wildlife Service employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "tree cover follows the water: denser, taller forest along channels, sparser or wetland away from them",
+        "flat terrain is dotted with many small ponds and lakes",
+        "vegetation bands run parallel to the river channel"
+      ],
+      "milestones": [
+        "P1",
+        "R4",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R4 vegetation",
+        "R2 water"
+      ],
+      "notes": "Aerial view.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TAI-03",
+      "category": "taiga",
+      "category_label": "5. Taiga / boreal forest",
+      "title": "Black spruce forest under snow, White Mountains NRA, Alaska",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Snowy_boreal_forest_(51267438559).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Snowy_boreal_forest_%2851267438559%29.jpg/1280px-Snowy_boreal_forest_%2851267438559%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        759
+      ],
+      "preview_bytes": 283347,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5720,
+        3391
+      ],
+      "author_credit": "Craig McCaa / BLM Alaska",
+      "rights_holder_type": "BLM",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a Bureau of Land Management employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "narrow conical spruce crowns, irregularly spaced, with snow visible between trees",
+        "branches hold snow; ground fully white under an open canopy",
+        "low winter light with long blue shadows on snow"
+      ],
+      "milestones": [
+        "R4",
+        "R1",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R1 terrain material",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TUN-01",
+      "category": "tundra",
+      "category_label": "6. Tundra",
+      "title": "Green summer tundra and the Mulgrave Hills, Cape Krusenstern NM, Alaska",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Tundra_and_Mulgrave_Hills_(933fedb0-1dd8-b71c-079d-bd390237f5f2).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/eb/Tundra_and_Mulgrave_Hills_%28933fedb0-1dd8-b71c-079d-bd390237f5f2%29.jpg/1280px-Tundra_and_Mulgrave_Hills_%28933fedb0-1dd8-b71c-079d-bd390237f5f2%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        960
+      ],
+      "preview_bytes": 168386,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3072,
+        2304
+      ],
+      "author_credit": "NPS Photo",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work)",
+      "visual_criteria": [
+        "treeless rounded hills covered by a low continuous vegetation mat",
+        "colour varies smoothly green to olive/brown across slopes; no hard biome edge",
+        "hill forms are smooth and rounded, not spiky"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R4"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R4 vegetation"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TUN-02",
+      "category": "tundra",
+      "category_label": "6. Tundra",
+      "title": "Tundra looking south toward the Brooks Range, Arctic NWR 1002 Area",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Tundra_looking_south_toward_Brooks_Range,_Alaska.jpg",
+      "preview_url": "https://upload.wikimedia.org/wikipedia/commons/6/67/Tundra_looking_south_toward_Brooks_Range%2C_Alaska.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "preview_px": [
+        1205,
+        800
+      ],
+      "preview_bytes": 243503,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        1205,
+        800
+      ],
+      "author_credit": "U.S. Fish & Wildlife Service",
+      "rights_holder_type": "USFWS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a U.S. Fish and Wildlife Service employee (US federal government work)",
+      "visual_criteria": [
+        "flat coastal-plain tundra rising to mountains on the horizon",
+        "far mountains are desaturated and bluish",
+        "near-ground texture is low shrub/tussock, no trees anywhere"
+      ],
+      "milestones": [
+        "R4",
+        "R3",
+        "P1"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R3 atmosphere/lighting",
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "Preview is the original file (1205x800).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "TUN-03",
+      "category": "tundra",
+      "category_label": "6. Tundra",
+      "title": "Mountainous tundra landscape",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Mountainous_Tundra_Landscape_(45380376195).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b5/Mountainous_Tundra_Landscape_%2845380376195%29.jpg/1280px-Mountainous_Tundra_Landscape_%2845380376195%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        855
+      ],
+      "preview_bytes": 295150,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4000,
+        2672
+      ],
+      "author_credit": "Janet Prevey / Pacific Northwest Research Station, USDA Forest Service",
+      "rights_holder_type": "USFS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of the USDA Forest Service (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "vegetation cover thins with elevation into rock, scree and bare ground",
+        "tundra mat follows terrain smoothly; rock shows through on steeper ground"
+      ],
+      "milestones": [
+        "R1",
+        "P1"
+      ],
+      "milestone_labels": [
+        "R1 terrain material",
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "WET-01",
+      "category": "wetland",
+      "category_label": "7. Swamp, marsh, mangrove",
+      "title": "Bald cypresses in Okefenokee Swamp",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Bald_Cypress_swamp.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/Bald_Cypress_swamp.jpg/1280px-Bald_Cypress_swamp.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        846
+      ],
+      "preview_bytes": 380886,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4087,
+        2700
+      ],
+      "author_credit": "Ryan Hagerty / USFWS",
+      "rights_holder_type": "USFWS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a U.S. Fish and Wildlife Service employee (US federal government work)",
+      "visual_criteria": [
+        "trees stand directly in still, dark water; calm surface reflects trunks",
+        "trunk bases flare at the waterline",
+        "water is dark/tea-coloured, not a bright blue plane"
+      ],
+      "milestones": [
+        "R2",
+        "R4"
+      ],
+      "milestone_labels": [
+        "R2 water",
+        "R4 vegetation"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "WET-02",
+      "category": "wetland",
+      "category_label": "7. Swamp, marsh, mangrove",
+      "title": "Cypress dome in sawgrass marsh, Everglades National Park",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Cypress_dome_in_Everglades_(53409344060).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cb/Cypress_dome_in_Everglades_%2853409344060%29.jpg/1280px-Cypress_dome_in_Everglades_%2853409344060%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 456941,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6720,
+        4480
+      ],
+      "author_credit": "NPS (evergladesnps)",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "dome-shaped tree island: tallest trees in the centre, lower toward the edge, rising from flat marsh",
+        "open marsh shows tonal variation (sawgrass vs. wetter sloughs), not one flat colour",
+        "horizon nearly flat; sky dominates the frame"
+      ],
+      "milestones": [
+        "P1",
+        "R4",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R4 vegetation",
+        "R2 water"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "WET-03",
+      "category": "wetland",
+      "category_label": "7. Swamp, marsh, mangrove",
+      "title": "Hara mangrove forests near Jask, Hormozgan province, Iran",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Hara_mangrove_forrests_in_Hormozgan_province,_southern_Iran.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/Hara_mangrove_forrests_in_Hormozgan_province%2C_southern_Iran.jpg/1280px-Hara_mangrove_forrests_in_Hormozgan_province%2C_southern_Iran.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        854
+      ],
+      "preview_bytes": 478732,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6016,
+        4014
+      ],
+      "author_credit": "Okruz (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "mangrove forms a dense low canopy right at the waterline of tidal channels",
+        "the water-vegetation boundary is ragged and follows tidal creeks",
+        "coastal water is turbid green-brown, not deep blue"
+      ],
+      "milestones": [
+        "R4",
+        "R2"
+      ],
+      "milestone_labels": [
+        "R4 vegetation",
+        "R2 water"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "WET-04",
+      "category": "wetland",
+      "category_label": "7. Swamp, marsh, mangrove",
+      "title": "Brahmani delta: mangroves and beach ridges (ISS astronaut photo)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Aerial_satellite_imagery_of_Brahmani_delta,_mangrove_and_beach_ridges.JPG",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/Aerial_satellite_imagery_of_Brahmani_delta%2C_mangrove_and_beach_ridges.JPG/1280px-Aerial_satellite_imagery_of_Brahmani_delta%2C_mangrove_and_beach_ridges.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        850
+      ],
+      "preview_bytes": 452762,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4288,
+        2848
+      ],
+      "author_credit": "NASA (ISS030 crew photo)",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "mangrove belt follows a branching tidal-channel network near the coast",
+        "beach ridges run parallel to the shoreline behind the beach",
+        "sediment colours coastal water brown near river mouths"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Orbital oblique view.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "MTN-01",
+      "category": "mountain",
+      "category_label": "8. High mountains, snow, glaciers (treeline, snowline)",
+      "title": "A snowy Tatoosh Range rises above the treeline, Mount Rainier NP",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:A_snowy_Tatoosh_Range_rises_above_the_treeline._(bd00c08e-cdcf-4e34-a9b3-90796d8af6ce).JPEG",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/80/A_snowy_Tatoosh_Range_rises_above_the_treeline._%28bd00c08e-cdcf-4e34-a9b3-90796d8af6ce%29.JPEG/1280px-A_snowy_Tatoosh_Range_rises_above_the_treeline._%28bd00c08e-cdcf-4e34-a9b3-90796d8af6ce%29.JPEG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 322862,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6000,
+        4000
+      ],
+      "author_credit": "NPS Photo",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work)",
+      "visual_criteria": [
+        "TREELINE: ragged and fingered (trees push up ridges and gullies), not a contour line",
+        "above the treeline only rock and snow; snow lingers in gullies and shaded faces",
+        "peaks are jagged but sit on talus/scree aprons"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R4"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R4 vegetation"
+      ],
+      "notes": "Treeline reference.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "MTN-02",
+      "category": "mountain",
+      "category_label": "8. High mountains, snow, glaciers (treeline, snowline)",
+      "title": "Termination dust (first autumn snow) in the Chugach Mountains, Alaska",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Termination_Dust.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/60/Termination_Dust.jpg/1280px-Termination_Dust.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        960
+      ],
+      "preview_bytes": 288210,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        1930,
+        1448
+      ],
+      "author_credit": "Williamkholeif (own work)",
+      "rights_holder_type": "individual",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: released into the public domain worldwide by the copyright holder",
+      "visual_criteria": [
+        "SNOWLINE: fresh snow ends at a near-constant elevation across many slopes (a horizontal band)",
+        "below the snowline autumn vegetation colours, above it white",
+        "the snowline edge is slightly patchy over tens of metres, not razor-sharp"
+      ],
+      "milestones": [
+        "P1",
+        "R1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material"
+      ],
+      "notes": "Snowline reference. Released to the public domain by the author (Commons PD template).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "MTN-03",
+      "category": "mountain",
+      "category_label": "8. High mountains, snow, glaciers (treeline, snowline)",
+      "title": "The Alaska Range from Unit 13, Denali backcountry: rock-covered glacier between snow-capped mountains",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:The_Alaska_Range_seen_from_Unit_13_in_Denali%27s_backcountry_on_June_13,_2019._(6ff804de-cbba-4e96-bbe4-738a0070cdc8).JPG",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c4/The_Alaska_Range_seen_from_Unit_13_in_Denali%27s_backcountry_on_June_13%2C_2019._%286ff804de-cbba-4e96-bbe4-738a0070cdc8%29.JPG/1280px-The_Alaska_Range_seen_from_Unit_13_in_Denali%27s_backcountry_on_June_13%2C_2019._%286ff804de-cbba-4e96-bbe4-738a0070cdc8%29.JPG?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        831
+      ],
+      "preview_bytes": 316532,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        8311,
+        5396
+      ],
+      "author_credit": "Emily Mesner / NPS",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work)",
+      "visual_criteria": [
+        "valley glacier surface is covered in dark rock debris (moraine bands), not clean white",
+        "snow sticks to gentler slopes; the steepest rock faces stay bare",
+        "the glacier occupies the valley axis, the lowest line of the valley"
+      ],
+      "milestones": [
+        "P1",
+        "R1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material"
+      ],
+      "notes": "Glacier reference.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "MTN-04",
+      "category": "mountain",
+      "category_label": "8. High mountains, snow, glaciers (treeline, snowline)",
+      "title": "Ladder Creek and Neve Glaciers, Snowfield Peak, North Cascades NP",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Neve_Glacier_North_Cascades_USGS.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Neve_Glacier_North_Cascades_USGS.jpg/1280px-Neve_Glacier_North_Cascades_USGS.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1116
+      ],
+      "preview_bytes": 391829,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        2882,
+        2512
+      ],
+      "author_credit": "M. F. Meier / U.S. Geological Survey",
+      "rights_holder_type": "USGS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: material from the U.S. Geological Survey",
+      "visual_criteria": [
+        "glacierized peaks rise abruptly above heavily forested valleys (<1000 m elevation)",
+        "forest is continuous in the valleys and thins upward to alpine rock and ice",
+        "glaciers sit in cirques/basins below ridges and show crevasse texture"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R4"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R4 vegetation"
+      ],
+      "notes": "Treeline + glacier in one frame; historical USGS Photographic Library image.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "MTN-05",
+      "category": "mountain",
+      "category_label": "8. High mountains, snow, glaciers (treeline, snowline)",
+      "title": "Mount Taranaki's Ring of Forest (Landsat 8 OLI, 10 June 2023)",
+      "source": "NASA Earth Observatory",
+      "source_page_url": "https://science.nasa.gov/earth/earth-observatory/mount-taranakis-ring-of-forest-153342",
+      "source_page_note": "earthobservatory.nasa.gov/images/153342/mount-taranakis-ring-of-forest now redirects (301) here",
+      "preview_url": "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/imagerecords/153000/153342/mttaranaki_oli_20230610.jpg",
+      "preview_px": [
+        null,
+        null
+      ],
+      "preview_bytes": 230915,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded); pixel size not reported by HEAD",
+      "author_credit": "NASA Earth Observatory image by Wanmei Liang, using Landsat data from the U.S. Geological Survey",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain (NASA content, not subject to US copyright)",
+      "licence_long": "NASA Images and Media Usage Guidelines",
+      "licence_evidence": "EO page credit (opened 2026-11-20): 'NASA Earth Observatory image by Wanmei Liang, using Landsat data from the U.S. Geological Survey'. NASA guidelines page https://www.nasa.gov/nasa-brand-center/images-and-media/ : NASA images generally are not subject to copyright in the US; third-party material is marked. Exception on this page: the ground photo by Kathrin & Stefan Marks is CC BY-NC-ND 2.0 and is excluded. Commons mirror tagged Public domain (NASA).",
+      "alt_source": {
+        "source_page_url": "https://commons.wikimedia.org/wiki/File:Mount_Taranaki%E2%80%99s_Ring_of_Forest_(153342).jpg",
+        "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fa/Mount_Taranaki%E2%80%99s_Ring_of_Forest_%28153342%29.jpg/1280px-Mount_Taranaki%E2%80%99s_Ring_of_Forest_%28153342%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+        "preview_px": [
+          1280,
+          853
+        ],
+        "preview_bytes": 422270,
+        "licence": "Public domain"
+      },
+      "visual_criteria": [
+        "from above: snow cap, bare rock/scree, alpine scrub and dark forest form concentric zones that follow elevation",
+        "radial gullies are carved into the cone",
+        "natural zone boundaries are irregular; the only perfectly sharp circular edge is the human park boundary (forest vs pasture)"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R4"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R4 vegetation"
+      ],
+      "notes": "The EO page also shows a ground photo by Kathrin & Stefan Marks under CC BY-NC-ND 2.0; that photo is NOT part of this entry. Commons mirror listed under alt_source.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "MTN-06",
+      "category": "mountain",
+      "category_label": "8. High mountains, snow, glaciers (treeline, snowline)",
+      "title": "Mont Turia and Mont Pourri seen from the Aiguille Rouge, Les Arcs, French Alps",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Mont_Turia_and_Mont_Pourri_seen_from_the_Aiguille_Rouge,_Les_Arcs,_2017.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0a/Mont_Turia_and_Mont_Pourri_seen_from_the_Aiguille_Rouge%2C_Les_Arcs%2C_2017.jpg/1280px-Mont_Turia_and_Mont_Pourri_seen_from_the_Aiguille_Rouge%2C_Les_Arcs%2C_2017.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        851
+      ],
+      "preview_bytes": 268298,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5810,
+        3863
+      ],
+      "author_credit": "DimiTalen (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "glacier tongues and snowfields sit in high basins with bare grey rock ridges between them",
+        "snow is absent on the steepest faces and present on gentler slopes and ledges",
+        "distant summits are hazier and bluer than near ones"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R3"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "Commons Quality image.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "CST-01",
+      "category": "coast",
+      "category_label": "9. Coast and beach (rocky coast, surf, foam)",
+      "title": "Big surf morning, James Island, Rialto Beach, Olympic NP",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Big_surf_morning_james_island_rialto_beach_summer_d_archuleta_2015_(23796781053).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/69/Big_surf_morning_james_island_rialto_beach_summer_d_archuleta_2015_%2823796781053%29.jpg/1280px-Big_surf_morning_james_island_rialto_beach_summer_d_archuleta_2015_%2823796781053%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 199624,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6000,
+        4000
+      ],
+      "author_credit": "D. Archuleta / Olympic National Park (NPS)",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "several parallel breaker lines, each followed by a white foam band; foam thins toward the beach",
+        "spray/mist lowers contrast of the offshore island behind the surf",
+        "wet sand near the swash line is darker and reflective"
+      ],
+      "milestones": [
+        "R2",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R2 water",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "Surf/foam reference.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "CST-02",
+      "category": "coast",
+      "category_label": "9. Coast and beach (rocky coast, surf, foam)",
+      "title": "Sea stacks and crashing waves at Second Beach, Olympic Coast NMS",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:OCNMS_-_Surfers_At_Second_Beach_(30550423453).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/04/OCNMS_-_Surfers_At_Second_Beach_%2830550423453%29.jpg/1280px-OCNMS_-_Surfers_At_Second_Beach_%2830550423453%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        721
+      ],
+      "preview_bytes": 291490,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5615,
+        3163
+      ],
+      "author_credit": "Matt McIntosh / NOAA",
+      "rights_holder_type": "NOAA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: material from NOAA made as part of an employee's official duties; Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "white foam forms where waves break; foam streaks trail behind breakers",
+        "sea stacks rise straight out of the surf with wave-cut bases",
+        "sunset sky reflects on wet sand and water"
+      ],
+      "milestones": [
+        "R2",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R2 water",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "CST-03",
+      "category": "coast",
+      "category_label": "9. Coast and beach (rocky coast, surf, foam)",
+      "title": "Black Sand Beach, King Range NCA, California (Lost Coast)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Black_Sand_Beach_(54103811794).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/db/Black_Sand_Beach_%2854103811794%29.jpg/1280px-Black_Sand_Beach_%2854103811794%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        782
+      ],
+      "preview_bytes": 269423,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        9504,
+        5807
+      ],
+      "author_credit": "BLM California",
+      "rights_holder_type": "BLM",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a Bureau of Land Management employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "mountains rise steeply straight out of the surf; no wide flat coastal plain",
+        "surf zone shows multiple breaker lines with foam between them",
+        "dark sand beach is a narrow strip between surf and slope"
+      ],
+      "milestones": [
+        "P1",
+        "R2",
+        "R1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water",
+        "R1 terrain material"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "CST-04",
+      "category": "coast",
+      "category_label": "9. Coast and beach (rocky coast, surf, foam)",
+      "title": "Simon's Town rocks (HDRI) - rocky coast in morning sun",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/simons_town_rocks",
+      "api_url": "https://api.polyhaven.com/info/simons_town_rocks",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/simons_town_rocks.png?width=630&v=4349bf17",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 399292,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/simons_town_rocks.png?height=760&v=4349bf17",
+      "larger_preview_bytes": 1543198,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Greg Zaal (HDRI), Rico Cilliers (backplates) / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Coast & Water/Rocky Coast/Rocky Shorelines",
+      "polyhaven_description": "Free 16K unclipped HDRI of morning sun over a rocky coast with a partly cloudy sky, high-contrast natural light and warm reflections on wet rocks and the ocean.",
+      "visual_criteria": [
+        "rocks near the waterline are darker and glossier (wet) than dry rocks above",
+        "shallow water near shore is clearer/greener than deep water farther out"
+      ],
+      "milestones": [
+        "R2",
+        "R1",
+        "R3"
+      ],
+      "milestone_labels": [
+        "R2 water",
+        "R1 terrain material",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RIV-01",
+      "category": "river",
+      "category_label": "10. River valleys and waterfalls",
+      "title": "Meandering river, Innoko National Wildlife Refuge, Alaska (aerial)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Meandering_River_2_Innoko_NWR.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/72/Meandering_River_2_Innoko_NWR.jpg/1280px-Meandering_River_2_Innoko_NWR.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        861
+      ],
+      "preview_bytes": 180029,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        2100,
+        1412
+      ],
+      "author_credit": "U.S. Fish and Wildlife Service",
+      "rights_holder_type": "USFWS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a U.S. Fish and Wildlife Service employee (US federal government work)",
+      "visual_criteria": [
+        "MEANDER: sinuous loops with point bars on inner bends and cut banks on outer bends",
+        "abandoned loops / oxbow lakes and scroll bars lie beside the active channel",
+        "channel width stays roughly constant along the reach; floodplain flat and forested"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Meandering-river reference.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RIV-02",
+      "category": "river",
+      "category_label": "10. River valleys and waterfalls",
+      "title": "Montmorency Falls, Quebec",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Parc_de_la_Chute-Montmorency_001.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/ff/Parc_de_la_Chute-Montmorency_001.jpg/1280px-Parc_de_la_Chute-Montmorency_001.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        733
+      ],
+      "preview_bytes": 331812,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        15189,
+        8701
+      ],
+      "author_credit": "Wilfredor (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "WATERFALL: water turns white and opaque as it falls, with mist at the base",
+        "the river drops over a cliff into a plunge pool and widens downstream",
+        "the cliff face around the fall is bare, wet, dark rock"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Commons Quality image (original 15189 px wide).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RIV-03",
+      "category": "river",
+      "category_label": "10. River valleys and waterfalls",
+      "title": "Ulaan Tsutgalan waterfall, Orkhon Valley, Mongolia",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Ulaan_Tsutgalan_Waterfall.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Ulaan_Tsutgalan_Waterfall.jpg/1280px-Ulaan_Tsutgalan_Waterfall.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        762
+      ],
+      "preview_bytes": 520917,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3812,
+        2268
+      ],
+      "author_credit": "Bernard Gagnon (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "the river is incised into a gorge while the surrounding steppe plateau stays flat",
+        "wet dark rock and white spray around the fall"
+      ],
+      "milestones": [
+        "P1",
+        "R2",
+        "R1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water",
+        "R1 terrain material"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "RIV-04",
+      "category": "river",
+      "category_label": "10. River valleys and waterfalls",
+      "title": "View of the Muhr Valley towards Pichlern, Lungau, Austria",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:View_of_the_Muhr_Valley_towards_Pichlern_from_the_B99_at_Staig,_St._Margarethen_im_Lungau,_2023.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/View_of_the_Muhr_Valley_towards_Pichlern_from_the_B99_at_Staig%2C_St._Margarethen_im_Lungau%2C_2023.jpg/1280px-View_of_the_Muhr_Valley_towards_Pichlern_from_the_B99_at_Staig%2C_St._Margarethen_im_Lungau%2C_2023.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        851
+      ],
+      "preview_bytes": 183256,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6016,
+        4000
+      ],
+      "author_credit": "DimiTalen (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "flat green valley floor with river and fields, forested lower slopes, steeper bare upper slopes",
+        "valley floor greener than ridges",
+        "far end of the valley hazier than the near slopes"
+      ],
+      "milestones": [
+        "P1",
+        "R1",
+        "R4",
+        "R3"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material",
+        "R4 vegetation",
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "LAK-01",
+      "category": "lake",
+      "category_label": "11. Lakes in a landscape",
+      "title": "Crater Lake in summer: Phantom Ship with Mount Scott, from Garfield Peak",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Crater_Lake_in_Summer_2,_Crater_Lake_National_Park.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Crater_Lake_in_Summer_2%2C_Crater_Lake_National_Park.jpg/1280px-Crater_Lake_in_Summer_2%2C_Crater_Lake_National_Park.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        960
+      ],
+      "preview_bytes": 436344,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3648,
+        2736
+      ],
+      "author_credit": "National Park Service",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work)",
+      "visual_criteria": [
+        "deep water is a saturated dark blue that lightens only near the shore",
+        "caldera walls drop steeply into the water with talus at their foot",
+        "the lake surface is not a mirror-flat single colour: wind ripples change tone in patches"
+      ],
+      "milestones": [
+        "R2",
+        "P1"
+      ],
+      "milestone_labels": [
+        "R2 water",
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "LAK-02",
+      "category": "lake",
+      "category_label": "11. Lakes in a landscape",
+      "title": "Lac du Lou from below Col de la Chambre, Les Menuires, French Alps",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Lac_du_Lou_from_below_Col_de_la_Chambre,_Les_Menuires.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/Lac_du_Lou_from_below_Col_de_la_Chambre%2C_Les_Menuires.jpg/1280px-Lac_du_Lou_from_below_Col_de_la_Chambre%2C_Les_Menuires.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        851
+      ],
+      "preview_bytes": 305956,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4758,
+        3164
+      ],
+      "author_credit": "DimiTalen (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "alpine lake sits at the lowest point of its basin; the shoreline follows a contour",
+        "surroundings are grass and rock with no trees (above treeline)",
+        "calm water reflects the surrounding slopes"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Commons Quality image.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "LAK-03",
+      "category": "lake",
+      "category_label": "11. Lakes in a landscape",
+      "title": "Waterton Lakes National Park",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Waterton_Lakes_National_Park_(48490188676).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b5/Waterton_Lakes_National_Park_%2848490188676%29.jpg/1280px-Waterton_Lakes_National_Park_%2848490188676%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 292929,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        6720,
+        4480
+      ],
+      "author_credit": "Glacier NPS (Flickr)",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "long narrow glacial lake filling a trough between steep mountains",
+        "forested lower slopes, bare rock higher up",
+        "water tone varies with depth and wind (ripples vs. calm patches)"
+      ],
+      "milestones": [
+        "P1",
+        "R2",
+        "R4"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water",
+        "R4 vegetation"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-01",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "Hadramawt Plateau, Yemen: dendritic Wadi Hadramawt (Gemini 4 photo)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:S65-34658_The_Hadramawt_Plateau,_Yemen_on_Earth.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/S65-34658_The_Hadramawt_Plateau%2C_Yemen_on_Earth.jpg/1280px-S65-34658_The_Hadramawt_Plateau%2C_Yemen_on_Earth.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1245
+      ],
+      "preview_bytes": 463479,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        1700,
+        1654
+      ],
+      "author_credit": "NASA (Gemini 4, S65-34658)",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "DENDRITIC: tributaries join at acute angles and channel order grows downstream",
+        "plateau surfaces between wadis stay flat and intact; erosion is concentrated in channels",
+        "drainage density is roughly uniform over uniform rock"
+      ],
+      "milestones": [
+        "P1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "G-SHAPE reference; oblique 1965 film photo.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-02",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "Drainage patterns in the Empty Quarter, Saudi Arabia (STS-55)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:STS055-16-009_-_STS-055_-_Detail_Views_of_Drainage_Patterns_in_the_Empty_Quarter,_Saudi_Arabia_-_DPLA_-_e66289bf78417e61a5a6cc7b98c40930.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d7/STS055-16-009_-_STS-055_-_Detail_Views_of_Drainage_Patterns_in_the_Empty_Quarter%2C_Saudi_Arabia_-_DPLA_-_e66289bf78417e61a5a6cc7b98c40930.jpg/1280px-STS055-16-009_-_STS-055_-_Detail_Views_of_Drainage_Patterns_in_the_Empty_Quarter%2C_Saudi_Arabia_-_DPLA_-_e66289bf78417e61a5a6cc7b98c40930.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        805
+      ],
+      "preview_bytes": 140278,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3568,
+        2245
+      ],
+      "author_credit": "NASA Johnson Space Center (via U.S. National Archives)",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "every channel joins a larger one (tree topology, no loops, no parallel artefacts)",
+        "channel floors and interfluves differ in tone along the whole network"
+      ],
+      "milestones": [
+        "P1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "G-SHAPE reference; exact location unknown per NASA caption.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-03",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "Alluvial fan between the Kunlun and Altun ranges, Taklimakan Desert (ASTER)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Alluvial_fan,_Taklimakan_Desert,_XinJiang_Province,_China,_NASA,_ASTER.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7d/Alluvial_fan%2C_Taklimakan_Desert%2C_XinJiang_Province%2C_China%2C_NASA%2C_ASTER.jpg/1280px-Alluvial_fan%2C_Taklimakan_Desert%2C_XinJiang_Province%2C_China%2C_NASA%2C_ASTER.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1386
+      ],
+      "preview_bytes": 729097,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3774,
+        4086
+      ],
+      "author_credit": "NASA/GSFC/METI/ERSDAC/JAROS and U.S./Japan ASTER Science Team",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "ALLUVIAL FAN: radiates from one apex where the river leaves the mountains",
+        "distributary channels braid and spread downslope; only one sector is active (wet)",
+        "mountains behind the apex are deeply dissected, fan surface smooth"
+      ],
+      "milestones": [
+        "P1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)"
+      ],
+      "notes": "Commons Featured picture. ASTER colour composite (water appears blue).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-04",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "Building up the Yellow River delta (Landsat)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Building_Up_the_Yellow_River_Delta.jpeg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/28/Building_Up_the_Yellow_River_Delta.jpeg/1280px-Building_Up_the_Yellow_River_Delta.jpeg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1422
+      ],
+      "preview_bytes": 800867,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4022,
+        4469
+      ],
+      "author_credit": "NASA Earth Observatory images by Lauren Dauphin, using Landsat data from the USGS",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "DELTA: distributary channels fork downstream (opposite of tributary joins)",
+        "the delta lobe protrudes into the sea with a sediment plume at the active mouth",
+        "coastline is irregular with tidal flats"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Commons Featured picture.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-05",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "The meandering estuaries of Guinea-Bissau (Landsat 8 OLI)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Guineabissau_oli_2018137_lrg.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1a/Guineabissau_oli_2018137_lrg.jpg/1280px-Guineabissau_oli_2018137_lrg.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1049
+      ],
+      "preview_bytes": 548631,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5130,
+        4203
+      ],
+      "author_credit": "NASA Earth Observatory images by Joshua Stevens, using Landsat data from the USGS",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted)",
+      "visual_criteria": [
+        "tidal channels branch like roots; channel width shrinks quickly inland",
+        "sediment-laden water is lighter brown near the coast, darker offshore"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Commons Featured picture.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-06",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "The dizzying depths of Cotahuasi Canyon, Peru (Landsat 8, oblique)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:The_Dizzying_Depths_of_Cotahuasi_Canyon_(153210_-_cotahuasi_oli_2016155_oblique_lrg).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/The_Dizzying_Depths_of_Cotahuasi_Canyon_%28153210_-_cotahuasi_oli_2016155_oblique_lrg%29.jpg/1280px-The_Dizzying_Depths_of_Cotahuasi_Canyon_%28153210_-_cotahuasi_oli_2016155_oblique_lrg%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        960
+      ],
+      "preview_bytes": 493192,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        8192,
+        6144
+      ],
+      "author_credit": "NASA Earth Observatory images by Joshua Stevens, using Landsat data from the USGS",
+      "rights_holder_type": "NASA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: solely created by NASA (NASA material not protected by copyright unless noted); Public domain: material from the U.S. Geological Survey",
+      "visual_criteria": [
+        "ERODED RIDGES: tributary canyons leave knife-edge ridges between them",
+        "the plateau surface survives above canyon rims; erosion concentrates along drainage",
+        "snow only on the highest volcanic peaks above the plateau"
+      ],
+      "milestones": [
+        "P1",
+        "R1"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R1 terrain material"
+      ],
+      "notes": "Oblique view made from Landsat data (NASA Earth Observatory).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-07",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "Meandering course of the Red River, Lafayette and Miller counties, Arkansas (NAIP orthophoto)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:RedRiverMeandersArkansas1.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5e/RedRiverMeandersArkansas1.jpg/1280px-RedRiverMeandersArkansas1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        1500
+      ],
+      "preview_bytes": 799895,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        3055,
+        3580
+      ],
+      "author_credit": "USDA Farm Service Agency (NAIP 2010)",
+      "rights_holder_type": "USDA",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a US federal employee (17 U.S.C. 105)",
+      "visual_criteria": [
+        "point bars, abandoned meander loops, oxbow lakes and ridge-and-swale scroll topography",
+        "scroll ridges record former channel positions in concentric arcs",
+        "the active channel is a single thread with wider sections at bends"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "Orthophoto (top-down).",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "AER-08",
+      "category": "aerial",
+      "category_label": "12. Aerial/satellite drainage (G-SHAPE)",
+      "title": "Arctic wetland: network of rivers intertwined on the tundra, Arctic NWR (aerial)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Arctic_Wetland_(48753081712).jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a1/Arctic_Wetland_%2848753081712%29.jpg/1280px-Arctic_Wetland_%2848753081712%29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        853
+      ],
+      "preview_bytes": 322512,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        5946,
+        3964
+      ],
+      "author_credit": "Lisa Hupp / USFWS",
+      "rights_holder_type": "USFWS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a U.S. Fish and Wildlife Service employee (US federal government work); Flickr source reviewed by FlickreviewR: Public Domain Mark",
+      "visual_criteria": [
+        "channels split and rejoin across flat tundra (braided/anastomosing)",
+        "many ponds; the land-water edge is highly irregular (fractal)"
+      ],
+      "milestones": [
+        "P1",
+        "R2"
+      ],
+      "milestone_labels": [
+        "P1 World v2 (landforms, hydrology, climate)",
+        "R2 water"
+      ],
+      "notes": "",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "ATM-01",
+      "category": "atmo",
+      "category_label": "13. Atmosphere / aerial perspective / golden hour (optional)",
+      "title": "Glacier Peak and Disappointment Peak from the mouth of the White River (1963 NPS North Cascades survey)",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Glacier_Peak_and_Disappointment_Peak_from_White_River_(ae5685a8-2e0e-4775-977e-07f43d5ede43).tif",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/67/Glacier_Peak_and_Disappointment_Peak_from_White_River_%28ae5685a8-2e0e-4775-977e-07f43d5ede43%29.tif/lossy-page1-1280px-Glacier_Peak_and_Disappointment_Peak_from_White_River_%28ae5685a8-2e0e-4775-977e-07f43d5ede43%29.tif.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        831
+      ],
+      "preview_bytes": 152874,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        8061,
+        5232
+      ],
+      "author_credit": "NPS Photo (North Cascades NPS Complex Museum Collection)",
+      "rights_holder_type": "NPS",
+      "licence": "Public domain",
+      "licence_long": "Public domain",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): Public domain: work of a National Park Service employee (US federal government work)",
+      "visual_criteria": [
+        "AERIAL PERSPECTIVE: at least three ridge layers, each farther one lighter and lower in contrast",
+        "the far snow peak stays bright but bluish; cloud wraps around the summit"
+      ],
+      "milestones": [
+        "R3"
+      ],
+      "milestone_labels": [
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "NPS North Cascades museum collection (caption cites the 1963 NPS North Cascades survey series); TIFF original, JPEG preview rendition.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "ATM-02",
+      "category": "atmo",
+      "category_label": "13. Atmosphere / aerial perspective / golden hour (optional)",
+      "title": "Mystic layers of Agumbe: mist over forested Western Ghats ridges",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Mystic_Layers_of_Agumbe.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/09/Mystic_Layers_of_Agumbe.jpg/1280px-Mystic_Layers_of_Agumbe.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        964
+      ],
+      "preview_bytes": 435716,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        8160,
+        6144
+      ],
+      "author_credit": "Pradyumnakp (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "mist lies in the valleys, lower than the ridgelines",
+        "ridge silhouettes fade toward the sky colour with distance",
+        "dense tropical canopy in the foreground keeps full saturation"
+      ],
+      "milestones": [
+        "R3",
+        "R4"
+      ],
+      "milestone_labels": [
+        "R3 atmosphere/lighting",
+        "R4 vegetation"
+      ],
+      "notes": "Also a rainforest-from-above reference.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "ATM-03",
+      "category": "atmo",
+      "category_label": "13. Atmosphere / aerial perspective / golden hour (optional)",
+      "title": "Chepino Valley at early sunset with the Rila Mountains in the distance",
+      "source": "Wikimedia Commons",
+      "source_page_url": "https://commons.wikimedia.org/wiki/File:Chepino_Valley_Landscape.jpg",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/27/Chepino_Valley_Landscape.jpg/1280px-Chepino_Valley_Landscape.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "preview_px": [
+        1280,
+        848
+      ],
+      "preview_bytes": 152547,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "original_px": [
+        4886,
+        3236
+      ],
+      "author_credit": "Nannoyani (own work)",
+      "rights_holder_type": "individual",
+      "licence": "CC0",
+      "licence_long": "Creative Commons Zero, Public Domain Dedication",
+      "licence_evidence": "Licence box on the Commons file page (opened 2026-11-20): CC0 1.0 Universal Public Domain Dedication",
+      "visual_criteria": [
+        "GOLDEN HOUR: warm low-angle light on near slopes; distant range bluish and desaturated",
+        "long shadows from trees and hills fall across the valley floor"
+      ],
+      "milestones": [
+        "R3"
+      ],
+      "milestone_labels": [
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "Commons Quality image.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    },
+    {
+      "id": "ATM-04",
+      "category": "atmo",
+      "category_label": "13. Atmosphere / aerial perspective / golden hour (optional)",
+      "title": "Kiara 8 sunset (HDRI) - golden sunset over rocky ridges and a valley",
+      "source": "Poly Haven",
+      "source_page_url": "https://polyhaven.com/a/kiara_8_sunset",
+      "api_url": "https://api.polyhaven.com/info/kiara_8_sunset",
+      "preview_url": "https://cdn.polyhaven.com/asset_img/thumbs/kiara_8_sunset.png?width=630&v=608f2ee1",
+      "preview_px": [
+        630,
+        null
+      ],
+      "preview_bytes": 379104,
+      "preview_size_basis": "HTTP HEAD Content-Length (no image body downloaded)",
+      "larger_preview_url": "https://cdn.polyhaven.com/asset_img/primary/kiara_8_sunset.png?height=760&v=608f2ee1",
+      "larger_preview_bytes": 1394271,
+      "larger_preview_note": "760 px tall equirectangular (about 1520 px wide), slightly above the 1280 px guideline",
+      "author_credit": "Greg Zaal / Poly Haven",
+      "rights_holder_type": "Poly Haven",
+      "licence": "CC0",
+      "licence_long": "CC0 1.0 Universal - public domain dedication, no attribution required",
+      "licence_evidence": "Asset page (opened 2026-11-20) declares licence https://creativecommons.org/publicdomain/zero/1.0/ ('CC0 1.0 Universal - public domain dedication, no attribution required'); https://polyhaven.com/license states all Poly Haven assets are CC0.",
+      "polyhaven_category": "Mountains & Hills/Valleys/Arid & Rocky Valleys",
+      "polyhaven_description": "Free 16K, unclipped HDRI showing a clear, high-contrast golden sunset over rocky ridges and a valley, warm low sun casting long shadows and crisp natural light.",
+      "visual_criteria": [
+        "warm/cool split: sunlit faces orange, shadows blue",
+        "sky gradient from orange at the horizon to deep blue overhead",
+        "long ridge shadows across the valley"
+      ],
+      "milestones": [
+        "R3"
+      ],
+      "milestone_labels": [
+        "R3 atmosphere/lighting"
+      ],
+      "notes": "360-degree equirectangular HDRI panorama.",
+      "criteria_basis": "Written from the source caption/metadata and biome knowledge; the image itself was not downloaded, so the owner confirms each criterion by eye at G-REF."
+    }
+  ]
+}
