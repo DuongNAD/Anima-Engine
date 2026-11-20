@@ -368,12 +368,19 @@ function withTempWorktree(patchFile, { needsNodeModules = false, needsCargo = fa
 
 const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 
-function pickLine(output, matchers) {
+function pickLine(output, matchers, failed = false) {
   const lines = output
     .replace(ANSI_ESCAPE_RE, '')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('>') && !line.startsWith('npm error'));
+    .filter((line) => line.length > 0 && !line.startsWith('>') && !line.startsWith('npm error'))
+    .filter(
+      (line) =>
+        !failed ||
+        !/^(?:test .+ \.\.\. ok|Running |Compiling |Checking |Finished |Blocking waiting for file lock)/.test(
+          line,
+        ),
+    );
   for (const matcher of matchers) {
     const found = lines.find((line) => matcher.test(line));
     if (found) return found;
@@ -914,7 +921,7 @@ const GATES = [
         { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '60' },
       );
     },
-    matchers: [/energy|closed|drift|conserve|residual/i, /test .* FAILED/],
+    matchers: [/closed EU drifted/i, /assertion .*failed/i, /test .* FAILED/],
   },
   {
     id: 'live_experiment_fork',
@@ -968,7 +975,7 @@ const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/golden|GOLDEN|world_hash|assertion `left == right` failed/i, /test .* FAILED/],
+    matchers: [/world_hash doi/, /assertion `left == right` failed/i, /test .* FAILED/],
   },
   {
     id: 'check_licenses',
@@ -981,7 +988,7 @@ const GATES = [
     run(wt) {
       return runShell('npm run check:licenses', wt, cargoEnv());
     },
-    matchers: [/differs|stale|sha256|adler2|check:licenses|third-party/i],
+    matchers: [/differs|stale|out of date/i, /adler2|sha256/i, /third-party/i],
   },
   {
     id: 'check_sbom',
@@ -1397,7 +1404,7 @@ function evaluateGate(gate, ctx) {
   );
   const elapsedSecs = Math.round(((performance.now() - t0) / 1000) * 100) / 100;
   const verdict = res.status === 0 ? 'VACUOUS' : 'CATCHES';
-  const namingLine = pickLine(res.output, gate.matchers);
+  const namingLine = pickLine(res.output, gate.matchers, res.status !== 0);
   return {
     id: gate.id,
     source: gate.source,
