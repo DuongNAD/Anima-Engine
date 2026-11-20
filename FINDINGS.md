@@ -30,6 +30,16 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-054 — `check:bundle` nhận ra chunk 3D chỉ bằng tên file, nên không thấy three.js bị import thẳng vào trang chính
+- **Ngày:** 2026-11-20
+- **Loại:** BUG
+- **Vị trí:** `scripts/check_bundle_budget.mjs:170` (`THREE_D_CHUNK = /^react-three-fiber/`), dùng ở `:180-198` cho kiểm tra tách route.
+- **Phát hiện bởi:** tay (người thẩm định độc lập thẻ M2, PR #188; lead tái hiện lại)
+- **Triệu chứng:** Chú thích ở `:147-158` nói kiểm tra tách route bắt đúng trường hợp có người thêm `import * as THREE from 'three'` vào trang chính. Khi làm đúng như vậy, rolldown gom three.js vào một chunk tên `defineProperty-*.js` (502 KiB) và `index.html` tải nó, nhưng kiểm tra in `entry index.html ... 3D renderer: no` và không báo lỗi, vì tên chunk không bắt đầu bằng `react-three-fiber`. Cổng vẫn đỏ, nhưng chỉ nhờ ngân sách byte: chunk `defineProperty` vượt 170 KiB, tổng chỉ vượt 3,2 KiB. Một thay đổi nhỏ hơn về byte sẽ lọt qua.
+- **Tái hiện:** trên trunk `4794b6f`: `git show 82a7a604:scripts/paper/gate_faults/check_bundle.patch | git apply && npm run build && npm run check:bundle`. Kết quả có dòng `entry index.html 12 static chunk(s), 3D renderer: no` và `OVER defineProperty 501.9 KiB`. Hoàn tác bằng `git checkout -- src/App.tsx`.
+- **Test khoá lại:** chưa có. Bản sửa nên nhận ra three.js theo nội dung hoặc theo module gốc trong manifest của Vite, không theo tên chunk; đối chứng âm chính là patch trên.
+- **Trạng thái:** OPEN.
+
 ### F-053 — `live.mean_lifespan` trong `final_observables` luôn bằng 0: cửa sổ đã bị lần lấy mẫu cuối rút cạn trước khi đọc
 - **Ngày:** 2026-11-20
 - **Loại:** BUG
