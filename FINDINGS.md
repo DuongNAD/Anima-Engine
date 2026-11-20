@@ -30,6 +30,34 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-053 — `live.mean_lifespan` trong `final_observables` luôn bằng 0: cửa sổ đã bị lần lấy mẫu cuối rút cạn trước khi đọc
+- **Ngày:** 2026-11-20
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/live_experiment.rs:1700-1710`: lần lấy mẫu chuỗi thời gian gọi `VitalStatistics::sample_window()`, hàm này đóng và xoá cửa sổ sinh/chết.
+  - `src-tauri/src/core/experiment_runner.rs:548` (`final_observables = model.observables()`): đọc sau mẫu cuối, đi qua `peek_window()` trên một cửa sổ đã trống, nên `mean_lifespan = None`, ghi ra thành `0.0`.
+- **Phát hiện bởi:** tay (người thẩm định độc lập thẻ E3-X-run)
+- **Triệu chứng:** Trong E3-X (#181), `live.mean_lifespan` ở `final-observables.json` bằng `0.0` ở cả 36/36 lượt, dù các cá thể có chết. Endpoint phụ S6 của E3 vì thế đọc một cửa sổ rỗng và được ghi là `reported_not_interpreted_structural_zero`. Mọi observable khác tính theo cửa sổ sinh/chết mà được đọc trong `final_observables` ngay sau một mẫu ở cùng tick đều có thể gặp đúng lỗi này.
+- **Tái hiện:** `python3 -c "import json;d=json.load(open('artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/final-observables.json'));print(d)" | grep -o "live.mean_lifespan[^,]*"`: cả 36 giá trị đều là `0.0`.
+- **Test khoá lại:** chưa có.
+- **Trạng thái:** OPEN. Không sửa trong E3 (bản đăng ký cấm đổi metric). Thẻ sửa phải giữ nguyên các artifact đã đăng ký và cho một thí nghiệm mới khai báo rõ cửa sổ nó đọc.
+
+### F-052 — `prey_cap` chỉ là cửa chặn, không phải giới hạn: bộ đếm quần thể không tăng theo số ca sinh đã xếp trong cùng tick
+- **Ngày:** 2026-11-20
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs`, `autonomous_reproduction_system` (khoảng l.865-906 trước FIX-CAP): `prey_count`/`pred_count` được đếm một lần trước vòng lặp các con mẹ, và không tăng khi xếp lệnh `SpawnOffspringCommand`. Cổng thú săn (`pred_count >= 8`, tỉ lệ con mồi/thú săn) bị cùng lỗi.
+- **Phát hiện bởi:** đo (thẻ DIAG-SEL2, chẩn đoán vụ sụp đổ của smoke SEL2-P)
+- **Triệu chứng:**
+  - Khi N vừa xuống dưới `prey_cap`, mọi con mẹ đủ điều kiện cùng sinh trong một tick.
+  - Đã đo trên seed 870001-870006:
+    - nền với cap 80 lên tới 142-151 con;
+    - 60 sáng lập với cap 80 thành 120 ngay ở tick 1;
+    - 200 sáng lập với cap 320 thành 400 ngay ở tick 1.
+  - Mọi lượt chạy trước đây có dùng `prey_cap` (S12-S15, SEL2-P, E3) đã đo đúng những gì chúng chạy. Chúng chưa từng đo một quần thể bị giữ đúng ở cap đã ghi.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test strict_prey_cap_tests strict_prey_cap_holds_with_births_while_legacy_overshoots`. Đối chứng dương trong test cho thấy đường cũ vượt cap.
+- **Test khoá lại:** `strict_prey_cap_tests::{strict_prey_cap_holds_with_births_while_legacy_overshoots, strict_cap_holds_for_predators_ceiling_and_ratio, drift_control_replay_respects_strict_cap_while_legacy_bypasses_it, absent_and_zero_produce_identical_checksums}`
+- **Trạng thái:** FIXED dạng opt-in: khoá `live.strict_prey_cap` (FIX-CAP #177, FIX-CAP2 #180). Đường cũ cố ý giữ nguyên từng bit để các bản đăng ký đã khoá và kết quả cũ vẫn tái lập được; thí nghiệm mới bật khoá này.
+
 ### F-047 — Khôi phục `pending_inference` của desktop app khoá theo `AgentLineageId` đơn lẻ làm rẽ nhánh quỹ đạo khi các con cùng bố mẹ trùng định danh
 - **Ngày:** 2026-11-19
 - **Loại:** BUG
