@@ -321,6 +321,27 @@ fn calibrate_sea_level_shift(raw_h: &[f64], target_ocean_fraction: f32) -> f64 {
     0.5 * (low + high)
 }
 
+/// Smoothly and monotonically maps shifted elevation into `(elev_min_m, elev_max_m)` so no
+/// flat summit or abyssal plateau is created by hard-clipping extremes.
+fn soft_bound_elevation(h_m: f64, elev_min_m: f32, elev_max_m: f32) -> f32 {
+    let min_b = f64::from(elev_min_m);
+    let max_b = f64::from(elev_max_m);
+    let lo_knee = 0.60 * min_b;
+    let hi_knee = 0.72 * max_b;
+
+    let mapped = if h_m > hi_knee {
+        let span = 0.995 * (max_b - hi_knee);
+        hi_knee + span * libm::tanh((h_m - hi_knee) / span)
+    } else if h_m < lo_knee {
+        let span = 0.995 * (lo_knee - min_b);
+        lo_knee - span * libm::tanh((lo_knee - h_m) / span)
+    } else {
+        h_m
+    };
+
+    mapped as f32
+}
+
 /// Generates deterministic Stage S1 initial bedrock, uplift, lithology, and erodibility fields.
 ///
 /// Row-parallel via `rayon` with purely coordinate-indexed calculations so `1`-thread and
@@ -378,9 +399,7 @@ pub fn generate_uplift(cfg: &WorldV2Config) -> Result<TectonicField, ConfigError
             let base = row * w;
             for col in 0..w {
                 let ev = &evals[base + col];
-                let elev = (ev.raw_h_m + shift)
-                    .clamp(f64::from(cfg.elev_min_m), f64::from(cfg.elev_max_m))
-                    as f32;
+                let elev = soft_bound_elevation(ev.raw_h_m + shift, cfg.elev_min_m, cfg.elev_max_m);
                 let class = assign_lithology(elev, ev, cfg);
                 bh[col] = elev;
                 uu[col] = ev.uplift as f32;
@@ -398,4 +417,42 @@ pub fn generate_uplift(cfg: &WorldV2Config) -> Result<TectonicField, ConfigError
         lithology_id,
         stratum_k,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::soft_bound_elevation;
+    use crate::{ELEV_MAX_M, ELEV_MIN_M};
+
+    #[test]
+    fn soft_bound_elevation_is_strictly_monotone_and_unpinned() {
+        let samples = [
+            -8_000.0_f64,
+            -2_500.0,
+            -1_500.0,
+            -900.0,
+            -1.0,
+            0.0,
+            1.0,
+            1_000.0,
+            4_104.0,
+            5_700.0,
+            8_000.0,
+            20_000.0,
+        ];
+        let mut prev = f32::NEG_INFINITY;
+        for &raw in &samples {
+            let y = soft_bound_elevation(raw, ELEV_MIN_M, ELEV_MAX_M);
+            assert!(
+                y > prev,
+                "soft_bound_elevation must be strictly increasing: {raw} -> {y} <= {prev}"
+            );
+            assert!(
+                y > ELEV_MIN_M && y < ELEV_MAX_M,
+                "soft_bound_elevation must stay strictly interior: {raw} -> {y}"
+            );
+            assert_eq!(y < 0.0, raw < 0.0, "sea-level sign mismatch at {raw}");
+            prev = y;
+        }
+    }
 }
