@@ -18,8 +18,9 @@ last_reviewed: 2026-11-20
 - **Kiểm tra tiền điều kiện trước khi chạy (`world_artifact_prerun_check` & trạng thái git):**
   - `ANIMA_WORLD_ARTIFACT`: `<unset>` (`anima_world_artifact_unset: true`)
   - `<temp_dir>/anima_world_artifact.anmw` (`C:\Users\Admin\AppData\Local\Temp\anima_world_artifact.anmw`): không tồn tại (`temp_artifact_absent: true`)
-  - `git status --porcelain` trước khi chạy `e3_smoke`: rỗng
-  - `git status --porcelain` ngay trước khi chạy `run_e3_experiment --ensemble`: chỉ có `?? artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/`
+  - `git status --porcelain` trước khi build `e3_smoke`: rỗng
+  - **Giải thích cờ `-dirty` ở `artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/smoke/provenance.json` (`git_describe: "24c6fb1-dirty"`, `git_tree_dirty: true`):** trong quá trình `cargo build --release --features desktop --example e3_smoke`, `tauri_build` đã ghi lại hai tệp capability schema desktop `src-tauri/gen/schemas/desktop-schema.json` và `src-tauri/gen/schemas/windows-schema.json` (chỉ đổi kết thúc dòng CRLF/LF, không thay đổi mã mô phỏng). Cả hai tệp này đã được khôi phục nguyên trạng commit `24c6fb1c` trước khi chạy ensemble xác nhận.
+  - `git status --porcelain` ngay trước khi chạy `run_e3_experiment --ensemble`: chỉ có `?? artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/` (`artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/provenance.json` ghi `git_describe: "24c6fb1"` và chỉ liệt kê `artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/` trong `git_dirty_paths`).
 - **Nguồn địa hình & đồng nhất thế giới (`terrain_source` & `world_identity`):**
   - `terrain_source`: `"generated"` trên toàn bộ `36/36` lượt (`world_identity_all_runs_identical: true`)
   - `world_identity`: `seed = 1337`, `generator_version = 1`, `width = 256`, `height = 256`, `checksum = 3152323152`
@@ -59,7 +60,7 @@ last_reviewed: 2026-11-20
 
 Áp dụng đúng ngưỡng đóng băng (`min_valid_pairs_for_decision = 10`, `dz_min = 0.8`, `relative_delta_min = 0.05`, `ci_excludes_zero_required = true`, `stopped_early = false`, `failed_runs = []`):
 
-- **Quyết định chính (`primary_decision`):** **`insufficient_evidence`** (`n_complete_pairs = 6 < 10`; `n_extinct_pairs_dropped = 6`, `n_singleton_pairs_dropped = 0`).
+- **Quyết định chính (`primary_decision`):** **`insufficient_evidence`** (`n_complete_pairs = 6 < 10`; `n_extinct_pairs_dropped = 6`, `n_singleton_pairs_dropped = 0`). Theo ràng buộc ngôn ngữ của kế hoạch tiền đăng ký (`docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md`, §11 dòng 218): *"Không phát hiện được hiệu ứng" ≠ "không có hiệu ứng"* (*not detecting an effect is not evidence of no effect*); `insufficient_evidence` không phải kết quả `null` hay kết quả âm.
 - **Tương phản chính (`treatment_gradient - control_uniform_scarcity`, `live.trait_mass_var` tại `T = 18000`):**
   - `control_mean = 0.13187942762959784`, `treatment_mean = 0.1391522290876734`
   - `paired_mean_delta = 0.007272801458075569`, `median_of_per_seed_deltas = -0.0020780901150238246`
@@ -88,7 +89,7 @@ last_reviewed: 2026-11-20
 | `T - S` | `S3` (`east - west`) | 3 | 6 / 0 / 3 | `0.30573273` | `0.13560088` | `-0.17013185` | `[-0.44864782, 0.10838412]` | `-1.51743884` | `insufficient_evidence` |
 | `T - S` | `S4_structural_zero` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
 | `T - S` | `S5_structural_zero` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
-| `T - S` | `S6.mean_lifespan` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
+| `T - S` | `S6.mean_lifespan` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` (`reported_not_interpreted_structural_zero (window drained before the final read)`) |
 | `T - S` | `S6.births_sum` | 12 | 0 / 0 / 0 | `55.25` | `199.33333333` | `144.08333333` | `[71.82393872, 216.34272794]` | `1.26691045` | `material_positive` |
 | `T - S` | `S6.deaths_sum` | 12 | 0 / 0 / 0 | `170.91666667` | `295.0` | `124.08333333` | `[68.18953799, 179.97712868]` | `1.41051056` | `material_positive` |
 | `T - S` | `I1_closed_eu_total` | 12 | 0 / 0 / 0 | `165587.24986361366` | `165587.24986362437` | `1.07126349e-8` | `[7.52437693e-9, 1.39008929e-8]` | `2.13485970` | `null` |
@@ -102,7 +103,7 @@ last_reviewed: 2026-11-20
 | `T - U` | `S3` (`east - west`) | 6 | 4 / 0 / 2 | `0.04643260` | `0.15982227` | `0.11338966` | `[-0.19080080, 0.41758012]` | `0.39118634` | `insufficient_evidence` |
 | `T - U` | `S4_structural_zero` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
 | `T - U` | `S5_structural_zero` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
-| `T - U` | `S6.mean_lifespan` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
+| `T - U` | `S6.mean_lifespan` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` (`reported_not_interpreted_structural_zero (window drained before the final read)`) |
 | `T - U` | `S6.births_sum` | 12 | 0 / 0 / 0 | `388.66666667` | `199.33333333` | `-189.33333333` | `[-301.57453069, -77.09213598]` | `-1.07176922` | `material_negative_opposite` |
 | `T - U` | `S6.deaths_sum` | 12 | 0 / 0 / 0 | `442.66666667` | `295.0` | `-147.66666667` | `[-235.25317820, -60.08015513]` | `-1.07120288` | `material_negative_opposite` |
 | `T - U` | `I1_closed_eu_total` | 12 | 0 / 0 / 0 | `165587.24986362393` | `165587.24986362437` | `4.60810649e-10` | `[-7.65709155e-10, 1.68733045e-9]` | `0.23871210` | `null` |
@@ -116,7 +117,7 @@ last_reviewed: 2026-11-20
 | `S - U` | `S3` (`east - west`) | 3 | 6 / 0 / 3 | `0.05256781` | `0.30573273` | `0.25316492` | `[-0.55903719, 1.06536703]` | `0.77431039` | `insufficient_evidence` |
 | `S - U` | `S4_structural_zero` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
 | `S - U` | `S5_structural_zero` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
-| `S - U` | `S6.mean_lifespan` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` |
+| `S - U` | `S6.mean_lifespan` | 12 | 0 / 0 / 0 | `0` | `0` | `0` | `[0, 0]` | `null` | `null` (`reported_not_interpreted_structural_zero (window drained before the final read)`) |
 | `S - U` | `S6.births_sum` | 12 | 0 / 0 / 0 | `388.66666667` | `55.25` | `-333.41666667` | `[-415.13180099, -251.70153235]` | `-2.59245542` | `material_negative_opposite` |
 | `S - U` | `S6.deaths_sum` | 12 | 0 / 0 / 0 | `442.66666667` | `170.91666667` | `-271.75` | `[-335.06137300, -208.43862700]` | `-2.72718320` | `material_negative_opposite` |
 | `S - U` | `I1_closed_eu_total` | 12 | 0 / 0 / 0 | `165587.24986362393` | `165587.24986361366` | `-1.02518243e-8` | `[-1.31505260e-8, -7.35312259e-9]` | `-2.24710890` | `null` |
@@ -124,6 +125,10 @@ last_reviewed: 2026-11-20
 | `S - U` | `M1_standing_crop_post_warmup` | 12 | 0 / 0 / 0 | `133528.66177039` | `64411.42824685` | `-69117.23352353` | `[-73060.59295811, -65173.87408896]` | `-11.13644236` | `null` |
 
 *(Trong bảng trên, `T = treatment_gradient`, `S = control_uniform_scarcity`, `U = control_uniform`; `zero_control_mean_fallback_used = false` ở mọi mục.)*
+
+- **Ghi chú bằng không do cấu trúc (`S4`, `S5`, và `S6.mean_lifespan`):**
+  - `S4_structural_zero` (`live.shannon`) và `S5_structural_zero` (`live.archive_coverage`) bằng không do cấu trúc trong headless adapter và không được diễn giải (theo kế hoạch §11).
+  - `S6.mean_lifespan` (`live.mean_lifespan`) bằng `0` trong `final-observables.json` ở toàn bộ `36/36` lượt là **bằng không do cấu trúc** (`reported_not_interpreted_structural_zero (window drained before the final read)`), không phải kết quả sinh học hay kết quả `null`. Nguyên nhân: `final_observables = model.observables()` (`src-tauri/src/core/experiment_runner.rs:548`) được đọc sau khi mẫu tick `18000` đã rút cạn cửa sổ tuổi thọ, nên adapter trả `mean_lifespan.unwrap_or(0.0)` (`src-tauri/src/core/live_experiment.rs:1709-1711`), khiến định nghĩa đã đăng ký (`src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json:218,359`) đọc một cửa sổ rỗng. Do tiền đăng ký cấm đổi metric sau khi có kết quả (`e3-preregistration.json:391`, `metric_switching_after_results: "forbidden"`), báo cáo giữ nguyên định nghĩa đã đăng ký và không thay thế bằng chỉ số tuổi thọ khác; hiện tượng cửa sổ bị rút cạn trước lần đọc cuối được ghi nhận như một phát hiện để sửa về sau.
 
 ---
 
