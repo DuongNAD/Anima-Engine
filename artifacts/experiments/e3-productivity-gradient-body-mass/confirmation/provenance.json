@@ -1,0 +1,574 @@
+{
+  "build": {
+    "binary_sha256": "aeead19f4288fff3f24652afedac86715b5cd3d5378805801a53ca78aa0f3c89",
+    "git_commit": "24c6fb1cd6d19f189c3fd06ea2a44c50e28594e1",
+    "git_describe": "24c6fb1",
+    "git_dirty_paths": [
+      "artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/"
+    ],
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "duration": {
+    "duration_ticks": 18000,
+    "sample_period": 600,
+    "tail_window_ticks": [
+      14400,
+      18000
+    ],
+    "warmup_ticks": 3000
+  },
+  "harness": "core::experiment_runner::{run_paired_ensemble_with_control, run_manifest_seed}",
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "kind": "e3-confirmation-provenance",
+  "manifests": {
+    "manifest_fingerprints_as_run": {
+      "control_uniform": 17312356372350141464,
+      "control_uniform_scarcity": 6451690600359789730,
+      "treatment_gradient": 6232341927780970595
+    },
+    "sha256_as_committed": {
+      "e3-control-uniform-scarcity.json": "ebe5b15464802d0ccef4a6f12c4002df68145380b59c03b520ab048252452444",
+      "e3-control-uniform.json": "a20487c02cc16df831bf3cbded89f8ea79172db723f7699729ef7e2cc9ef718c",
+      "e3-preregistration.json": "c3a0d885db20a35dbb92e06e50555c2ed48b6057333c430e1252becd8417e9af",
+      "e3-treatment-gradient.json": "68672182ff9e3f42103a793c61ca75700228f87b527b845c86b2b9522eff3277"
+    }
+  },
+  "mode": "ensemble",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "model_version": "live-bevy-world/2",
+  "per_run_world_provenance": [
+    {
+      "arm": "control_uniform",
+      "run_index": 0,
+      "seed": 730001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 1,
+      "seed": 730001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 2,
+      "seed": 730001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 3,
+      "seed": 731001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 4,
+      "seed": 731001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 5,
+      "seed": 731001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 6,
+      "seed": 732001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 7,
+      "seed": 732001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 8,
+      "seed": 732001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 9,
+      "seed": 733001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 10,
+      "seed": 733001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 11,
+      "seed": 733001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 12,
+      "seed": 734001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 13,
+      "seed": 734001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 14,
+      "seed": 734001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 15,
+      "seed": 735001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 16,
+      "seed": 735001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 17,
+      "seed": 735001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 18,
+      "seed": 736001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 19,
+      "seed": 736001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 20,
+      "seed": 736001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 21,
+      "seed": 737001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 22,
+      "seed": 737001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 23,
+      "seed": 737001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 24,
+      "seed": 738001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 25,
+      "seed": 738001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 26,
+      "seed": 738001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 27,
+      "seed": 739001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 28,
+      "seed": 739001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 29,
+      "seed": 739001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 30,
+      "seed": 740001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 31,
+      "seed": 740001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 32,
+      "seed": 740001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform",
+      "run_index": 33,
+      "seed": 741001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "control_uniform_scarcity",
+      "run_index": 34,
+      "seed": 741001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    },
+    {
+      "arm": "treatment_gradient",
+      "run_index": 35,
+      "seed": 741001,
+      "terrain_source": "generated",
+      "world_identity": {
+        "checksum": 3152323152,
+        "generator_version": 1,
+        "height": 256,
+        "seed": 1337,
+        "width": 256
+      }
+    }
+  ],
+  "preregistration_id": "e3-productivity-gradient-body-mass",
+  "preregistration_status": "FROZEN",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "registry_fingerprint": 14152389948449814764,
+  "seeds": {
+    "execution_order": [
+      730001,
+      731001,
+      732001,
+      733001,
+      734001,
+      735001,
+      736001,
+      737001,
+      738001,
+      739001,
+      740001,
+      741001
+    ],
+    "min_complete_pairs_for_a_decision": 10,
+    "n_requested": 12,
+    "smoke_seed": 999979,
+    "total_runs_executed": 36
+  },
+  "smoke_reference": {
+    "git_commit": "24c6fb1cd6d19f189c3fd06ea2a44c50e28594e1",
+    "host_arch": "x86_64",
+    "host_os": "windows",
+    "profile": "release",
+    "provenance_sha256": "b5d6630717f2f04c3e6c996889395511006d0460a6f346c05720705bd44e747f",
+    "smoke_dir": "artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/smoke",
+    "smoke_report_sha256": "d99505fa1875cc04a264df7ede05ec8dee13be6a7102cfaeabda52bd9cd53a5b",
+    "world_identity_observed": {
+      "checksum": 3152323152,
+      "generator_version": 1,
+      "height": 256,
+      "seed": 1337,
+      "width": 256
+    },
+    "wp2_passed": true
+  },
+  "stop_reason": null,
+  "stopped_early": false,
+  "terrain_source": "generated",
+  "world_artifact_prerun_check": {
+    "anima_world_artifact_unset": true,
+    "temp_artifact_absent": true,
+    "temp_artifact_filename": "anima_world_artifact.anmw",
+    "temp_artifact_path": "C:/Users/Admin/AppData/Local/Temp/anima_world_artifact.anmw"
+  },
+  "world_identity": {
+    "checksum": 3152323152,
+    "generator_version": 1,
+    "height": 256,
+    "seed": 1337,
+    "width": 256
+  },
+  "world_identity_all_runs_identical": true
+}
