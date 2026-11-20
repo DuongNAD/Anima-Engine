@@ -78,6 +78,8 @@ export function studentT95(df) {
 
 const ZERO_SD_TOL = 1e-12;
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+const sha256NormalizedLf = (buf) =>
+  sha256(Buffer.from(buf.toString('utf8').replace(/\r\n/g, '\n'), 'utf8'));
 
 const isSafeGitCommit = (ref) => typeof ref === 'string' && /^[0-9a-fA-F]{7,40}$/.test(ref);
 
@@ -639,15 +641,108 @@ function compareReport(label, observed, expected, fail) {
   }
 }
 
+function readWorkingTreeManifestBytes(name) {
+  const wtPath = join(repoRoot, committedManifestDir, name);
+  if (existsSync(wtPath)) {
+    return readFileSync(wtPath);
+  }
+  return readCommittedBytesAt(name, 'HEAD');
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function collectNonZeroDefaultDiffs(artVal, headVal, path, out) {
+  if (out.length >= 16) return;
+  if (path === 'default_keys_left_absent') {
+    if (!isPlainObject(artVal) || !isPlainObject(headVal)) {
+      out.push(`${path}: expected object in both artifact and HEAD`);
+      return;
+    }
+    for (const k of Object.keys(artVal).sort()) {
+      if (!Object.hasOwn(headVal, k)) {
+        out.push(`${path}.${k}: present in artifact but absent in HEAD`);
+      } else if (!Object.is(artVal[k], headVal[k])) {
+        out.push(
+          `${path}.${k}: value ${JSON.stringify(artVal[k])} != HEAD ${JSON.stringify(headVal[k])}`,
+        );
+      }
+    }
+    for (const k of Object.keys(headVal).sort()) {
+      if (!Object.hasOwn(artVal, k)) {
+        if (!(typeof headVal[k] === 'number' && headVal[k] === 0 && !Object.is(headVal[k], -0))) {
+          out.push(
+            `${path}.${k}: added at HEAD with non-zero value ${JSON.stringify(headVal[k])}`,
+          );
+        }
+      }
+    }
+    return;
+  }
+
+  if (Array.isArray(artVal) || Array.isArray(headVal)) {
+    if (!Array.isArray(artVal) || !Array.isArray(headVal)) {
+      out.push(`${path || '<root>'}: array vs non-array mismatch`);
+      return;
+    }
+    if (artVal.length !== headVal.length) {
+      out.push(`${path || '<root>'}: array length ${artVal.length} != HEAD ${headVal.length}`);
+      return;
+    }
+    for (let i = 0; i < headVal.length; i += 1) {
+      collectNonZeroDefaultDiffs(artVal[i], headVal[i], `${path}[${i}]`, out);
+    }
+    return;
+  }
+
+  if (isPlainObject(artVal) || isPlainObject(headVal)) {
+    if (!isPlainObject(artVal) || !isPlainObject(headVal)) {
+      out.push(`${path || '<root>'}: object vs non-object mismatch`);
+      return;
+    }
+    const artKeys = Object.keys(artVal).sort();
+    const headKeys = Object.keys(headVal).sort();
+    for (const k of artKeys) {
+      if (!Object.hasOwn(headVal, k)) {
+        out.push(`${path ? `${path}.` : ''}${k}: extra key not in HEAD`);
+      }
+    }
+    for (const k of headKeys) {
+      if (!Object.hasOwn(artVal, k)) {
+        out.push(`${path ? `${path}.` : ''}${k}: missing key relative to HEAD`);
+      }
+    }
+    for (const k of headKeys) {
+      if (Object.hasOwn(artVal, k)) {
+        collectNonZeroDefaultDiffs(artVal[k], headVal[k], path ? `${path}.${k}` : k, out);
+      }
+    }
+    return;
+  }
+
+  if (!Object.is(artVal, headVal)) {
+    out.push(
+      `${path || '<root>'}: value ${JSON.stringify(artVal)} != HEAD ${JSON.stringify(headVal)}`,
+    );
+  }
+}
+
+export function diffPreregAgainstHeadAllowingAddedDefaultZeros(artifactPrereg, headPrereg) {
+  const diffs = [];
+  collectNonZeroDefaultDiffs(artifactPrereg, headPrereg, '', diffs);
+  return diffs;
+}
+
 function resolveManifestGitRef(recordedCommit, notes) {
   const preregRel = `${committedManifestDir}/${PREREG_FILE}`;
   if (recordedCommit && gitCommitHasBlob(recordedCommit, preregRel)) {
     return recordedCommit;
   }
   notes.push(
-    `manifest comparison fell back to HEAD because recorded commit '${recordedCommit ?? '<missing>'}' is not available locally with committed E3 manifests`,
+    `manifest comparison fell back to recorded provenance.manifests.sha256_as_committed and working-tree/HEAD cross-check because recorded commit '${recordedCommit ?? '<missing>'}' is not available locally with committed E3 manifests`,
   );
-  return 'HEAD';
+  return null;
 }
 
 function resolveSmokeDirOnDisk(smokeDirField) {
@@ -839,12 +934,12 @@ export function verifyArtifactDir(dir, opts = {}) {
 
   if (!existsSync(dir)) {
     fail(`artifact directory does not exist: ${dir}`);
-    return { ok: false, failures, notes };
+    return { ok: false, failures, notes, usedRecordedFallback: false, recordedCommit: null };
   }
   const entries = readdirSync(dir);
   if (entries.length === 0) {
     fail(`artifact directory is empty: ${dir}`);
-    return { ok: false, failures, notes };
+    return { ok: false, failures, notes, usedRecordedFallback: false, recordedCommit: null };
   }
 
   const requiredFiles = [
@@ -905,14 +1000,41 @@ export function verifyArtifactDir(dir, opts = {}) {
       fail(`invalid provenance.json: ${e.message}`);
     }
   }
+  const manifestDir = join(dir, 'manifests');
+  const recordedCommit = prov?.build?.git_commit ?? null;
   const manifestGitRef = opts.preregOverride || opts.preregPath
     ? 'HEAD'
-    : resolveManifestGitRef(prov?.build?.git_commit, notes);
-  const prereg = opts.preregOverride ?? loadCommittedPrereg(opts.preregPath ?? null, manifestGitRef);
+    : resolveManifestGitRef(recordedCommit, notes);
+  const useRecordedShaFallback = !(opts.preregOverride || opts.preregPath) && manifestGitRef === null;
+  let prereg = opts.preregOverride ?? null;
+  if (!prereg) {
+    if (opts.preregPath) {
+      prereg = loadCommittedPrereg(opts.preregPath, 'HEAD');
+    } else if (!useRecordedShaFallback) {
+      prereg = loadCommittedPrereg(null, manifestGitRef);
+    } else {
+      const artifactPreregPath = join(manifestDir, PREREG_FILE);
+      if (!existsSync(artifactPreregPath)) {
+        fail(`missing manifest copy: manifests/${PREREG_FILE}`);
+        return { ok: false, failures, notes, usedRecordedFallback: true, recordedCommit };
+      }
+      try {
+        prereg = JSON.parse(readFileSync(artifactPreregPath, 'utf8'));
+      } catch (e) {
+        fail(`invalid manifests/${PREREG_FILE}: ${e.message}`);
+        return { ok: false, failures, notes, usedRecordedFallback: true, recordedCommit };
+      }
+    }
+  }
 
-  const manifestDir = join(dir, 'manifests');
   if (!existsSync(manifestDir)) {
     fail('missing manifests/ directory');
+  } else if (
+    typeof prereg?.manifests?.control !== 'string' ||
+    typeof prereg?.manifests?.control_uniform_scarcity !== 'string' ||
+    typeof prereg?.manifests?.treatment !== 'string'
+  ) {
+    fail(`invalid ${PREREG_FILE}: manifests.{control,control_uniform_scarcity,treatment} must be strings`);
   } else {
     const expectedManifests = [
       PREREG_FILE,
@@ -920,6 +1042,19 @@ export function verifyArtifactDir(dir, opts = {}) {
       prereg.manifests.control_uniform_scarcity,
       prereg.manifests.treatment,
     ];
+    let headPrereg = null;
+    if (useRecordedShaFallback && !opts.skipCommittedManifestCheck) {
+      const wtPreregBytes = readWorkingTreeManifestBytes(PREREG_FILE);
+      if (!wtPreregBytes) {
+        fail(`cannot load working-tree fixture ${committedManifestDir}/${PREREG_FILE} for fallback comparison`);
+      } else {
+        try {
+          headPrereg = JSON.parse(wtPreregBytes.toString('utf8'));
+        } catch (e) {
+          fail(`invalid working-tree ${committedManifestDir}/${PREREG_FILE}: ${e.message}`);
+        }
+      }
+    }
     for (const mf of expectedManifests) {
       const copyPath = join(manifestDir, mf);
       if (!existsSync(copyPath)) {
@@ -930,18 +1065,58 @@ export function verifyArtifactDir(dir, opts = {}) {
         fail(`manifest copy not covered by checksums.sha256: manifests/${mf}`);
       }
       if (!opts.skipCommittedManifestCheck) {
-        const committed = readCommittedBytesAt(mf, manifestGitRef);
-        if (!committed) {
-          fail(`cannot read committed manifest ${mf} at ${manifestGitRef}`);
-        } else if (sha256(readFileSync(copyPath)) !== sha256(committed)) {
-          fail(`manifests/${mf} differs from committed fixture in repo at ${manifestGitRef}`);
+        if (useRecordedShaFallback) {
+          const copyBytes = readFileSync(copyPath);
+          const recordedSha = prov?.manifests?.sha256_as_committed?.[mf];
+          if (typeof recordedSha !== 'string' || !/^[0-9a-f]{64}$/.test(recordedSha)) {
+            fail(
+              `provenance.manifests.sha256_as_committed missing valid SHA-256 for ${mf} while recorded commit '${recordedCommit ?? '<missing>'}' is unavailable locally`,
+            );
+          } else {
+            const actualNormSha = sha256NormalizedLf(copyBytes);
+            if (actualNormSha !== recordedSha) {
+              fail(
+                `manifests/${mf} SHA-256 (${actualNormSha}) differs from provenance.manifests.sha256_as_committed (${recordedSha})`,
+              );
+            }
+          }
+          if (mf === PREREG_FILE) {
+            if (headPrereg) {
+              const diffs = diffPreregAgainstHeadAllowingAddedDefaultZeros(prereg, headPrereg);
+              if (diffs.length > 0) {
+                fail(
+                  `manifests/${PREREG_FILE} differs from working-tree/HEAD beyond added default-0 keys in default_keys_left_absent: ${diffs.join('; ')}`,
+                );
+              }
+            }
+          } else {
+            const headManifestBytes = readWorkingTreeManifestBytes(mf);
+            if (!headManifestBytes) {
+              fail(`cannot read working-tree/HEAD manifest ${mf}`);
+            } else if (sha256NormalizedLf(copyBytes) !== sha256NormalizedLf(headManifestBytes)) {
+              fail(`manifests/${mf} differs from working-tree/HEAD fixture in repo during commit-unavailable fallback`);
+            }
+          }
+        } else {
+          const committed = readCommittedBytesAt(mf, manifestGitRef);
+          if (!committed) {
+            fail(`cannot read committed manifest ${mf} at ${manifestGitRef}`);
+          } else if (sha256(readFileSync(copyPath)) !== sha256(committed)) {
+            fail(`manifests/${mf} differs from committed fixture in repo at ${manifestGitRef}`);
+          }
         }
       }
     }
   }
 
   if (failures.length > 0 && (!prov || !existsSync(join(dir, 'effects.json')))) {
-    return { ok: false, failures, notes };
+    return {
+      ok: false,
+      failures,
+      notes,
+      usedRecordedFallback: Boolean(useRecordedShaFallback),
+      recordedCommit,
+    };
   }
 
   const runs = parseCsv(readFileSync(join(dir, 'runs.csv'), 'utf8'));
@@ -1170,7 +1345,13 @@ export function verifyArtifactDir(dir, opts = {}) {
     );
   }
 
-  return { ok: failures.length === 0, failures, notes };
+  return {
+    ok: failures.length === 0,
+    failures,
+    notes,
+    usedRecordedFallback: Boolean(useRecordedShaFallback),
+    recordedCommit,
+  };
 }
 
 // ---- Synthetic confirmation bundle helper for `--self-test` and tests ------------------------
@@ -1221,12 +1402,21 @@ export function writeRecomputedBundleFiles(dir, prereg, { runs, series, finals, 
     prereg.manifests.treatment,
   ];
   const manifestGitRef = opts.manifestGitRef ?? 'HEAD';
+  const sha256AsCommitted = {};
   for (const mf of mFiles) {
     const bytes = readCommittedBytesAt(mf, manifestGitRef);
     if (!bytes) {
       throw new Error(`cannot read committed manifest ${mf} at ${manifestGitRef}`);
     }
     writeFileSync(join(dir, 'manifests', mf), bytes);
+    sha256AsCommitted[mf] = sha256NormalizedLf(bytes);
+  }
+  const provOut = structuredClone(prov);
+  if (!provOut.manifests?.sha256_as_committed) {
+    provOut.manifests = {
+      ...(provOut.manifests ?? {}),
+      sha256_as_committed: sha256AsCommitted,
+    };
   }
 
   const runHeaders = [
@@ -1270,7 +1460,7 @@ export function writeRecomputedBundleFiles(dir, prereg, { runs, series, finals, 
   writeFileSync(join(dir, 'series.csv'), seriesText);
   writeFileSync(join(dir, 'final-observables.json'), `${JSON.stringify(finals, null, 2)}\n`);
   writeFileSync(join(dir, 'effects.json'), `${JSON.stringify(effectsDoc, null, 2)}\n`);
-  writeFileSync(join(dir, 'provenance.json'), `${JSON.stringify(prov, null, 2)}\n`);
+  writeFileSync(join(dir, 'provenance.json'), `${JSON.stringify(provOut, null, 2)}\n`);
   writeFileSync(join(dir, 'summary.md'), '# Synthetic E3 Bundle\n');
   writeFileSync(join(dir, 'timing.json'), '{"wall_clock_seconds":1.0}\n');
 
@@ -1651,10 +1841,70 @@ function runSelfTest() {
       'N3: dirty path outside artifacts/ rejected',
     );
 
-    // 11. N4 control: fallback note when recorded commit unavailable vs exact commit match at HEAD.
+    // 11. N4 control: fallback to recorded sha256_as_committed + HEAD prereg cross-check when commit unavailable vs exact commit match at HEAD.
     expect(
-      validRes.notes.some((n) => n.includes('fell back to HEAD')),
-      'N4: unavailable recorded commit falls back to HEAD with explicit note',
+      validRes.ok &&
+        validRes.usedRecordedFallback === true &&
+        validRes.notes.some((n) => n.includes('fell back to recorded provenance.manifests.sha256_as_committed')),
+      'N4: unavailable recorded commit falls back to provenance.manifests.sha256_as_committed with explicit note and flag',
+    );
+    const priorAmendmentDir = join(root, 'n4_prior_amendment');
+    writeRecomputedBundleFiles(priorAmendmentDir, prereg, buildSyntheticE3Data(prereg));
+    const priorPreregPath = join(priorAmendmentDir, 'manifests', PREREG_FILE);
+    const priorPreregDoc = JSON.parse(readFileSync(priorPreregPath, 'utf8'));
+    delete priorPreregDoc.default_keys_left_absent['live.founder_layout'];
+    writeFileSync(priorPreregPath, `${JSON.stringify(priorPreregDoc, null, 2)}\n`);
+    const priorPreregSha = sha256NormalizedLf(readFileSync(priorPreregPath));
+    editJsonAndRehash(priorAmendmentDir, 'provenance.json', (j) => {
+      j.manifests.sha256_as_committed[PREREG_FILE] = priorPreregSha;
+    });
+    const priorAmendmentRes = verifyArtifactDir(priorAmendmentDir);
+    expect(
+      priorAmendmentRes.ok &&
+        priorAmendmentRes.usedRecordedFallback === true &&
+        priorAmendmentRes.notes.some((n) =>
+          n.includes('fell back to recorded provenance.manifests.sha256_as_committed'),
+        ),
+      'N4: pre-amendment prereg copy differing from HEAD only by added default-0 keys passes in fallback',
+    );
+    // Negative control (r1 consistent-tamper): rewriting thresholds.dz_min 0.8 -> 0.5 AND updating
+    // effects.json + provenance.manifests.sha256_as_committed + checksums.sha256 MUST fail in fallback.
+    const consistentTamperDir = join(root, 'n4_consistent_threshold_tamper');
+    const tamperedPrereg = structuredClone(prereg);
+    tamperedPrereg.thresholds.dz_min = 0.5;
+    writeRecomputedBundleFiles(consistentTamperDir, tamperedPrereg, buildSyntheticE3Data(tamperedPrereg));
+    writeFileSync(join(consistentTamperDir, 'manifests', PREREG_FILE), `${JSON.stringify(tamperedPrereg, null, 2)}\n`);
+    const tamperedPreregSha = sha256NormalizedLf(readFileSync(join(consistentTamperDir, 'manifests', PREREG_FILE)));
+    editJsonAndRehash(consistentTamperDir, 'provenance.json', (j) => {
+      j.manifests.sha256_as_committed[PREREG_FILE] = tamperedPreregSha;
+    });
+    const consistentTamperRes = verifyArtifactDir(consistentTamperDir);
+    expect(
+      !consistentTamperRes.ok &&
+        consistentTamperRes.failures.some((m) => m.includes('thresholds.dz_min')),
+      'N4 r1: consistent-tamper thresholds.dz_min (0.8 -> 0.5 with matching recorded hash and checksums) rejected in fallback',
+    );
+    const tamperedCopyDir = join(root, 'n4_tampered_copy');
+    writeRecomputedBundleFiles(tamperedCopyDir, prereg, buildSyntheticE3Data(prereg));
+    editJsonAndRehash(tamperedCopyDir, `manifests/${PREREG_FILE}`, (j) => {
+      j.default_keys_left_absent['live.founder_layout'] = 1;
+    });
+    const tamperedCopyRes = verifyArtifactDir(tamperedCopyDir);
+    expect(
+      !tamperedCopyRes.ok &&
+        tamperedCopyRes.failures.some((m) => m.includes('sha256_as_committed')),
+      'N4: manifest copy mismatching recorded sha256_as_committed rejected',
+    );
+    const missingShaDir = join(root, 'n4_missing_sha');
+    writeRecomputedBundleFiles(missingShaDir, prereg, buildSyntheticE3Data(prereg));
+    editJsonAndRehash(missingShaDir, 'provenance.json', (j) => {
+      delete j.manifests.sha256_as_committed;
+    });
+    const missingShaRes = verifyArtifactDir(missingShaDir);
+    expect(
+      !missingShaRes.ok &&
+        missingShaRes.failures.some((m) => m.includes('sha256_as_committed')),
+      'N4: unavailable commit without provenance.manifests.sha256_as_committed rejected',
     );
     const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot }).toString('utf8').trim();
     const headSmokeDir = writeSyntheticSmokeDir(join(root, 'head_smoke'), {
@@ -1670,7 +1920,10 @@ function runSelfTest() {
       { manifestGitRef: headCommit },
     );
     const headRes = verifyArtifactDir(headBundleDir);
-    expect(headRes.ok && headRes.notes.length === 0, 'N4: available recorded HEAD commit verifies without fallback note');
+    expect(
+      headRes.ok && headRes.usedRecordedFallback === false && headRes.notes.length === 0,
+      'N4: available recorded HEAD commit verifies without fallback note',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1717,7 +1970,16 @@ function main() {
     for (const f of res.failures) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log(`verify_e3_artifacts OK (${targetDir})`);
+  if (res.usedRecordedFallback) {
+    const sha8 = typeof res.recordedCommit === 'string' && res.recordedCommit.length > 0
+      ? res.recordedCommit.slice(0, 8)
+      : 'missing';
+    console.log(
+      `verify_e3_artifacts OK (fallback: commit ${sha8} unavailable; preregistration matched HEAD up to added default-0 keys)`,
+    );
+  } else {
+    console.log(`verify_e3_artifacts OK (${targetDir})`);
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

@@ -445,8 +445,9 @@ fn f_the_keys_are_registered_and_validated() {
     // card S12 added live.lake_layout;
     // card LAND1 added live.land_mask;
     // card FIX-CAP (F-052) added live.strict_prey_cap;
-    // card SEL2P2-PREP (S11) added live.grass_steering.
-    assert_eq!(LIVE_KEYS.len(), 28);
+    // card SEL2P2-PREP (S11) added live.grass_steering;
+    // card FOUNDER-LAYOUT added live.founder_layout.
+    assert_eq!(LIVE_KEYS.len(), 29);
     for (c, name) in [
         (LIVE_KEY_KILL_HYDRATION, "live.kill_hydration"),
         (LIVE_KEY_KILL_EFFICIENCY, "live.kill_efficiency"),
