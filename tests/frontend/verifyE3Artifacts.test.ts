@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -457,12 +458,72 @@ describe('verify_e3_artifacts — preregistration threshold boundaries, Bessel, 
       expect(dirtyRes.ok).toBe(false);
       expect(dirtyRes.failures.some((m: string) => m.includes('disallowed dirty working tree path'))).toBe(true);
 
-      // N4: unavailable recorded commit falls back to HEAD with explicit note.
+      // N4: unavailable recorded commit falls back to provenance.manifests.sha256_as_committed with explicit note.
       const fallbackBundle = join(root, 'n4_fallback');
       writeRecomputedBundleFiles(fallbackBundle, prereg, buildSyntheticE3Data(prereg));
       const fallbackRes = verifyArtifactDir(fallbackBundle);
       expect(fallbackRes.ok).toBe(true);
-      expect(fallbackRes.notes.some((n: string) => n.includes('fell back to HEAD'))).toBe(true);
+      expect(
+        fallbackRes.notes.some((n: string) =>
+          n.includes('fell back to recorded provenance.manifests.sha256_as_committed'),
+        ),
+      ).toBe(true);
+
+      // N4: pre-amendment prereg copy differing from HEAD verifies against recorded sha256_as_committed.
+      const editJsonFile = (
+        filePath: string,
+        mutator: (doc: Record<string, unknown>) => void,
+      ): void => {
+        const doc = JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+        mutator(doc);
+        writeFileSync(filePath, `${JSON.stringify(doc, null, 2)}\n`);
+      };
+      const priorAmendmentBundle = join(root, 'n4_prior_amendment');
+      writeRecomputedBundleFiles(priorAmendmentBundle, prereg, buildSyntheticE3Data(prereg));
+      const priorPreregPath = join(priorAmendmentBundle, 'manifests', 'e3-preregistration.json');
+      editJsonFile(priorPreregPath, (doc) => {
+        const defaults = doc.default_keys_left_absent as Record<string, number>;
+        delete defaults['live.founder_layout'];
+      });
+      const priorPreregSha = createHash('sha256')
+        .update(readFileSync(priorPreregPath, 'utf8').replace(/\r\n/g, '\n'), 'utf8')
+        .digest('hex');
+      editJsonFile(join(priorAmendmentBundle, 'provenance.json'), (doc) => {
+        const manifests = doc.manifests as { sha256_as_committed: Record<string, string> };
+        manifests.sha256_as_committed['e3-preregistration.json'] = priorPreregSha;
+      });
+      rehashBundle(priorAmendmentBundle, mFiles);
+      const priorAmendmentRes = verifyArtifactDir(priorAmendmentBundle);
+      expect(priorAmendmentRes.ok).toBe(true);
+      expect(
+        priorAmendmentRes.notes.some((n: string) =>
+          n.includes('fell back to recorded provenance.manifests.sha256_as_committed'),
+        ),
+      ).toBe(true);
+
+      // N4 negative control: tampered prereg copy mismatching recorded sha256_as_committed fails.
+      const tamperedCopyBundle = join(root, 'n4_tampered_copy');
+      writeRecomputedBundleFiles(tamperedCopyBundle, prereg, buildSyntheticE3Data(prereg));
+      editJsonFile(join(tamperedCopyBundle, 'manifests', 'e3-preregistration.json'), (doc) => {
+        const defaults = doc.default_keys_left_absent as Record<string, number>;
+        defaults['live.founder_layout'] = 1;
+      });
+      rehashBundle(tamperedCopyBundle, mFiles);
+      const tamperedCopyRes = verifyArtifactDir(tamperedCopyBundle);
+      expect(tamperedCopyRes.ok).toBe(false);
+      expect(tamperedCopyRes.failures.some((m: string) => m.includes('sha256_as_committed'))).toBe(true);
+
+      // N4 negative control: unavailable commit missing provenance.manifests.sha256_as_committed fails.
+      const missingShaBundle = join(root, 'n4_missing_sha');
+      writeRecomputedBundleFiles(missingShaBundle, prereg, buildSyntheticE3Data(prereg));
+      editJsonFile(join(missingShaBundle, 'provenance.json'), (doc) => {
+        const manifests = doc.manifests as Record<string, unknown>;
+        delete manifests.sha256_as_committed;
+      });
+      rehashBundle(missingShaBundle, mFiles);
+      const missingShaRes = verifyArtifactDir(missingShaBundle);
+      expect(missingShaRes.ok).toBe(false);
+      expect(missingShaRes.failures.some((m: string) => m.includes('sha256_as_committed'))).toBe(true);
 
       // N4: when older commit 0dc00fb exists locally (non-shallow repo), pre-amendment prereg blobs verify cleanly.
       let hasOldCommit = false;
