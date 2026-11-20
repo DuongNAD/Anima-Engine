@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-18
 review_cycle: monthly
 ---
 
@@ -60,7 +60,7 @@ tài liệu ở bảng thắng; sửa trang này.
   ngày 2026-11-17, [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md)), rồi R0
   khi chủ dự án nói Đợt 2 đã xong. **Từ 2026-11-18 vai `agent-win` do Gemini chạy** (QD-WIN), làm R0 trước rồi R1c
   ([bản giao việc cho Gemini](../ai/planning/2026-11-18-gemini-worker-win-handoff.md)); Gemini không mở được verifier
-  riêng, nên `agent-mac` kiểm lại PR của nó trước khi PR được đánh dấu sẵn sàng. Từ chiều 2026-11-18 thẻ được giao qua thư mục Drive `Anima_Agent_Hub` (QD-HUB, luật bản 4: agent không bao giờ merge). `agent-mac` cùng ngày nhận S10. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
+  riêng, nên `agent-mac` kiểm lại PR của nó trước khi PR được đánh dấu sẵn sàng. Từ chiều 2026-11-18 thẻ được giao qua thư mục Drive `Anima_Agent_Hub` (QD-HUB, luật bản 4: agent không bao giờ merge; từ tối cùng ngày phiên lead tự merge PR nó đã kiểm, QD-LEAD). `agent-mac` cùng ngày nhận S10. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
   `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
   trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
@@ -136,7 +136,17 @@ là việc chủ dự án quyết trước SEL2-E; chủ dự án chọn thêm h
 ([kết quả](../ai/planning/2026-11-18-sel2e-exploration.md)): không ô nào khả thi; ba phép đo tiếp theo cho thấy khi
 khan hiếm, quần thể dao động bùng nổ và sụp đổ rồi tuyệt chủng vì sinh sản dừng ở mật độ thấp. SEL2-P chờ chủ dự án
 định hướng. **SEL2-D** ✅ #130. Phép chẩn đoán đáy chu kỳ (#131) cho thấy con vật không bao giờ lái tới đồng cỏ, nên
-thẻ mới **S11** (lái tới cỏ, opt-in) và thẻ sửa **F045** (khôi phục checkpoint) được giao cho `anima-mac` qua hub. Định nghĩa các thẻ ở
+thẻ mới **S11** (lái tới cỏ, opt-in) và thẻ sửa **F045** (khôi phục checkpoint) được giao cho `anima-mac` qua hub.
+**S11** kết thúc là một phát hiện, mã không merge (PR #134 đóng, nhánh `dell/s11-grass-steering` giữ ở `95044c4b`;
+[kết quả](../ai/planning/2026-11-18-s11-grass-steering.md)): khi bỏ khát, con mồi không thiếu ăn, và lái tới cỏ không
+tăng lượng ăn. Thứ giới hạn là khát (mọi hồ nằm trên một hàng), nên thẻ kế tiếp là **S12** (`live.lake_layout`, rải hồ
+trên lưới hai chiều), giao cho `anima-dell`. **R1c** ✅ #127 (2026-11-18, `burn` 0.22.1, schema 8,
+`LIVE_MODEL_VERSION` `/2`); điều kiện giấy phép còn lại của nó là QD-C2. Sau R1c, `anima-case` làm **M4** (ma trận
+dư EU) rồi **M3** (đường cong scaling): **M3** ✅ #138; **M4** ✅ #137, vòng đầu bị trả về vì ma trận không có lượt nào có chết hay săn mồi
+(verdict M4_064bc43c trên hub), vòng hai đạt. **S12** ✅ #135. Hàng việc từ 2026-11-19: `anima-dell` S13 (đo 200.000 tick
+trên hồ đã rải) rồi M2; `anima-case` S2 (observable tích luỹ cho SEL2-P); `anima-mac` làm tiếp F045 sau khi dừng
+khoảng 7 giờ ngày 2026-11-18 (merge thân cây vào nhánh, không rebase): **F045** ✅ #140, rồi F046 (chẩn đoán, chỉ đọc).
+**S13** ✅ #139 cho kết quả âm (0/12 ô khả thi); **S14** ✅ #142 và **S15** ✅ #146 dẫn tới QD-SEL2g (chuẩn gộp). **F046** (chẩn đoán), **F047** và **F048** ✅ #146 (khôi phục suy luận đang chờ ở app desktop). **S2** ✅ #148. Bản nháp **SEL2-P** ✅ #147. Hàng việc sáng 2026-11-19: `anima-mac` SEL2-P-impl, `anima-case` E3-P, `anima-dell` M2. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
@@ -183,12 +193,104 @@ QD-SEL2   = the next step of QD-SEL1b is cards S9 -> S10 -> SEL2-E -> SEL2-P, pl
 QD-SEL2e  = after S9 (#117: thirst caused 71-80% of deaths), SEL2-E relieves water by adding lakes:
             live.lakes in {2, 4, 8}; the dehydration grace stays at its default (owner in chat,
             2026-11-18, "Thêm hồ")
+QD-SEL2g  = SEL2's standing-crop ratio g uses a POOLED reference: the mean second-half crop of the
+            prey_cap-80 / scale-1.0 baseline runs that survive, over a baseline seed set declared
+            before the run (at least 3 survivors, else C2 fails); every scarce seed uses that one value
+            (owner in chat, 2026-11-19: "chọn chuẩn gộp (b)"; verdicts S14_4e6d312f, S15_4342b895;
+            docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md section 6)
+QD-VIS    = the 3D map must BE the simulated world, semi-realistic, with mountains, caves, forests and
+            rivers, streamed by camera; creatures are continuous bodies grown from their morphology;
+            done in parallel on Windows 1 (owner in chat, 2026-11-19). Follow-up "oke theo ý bạn" taken
+            as: accept ADR-0010 (pinned, tiled world artifact), skip CREATURE_MORPHOGENESIS_PLAN.md:36
+            for the body renderer, keep 30 FPS at Low on Iris Xe with 1,000 creatures (cap near-tier
+            bodies). docs/ai/design/2026-11-19-feature-real-world-and-bodies.md
+QD-NATIVE = a native renderer (wgpu / Bevy, in the same process as the simulation, native surface in the
+            Tauri window, HTML UI kept) is the long-term direction because it removes per-tick IPC and
+            gives the full GPU; it is done later, not now. Near-term work stays on Three.js/WebGL2 and
+            prefers renderer-agnostic pieces (world artifact, payload, body-mesh algorithm). The
+            measuring spike and ADR-0011 come when that work starts (owner in chat, 2026-11-19: "Làm
+            spike", then "tôi nghĩ vẫn sẽ làm vẽ native vì sẽ tối ưu hơn oke nhưng sẽ làm ở tương lai")
+QD-SEL2P  = the SEL2-P preregistration is approved (owner in chat, 2026-11-19 ~12:05 +07: "Duyệt"), on the
+            lead's stated conditions: the smoke (seed 999961, 200,000 ticks, blind) runs now with the
+            preregistered commands; the freeze and the 20 confirmation seeds wait until card SEL2-P-fix
+            (verdict SEL2-P-impl_6456eb4a, defects D1-D3 at least) has merged and the smoke passes C1..C5
+QD-SEL2P2 = the SEL2-P smoke failed its preregistered gate (founder boom and crash at prey_cap 320, confirmed
+            independently; verdict SEL2-P-smoke_296475cc), so SEL2-P stops at the smoke as registered. M0 continues
+            as: a read-only diagnosis (card DIAG-SEL2), a measurement-only exploration, then a new preregistration
+            SEL2-P2 with a new smoke seed that discloses this history (owner in chat, 2026-11-19: "Chẩn đoán rồi
+            đăng ký lại")
+QD-MACSHARE = the Mac is shared with OxideSwarm: each project may run one cargo process at the same time; an
+            Anima cargo there runs as CARGO_BUILD_JOBS=4 nice -n 10, only with at least 30% memory and 20 GB
+            disk free, and never touches an OxideSwarm process (owner in chat, 2026-11-19: "Xếp lịch xen kẽ
+            song song đi"; hub AGENT_RULES §5). The Dell does NOT share: after it ran out of RAM and shut down on
+            2026-11-20 while building in parallel, an Anima cargo runs there only when no other cargo or rustc runs
+            on the machine
+QD-E3HOST = Windows 1 is the single E3-X host (owner in chat, 2026-11-20: "Win 1 (sau W11)"); E3-X ran there at
+            24c6fb1c and ended at insufficient_evidence (6/12 valid pairs), merged in #181
+QD-VIAB   = after E3 (insufficient_evidence) and SEL2-P (smoke failed) hit the same collapse of the scarce arms, one
+            shared measurement-only viability exploration (VIAB-1) comes first, then new preregistrations E3b and
+            SEL2-P2 with fresh seeds, designed from survival and gate metrics only, never from body mass (owner in
+            chat, 2026-11-20: "Khảo sát chung rồi đăng ký lại cả hai")
+QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
+            downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
+            per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
+            allowed as local tools, never committed (owner in chat, 2026-11-19: "Cho tải CC0", "Đồng ý cả
+            hai"). The graphics pass W3-lite runs on Windows 1 after B1 ("Win 1 sau B1"). CORRECTED the
+            same day: Quaternius was first listed here as CC0, but its licence page now says Quaternius
+            Asset License v1.0 (updated 2026-08-28; no redistribution as standalone assets or packs, which
+            a public repository would risk), so it is not covered by the owner's CC0-only grant
+QD-OXS    = Anima work may run on the OxideSwarm grid (owner in chat, 2026-11-19: "Cho phép dùng
+            OxideSwarm chạy việc của Anima"), through the existing grid procedure (only anima-mac submits,
+            only to GRID WORKER, never to friends' machines): Rust builds and tests, a registered
+            experiment's preregistered runs (all confirmation seeds of one experiment on one OS family),
+            and offline map jobs whose output is a pinned, hashed artifact. Runtime rendering stays on the
+            viewer's own machine. Anima agents still never open, build or edit the OxideSwarm checkout
+QD-TRIAL  = the owner's hands-on trial of map + bodies + experiment worlds runs on Windows 1; the lead
+            pauses anima-case for it (owner in chat, 2026-11-19)
+QD-DOCIDX = build a generated docs index so pull requests stop conflicting on docs/ai/README.md (owner in
+            chat, 2026-11-19: "Làm"); until it merges, the lead keeps resolving those rows by hand
+QD-ISLAND = the project's flagship scientific question is the island rule's mechanism (resource
+            limitation vs predation release), tested with preregistered multi-world archipelagos; SEL2-P
+            is its first brick; island size = carrying capacity, not area (owner in chat, 2026-11-19:
+            "Nhận", "Sức chứa"; docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md)
+QD-SCOPE  = scope freeze for about 3 months from 2026-11-19: continue SEL2-P, E3-P, M2, LAND1 and the
+            trial cards; paused: native renderer, exotic-energy extensions, W4 streaming, the full tiled
+            artifact (W1-W3 full), Inhabit federation; after the trial, graphics = bug fixes only. Public
+            docs and papers in English; an external reviewer before the island preregistration (owner in
+            chat, 2026-11-19: "Đồng ý", "Cả hai")
+QD-REALMS = real ecosystems in water, sky and underground are added one at a time after the SEL2-P
+            result, each with its own ADR: water first, then sky, then underground (walk-in caves);
+            until then fish, birds, wildlife and caves stay labelled decoration (owner in chat,
+            2026-11-19: "Theo từng bậc")
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
             the Drive folder Anima_Agent_Hub, rules version 4: agents never merge, the coordinating
             session verifies, the owner merges (owner in chat, 2026-11-18: "Giữ không tự merge, sửa hub
             đi")
+QD-LEAD   = the coordinating (lead) session may itself merge a pull request it has verified, once
+            both required checks are green at the verified head; worker agents still never merge (owner
+            in chat, 2026-11-18: "Bạn đc phép tự merge và hoàn thiện dự án")
+QD-C2     = utf8-chars 3.0.7 (no licence file; the one row in licensing/UNRESOLVED.md): ask upstream
+            and defer, and R1c merges as is. Upstream: A1-Triard/utf8-chars issue #4 and pull request #5
+            (licence files). Fallback: if no utf8-chars release with licence texts exists when release
+            work starts, the release build drops ml-wgpu (CPU burn-flex learner only) through a separate
+            card; the desktop feature set CI tests keeps it (owner in chat, 2026-11-18: "Bạn đề xuất").
+            Amended 2026-11-19: resolved by electing Apache-2.0 under the crate's declared
+            MIT OR Apache-2.0 (PR #175); the owner asked for the licence row to be cleared and authorised
+            the means (owner in chat, 2026-11-19: "giấy phép có cách nào k, bạn có thể tự nhắn hỏi hoặc
+            làm j tuỳ"). MIT's notice condition points at a holder's notice the crate does not have;
+            Apache-2.0's text is complete as published and its section 4 conditions have nothing to
+            retain here, so nothing is synthesised. Recorded under `elections` in
+            licensing/upstream/sources.json and enforced fail-closed by scripts/lib/upstream_licenses.mjs,
+            which scans the installed crate to the bottom; licensing/UNRESOLVED.md reports 0 and the
+            ml-wgpu fallback is no longer needed. Open legal question: the election meets Apache-2.0's
+            conditions, but whether a bare Cargo `license` field is the author's grant is a legal
+            question; the project treats the published crate's declared licence as the grant, as the
+            Rust ecosystem does, and this is not legal advice. The upstream issue and pull request stay
+            open; the day the graph moves to a utf8-chars release that ships licence files, the run
+            fails loudly (the 3.0.7 election goes unused, and "installed text wins" refuses one moved
+            to the new version) and the election is removed
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
@@ -331,6 +433,25 @@ R5-AUTH   =
   scripts/verify_dataflow.py needs), and one result note under docs/ai/planning/ with its row in
   docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these
   paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-18): for card S12 only, you
+  may write to src-tauri/src/core/live_experiment.rs (the live.lake_layout key, its validation,
+  LiveWorldConfig's field and the lake placement in genesis only; lattice_point may gain a sibling
+  function but its existing behaviour must not change), src-tauri/tests/e2_seam_tests.rs and
+  src-tauri/tests/eco_card_b_tests.rs (only the pinned LIVE_KEYS.len() count), one new test file
+  src-tauri/tests/lake_layout_tests.rs, one new example src-tauri/examples/sel2_lake_layout.rs,
+  dataflow.json at the repository root (only what scripts/verify_dataflow.py needs), and one result
+  note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides AGENTS.md's read-only
+  declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-18): for card M4 only, you
+  may write to one new test file src-tauri/tests/eu_residual_matrix_tests.rs, one new example
+  src-tauri/examples/eu_residual_matrix.rs (only if the full factorial exceeds the 120 s test budget),
+  one new doc docs/paper/data/eu_residual.md, and its row in docs/paper/data/README.md. This overrides
+  AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-18): for card M3 only, you
+  may write to one new bench src-tauri/benches/live_schedule_scaling.rs, src-tauri/Cargo.toml (one
+  [[bench]] entry only), one new doc docs/paper/data/scaling.md, and its row in
+  docs/paper/data/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for
+  exactly these paths and no others.
 CURRENT WAVE = 2
 ```
 

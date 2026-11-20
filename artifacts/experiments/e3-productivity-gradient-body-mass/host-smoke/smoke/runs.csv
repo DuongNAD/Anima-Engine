@@ -1,0 +1,5 @@
+# SMOKE CALIBRATION ONLY (seed 999979); blind to body-mass values (no body-mass value written or gated beyond finiteness check)
+seed,arm,status,final_checksum,us_per_tick,deforest_ledger_count,deforest_eu_moved,add_nutrient_ledger_count,add_nutrient_eu_added,standing_crop_final,standing_crop_post_warmup_mean,detritus_at_3000,detritus_final,agent_count_min,agent_count_final,births_sum,deaths_sum,closed_eu_max_abs_drift
+999979,control_uniform,completed,1266395716,258.201,0,0.000000,0,0.000000,123300.837280,134866.659567,12530.861617,41904.141306,13,13,375,482,1.076842e-9
+999979,control_uniform_scarcity,completed,2359367161,258.201,0,0.000000,300,8521.110357,64483.464425,64379.014776,95907.224907,100754.042973,11,12,76,184,1.050648e-8
+999979,treatment_gradient,completed,2891653359,258.201,300,93891.597353,300,33642.287505,63282.053389,64098.520863,97795.366422,97200.534482,9,99,370,391,4.656613e-10

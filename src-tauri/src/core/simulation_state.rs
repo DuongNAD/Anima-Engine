@@ -127,6 +127,11 @@ pub struct SerializedAgent {
     /// so old saves keep their old behaviour (invariant D09).
     #[serde(default)]
     pub brain: Option<crate::core::components::AgentBrain>,
+    /// Biological sex when assigned (offspring receive `AgentSex`; founders do not). Carrying it
+    /// preserves the founder vs. offspring ECS archetype split across snapshot restore so post-restore
+    /// deaths keep identical table swap order (F-045).
+    #[serde(default)]
+    pub sex: Option<crate::core::components::AgentSex>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -406,7 +411,7 @@ impl SavedSharedLearningState {
         if self.pending_inference.len() > crate::core::agent_systems::INFERENCE_POOL_BATCHES {
             return Err("pending inference batches exceed the bounded response pool".into());
         }
-        let mut lineages = std::collections::HashSet::new();
+        let mut pending_keys = std::collections::HashSet::new();
         for response in self
             .pending_inference
             .iter()
@@ -416,13 +421,28 @@ impl SavedSharedLearningState {
                 || !crate::core::agent_systems::AgentInferenceResponse::actions_are_valid(
                     &response.actions,
                 )
-                || !lineages.insert(response.lineage_id.as_str())
+                || !pending_keys.insert((response.lineage_id.as_str(), response.request_id))
             {
                 return Err("pending inference responses are invalid or duplicated".into());
             }
         }
         Ok(())
     }
+}
+
+/// Records which restored colliders had not yet been indexed by `rebuild_spatial_grid_system` at
+/// the saved tick boundary (`IndexedInGrid(false)`), so restore does not prematurely insert them
+/// into `SpatialHashGrid` before the next tick's rebuild (F-045).
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct SavedUnindexedColliders {
+    #[serde(default)]
+    pub agents: Vec<usize>,
+    #[serde(default)]
+    pub foods: Vec<usize>,
+    #[serde(default)]
+    pub trees: Vec<usize>,
+    #[serde(default)]
+    pub lakes: Vec<usize>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -544,6 +564,16 @@ pub struct SavedSimulationState {
     #[serde(default)]
     pub shared_learning: Option<SavedSharedLearningState>,
 
+    /// Global `NextNodeId` counter for structural morphology mutations (F-045). `#[serde(default)]`
+    /// keeps older saves readable; on `None`, restore falls back to `(max_saved_node_id + 1).max(3)`.
+    #[serde(default)]
+    pub next_node_id: Option<u32>,
+    /// Which colliders had not yet been indexed into `SpatialHashGrid` at the checkpoint (F-045).
+    /// `None` on older saves is treated as "index every restored collider", preserving pre-F-045
+    /// behavior.
+    #[serde(default)]
+    pub unindexed_colliders: Option<SavedUnindexedColliders>,
+
     /// Which on-disk schema this state was read from, filled in by
     /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
     /// envelope that carries the real version.
@@ -604,6 +634,8 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         experiment: None,
         evolution_worker: None,
         shared_learning: None,
+        next_node_id: None,
+        unindexed_colliders: None,
         loaded_from_schema: 0,
     }
 }
@@ -919,6 +951,9 @@ pub fn spawn_serialized_agent(
     if let Some(brain) = &agent.brain {
         world.entity_mut(root_entity).insert(brain.clone());
     }
+    if let Some(sex) = agent.sex {
+        world.entity_mut(root_entity).insert(sex);
+    }
 
     match agent.class {
         AgentClass::Predator => {
@@ -1012,6 +1047,9 @@ pub fn serialize_single_agent(world: &mut World, root: Entity) -> Option<Seriali
     let brain = world
         .get::<crate::core::components::AgentBrain>(root)
         .cloned();
+    let sex = world
+        .get::<crate::core::components::AgentSex>(root)
+        .copied();
     let action_gates = world
         .get::<crate::core::components::ActionGates>(root)
         .copied();
@@ -1076,6 +1114,7 @@ pub fn serialize_single_agent(world: &mut World, root: Entity) -> Option<Seriali
         action_gates,
         segments,
         brain,
+        sex,
     })
 }
 
@@ -1156,6 +1195,9 @@ pub fn serialize_world_state(
         .get_resource::<crate::core::world_artifact::WorldIdentity>()
         .copied()
         .unwrap_or_default();
+    let next_node_id = world
+        .get_resource::<crate::core::agent_systems::NextNodeId>()
+        .map(|n| n.0);
 
     let pheromone_grid =
         if let Some(grid) = world.get_resource::<crate::ai::pheromone::PheromoneGrid>() {
@@ -1173,8 +1215,16 @@ pub fn serialize_world_state(
         };
 
     let mut foods = Vec::new();
-    let mut food_query = world.query::<(&Position, &Food)>();
-    for (pos, food) in food_query.iter(world) {
+    let mut unindexed_foods = Vec::new();
+    let mut food_query = world.query::<(
+        &Position,
+        &Food,
+        Option<&crate::physics::spatial::IndexedInGrid>,
+    )>();
+    for (pos, food, opt_indexed) in food_query.iter(world) {
+        if opt_indexed.is_some_and(|m| !m.0) {
+            unindexed_foods.push(foods.len());
+        }
         foods.push(SerializedFood {
             position: pos.0,
             energy_value: food.energy_value,
@@ -1236,6 +1286,7 @@ pub fn serialize_world_state(
         ));
     }
 
+    let mut unindexed_agents = Vec::new();
     let mut segment_query = world.query::<(
         Entity,
         &Segment,
@@ -1267,6 +1318,15 @@ pub fn serialize_world_state(
         } else {
             AgentClass::Prey
         };
+        let sex = world
+            .get::<crate::core::components::AgentSex>(entity)
+            .copied();
+        if world
+            .get::<crate::physics::spatial::IndexedInGrid>(entity)
+            .is_some_and(|m| !m.0)
+        {
+            unindexed_agents.push(agents.len());
+        }
         let action_gates = world
             .get::<crate::core::components::ActionGates>(entity)
             .copied();
@@ -1317,12 +1377,22 @@ pub fn serialize_world_state(
             action_gates,
             segments,
             brain,
+            sex,
         });
     }
 
     let mut lakes = Vec::new();
-    let mut lake_query = world.query::<(&Position, &crate::physics::SpatialCollider, &Lake)>();
-    for (pos, collider, lake) in lake_query.iter(world) {
+    let mut unindexed_lakes = Vec::new();
+    let mut lake_query = world.query::<(
+        &Position,
+        &crate::physics::SpatialCollider,
+        &Lake,
+        Option<&crate::physics::spatial::IndexedInGrid>,
+    )>();
+    for (pos, collider, lake, opt_indexed) in lake_query.iter(world) {
+        if opt_indexed.is_some_and(|m| !m.0) {
+            unindexed_lakes.push(lakes.len());
+        }
         lakes.push(SerializedLake {
             position: pos.0,
             radius: collider.radius,
@@ -1333,8 +1403,17 @@ pub fn serialize_world_state(
     }
 
     let mut trees = Vec::new();
-    let mut tree_query = world.query::<(&Position, &crate::physics::SpatialCollider, &Tree)>();
-    for (pos, collider, tree) in tree_query.iter(world) {
+    let mut unindexed_trees = Vec::new();
+    let mut tree_query = world.query::<(
+        &Position,
+        &crate::physics::SpatialCollider,
+        &Tree,
+        Option<&crate::physics::spatial::IndexedInGrid>,
+    )>();
+    for (pos, collider, tree, opt_indexed) in tree_query.iter(world) {
+        if opt_indexed.is_some_and(|m| !m.0) {
+            unindexed_trees.push(trees.len());
+        }
         trees.push(SerializedTree {
             position: pos.0,
             radius: collider.radius,
@@ -1392,6 +1471,193 @@ pub fn serialize_world_state(
         experiment,
         evolution_worker: None,
         shared_learning: None,
+        next_node_id,
+        unindexed_colliders: Some(SavedUnindexedColliders {
+            agents: unindexed_agents,
+            foods: unindexed_foods,
+            trees: unindexed_trees,
+            lakes: unindexed_lakes,
+        }),
         loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
+}
+
+/// Recover [`crate::core::agent_systems::NextNodeId`] from a restored save, falling back to
+/// `(max_saved_node_id + 1).max(3)` when loading a pre-F045 save that omitted `next_node_id`.
+pub fn restored_next_node_id(state: &SavedSimulationState) -> u32 {
+    if let Some(next_id) = state.next_node_id {
+        return next_id.max(3);
+    }
+    let mut next_node_id = 3u32;
+    for agent in &state.agents {
+        for node in &agent.genotype.nodes {
+            next_node_id = next_node_id.max(node.id.saturating_add(1));
+        }
+    }
+    for dormant in &state.dormant_agents {
+        for node in &dormant.agent.genotype.nodes {
+            next_node_id = next_node_id.max(node.id.saturating_add(1));
+        }
+    }
+    next_node_id
+}
+
+/// Restore `IndexedInGrid` markers on all colliders and populate `SpatialHashGrid` using only
+/// colliders that had already been indexed by `rebuild_spatial_grid_system` at the saved tick
+/// boundary (F-045).
+///
+/// Must run once right after restoring entities (before any tick executes), while `entity.index()`
+/// order still matches `state.agents` / `state.foods` / `state.trees` / `state.lakes` spawn order.
+pub fn populate_restored_spatial_grid(world: &mut World, state: &SavedSimulationState) {
+    use crate::physics::spatial::{
+        rebuild_spatial_grid_system, IndexedInGrid, SpatialCollider, SpatialHashGrid,
+    };
+    use bevy_ecs::system::RunSystemOnce;
+    use std::collections::HashSet;
+
+    let should_populate = state.tick_count > 0
+        || state
+            .experiment
+            .as_ref()
+            .is_some_and(|exp| exp.clock_tick > 0);
+    let mask = state.unindexed_colliders.as_ref();
+
+    let mut agent_roots: Vec<Entity> = {
+        let mut q = world.query_filtered::<Entity, With<Agent>>();
+        q.iter(world).collect()
+    };
+    agent_roots.sort_by_key(|e| e.index());
+
+    let mut unindexed_roots: HashSet<Entity> = HashSet::new();
+    for (idx, &root) in agent_roots.iter().enumerate() {
+        if !should_populate || mask.is_some_and(|u| u.agents.contains(&idx)) {
+            unindexed_roots.insert(root);
+        }
+    }
+
+    let mut skip_entities: HashSet<Entity> = HashSet::new();
+    {
+        let mut seg_q = world.query_filtered::<(Entity, &ParentAgent), With<SpatialCollider>>();
+        for (entity, parent) in seg_q.iter(world) {
+            if unindexed_roots.contains(&parent.0) {
+                skip_entities.insert(entity);
+            }
+        }
+    }
+    for root in unindexed_roots {
+        skip_entities.insert(root);
+    }
+
+    let mut collect_unindexed = |entities: Vec<Entity>, skipped_indices: Option<&[usize]>| {
+        let mut sorted = entities;
+        sorted.sort_by_key(|e| e.index());
+        for (idx, entity) in sorted.into_iter().enumerate() {
+            if !should_populate || skipped_indices.is_some_and(|v| v.contains(&idx)) {
+                skip_entities.insert(entity);
+            }
+        }
+    };
+
+    let food_entities: Vec<Entity> = {
+        let mut q = world.query_filtered::<Entity, With<Food>>();
+        q.iter(world).collect()
+    };
+    collect_unindexed(food_entities, mask.map(|u| u.foods.as_slice()));
+
+    let tree_entities: Vec<Entity> = {
+        let mut q = world.query_filtered::<Entity, With<Tree>>();
+        q.iter(world).collect()
+    };
+    collect_unindexed(tree_entities, mask.map(|u| u.trees.as_slice()));
+
+    let lake_entities: Vec<Entity> = {
+        let mut q = world.query_filtered::<Entity, With<Lake>>();
+        q.iter(world).collect()
+    };
+    collect_unindexed(lake_entities, mask.map(|u| u.lakes.as_slice()));
+
+    let all_colliders: Vec<Entity> = {
+        let mut q = world.query_filtered::<Entity, With<SpatialCollider>>();
+        q.iter(world).collect()
+    };
+    for entity in all_colliders {
+        let is_indexed = !skip_entities.contains(&entity);
+        if let Some(mut existing) = world.get_mut::<IndexedInGrid>(entity) {
+            existing.0 = is_indexed;
+        } else {
+            world.entity_mut(entity).insert(IndexedInGrid(is_indexed));
+        }
+    }
+
+    if should_populate {
+        world.run_system_once(rebuild_spatial_grid_system);
+        if !skip_entities.is_empty() {
+            if let Some(mut grid) = world.get_resource_mut::<SpatialHashGrid>() {
+                for cell in grid.cells.values_mut() {
+                    cell.retain(|entity| !skip_entities.contains(entity));
+                }
+            }
+            for &entity in &skip_entities {
+                if let Some(mut marker) = world.get_mut::<IndexedInGrid>(entity) {
+                    marker.0 = false;
+                }
+            }
+        }
+    }
+}
+
+/// Route saved pending-inference responses back to restored agent entities by matching
+/// `(lineage_id, request_id)` against each entity's
+/// [`crate::core::components::CognitiveState::PendingInference`] ticket (F-047 / F-048).
+///
+/// Full siblings share one [`AgentLineageId`], so matching by `lineage_id` alone collides when
+/// siblings coexist. Any saved response whose `(lineage_id, request_id)` pair matches no waiting
+/// entity is dropped and counted rather than routed to a sibling. Returns `(routed_batches,
+/// dropped_count)`, preserving batch grouping for non-empty routed batches.
+pub fn route_restored_pending_inference(
+    world: &mut World,
+    saved_batches: &[SavedInferenceResponseBatch],
+) -> (
+    Vec<Vec<crate::core::agent_systems::AgentInferenceResponse>>,
+    usize,
+) {
+    let mut waiting_by_ticket: std::collections::HashMap<(String, u64), Entity> =
+        std::collections::HashMap::new();
+    {
+        let mut query = world.query::<(
+            Entity,
+            &AgentLineageId,
+            &crate::core::components::CognitiveState,
+        )>();
+        for (entity, lineage, cognitive_state) in query.iter(world) {
+            if let crate::core::components::CognitiveState::PendingInference(ticket_id) =
+                *cognitive_state
+            {
+                waiting_by_ticket.insert((lineage.0.clone(), ticket_id), entity);
+            }
+        }
+    }
+
+    let mut routed_batches = Vec::with_capacity(saved_batches.len());
+    let mut dropped = 0usize;
+    for saved_batch in saved_batches {
+        let mut responses = Vec::with_capacity(saved_batch.responses.len());
+        for saved in &saved_batch.responses {
+            if let Some(entity) =
+                waiting_by_ticket.remove(&(saved.lineage_id.clone(), saved.request_id))
+            {
+                responses.push(crate::core::agent_systems::AgentInferenceResponse {
+                    entity,
+                    actions: saved.actions,
+                    request_id: saved.request_id,
+                });
+            } else {
+                dropped += 1;
+            }
+        }
+        if !responses.is_empty() {
+            routed_batches.push(responses);
+        }
+    }
+    (routed_batches, dropped)
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import PixiViewport from "./PixiViewport";
 import { EcosystemPanel } from "./components/EcosystemPanel";
+import { ExperimentWorldControl } from "./components/ExperimentWorldControl";
 import { LegacyImportPanel } from "./components/LegacyImportPanel";
 import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
 import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
@@ -246,12 +247,18 @@ export function App() {
       .then(() => {
         if (alive) setWorldReady(true);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         // Generation failed. The backend falls back to its own terrain, so the app still works —
-        // it is simply not the shared world any more. Unblocking is right: refusing to ever start
-        // would be a worse failure than running on the fallback, which is what happened before
-        // this effect existed anyway.
-        if (alive) setWorldReady(true);
+        // it is simply not the shared world any more. Unblocking is right, and surfacing a visible
+        // error banner warns the user that the showcase and simulation worlds diverged.
+        console.error('[App] Failed to load shared world; falling back to backend terrain:', err);
+        if (alive) {
+          const detail = err instanceof Error ? err.message : String(err);
+          setError(
+            `Shared world failed to load (${detail}); simulation is using backend fallback terrain.`,
+          );
+          setWorldReady(true);
+        }
       });
     return () => {
       alive = false;
@@ -664,6 +671,12 @@ export function App() {
             X-Z (Mặt trên)
           </button>
         </div>
+
+        <ExperimentWorldControl
+          running={status.running}
+          disabled={!worldReady && !status.running}
+          onStarted={() => setStatus((prev) => ({ ...prev, running: true }))}
+        />
       </div>
 
       {showRabbitTest ? (

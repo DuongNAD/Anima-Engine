@@ -264,7 +264,7 @@ fn declared_order_keeps_the_causal_sequences() {
             "check_epoch_completion_system",
         ],
     );
-    // Body: sense -> act -> CPG -> joints -> physics -> wrap -> grid.
+    // Body: sense -> act -> CPG -> joints -> physics -> terrain_navigation -> wrap -> grid.
     assert_in_order(
         &order,
         &[
@@ -274,6 +274,7 @@ fn declared_order_keeps_the_causal_sequences() {
             "resolve_joints_system",
             "steering_drive_system",
             "integrate_physics_system",
+            "terrain_navigation_system",
             "wrap_coordinates_system",
             "rebuild_spatial_grid_system",
         ],

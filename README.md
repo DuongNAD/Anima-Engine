@@ -1,259 +1,275 @@
-*Tiếng Việt · [English](README.en.md)*
+<p align="center">
+  <img src=".github/assets/anima-logo.svg" width="168" alt="Logo Anima Engine: thân một sinh vật nhiều đốt lớn dần theo đường xoắn ốc, từ chiếc đuôi mảnh ở tâm đến cái đầu có mắt">
+</p>
 
-# Anima Engine
+<h1 align="center">Anima Engine</h1>
 
-Mô phỏng một thế giới sống — địa hình, nước, khí hậu, đất, thực vật, động vật và tác động
-dây chuyền giữa các hệ thống — chạy thời gian thực trong một ứng dụng desktop **Tauri v2**.
-Lõi mô phỏng là **Rust (Bevy ECS + Burn)**; lớp hiển thị là **React + TypeScript**.
+<p align="center">
+  <b>Một phòng thí nghiệm tiến hoá nhân tạo.</b><br>
+  Thân và bộ não của sinh vật do gen quyết định. Chúng sống trên một thế giới có địa hình, khí hậu và một sổ năng lượng
+  khép kín. Mỗi thí nghiệm được đăng ký trước, và cùng hạt giống thì chạy lại ra cùng kết quả.
+</p>
 
-Trọng tâm hiện tại là một lát cắt dọc có thể kiểm chứng: **lưu vực → đồng cỏ → thỏ → sói**,
-với trạng thái thế giới có phiên bản, kết quả tái lập được và bằng chứng cho từng thay đổi.
+<p align="center"><i>Tiếng Việt · <a href="README.en.md">English</a></i></p>
 
-## Bắt đầu từ đâu
+---
 
-| Nhu cầu | Tài liệu |
-|---|---|
-| Biết dự án đang ở đâu và việc gì kế tiếp | [Trạng thái dự án](docs/planning/STATE_OF_THE_PROJECT.md) — số đo ở §1, bảng tiến độ theo chặng ở §3.00 |
-| Hiểu sản phẩm và kiến trúc hiện tại | [PROJECT.md](PROJECT.md) |
-| Hiểu tầm nhìn thế giới | [WORLD_DESIGN.md](WORLD_DESIGN.md) |
-| Xem lộ trình mô phỏng dài hạn | [WORLD_SIMULATION_PLAN.md](WORLD_SIMULATION_PLAN.md) |
-| Xem các quy tắc không được phá vỡ | [SIMULATION_RULES.md](SIMULATION_RULES.md) |
-| Triển khai sinh vật thích nghi môi trường | [Creature Development Contract](docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
-| Sửa bộ não agent, gen não hoặc không gian hành động | [ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md) |
-| Chạy thí nghiệm tiến hoá khác luật | [Evolution Experiment Contract](docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md) |
-| Xem đề xuất nâng cấp map và mô hình ML | [Khảo sát map & ML](docs/research/MAP_AND_ML_UPGRADE_RESEARCH.md) |
-| Chọn công nghệ nguồn mở để tích hợp | [Kế hoạch áp dụng nguồn mở](docs/planning/OPEN_SOURCE_ADOPTION_PLAN.md) |
-| Tra cứu toàn bộ tài liệu | [Trung tâm tài liệu](docs/README.md) |
+## Dự án là gì
+
+Anima Engine là ứng dụng desktop **Tauri v2**:
+- **Lõi mô phỏng:** **Rust**, gồm **Bevy ECS** và **Burn**, chạy nền ở 60 tick mỗi giây.
+- **Giao diện:** **React + TypeScript**, với bản đồ 3D dựng bằng three.js / React Three Fiber.
+
+Dự án có hai việc, và việc thứ hai quan trọng hơn việc thứ nhất:
+
+1. **Mô phỏng một thế giới sống.**
+   - Địa hình, sông hồ, khí hậu và thực vật tạo nên môi trường.
+   - Sinh vật trong đó có thân nhiều đốt mọc ra từ bộ gen, đi bằng dáng do bộ dao động thần kinh (CPG) điều khiển, và ăn, uống, săn mồi, sinh sản.
+   - Năng lượng đi theo một vòng khép kín: thực vật → con ăn cỏ → xác mục → thực vật.
+2. **Đặt câu hỏi tiến hoá cho thế giới đó, và trả lời có kiểm chứng.**
+   - Mỗi thí nghiệm là một manifest có phiên bản, chạy không cần giao diện.
+   - Thí nghiệm được đăng ký trước khi có dữ liệu, có đối chứng âm, và kết quả âm cũng được công bố.
+
+**Câu hỏi chủ lực là quy luật đảo** (*island rule*): khi một quần thể bị cô lập trên đảo, kích thước cơ thể
+thay đổi thế nào, và thay đổi đó do thức ăn hay do kẻ săn mồi. Thiết kế nằm ở
+[đề xuất Đài quan sát tiến hoá trên đảo](docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md).
+Về lâu dài, mỗi lần một tầng, sẽ có thêm hệ sinh thái thật dưới nước, trên trời và dưới lòng đất.
+
+## Mở app ra sẽ thấy gì
+
+- **Một thế giới dùng chung.** Bản đồ là một siêu lục địa sinh từ hạt giống, độ phân giải 2048², có đủ biển,
+  bờ, sông, hồ, thác, sa mạc, xavan, rừng nhiệt đới, rừng ôn đới, rừng taiga, đầm lầy, núi tuyết và sông băng.
+  Phần mô phỏng chạy trên bản thu nhỏ 256² của chính thế giới đó. Một test chặn để thế giới không lặng lẽ mất
+  đi môi trường nào.
+- **Sinh vật có thân liền, mắt ở phía trước.** Hình dạng mỗi con lấy từ số đốt, khớp và kích thước trong bộ gen
+  của nó, nên không con nào giống con nào. Chúng chỉ đi trên đất, không đi trên biển.
+- **Bản đồ cho thấy đúng thế giới đang được mô phỏng.** Hồ, cây và thức ăn trên bản đồ là của mô phỏng. Cá, chim,
+  thú nền và hang chỉ để trang trí: app ghi rõ như vậy, và có nút để ẩn chúng.
+- **Mở một thế giới thí nghiệm đã đăng ký** từ manifest của nó. Đây mới là bản thử, chỉ để xem.
+
+## Điều gì làm dự án này khác
+
+- **Không tô vẽ.** Thứ gì không được mô phỏng thì được ghi là trang trí. Tài liệu tách *cái có trong mã* khỏi
+  *cái đã được đo*, và mọi con số có thẩm quyền chỉ nằm ở một chỗ.
+- **Năng lượng khép kín.** Năng lượng (EU) không tự sinh ra cũng không tự mất đi. Mọi khoản chi đi qua một chỗ duy
+  nhất, và test kiểm tra rằng tổng năng lượng không trôi.
+- **Thí nghiệm đăng ký trước.** Ngưỡng quyết định, số hạt giống, cách loại bỏ lượt chạy hỏng và các đối chứng đều
+  được khoá trước khi chạy. Lượt smoke chạy "mù": không đọc các chỉ số kết quả. Cổng không qua thì đó là một kết
+  quả, không được chạy lại và không được chỉnh tham số.
+- **Tái lập được.** Cùng hạt giống, cùng commit và cùng hệ điều hành thì cho cùng checksum. Giữa các hệ điều hành,
+  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Còn một
+  ngoại lệ đang được sửa (thẻ F051): lượt chạy không giao diện vẫn lấy địa hình từ file thế giới của app nếu máy
+  có file đó.
+- **Không có Lamarck.** Những gì một cá thể học được trong đời không bao giờ được ghi ngược vào bộ gen.
+
+## Ranh giới hiện tại (2026-11-19)
+
+Bảng ở mục kế tiếp liệt kê *cái gì có trong mã*. Nó không nói *cái gì đã được đo hay chứng minh*. Trạng thái đo
+được, kèm lệnh, ngày chạy và cấu hình, chỉ nằm ở một chỗ:
+[`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+README này không mang số đo.
+
+- **Chưa có kết quả khoa học có sức mạnh.**
+  - Hạ tầng thí nghiệm đã có.
+  - Thí nghiệm E2 cho kết quả null vì hiệu ứng sàn.
+  - Bản đăng ký E-SEL1 bị đóng trước khi chạy.
+  - Tình trạng của SEL2-P (thí nghiệm đăng ký trước đầu tiên trên thế giới sống) và E3 nằm ở
+    [STATE §3](docs/planning/STATE_OF_THE_PROJECT.md).
+- **Adapter thí nghiệm cho thế giới sống mới được kiểm chứng ở đường không giao diện** (*headless adapter
+  verified*). Nút mở thế giới thí nghiệm trong app mới là bản thử để xem.
+- **Số FPS của bản đồ đến nay đều đo trong trình duyệt** (bộ dựng hình chạy trên Vite, không có tải mô phỏng),
+  chưa phải số đo của app desktop. App desktop mới được chạy và đo tick một lần, ngày 2026-07-27, với bản debug và
+  10 agent. Chưa ai chạy bản release của app với bản đồ hiện tại.
+- **Tử vong, fitness sinh thái, sinh sản liên tục và bộ lái vận động có trong mã nhưng tắt theo mặc định.** Một
+  thế giới mặc định vẫn không có cái chết, và fitness được chấm bằng quãng đường. Luật "chỉ đi trên đất" thì bật
+  sẵn trong app, còn trong thí nghiệm thì phải bật bằng khoá `live.land_mask`.
+- **Không còn văn bản giấy phép bên thứ ba nào chưa giải quyết, nhưng có một dòng được đóng bằng lựa chọn.**
+  `utf8-chars` 3.0.7 không có file giấy phép nào, nên dự án chọn Apache-2.0 trong `MIT OR Apache-2.0` mà crate
+  khai; [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md) trống. Một trường `license` trơn của Cargo có phải là
+  lời cấp phép của tác giả hay không vẫn là câu hỏi pháp lý; đây không phải tư vấn pháp lý.
 
 ## Đang có gì trong mã
 
 | Lớp | Nội dung |
 |---|---|
-| **Thế giới** | Sinh địa hình noise nhiều lớp + thuỷ văn (sông, spillway, delta, hồ nội lưu); phân loại biome; trường khí hậu/nước/đất động với ngân sách nước và dinh dưỡng được bảo toàn |
-| **Biên trao đổi** | `WorldArtifact` có phiên bản + checksum FNV-1a, sinh **byte-identical** giữa Rust và TypeScript; world mô phỏng 256² |
-| **Sinh vật** | `MorphologyGenotype` → phenotype nhiều đốt, ràng buộc khớp, dao động CPG điều khiển dáng đi; chuyển hoá theo MTE (Kleiber + Arrhenius) thay cho số hạng khối lượng tuyến tính |
-| **Bộ não** | Actor-critic dùng chung (Burn — `burn-wgpu` GPU hoặc `burn-ndarray` CPU) là mặc định; **não di truyền theo từng cá thể** (`BrainGenotype`) và học-trong-đời là tuỳ chọn sau cờ ([ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md)) |
-| **Hành vi xã hội** | Raycast qua spatial hash, lưới pheromone 1D có khuếch tán/phân rã, động lực thú săn – con mồi, chiến đấu |
-| **Sinh thái** | Sổ cái năng lượng **đóng** (EU): thực vật → ăn cỏ → xác mục → thực vật; phản ứng chức năng Holling II/III; chuyển hoá Lindeman ~30%; trường NPP tái sinh logistic theo biome; chu kỳ mùa. **Tuỳ chọn, mặc định tắt:** tử vong vì đói và khát (`ANIMA_MORTALITY`, khoá manifest `live.mortality`), sinh sản liên tục, bộ lái vận động và các khoá sinh thái cho thú săn và con mồi ([ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md)) |
-| **Tiến hoá** | MAP-Elites trên trục **niche sinh thái** (khối lượng cơ thể × tỉ lệ năng lượng đến từ săn mồi, `trophic_ratio`); thay thế theo thế hệ; fitness mặc định là quãng đường, **fitness sinh thái** là tuỳ chọn (`ANIMA_FITNESS`, khoá `live.ecological_fitness`); phả hệ lưu Neo4j với fallback in-memory, xuất Newick và truy vấn tổ tiên chung gần nhất (MRCA) |
-| **Thí nghiệm** | Manifest thí nghiệm + runner headless, fork từ checkpoint, hàng đợi can thiệp + sổ nhân quả, năng lượng ngoại lai (“mana”) **mặc định tắt**; thế giới Bevy sống có adapter thí nghiệm — **headless adapter verified**, xem cảnh báo bên dưới |
-| **Giao diện** | Viewport 2D PixiJS 8; cảnh quan 3D three + R3F (`landscape.html`) với chu kỳ ngày–đêm, thời tiết, thảm thực vật instanced, chế độ khám phá góc nhìn thứ nhất; bảng hệ sinh thái / tiến hoá / phả hệ / chronicle |
-| **Hạ tầng** | Vòng tick 60 FPS chạy nền, **không cấp phát heap trên hot path**, RNG có seed tách theo stream, snapshot có phiên bản dùng làm checkpoint (khôi phục cả vị trí draw), chế độ tất định để replay |
+| **Thế giới** | Bộ sinh thế giới TypeScript chạy từ một hạt giống: noise nhiều lớp, xói mòn, hồ sinh bằng *priority flood*, sông, thác ở các điểm gãy, cửa hang, khí hậu theo vĩ độ và độ cao, 22 biome. Thế giới được giao sang mô phỏng dưới dạng `WorldArtifact` có phiên bản và checksum. Trường khí hậu, nước và đất biến động theo thời gian, với ngân sách nước và dinh dưỡng được bảo toàn |
+| **Sinh vật** | `MorphologyGenotype` → kiểu hình nhiều đốt, có ràng buộc khớp và dáng đi do CPG điều khiển. Chuyển hoá theo MTE (Kleiber + Arrhenius). Bản đồ 3D vẽ thân liền, có mắt và mức chi tiết (LOD) theo khoảng cách. Đi trên đất được kiểm theo biome |
+| **Bộ não** | Mặc định là một actor-critic dùng chung (Burn). CPU `burn-flex` là đường tham chiếu tất định; GPU `burn-wgpu` chỉ chạy khi được yêu cầu. Tuỳ chọn có thêm **não di truyền riêng cho từng cá thể** và học trong đời ([ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md)) |
+| **Hành vi** | Raycast qua spatial hash, lưới pheromone có khuếch tán và phân rã, động lực thú săn và con mồi, chiến đấu |
+| **Sinh thái** | Sổ năng lượng **khép kín** (EU): thực vật → ăn cỏ → xác mục → thực vật. Phản ứng chức năng Holling II/III. Hiệu suất chuyển hoá Lindeman khoảng 30%. Năng suất sơ cấp tái sinh logistic theo biome. Chu kỳ mùa. Tử vong, sinh sản liên tục, vận động và các khoá sinh thái là tuỳ chọn, mặc định tắt ([ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md)) |
+| **Tiến hoá** | MAP-Elites trên trục **niche sinh thái** (khối lượng cơ thể × tỉ lệ năng lượng từ săn mồi). Thay thế quần thể theo thế hệ. Phả hệ lưu trong Neo4j, không có thì chạy trong bộ nhớ. Xuất cây Newick và truy vấn tổ tiên chung gần nhất (MRCA) |
+| **Thí nghiệm** | Manifest có phiên bản và runner không giao diện. Fork từ checkpoint. Hàng đợi can thiệp kèm sổ nhân quả. Năng lượng ngoại lai ("mana", mặc định tắt). Adapter cho thế giới Bevy sống. Bộ chạy cho các thí nghiệm đăng ký trước (E-SEL1, SEL2-P, E3) |
+| **Giao diện** | Bản đồ 3D (`landscape.html`): ngày đêm, thời tiết, vật liệu địa hình PBR (CC0), thảm thực vật instanced, nhiều chế độ camera, bốn mức đồ hoạ. Viewport 2D PixiJS 8. Các bảng hệ sinh thái, tiến hoá, phả hệ và biên niên |
+| **Hạ tầng** | Vòng tick 60/giây chạy nền, **không cấp phát heap trên đường tick**. RNG có seed, tách theo từng luồng. Snapshot có phiên bản dùng làm checkpoint. Chế độ tất định cho replay |
 
-> **Bảng trên liệt kê *cái gì có trong mã*, không phải *cái gì đã được đo hay chứng minh*.**
-> Trạng thái đo được — kèm lệnh, ngày chạy và cấu hình — chỉ ở một chỗ:
-> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
->
-> Năm ranh giới đáng nhớ, tính đến **2026-11-17** (nguồn của từng dòng là `STATE_OF_THE_PROJECT.md`
-> §1.d, §2 và §3.00; README này không mang số đo):
->
-> - Adapter thí nghiệm cho thế giới sống là **headless adapter verified** — **không** phải
->   "experiment-ready". Chưa có thí nghiệm nào chạy trong app desktop.
-> - App đã được chạy và đo tick một lần, ngày 2026-07-27: bản **debug**, 10 agent. Chưa có lượt
->   chạy bản **release** nào, và chưa có số đo nào ở 1.000 agent.
-> - Hạ tầng thí nghiệm **tồn tại**; dự án **chưa có một kết quả khoa học có sức mạnh**. Thí nghiệm E2
->   cho kết quả null vì hiệu ứng sàn, và bản đăng ký E-SEL1 được đóng trước khi chạy thí nghiệm.
-> - Tử vong, fitness sinh thái, sinh sản liên tục và vận động **có trong mã nhưng tắt mặc định**, và
->   mới được kiểm ở đường headless. Một thế giới mặc định vẫn không có cái chết, và chấm fitness bằng
->   quãng đường.
-> - Một văn bản license (`hexf-parse` 0.2.1) **vẫn chưa giải quyết** và vẫn chặn phát hành —
->   [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
+## Bắt đầu từ đâu
+
+| Nhu cầu | Tài liệu |
+|---|---|
+| Dự án đang ở đâu, việc gì kế tiếp | [Trạng thái dự án](docs/planning/STATE_OF_THE_PROJECT.md): số đo ở §1, bảng tiến độ ở §3.00 |
+| Câu hỏi chủ lực và lộ trình | [Đài quan sát tiến hoá trên đảo](docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md) |
+| Sản phẩm và kiến trúc | [PROJECT.md](PROJECT.md) |
+| Tầm nhìn thế giới | [WORLD_DESIGN.md](WORLD_DESIGN.md) |
+| Các quy tắc mô phỏng không được phá | [SIMULATION_RULES.md](SIMULATION_RULES.md) |
+| Bug đã chứng minh | [FINDINGS.md](FINDINGS.md) |
+| Sửa gen, thân hay sinh vật | [Creature Development Contract](docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
+| Sửa bộ não hoặc không gian hành động | [ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md) |
+| Chạy thí nghiệm với luật thế giới khác | [Evolution Experiment Contract](docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md) |
+| Chạy thử app với người ngoài | [Buổi dùng thử đầu tiên](docs/how-to/OWNER_TRIAL_RUN.md) |
+| Làm việc như một agent trong nhóm | [AGENT_WORKFLOW.md](docs/how-to/AGENT_WORKFLOW.md) |
+| Toàn bộ tài liệu | [Trung tâm tài liệu](docs/README.md) |
 
 ## Kiến trúc ở mức cao
 
 ```mermaid
 flowchart LR
-    I["Scenario / tác động người dùng"] --> R["Rust simulation core"]
-    R --> A["WorldArtifact có phiên bản"]
-    A --> U["React + PixiJS + Three.js"]
-    R --> E["Causal events và telemetry"]
-    E --> U
-    A --> O["Bộ kiểm chứng khoa học ngoại tuyến"]
-    O --> G["Golden fixtures / ngưỡng sai số"]
-    G --> R
+    S["Hạt giống thế giới"] --> W["Bộ sinh thế giới (TypeScript)"]
+    W --> A["WorldArtifact có phiên bản + checksum"]
+    A --> R["Lõi mô phỏng Rust (Bevy ECS + Burn)"]
+    M["Manifest thí nghiệm"] --> R
+    R --> T["Tick, sự kiện nhân quả, telemetry"]
+    T --> U["React + three.js + PixiJS"]
+    R --> X["Runner không giao diện → artifact + checksum"]
+    X --> V["Bộ kiểm chứng và đăng ký trước"]
 ```
 
-- Rust là nguồn sự thật của trạng thái mô phỏng.
-- TypeScript/Three.js hiển thị và tương tác, không tự phát minh trạng thái sinh thái.
-- `WorldArtifact` là biên trao đổi có phiên bản giữa các lớp.
-- Các mô hình Python nguồn mở chỉ dùng ngoại tuyến để hiệu chuẩn và kiểm chứng; chúng
-  không trở thành phụ thuộc runtime của ứng dụng desktop.
+- Rust là nguồn sự thật của trạng thái mô phỏng. Giao diện chỉ hiển thị, không tự tạo ra trạng thái sinh thái.
+- `WorldArtifact` là biên trao đổi có phiên bản giữa hai bên.
+- Công cụ Python nguồn mở chỉ dùng ngoại tuyến để hiệu chuẩn và kiểm chứng. App desktop không phụ thuộc vào chúng
+  lúc chạy.
 
 ## Bố cục kho mã
 
 ```
-src/                      React + TypeScript (Vite, 2 entry: index.html, landscape.html)
-  components/             bảng điều khiển, đồ thị phả hệ, panel hệ sinh thái
-  components/Landscape/   cảnh quan 3D, worldgen frontend, cache world, explore mode
-  PixiViewport.tsx        viewport 2D WebGL/WebGPU (rơi về Canvas 2D dưới Vitest)
+src/                      React + TypeScript (Vite, hai entry: index.html, landscape.html)
+  components/Landscape/   bản đồ 3D, bộ sinh thế giới, cache thế giới, vật liệu, sinh vật
+  utils/sharedWorld.ts    danh tính duy nhất của thế giới dùng chung
 src-tauri/                crate Rust `anima-engine` (lib `anima_engine_lib`)
-  src/core/               ECS + tick loop, terrain, ecology, sổ năng lượng, trường động,
-                          world artifact, snapshot, đồng hồ đa nhịp, can thiệp, nhân quả,
-                          thí nghiệm, năng lượng ngoại lai, networking systems
-  src/ai/                 mô hình Burn, CPG, HRRL, pheromone
-  src/evolution/          MAP-Elites, genotype/mutation/crossover, gen não, phả hệ, meta-AI
-  src/physics/            động lực học, spatial hash
+  src/core/               ECS, vòng tick, địa hình, sinh thái, sổ năng lượng, snapshot, thí nghiệm
+  src/ai/                 mô hình Burn, CPG, pheromone
+  src/evolution/          MAP-Elites, gen, đột biến, lai ghép, gen não, phả hệ
   src/commands/           bề mặt lệnh Tauri IPC
-tests/                    npm package riêng: Vitest (frontend/) + Playwright (e2e/)
+  examples/               bộ chạy thí nghiệm đăng ký trước
+  crates/anima-domain/    các luật của thế giới
+tests/                    gói npm riêng: Vitest (frontend/) và Playwright (e2e/)
 docs/                     tài liệu theo Diátaxis (tutorial / how-to / reference / explanation)
-scripts/                  benchmark, kiểm tra link tài liệu, sinh manifest và fixture
+scripts/                  cổng kiểm tra, sinh manifest và bằng chứng bản đồ, benchmark
+artifacts/                artifact đã ghim và băm: thế giới 256², bằng chứng bản đồ, thí nghiệm
 ```
 
 ## Chạy dự án
 
-Yêu cầu: Node.js + npm, Rust toolchain (edition 2021) và các điều kiện build Tauri v2 trên
-Windows (WebView2, MSVC build tools).
+Yêu cầu: Node.js và npm, Rust toolchain (phiên bản ghim trong `rust-toolchain.toml`), và các điều kiện build
+Tauri v2 của hệ điều hành (trên Windows: WebView2 và MSVC build tools).
 
-```powershell
-npm install
+Chỉ phần giao diện, bản đồ 3D và bộ sinh thế giới, nhẹ và đủ cho phần lớn công việc:
+
+```bash
+npm ci
 npm run dev
 ```
 
-`npm run dev` mở Vite ở cổng cố định **5173** — đủ để làm việc với giao diện, cảnh quan 3D và
-worldgen phía frontend.
+`npm run dev` mở Vite ở cổng cố định **5173**.
 
-Chạy trọn ứng dụng desktop kèm backend:
+Trọn ứng dụng desktop kèm backend:
 
-```powershell
+```bash
 npm run tauri:dev
 ```
 
-Dùng `npm run tauri:dev` / `npm run tauri:build`, **không** dùng `tauri dev` / `tauri build` trần.
-Hai script npm truyền `--features desktop`, còn `tauri.conf.json` không có trường nào khai Cargo
-feature — nên lệnh trần ship một binary `default = []`: không phả hệ Neo4j, không migration
-cross-shard, và learner chạy CPU. Cả ba đều có fallback hoạt động, nên không có gì báo lỗi.
+Dùng `npm run tauri:dev` và `npm run tauri:build`, **không** dùng `tauri dev` hay `tauri build` trần. Hai script
+npm truyền `--features desktop`, còn `tauri.conf.json` không có chỗ khai báo Cargo feature. Lệnh trần vì thế ra
+một binary thiếu phả hệ Neo4j, thiếu migration giữa các shard, và có learner chạy CPU. Cả ba đều có đường dự
+phòng, nên không có gì báo lỗi.
 
-> ⚠️ Build và chạy toàn bộ backend Bevy/Tauri rất nặng và **đã từng làm treo máy phát triển
-> hiện tại**. Khi chỉ cần xem mô hình 3D hoặc cảnh quan, dùng `npm run dev`. (`rabbit-standalone/` mà bản cũ
-> của mục này gợi ý đã bị xoá ở `fddbdee`.)
+> ⚠️ Build và chạy trọn backend Bevy/Tauri rất nặng và đã từng làm treo máy phát triển. Khi chỉ cần xem bản đồ
+> hay sinh vật, dùng `npm run dev`.
+
+Mặc định có 10 cá thể sáng lập. Đặt `ANIMA_FOUNDING_POPULATION` (tối đa 10.000) để thế giới đông hơn.
 
 ## Kiểm chứng
 
 Frontend:
 
-```powershell
+```bash
+npm run lint
 npm run test
 npm run test:frontend
 npm run test:e2e
-npm run lint
 npm run build
+npm run check:docs
 ```
 
-Backend:
+Backend (chạy trong `src-tauri/`):
 
-```powershell
-cargo test --manifest-path src-tauri/Cargo.toml --features desktop -j 2
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features desktop
-cargo deny --manifest-path src-tauri/Cargo.toml check
+```bash
+cargo test --features desktop
+cargo clippy --all-targets --features desktop -- -D warnings
+cargo audit
 ```
 
-`cargo audit` (advisory) phải chạy **từ trong `src-tauri/`**, không chạy từ gốc: nó tìm
-`.cargo/audit.toml` theo thư mục hiện tại, nên chạy từ gốc sẽ bỏ qua hai ignore đã được xác minh ở
-đó và báo đỏ nhầm. `cargo deny` thì tìm `deny.toml` cạnh manifest nên chạy từ đâu cũng được.
+Ba ràng buộc không phải tuỳ chọn:
 
-E2E Playwright tự khởi động Vite dev server (`webServer` trong `tests/e2e/playwright.config.ts`),
-không cần binary release.
+- **`--features desktop` là bắt buộc.** Thiếu nó, Cargo không lên lịch các file test cần feature
+  `networking` hay `ml-wgpu`, và các test migration, cross-shard, GPU-fallback lặng lẽ không chạy.
+  `node scripts/check_test_targets.mjs <output> --profile desktop` kiểm tra điều này. Hứng output vào một file,
+  gộp cả hai luồng theo đúng thứ tự.
+- **Mỗi lúc chỉ chạy một tiến trình `cargo test` trên một máy.** Vài suite thay global allocator để đếm cấp phát,
+  hoặc đọc và ghi biến môi trường.
+- **`cargo audit` phải chạy từ trong `src-tauri/`**, vì nó tìm `.cargo/audit.toml` theo thư mục hiện tại.
 
-Hai ràng buộc dưới đây không phải tuỳ chọn thẩm mỹ:
-
-- `--features desktop`: bảy file test mang `#![cfg(feature = "networking")]` hoặc `"ml-wgpu"` ở cấp
-  crate **và** một mục `[[test]] required-features` tương ứng trong `Cargo.toml`, nên thiếu cờ này
-  Cargo **không lên lịch** chúng — 1.877 dòng test migration / cross-shard / GPU-fallback không chạy
-  mà không có gì báo. (Trước đây chúng biên dịch thành binary rỗng báo `running 0 tests` và exit 0.)
-  `tests/feature_gated_targets_tests.rs` giữ hai nửa khai báo đó khớp nhau. Muốn kiểm tra: hứng
-  output rồi chạy `node scripts/check_test_targets.mjs <file> --profile desktop`.
-- `-j 2` (trên máy Windows): build song song đầy đủ làm cạn paging file và cargo báo `LNK1104` /
-  `os error 1455` giữa chừng. Ràng buộc này đo trên máy phát triển Windows trước đây; trên macOS chưa
-  ai đo, nên giữ `-j 2` cho tới khi có số.
-- Chạy **một tiến trình `cargo test` tại một thời điểm**: vài suite thay global allocator để đếm
-  cấp phát, hoặc đọc/ghi biến môi trường. Chúng đã tự khoá bằng mutex trong từng file, nhưng hai
-  tiến trình song song vẫn tranh chấp file `.exe` (`os error 32`).
-
-Đo baseline hiệu năng:
-
-```powershell
-node scripts/bench_baseline.mjs
-```
+E2E Playwright tự khởi động Vite, không cần binary release. CI (`.github/workflows/ci.yml`) chạy các cổng trên.
+Cả hai nhánh `main` và `feat/ecological-selection` đều được bảo vệ, nên mọi thay đổi đi qua pull request có hai
+job CI xanh.
 
 ## Cờ chạy
 
-Backend nạp biến môi trường qua `dotenvy` từ `.env` (gitignored). Mặc định là đường legacy:
-không bật cờ nào thì mô phỏng chạy đúng như trước khi các tính năng dưới đây tồn tại.
+Backend nạp biến môi trường từ `.env` (gitignored) qua `dotenvy`. Không đặt cờ nào thì mô phỏng chạy theo đường
+mặc định cũ.
 
 | Biến | Mặc định | Tác dụng |
 |---|---|---|
-| `ANIMA_SIM_SEED` | seed của world | Ghi đè seed ngẫu nhiên của run (dùng cho sweep headless) |
-| `ANIMA_EVOLVED_BRAINS` | tắt | Mỗi agent có bộ não di truyền riêng thay vì dùng chung một mạng |
-| `ANIMA_LIFETIME_LEARNING` | tắt | Học trong đời cá thể; chỉ có hiệu lực khi đã bật cờ trên |
-| `ANIMA_DETERMINISTIC` | tắt | Chế độ tất định cho replay/checkpoint |
-| `ANIMA_USE_GPU` | bật | `burn-wgpu`; đặt `0` để rơi về CPU `ndarray` |
-| `ANIMA_WORLD_ARTIFACT` | temp dir | Đường dẫn World Artifact dùng chung |
-| `ANIMA_CACHE_DIR` | temp dir | Nơi cache world sinh ở backend |
-| `GEMINI_API_KEY` | trống | Gemini REST cho meta-AI; vắng thì dùng mock |
-| `GEMINI_WEBSESSION_ENDPOINT` | trống | Endpoint web-session cho `GeminiWebSessionClient` |
-| Thông tin Neo4j | trống | Phả hệ; vắng thì chạy offline in-memory |
+| `ANIMA_FOUNDING_POPULATION` | 10 | Số cá thể sáng lập, tối đa 10.000 |
+| `ANIMA_SIM_SEED` | seed của thế giới | Ghi đè seed của lượt chạy |
+| `ANIMA_EVOLVED_BRAINS` | tắt | Mỗi cá thể có bộ não di truyền riêng thay vì dùng chung một mạng |
+| `ANIMA_LIFETIME_LEARNING` | tắt | Học trong đời. Chỉ có hiệu lực khi cờ trên đã bật |
+| `ANIMA_MORTALITY` | tắt | Tử vong vì đói và khát |
+| `ANIMA_FITNESS` | quãng đường | Chọn fitness sinh thái thay cho quãng đường |
+| `ANIMA_DETERMINISTIC` | tắt | Chế độ tất định để replay và dùng checkpoint |
+| `ANIMA_USE_GPU` | tắt | Bật learner GPU `burn-wgpu`. Mặc định là CPU `burn-flex`, đường tham chiếu tất định |
+| `ANIMA_WORLD_ARTIFACT` | thư mục tạm | Đường dẫn World Artifact mà app dùng chung giữa giao diện và backend |
+| `ANIMA_CACHE_DIR` | thư mục tạm | Nơi cache thế giới sinh ở backend |
+| `GEMINI_API_KEY` | trống | Gemini REST cho meta-AI. Trống thì dùng mock |
+| Thông tin Neo4j | trống | Phả hệ. Trống thì chạy trong bộ nhớ |
 
-Chi tiết xem [hướng dẫn phát triển](docs/how-to/README.md) và
-[baseline hiệu năng](BENCHMARK_BASELINE.md).
+Trong thí nghiệm, manifest khai báo các giá trị tương ứng, chẳng hạn `live.mortality` hay `live.land_mask`.
+Manifest không đọc biến môi trường.
 
 ## Hợp đồng IPC
 
-Frontend nói chuyện với lõi Rust bằng lệnh và sự kiện Tauri — ví dụ `get_simulation_status`,
-`toggle_simulation`, `get_map_elites_grid`, `get_pheromone_grid`, `get_lineage_graph`,
-`get_ecosystem_state`, `save_simulation_state` / `load_simulation_state`; sự kiện
-`simulation-tick`, `map-elites-update`, `pheromone-update`, `chronicle-event`,
-`migration-event`.
+Giao diện nói chuyện với lõi Rust qua lệnh và sự kiện Tauri, ví dụ `get_simulation_status`, `toggle_simulation`,
+`start_from_manifest`, `get_environmental_elements`, `save_simulation_state` / `load_simulation_state`, và sự kiện
+`simulation-tick`. Danh sách đầy đủ kèm payload nằm ở
+[`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Hãy cập nhật nó trong cùng thay đổi khi sửa
+bề mặt IPC: `npm run check:docs` đỏ khi danh sách lệch với mã.
 
-> **Đổi hành vi 2026-07-27 — save/load.** Tham số `file_path` giữ nguyên tên (tương thích IPC) nhưng
-> nay là **tên save**, không phải đường dẫn: nó được phân giải trong thư mục app-data
-> (`<app_data_dir>/saves/<tên>.json`). Trước đây chuỗi từ frontend đi thẳng vào `write_atomic` /
-> `read`, nên bất cứ thứ gì gọi được `invoke` đều ghi/đọc được **file bất kỳ** mà tiến trình có
-> quyền. Tên chỉ được chứa `[A-Za-z0-9._-]` (allow-list, không phải block-list — xem
-> [`commands/save_paths.rs`](src-tauri/src/commands/save_paths.rs) giải thích vì sao block-list thua
-> trước `..%2f`, UNC, ADS `save.json:evil`, và tên thiết bị `CON`/`NUL`).
->
-> **Save cũ nằm ngoài thư mục đó sẽ không đọc được nữa.** Cách chuyển: copy file `.json` vào
-> `<app_data_dir>/saves/` rồi load bằng tên. Không có bước migrate tự động, vì tự động đọc một đường
-> dẫn tuỳ ý chính là lỗ hổng vừa đóng.
-
-Danh sách đầy đủ kèm payload nằm ở [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md) —
-đọc trước khi đổi bề mặt IPC, và cập nhật nó trong cùng thay đổi. `npm run check:docs` đỏ khi danh sách
-đó lệch với mã.
+Save/load nhận **tên save**, không nhận đường dẫn. Tên được phân giải trong thư mục dữ liệu của app
+(`<app_data_dir>/saves/<tên>.json`), và chỉ được chứa `[A-Za-z0-9._-]`. Save cũ nằm ngoài thư mục đó cần được
+copy vào rồi load bằng tên ([`commands/save_paths.rs`](src-tauri/src/commands/save_paths.rs) giải thích vì sao).
 
 ## Quy tắc thay đổi
 
 1. Thay đổi luật mô phỏng phải cập nhật `SIMULATION_RULES.md` và test tương ứng.
-2. Thay đổi định dạng trao đổi phải có phiên bản, migration và fixture Rust/TypeScript.
-3. Hot path của tick (physics, CPG, va chạm) **không được cấp phát heap** — test khẳng định
-   `allocs == 0`.
-4. Năng lượng EU là hệ đóng; mọi khoản chi mới phải đi qua `total_cost`, không trừ riêng lẻ.
+2. Thay đổi định dạng trao đổi phải có phiên bản, migration và fixture cho cả Rust và TypeScript.
+3. Đường tick (vật lý, CPG, va chạm) **không được cấp phát heap**. Test khẳng định `allocs == 0`.
+4. Năng lượng EU là hệ khép kín: mọi khoản chi mới phải đi qua `total_cost`, không trừ riêng lẻ.
 5. Quyết định kiến trúc hoặc phụ thuộc lớn phải có ADR.
-6. Phụ thuộc nguồn mở phải qua kiểm tra giấy phép, benchmark và phương án hoàn tác.
-7. Không tuyên bố bản đồ đạt chất lượng nếu chưa qua các cổng kiểm chứng bắt buộc trong
-   `AGENTS.md`.
+6. Phụ thuộc và asset nguồn mở phải qua kiểm tra giấy phép. Asset chỉ lấy từ ambientCG và Poly Haven (CC0).
+7. Không ghim checksum thế giới tuyệt đối trong test, vì nó khác nhau giữa các hệ điều hành. Hãy so các lượt chạy
+   với nhau.
 
-Xem đầy đủ tại [chính sách tài liệu](docs/governance/DOCUMENTATION_POLICY.md) và
+Xem đầy đủ ở [chính sách tài liệu](docs/governance/DOCUMENTATION_POLICY.md) và
 [chính sách nguồn mở](docs/governance/OPEN_SOURCE_POLICY.md).
-
-## Trạng thái
-
-- **Phase 0–7** (nền tảng → hình thái → điều khiển neural + MAP-Elites → xã hội → phân tán và
-  meta-AI → GPU + PixiJS → cảnh quan → động lực hệ sinh thái): xong. Kiến trúc ở [PROJECT.md](PROJECT.md); trạng thái đo được ở
-  [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
-- **Nền mô phỏng M0–M3** (hợp đồng đơn vị/bảo toàn, World Artifact có checksum, đồng hồ đa nhịp
-  + can thiệp + sổ nhân quả, trường khí hậu/nước/đất động): xong ở lõi headless.
-- **Phòng thí nghiệm tiến hoá AE1–AE3** (manifest/runner, năng lượng ngoại lai, đường dẫn năng
-  lượng + chọn lọc): xong và **mặc định tắt**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md)
-  được chấp nhận ngày 2026-11-17 trong phạm vi lát không cửa sổ; thế giới sống, lưu trữ và giao diện vẫn là mục tiêu.
-- **ADR-0003** (não theo từng cá thể + không gian hành động): accepted và đã triển khai sau cờ.
-- **Sinh thái nối vào chọn lọc** (tử vong, fitness sinh thái, trục niche độc lập với fitness), **quần
-  thể luân chuyển**, **vận động** và **sinh thái thú săn – con mồi**: có trong mã, tắt mặc định, kiểm ở
-  đường headless. ADR-0005, 0006 và 0007 ở trạng thái `accepted`.
-- **Nhánh phát triển:** thân cây là `feat/ecological-selection`; `main` được kéo lên nó ở các mốc. Cả hai
-  được bảo vệ, nên mọi thay đổi đi qua pull request với hai job CI xanh.
-- Việc đang mở và thứ tự ưu tiên: [`STATE_OF_THE_PROJECT.md` §3](docs/planning/STATE_OF_THE_PROJECT.md)
-  và [chỉ mục kế hoạch](docs/planning/README.md). [TODO.md](TODO.md) là nhật ký việc đã làm, không phải
-  backlog.
 
 ## Đóng góp
 
@@ -269,7 +285,8 @@ Anima Engine là **nguồn mở, cấp phép kép**: bạn chọn một trong ha
 | Phạm vi | Giấy phép |
 |---|---|
 | **Mã nguồn** (`src/`, `src-tauri/`, `scripts/`, `tests/`) | [MIT](LICENSE-MIT) **HOẶC** [Apache-2.0](LICENSE-APACHE) — `MIT OR Apache-2.0` |
-| **Tài liệu và asset** (`docs/`, `public/`, `src-tauri/icons/`, ảnh preview ở thư mục gốc) | cùng cấp phép kép như trên |
+| **Tài liệu và asset** (`docs/`, `public/`, `src-tauri/icons/`, `.github/assets/` gồm cả logo, ảnh preview ở thư mục gốc) | cùng cấp phép kép như trên |
+| **Asset bên thứ ba** (texture và mô hình trong `public/assets/world/`) | giữ giấy phép gốc (CC0), nguồn ghi trong [`SOURCES.json`](public/assets/world/SOURCES.json) |
 | **Định dạng `.anmw`** (World Artifact) | **định dạng mở** — xem bên dưới |
 
 Đây là mặc định de-facto của hệ sinh thái Rust. Lý do chọn kép thay vì chỉ Apache-2.0: Apache-2.0

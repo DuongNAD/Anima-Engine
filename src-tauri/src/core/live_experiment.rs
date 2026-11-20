@@ -92,6 +92,9 @@ pub const LIVE_KEY_PREDATOR_FRACTION: &str = "live.predator_fraction";
 pub const LIVE_KEY_TREES: &str = "live.trees";
 /// Lakes placed at genesis.
 pub const LIVE_KEY_LAKES: &str = "live.lakes";
+/// Card S12: lake placement layout at genesis (`0.0`/absent = single row at `z_fraction = 0.8`;
+/// `1.0` = 2-D lattice spread over the map; requires `live.lakes >= 1`).
+pub const LIVE_KEY_LAKE_LAYOUT: &str = "live.lake_layout";
 /// Ceiling on spawned food items.
 pub const LIVE_KEY_FOOD_CAP: &str = "live.food_cap";
 /// Whether founders get their own heritable brain (ADR-0003), as a **declared** input.
@@ -139,6 +142,13 @@ pub const LIVE_KEY_DRIVE_FLOOR: &str = "live.drive_floor";
 /// A). Exact boolean; absent/`0.0` = off, bit-identical. **Only takes effect when
 /// `live.locomotion = 1`.**
 pub const LIVE_KEY_THIRST_STEERING: &str = "live.thirst_steering";
+/// Card SEL2P2-PREP (ported from S11 `226d4b2`/`95044c4b`): `1.0` enables
+/// [`crate::core::resources::GrassSteeringPolicy`] in `locomotion::steering_drive_system` for
+/// prey with explicit priority: thirst (`> 50%` deficit) -> local `Food` -> `ResourceField`
+/// grass (`GRASS_STAY_FRACTION` / `7x7` scan respecting `PlantReservePolicy` and LAND1
+/// walkability) -> global `Food` fallback. `0.0`/absent keeps legacy trajectories bit-identical.
+/// **Requires `live.locomotion = 1.0`.**
+pub const LIVE_KEY_GRASS_STEERING: &str = "live.grass_steering";
 /// ADR-0007 option B (thẻ B): a predator strike that credits it `ΔE` EU also adds `k × ΔE` to its
 /// hydration, capped at its hydration target. `k >= 0`; absent/`0.0` = off, bit-identical.
 /// Hydration is outside the EU ledger. Acts in `combat_system`, so it does not need
@@ -210,13 +220,29 @@ pub const LIVE_KEY_DRIFT_CONTROL: &str = "live.drift_control";
 /// Card SEL2-D: Channon periodic-reset window length `K` in ticks (`0` = unreset replay from
 /// founders; `K > 0` requires `live.drift_control = 1.0` and `duration_ticks % K == 0`).
 pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
+/// Card LAND1: `1.0` enables [`crate::core::resources::TerrainNavigation`] (constrains agent
+/// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
+/// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
+pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
+/// Card FIX-CAP / FIX-CAP2 (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`]
+/// in `autonomous_reproduction_system`, checking `prey_count >= prey_cap` and `pred_count >= 8 ||
+/// prey_count < pred_count * 5` against running counts before each birth and incrementing
+/// `prey_count`/`pred_count` after each queued birth in both normal and neutral-drift replay modes
+/// (recording replay cap-blocked births in
+/// [`crate::core::drift_control::DriftDiagnostics::missed_births_capped`]). Because the 5:1 ratio is
+/// checked *before* each birth against the running count, prey queued earlier in the same tick count
+/// toward it and after the final permitted predator birth `prey_count / pred_count` can fall below
+/// 5:1. `0.0`/absent keeps the legacy soft/uncapped path bit-identical so frozen E3 and historical
+/// manifests stay reproducible.
+pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 24] = [
+pub const LIVE_KEYS: [&str; 28] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
+    LIVE_KEY_LAKE_LAYOUT,
     LIVE_KEY_FOOD_CAP,
     LIVE_KEY_EVOLVED_BRAINS,
     LIVE_KEY_MORTALITY,
@@ -224,6 +250,7 @@ pub const LIVE_KEYS: [&str; 24] = [
     LIVE_KEY_LOCOMOTION,
     LIVE_KEY_DRIVE_FLOOR,
     LIVE_KEY_THIRST_STEERING,
+    LIVE_KEY_GRASS_STEERING,
     LIVE_KEY_MUTATION_RATE,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
@@ -237,6 +264,8 @@ pub const LIVE_KEYS: [&str; 24] = [
     LIVE_KEY_PLANT_RESERVE,
     LIVE_KEY_DRIFT_CONTROL,
     LIVE_KEY_DRIFT_RESET_TICKS,
+    LIVE_KEY_LAND_MASK,
+    LIVE_KEY_STRICT_PREY_CAP,
 ];
 
 /// The genesis the manifest asked for.
@@ -270,6 +299,10 @@ pub struct LiveWorldConfig {
     /// ADR-0007 option A: thirsty agents steer to the nearest lake. Needs `locomotion`.
     #[serde(default)]
     pub thirst_steering: bool,
+    /// Card SEL2P2-PREP (S11): prey steer toward pasture grass (`1.0` on, `0.0`/absent off). Needs
+    /// `locomotion`.
+    #[serde(default)]
+    pub grass_steering: bool,
     /// Offspring body-mutation probability (see [`LIVE_KEY_MUTATION_RATE`]); absent reads back as
     /// the historical `0.05`.
     #[serde(default = "default_mutation_rate")]
@@ -311,6 +344,17 @@ pub struct LiveWorldConfig {
     /// founders).
     #[serde(default)]
     pub drift_reset_ticks: u64,
+    /// Card S12: genesis lake layout (`0` = row at `z_fraction = 0.8`, `1` = 2-D lattice).
+    #[serde(default)]
+    pub lake_layout: u8,
+    /// Card LAND1: `1.0` enables `TerrainNavigation` and snaps lattice spawns to walkable cells;
+    /// `0.0`/absent keeps terrain navigation disabled (bit-identical to trunk).
+    #[serde(default)]
+    pub land_mask: bool,
+    /// Card FIX-CAP (F-052): `1.0` enforces strict per-birth cap counting in
+    /// `autonomous_reproduction_system`; `0.0`/absent keeps the legacy soft gate bit-identical.
+    #[serde(default)]
+    pub strict_prey_cap: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -359,6 +403,7 @@ impl Default for LiveWorldConfig {
             locomotion: false,
             drive_floor: 0.0,
             thirst_steering: false,
+            grass_steering: false,
             mutation_rate: default_mutation_rate(),
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
@@ -372,6 +417,9 @@ impl Default for LiveWorldConfig {
             plant_reserve: 0.0,
             drift_control: false,
             drift_reset_ticks: 0,
+            lake_layout: 0,
+            land_mask: false,
+            strict_prey_cap: false,
         }
     }
 }
@@ -481,6 +529,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_THIRST_STEERING => match *value {
                     0.0 => config.thirst_steering = false,
                     1.0 => config.thirst_steering = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_GRASS_STEERING => match *value {
+                    0.0 => config.grass_steering = false,
+                    1.0 => config.grass_steering = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -607,8 +667,49 @@ impl LiveWorldConfig {
                 LIVE_KEY_DRIFT_RESET_TICKS => {
                     config.drift_reset_ticks = bounded_count(key, *value, 0.0, 1_000_000.0)? as u64;
                 }
+                LIVE_KEY_LAKE_LAYOUT => match *value {
+                    0.0 => config.lake_layout = 0,
+                    1.0 => config.lake_layout = 1,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_LAND_MASK => match *value {
+                    0.0 => config.land_mask = false,
+                    1.0 => config.land_mask = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_STRICT_PREY_CAP => match *value {
+                    0.0 => config.strict_prey_cap = false,
+                    1.0 => config.strict_prey_cap = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
                 _ => unreachable!("key membership was checked above"),
             }
+        }
+        if config.lake_layout == 1 && config.lakes == 0 {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.lake_layout = 1.0 requires live.lakes >= 1".into(),
+            });
         }
         if config.drift_control && (!config.mortality || !config.reproduction) {
             return Err(ExperimentError::InvalidLaw {
@@ -620,6 +721,11 @@ impl LiveWorldConfig {
         if config.drift_reset_ticks > 0 && !config.drift_control {
             return Err(ExperimentError::InvalidLaw {
                 reason: "live.drift_reset_ticks > 0 requires live.drift_control = 1.0".into(),
+            });
+        }
+        if config.grass_steering && !config.locomotion {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.grass_steering = 1.0 requires live.locomotion = 1.0".into(),
             });
         }
         Ok(config)
@@ -720,6 +826,14 @@ pub struct LiveExperimentState {
     /// How many intervention applications have fired. Part of the resume fingerprint: two runs that
     /// applied a different number of forcings did not do the same thing.
     pub applied_interventions: u64,
+    /// Running sum of `live.mean_agent_energy` across every simulated tick (`EU·tick`).
+    ///
+    /// Mirrored from [`LiveExperimentAdapter`] on each tick and before `snapshot`, and restored in
+    /// [`LiveExperimentAdapter::build`] on resume so save/load checkpoint forks preserve the exact
+    /// cumulative integral inside this module without modifying `SavedSimulationState`'s fields or
+    /// `world_checksum`. Pre-S2 schema-v1 saves default to `0.0`.
+    #[serde(default)]
+    pub mean_energy_integral: f64,
 }
 
 impl LiveExperimentState {
@@ -743,6 +857,7 @@ impl LiveExperimentState {
             initial_conditions,
             ledger: CausalLedger::new(),
             applied_interventions: 0,
+            mean_energy_integral: 0.0,
         }
     }
 
@@ -1375,7 +1490,23 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
 /// Card S9 appended `live.deaths_starvation` and `live.deaths_dehydration`: the window's deaths
 /// split by cause, one cause per death (rule in `core::mortality::lethal_cause`), so the two add up
 /// to `live.deaths` at every sample.
-pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 12] = [
+///
+/// Card S2 appended three observables at the end:
+/// - `live.mean_energy_integral` (`EU·tick`, `Aggregation::Instant`): running sum over every
+///   simulated tick of `live.mean_agent_energy`. Ticks with zero living agents contribute `0.0` so
+///   an extinct population retains its finite pre-extinction integral (no sentinel value).
+/// - `live.trait_mass_mean_west` / `live.trait_mass_mean_east` (`EU`, `Aggregation::Instant`): mean
+///   `AgentGenotype.0.total_mass()` over living agents whose world X coordinate maps into columns
+///   `0..=127` (`Region::Rect{0,0,127,255}`) vs `128..=255` (`Region::Rect{128,0,255,255}`) on the
+///   256×256 resource/terrain grid, using the same normalized column formula as
+///   [`ResourceField::cell_index`] and [`crate::core::terrain::TerrainMap::get_map_indices`]. An
+///   empty half emits `0.0` via [`mass_statistics`] (`&[]`), matching `live.trait_mass_mean`.
+///
+/// Time-to-floor remains a **derived** quantity computed post-hoc from time series by analysis
+/// scripts: floor thresholds are experiment-specific, and pre-floor / never-floor runs are
+/// right-censored so any per-tick number would either encode a sentinel (corrupting paired deltas)
+/// or conflate survival time with hitting the floor.
+pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 15] = [
     "live.trait_mass_mean",
     "live.trait_mass_var",
     "live.trait_mass_p10",
@@ -1388,6 +1519,9 @@ pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 12] = [
     "live.archive_coverage",
     "live.deaths_starvation",
     "live.deaths_dehydration",
+    "live.mean_energy_integral",
+    "live.trait_mass_mean_west",
+    "live.trait_mass_mean_east",
 ];
 
 /// Every observable id the adapter emits (legacy + extended), in emission order.
@@ -1447,6 +1581,48 @@ pub fn live_observables_peek(world: &mut World) -> Vec<(String, f64)> {
     read_live_observables(world, false)
 }
 
+/// Living agent count and per-tick mean reserve energy (`0.0` when zero agents are alive).
+///
+/// Shared by `read_live_observables` (`live.mean_agent_energy`) and
+/// `LiveExperimentAdapter::accumulate_mean_energy_integral` so both see the exact same `f64`
+/// average on every tick.
+fn current_mean_agent_energy(world: &mut World) -> (u64, f64) {
+    use crate::core::components::Agent;
+
+    let mut agents = 0u64;
+    let mut energy_sum = 0.0f64;
+    let mut q = world.query_filtered::<&crate::ai::hrrl::HomeostaticState, With<Agent>>();
+    for homeo in q.iter(world) {
+        agents += 1;
+        energy_sum += homeo.energy as f64;
+    }
+    let mean = if agents == 0 {
+        0.0
+    } else {
+        energy_sum / agents as f64
+    };
+    (agents, mean)
+}
+
+/// Map an entity's world X coordinate onto the resource/terrain grid column (`0..grid_width`) and
+/// return `true` iff it falls in the West half (`col < grid_width / 2`: columns `0..=127` on a
+/// 256×256 grid, matching E3's `Region::Rect { min_x: 0, min_y: 0, max_x: 127, max_y: 255 }`), with
+/// `false` indicating the East half (`128..=255`, `Region::Rect { 128, 0, 255, 255 }`).
+///
+/// Uses the identical normalized column formula as [`ResourceField::cell_index`] and
+/// [`crate::core::terrain::TerrainMap::get_map_indices`], with `u` clamped to `[0.0, 1.0]` so an
+/// agent near or past the map border stays cleanly partitioned between West and East.
+#[inline]
+fn world_x_is_west(x: f32, grid_width: usize, min_x: f32, max_x: f32) -> bool {
+    let span_x = max_x - min_x;
+    if grid_width == 0 || span_x <= 0.0 || !x.is_finite() {
+        return true;
+    }
+    let u = ((x - min_x) / span_x).clamp(0.0, 1.0);
+    let col = ((u * grid_width as f32) as usize).min(grid_width - 1);
+    col < grid_width / 2
+}
+
 fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, f64)> {
     use crate::core::components::{Agent, Food, Predator, Prey};
 
@@ -1454,24 +1630,22 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         .get_resource::<EcosystemBiomass>()
         .map(|p| (p.plants, p.animals, p.detritus, p.dormant))
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
-    let standing_crop = world
+    let (standing_crop, grid_width, min_x, max_x) = world
         .get_resource::<ResourceField>()
-        .map(|f| f.total_biomass())
-        .unwrap_or(0.0);
+        .map(|f| (f.total_biomass(), f.width, f.min_x, f.max_x))
+        .unwrap_or_else(|| {
+            let (min_x, max_x) = world
+                .get_resource::<crate::core::ecs::MapBounds>()
+                .map(|b| (b.min.x, b.max.x))
+                .unwrap_or((-100.0, 100.0));
+            (0.0, 256, min_x, max_x)
+        });
     let season_phase = world
         .get_resource::<crate::core::ecology::SeasonClock>()
         .map(|c| c.phase as f64)
         .unwrap_or(0.0);
 
-    let mut agents = 0u64;
-    let mut energy_sum = 0.0f64;
-    {
-        let mut q = world.query_filtered::<&crate::ai::hrrl::HomeostaticState, With<Agent>>();
-        for homeo in q.iter(world) {
-            agents += 1;
-            energy_sum += homeo.energy as f64;
-        }
-    }
+    let (agents, mean_agent_energy) = current_mean_agent_energy(world);
     let herbivores = {
         let mut q = world.query_filtered::<(), (With<Agent>, With<Prey>)>();
         q.iter(world).count() as f64
@@ -1485,18 +1659,36 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         q.iter(world).count() as f64
     };
 
-    // Branch-O: trait distribution (body mass, the MTE master trait), diversity over the same
-    // prey/predator abundances the panel indices use, archive occupancy, and the drained
-    // turnover window.
+    // Branch-O + Card S2: trait distribution (body mass, the MTE master trait), global and
+    // west/east halves, diversity over the same prey/predator abundances the panel indices use,
+    // archive occupancy, the drained turnover window, and the cumulative mean-energy integral.
     let mut masses: Vec<f32> = Vec::new();
+    let mut west_masses: Vec<f32> = Vec::new();
+    let mut east_masses: Vec<f32> = Vec::new();
     {
-        let mut q =
-            world.query_filtered::<&crate::core::agent_systems::AgentGenotype, With<Agent>>();
-        for g in q.iter(world) {
-            masses.push(g.0.total_mass());
+        let mut q = world.query_filtered::<(
+            &crate::core::agent_systems::AgentGenotype,
+            Option<&crate::core::ecs::Position>,
+        ), With<Agent>>();
+        for (g, pos) in q.iter(world) {
+            let m = g.0.total_mass();
+            masses.push(m);
+            if let Some(p) = pos {
+                if world_x_is_west(p.0.x, grid_width, min_x, max_x) {
+                    west_masses.push(m);
+                } else {
+                    east_masses.push(m);
+                }
+            }
         }
     }
     let stats = mass_statistics(&masses);
+    let trait_mass_mean_west = mass_statistics(&west_masses)[0];
+    let trait_mass_mean_east = mass_statistics(&east_masses)[0];
+    let mean_energy_integral = world
+        .get_resource::<LiveExperimentState>()
+        .map(|s| s.mean_energy_integral)
+        .unwrap_or(0.0);
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
@@ -1538,14 +1730,7 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         ("live.predator_count".to_string(), predators),
         ("live.food_items".to_string(), food_items),
         ("live.standing_crop".to_string(), standing_crop),
-        (
-            "live.mean_agent_energy".to_string(),
-            if agents == 0 {
-                0.0
-            } else {
-                energy_sum / agents as f64
-            },
-        ),
+        ("live.mean_agent_energy".to_string(), mean_agent_energy),
         ("live.season_phase".to_string(), season_phase),
         ("live.trait_mass_mean".to_string(), stats[0]),
         ("live.trait_mass_var".to_string(), stats[1]),
@@ -1571,6 +1756,18 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
             deaths_dehydration as f64,
         ));
     }
+    out.push((
+        "live.mean_energy_integral".to_string(),
+        mean_energy_integral,
+    ));
+    out.push((
+        "live.trait_mass_mean_west".to_string(),
+        trait_mass_mean_west,
+    ));
+    out.push((
+        "live.trait_mass_mean_east".to_string(),
+        trait_mass_mean_east,
+    ));
     out
 }
 
@@ -1602,6 +1799,8 @@ pub struct LiveExperimentAdapter {
     seed: u64,
     /// How many effects of the world's own ledger have already been mirrored into the runner's.
     mirrored_effects: usize,
+    /// Running sum of `live.mean_agent_energy` across every simulated tick (`EU·tick`).
+    mean_energy_integral: f64,
 }
 
 /// A `World` and a `Schedule` are not `Debug`, and the interesting part of an adapter is not their
@@ -1613,6 +1812,7 @@ impl std::fmt::Debug for LiveExperimentAdapter {
             .field("tick", &self.clock.tick)
             .field("config", &self.config)
             .field("mirrored_effects", &self.mirrored_effects)
+            .field("mean_energy_integral", &self.mean_energy_integral)
             .finish_non_exhaustive()
     }
 }
@@ -1650,7 +1850,7 @@ impl LiveExperimentAdapter {
         let config = LiveWorldConfig::from_initial_conditions(initial)?;
 
         let mut world = build_live_world(seed, &config, restore)?;
-        let channels = install_runtime_resources(&mut world, seed, &config);
+        let channels = install_runtime_resources(&mut world, seed, &config, restore);
 
         let state = match restore.and_then(|s| s.experiment.clone()) {
             Some(saved) => {
@@ -1679,6 +1879,7 @@ impl LiveExperimentAdapter {
             tick: state.clock_tick,
         };
         let mirrored_effects = state.ledger.len();
+        let mean_energy_integral = state.mean_energy_integral;
         world.insert_resource(state);
         world.insert_resource(LiveForcings::default());
         world.insert_resource(LiveInterventions::with_capacity(16));
@@ -1698,6 +1899,7 @@ impl LiveExperimentAdapter {
             config,
             seed,
             mirrored_effects,
+            mean_energy_integral,
         })
     }
 
@@ -1727,7 +1929,20 @@ impl LiveExperimentAdapter {
         self.sync_drift_tick();
         self.run_tick();
         self.drain_absent_thread_queues();
+        self.accumulate_mean_energy_integral();
         self.record_drift_shortfalls_if_due(self.clock.tick, false);
+    }
+
+    /// Update the cumulative `live.mean_energy_integral` accumulator once after a simulated tick
+    /// and mirror it onto [`LiveExperimentState`] so `live_observables(&mut World)` and snapshots see
+    /// the exact running integral whether or not observables are sampled on this tick.
+    fn accumulate_mean_energy_integral(&mut self) {
+        let world = self.world.get_mut();
+        let (_, mean_energy) = current_mean_agent_energy(world);
+        self.mean_energy_integral += mean_energy;
+        if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
+            state.mean_energy_integral = self.mean_energy_integral;
+        }
     }
 
     /// Attach a read-only lockstep turnover recorder (`DriftMode::Record`) to a selected run.
@@ -2056,6 +2271,15 @@ impl LiveExperimentAdapter {
         }
         self.mirrored_effects = effects.len();
     }
+
+    /// Observed identity (`seed`, `generator_version`, `width x height`, FNV-1a checksum) of the
+    /// `TerrainMap` inside this adapter's ECS `World`.
+    pub fn world_identity(&self) -> crate::core::world_artifact::WorldIdentity {
+        *self
+            .world
+            .borrow()
+            .resource::<crate::core::world_artifact::WorldIdentity>()
+    }
 }
 
 impl ExperimentModel for LiveExperimentAdapter {
@@ -2096,10 +2320,11 @@ impl ExperimentModel for LiveExperimentAdapter {
 
     fn snapshot(&self) -> Self::Snapshot {
         let mut world = self.world.borrow_mut();
-        // The clock lives on the adapter and in the resource; the resource is what the serializer
-        // reads, so it is refreshed here rather than only at the end of `step`.
+        // The clock and accumulator live on the adapter and in the resource; the resource is what
+        // the serializer reads, so both are refreshed here rather than only at the end of `step`.
         if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
             state.clock_tick = self.clock.tick;
+            state.mean_energy_integral = self.mean_energy_integral;
         }
         let deps = SaveHandles::new();
         let saved = crate::core::simulation_state::serialize_world_state(
@@ -2160,6 +2385,7 @@ impl ExperimentModel for LiveExperimentAdapter {
         self.sync_drift_tick();
         self.run_tick();
         self.drain_absent_thread_queues();
+        self.accumulate_mean_energy_integral();
         self.record_drift_shortfalls_if_due(clock.tick, false);
         self.mirror_ledger(ledger);
     }
@@ -2177,6 +2403,14 @@ impl ExperimentModel for LiveExperimentAdapter {
     fn observables_unsampled(&self) -> Vec<(String, f64)> {
         let mut world = self.world.borrow_mut();
         live_observables_peek(&mut world)
+    }
+
+    fn terrain_source(&self) -> Option<&'static str> {
+        Some("generated")
+    }
+
+    fn world_identity(&self) -> Option<crate::core::world_artifact::WorldIdentity> {
+        Some(LiveExperimentAdapter::world_identity(self))
     }
 }
 
@@ -2218,30 +2452,9 @@ impl SaveHandles {
     }
 }
 
-/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
-/// process environment replaced by what the manifest declared.
-fn build_live_world(
-    seed: u64,
-    config: &LiveWorldConfig,
-    restore: Option<&SavedSimulationState>,
-) -> Result<World, ExperimentError> {
-    let mut world = crate::core::ecs::init_world();
-
-    // `init_world` resolves these from the environment, which is exactly what a manifest cannot
-    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
-    // silently change the trajectory of a run whose whole point is that its inputs are declared.
-    //
-    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
-    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
-    // flags answering separate questions, and folding them in here would turn one declared factor
-    // into a bundle no result could attribute.
-    let sim_rng = match restore {
-        Some(state) if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 => {
-            crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
-        }
-        _ => crate::core::resources::SimRng::from_seed(seed),
-    };
-    world.insert_resource(sim_rng);
+/// Insert all manifest-declared world-law policy resources onto `world`, replacing any
+/// environment-resolved defaults installed by `init_world` or `SimulationEngine::start`.
+fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     world.insert_resource(crate::core::resources::BrainPolicy {
         evolved: config.evolved_brains,
         ..Default::default()
@@ -2264,9 +2477,11 @@ fn build_live_world(
     world.insert_resource(crate::core::resources::MutationPolicy {
         rate: config.mutation_rate,
     });
-    // Prey reproduction ceiling (`live.prey_cap`, card S6); absent == the historical 80.
+    // Prey reproduction ceiling (`live.prey_cap`, card S6) and optional strict per-birth
+    // counting (`live.strict_prey_cap`, card FIX-CAP / F-052); absent == 80, soft gate.
     world.insert_resource(crate::core::resources::PreyCapPolicy {
         cap: config.prey_cap,
+        strict: config.strict_prey_cap,
     });
     // Plant reserve (`live.plant_reserve`, card S10); absent == 0.0 == both grazing paths run the
     // pre-S10 arithmetic. Inserted before the restore branch, so a resumed run keeps its reserve.
@@ -2280,6 +2495,14 @@ fn build_live_world(
         drive_floor: config.drive_floor,
         thirst_steering: config.thirst_steering,
     });
+    world.insert_resource(crate::core::resources::GrassSteeringPolicy {
+        enabled: config.grass_steering,
+    });
+    // Card LAND1 (`live.land_mask`): absent/0 keeps land navigation disabled so pre-LAND1
+    // manifests stay bit-identical.
+    world.insert_resource(crate::core::resources::TerrainNavigation {
+        enabled: config.land_mask,
+    });
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
     // locomotion ranking — bit-identical to every run made before branch F existed.
@@ -2291,7 +2514,59 @@ fn build_live_world(
         },
         w_surplus: config.w_surplus,
     });
+    // Declared food cap and predator-income knobs belong to the manifest, not the save or
+    // environment, so both genesis and restore declare them (F-043).
+    world.insert_resource(LiveFoodCap(config.food_cap));
+    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
+        kill_hydration: config.kill_hydration,
+        kill_efficiency: config.kill_efficiency,
+        target_min_energy: config.target_min_energy,
+    });
+}
 
+/// Apply a manifest's declared world-law policy resources, `SimRng`, food cap, pasture capacity
+/// scale, and deterministic lattice genesis (founders, trees, lakes) to an initialized `World`.
+///
+/// Shared by [`build_live_world`] (the headless [`LiveExperimentAdapter`]) and
+/// [`crate::core::simulation_loop::SimulationEngine::start`] (desktop-app viewer mode, card
+/// W2-lite; prototype, to be replaced when ADR-0010 W1 lands) so both start from identical tick-0
+/// entities and world-law policies. A desktop viewer run still keeps the app's background threads
+/// and therefore does not claim to reproduce a headless experiment's trajectory.
+pub fn apply_live_genesis_and_policies(
+    world: &mut World,
+    seed: u64,
+    config: &LiveWorldConfig,
+    bounds: crate::core::ecs::MapBounds,
+) {
+    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
+    insert_policy_resources(world, config);
+    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
+        max_food_count: config.food_cap,
+        ..Default::default()
+    });
+    scale_pasture_capacity(world, config.resource_capacity_scale);
+    genesis(world, config, bounds, seed);
+}
+
+/// Build the world the schedule runs on with `TerrainSource::Generated`, and replace every other
+/// process-environment default with what the manifest declared.
+fn build_live_world(
+    seed: u64,
+    config: &LiveWorldConfig,
+    restore: Option<&SavedSimulationState>,
+) -> Result<World, ExperimentError> {
+    let mut world = crate::core::ecs::init_world_with(crate::core::ecs::TerrainSource::Generated);
+
+    // `init_world` resolves these from the environment, which is exactly what a manifest cannot
+    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS`, `ANIMA_LIFETIME_LEARNING`,
+    // `ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR` and `<temp_dir>/anima_world_artifact.anmw` would
+    // each silently change the trajectory of a run whose whole point is that its inputs are
+    // declared. Terrain is built via `TerrainSource::Generated` (`MapSettings::default()`) above.
+    //
+    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
+    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
+    // flags answering separate questions, and folding them in here would turn one declared factor
+    // into a bundle no result could attribute.
     let bounds = restore.map(|s| s.map_bounds).unwrap_or_default();
     world.insert_resource(bounds);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
@@ -2300,6 +2575,14 @@ fn build_live_world(
 
     match restore {
         Some(state) => {
+            let sim_rng = if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+                crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
+            } else {
+                crate::core::resources::SimRng::from_seed(seed)
+            };
+            world.insert_resource(sim_rng);
+            insert_policy_resources(&mut world, config);
+
             let pheromone = crate::ai::pheromone::PheromoneGrid {
                 values: state.pheromone_grid.values.clone(),
                 scratch: vec![0.0; crate::ai::pheromone::CELL_COUNT],
@@ -2368,31 +2651,21 @@ fn build_live_world(
             }
             // `sensory_system` runs at the start of the tick, before `rebuild_spatial_grid_system`.
             // In an uninterrupted run that has already stepped at least one tick, `SpatialHashGrid`
-            // holds the end-of-tick-K collider positions when tick K+1 begins; rebuilding it here
-            // keeps a resumed or forked run from raycasting against an empty grid on tick K+1.
-            if state.tick_count > 0
-                || state
-                    .experiment
-                    .as_ref()
-                    .is_some_and(|exp| exp.clock_tick > 0)
-            {
-                populate_spatial_grid(&mut world);
-            }
+            // holds the end-of-tick-K collider positions when tick K+1 begins; restore the exact
+            // `IndexedInGrid` boundary and populate `SpatialHashGrid` only for already-indexed
+            // colliders (when `tick_count > 0 || clock_tick > 0`), leaving post-rebuild spawns
+            // unindexed until tick K+1's rebuild (F-045).
+            populate_spatial_grid(&mut world, state);
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
-            world.insert_resource(crate::core::ecs::FoodSpawnSettings {
-                max_food_count: config.food_cap,
-                ..Default::default()
-            });
             world.insert_resource(crate::core::ecs::EpochManager {
                 ticks_per_epoch: 1000,
                 current_epoch_ticks: 0,
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
-            scale_pasture_capacity(&mut world, config.resource_capacity_scale);
-            genesis(&mut world, config, bounds, seed);
+            apply_live_genesis_and_policies(&mut world, seed, config, bounds);
         }
     }
 
@@ -2443,14 +2716,11 @@ fn scale_pasture_capacity_only(world: &mut World, factor: f64) {
     }
 }
 
-fn populate_spatial_grid(world: &mut World) {
-    // Run the *same* system the tick schedule runs, rather than a second implementation of it.
-    // `rebuild_spatial_grid_system` resets the prepopulated per-cell counts and reserves capacity
-    // in a counting pass before inserting; a hand-rolled `clear()` + `insert()` loop here would be
-    // a second definition of one invariant, and the two would drift the first time the real one
-    // changed. `run_system_once` is the one-shot form of exactly that system.
-    use bevy_ecs::system::RunSystemOnce;
-    world.run_system_once(crate::physics::spatial::rebuild_spatial_grid_system);
+fn populate_spatial_grid(world: &mut World, state: &SavedSimulationState) {
+    // Sync every collider's `IndexedInGrid` flag and run `rebuild_spatial_grid_system` (filtering
+    // out post-rebuild spawns recorded in `state.unindexed_colliders`) when `tick > 0` so tick
+    // K+1 sees the exact same grid contents as an uninterrupted run (F-045).
+    crate::core::simulation_state::populate_restored_spatial_grid(world, state);
 }
 
 /// The founding population and environment a manifest declared.
@@ -2519,9 +2789,25 @@ fn genesis(
         crate::core::resources::sim_stream::LIVE_GENESIS_BRAINS,
     );
 
+    let terrain_map = if config.land_mask {
+        world
+            .get_resource::<crate::core::terrain::TerrainMap>()
+            .cloned()
+    } else {
+        None
+    };
+    let snap_if_masked = |pos: glam::Vec3| -> glam::Vec3 {
+        if let Some(ref tm) = terrain_map {
+            crate::core::terrain_navigation::snap_to_nearest_walkable(tm, &bounds, pos)
+                .unwrap_or(pos)
+        } else {
+            pos
+        }
+    };
+
     let predators = config.predators();
     for i in 0..config.founders {
-        let pos = lattice_point(i, config.founders.max(1), bounds, 0.35);
+        let pos = snap_if_masked(lattice_point(i, config.founders.max(1), bounds, 0.35));
         let entity = decode_genotype(world, &genotype, pos, glam::Quat::IDENTITY);
         if let Some(brain) = policy.new_brain(&mut brain_rng) {
             world.entity_mut(entity).insert(brain);
@@ -2551,7 +2837,7 @@ fn genesis(
 
     let env = crate::core::ecs::EnvironmentalSpawnSettings::default();
     for i in 0..config.trees {
-        let pos = lattice_point(i, config.trees.max(1), bounds, 0.6);
+        let pos = snap_if_masked(lattice_point(i, config.trees.max(1), bounds, 0.6));
         world.spawn((
             crate::core::ecs::Tree {
                 current_fruit: env.default_tree_fruit,
@@ -2566,10 +2852,15 @@ fn genesis(
             },
             crate::core::ecs::Position(pos),
             crate::physics::SpatialCollider { radius: 2.0 },
+            crate::physics::spatial::IndexedInGrid(false),
         ));
     }
     for i in 0..config.lakes {
-        let pos = lattice_point(i, config.lakes.max(1), bounds, 0.8);
+        let pos = snap_if_masked(if config.lake_layout == 1 {
+            lake_lattice_point(i, config.lakes, bounds)
+        } else {
+            lattice_point(i, config.lakes.max(1), bounds, 0.8)
+        });
         world.spawn((
             crate::core::ecs::Lake {
                 current_water: env.default_lake_water,
@@ -2578,6 +2869,7 @@ fn genesis(
             },
             crate::core::ecs::Position(pos),
             crate::physics::SpatialCollider { radius: 10.0 },
+            crate::physics::spatial::IndexedInGrid(false),
         ));
     }
 }
@@ -2599,12 +2891,38 @@ fn lattice_point(
     )
 }
 
+/// Places lake `i` of `n` (`n >= 1`) on a 2-D lattice over `bounds` (`live.lake_layout = 1`):
+/// `k = ceil(sqrt(n))` columns, `m = ceil(n / k)` rows; lake `i` goes to column `c = i % k`,
+/// row `r = i / k`, at `x = min.x + (c + 1) / (k + 1) * span_x` and
+/// `z = min.z + (r + 1) / (m + 1) * span_z` (`y = 0`). If the last row (`r == m - 1`) is partial
+/// with `j = n - (m - 1) * k` lakes, it is centred using x fractions `(c + 1) / (j + 1)`.
+fn lake_lattice_point(i: usize, n: usize, bounds: crate::core::ecs::MapBounds) -> glam::Vec3 {
+    debug_assert!(n >= 1 && i < n);
+    let k = (1..=n)
+        .find(|&k| k.checked_mul(k).is_some_and(|sq| sq >= n))
+        .unwrap_or(1);
+    let m = n.div_ceil(k);
+    let c = i % k;
+    let r = i / k;
+    let cols_in_row = if r + 1 == m { n - (m - 1) * k } else { k };
+    let span_x = bounds.max.x - bounds.min.x;
+    let span_z = bounds.max.z - bounds.min.z;
+    let x_frac = (c as f32 + 1.0) / (cols_in_row as f32 + 1.0);
+    let z_frac = (r as f32 + 1.0) / (m as f32 + 1.0);
+    glam::Vec3::new(
+        bounds.min.x + x_frac * span_x,
+        0.0,
+        bounds.min.z + z_frac * span_z,
+    )
+}
+
 /// Insert every resource the live schedule's systems require but `init_world` does not build,
 /// creating the channels the app's threads would otherwise own.
 fn install_runtime_resources(
     world: &mut World,
     seed: u64,
     config: &LiveWorldConfig,
+    restore: Option<&SavedSimulationState>,
 ) -> LiveChannels {
     use crate::core::agent_systems::{
         ActiveEvolutionSettings, BevyEvolutionRunning, BevyEvolutionSettings, BevyMapElitesArchive,
@@ -2612,17 +2930,6 @@ fn install_runtime_resources(
         InferenceResponseBatch, NextNodeId,
     };
     use crate::core::resources::{EvolutionQueue, EvolutionReceiver, EvolutionSender};
-
-    // On genesis and on restore alike: the declared cap is part of the manifest, not of the saved
-    // state, and `apply_environmental_effects_system` would otherwise reset it to 50 (F-043).
-    world.insert_resource(LiveFoodCap(config.food_cap));
-    // Same reasoning (F-043): the predator-income knobs are part of the manifest, not of the saved
-    // state, so genesis and restore must both declare them. Defaults equal the legacy behaviour.
-    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
-        kill_hydration: config.kill_hydration,
-        kill_efficiency: config.kill_efficiency,
-        target_min_energy: config.target_min_energy,
-    });
 
     let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
     let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
@@ -2712,7 +3019,10 @@ fn install_runtime_resources(
     world.insert_resource(BevyMapElitesArchive {
         archive: crate::evolution::map_elites::MapElitesArchive::new(1.0 / 50.0),
     });
-    world.insert_resource(NextNodeId(3));
+    let next_node_id = restore
+        .map(crate::core::simulation_state::restored_next_node_id)
+        .unwrap_or(3);
+    world.insert_resource(NextNodeId(next_node_id));
     world.insert_resource(crate::core::ecs::EnvironmentalSpawnSettings::default());
 
     // A manifest is the complete declared input to a scientific run. The interactive app may opt
@@ -2784,6 +3094,7 @@ fn live_run_provenance(
     manifest: &crate::core::experiment::ExperimentManifest,
     registry: &crate::core::experiment::ObservableRegistry,
     seed: u64,
+    world_identity: crate::core::world_artifact::WorldIdentity,
 ) -> crate::core::experiment_runner::RunProvenance {
     use crate::core::experiment::fnv1a_64;
     let manifest_fingerprint = manifest.fingerprint();
@@ -2810,6 +3121,8 @@ fn live_run_provenance(
         fitness_rule: crate::core::experiment_runner::declared_fitness_rule(
             &manifest.initial_conditions,
         ),
+        terrain_source: Some("generated".to_owned()),
+        world_identity: Some(world_identity),
     }
 }
 
@@ -3013,14 +3326,20 @@ fn shortfall_warning(diag: &crate::core::drift_control::DriftDiagnostics) -> Opt
     if !diag.has_shortfall() {
         return None;
     }
+    let capped_suffix = if diag.missed_births_capped > 0 {
+        format!(", capped={}", diag.missed_births_capped)
+    } else {
+        String::new()
+    };
     Some(format!(
         "neutral-drift schedule shortfall: missed_deaths={} (ticks={}), missed_births={} \
-         (extinct={}, insolvent={}, ticks={}), first_divergence_tick={:?}",
+         (extinct={}, insolvent={}{}, ticks={}), first_divergence_tick={:?}",
         diag.missed_deaths,
         diag.ticks_with_missed_deaths,
         diag.missed_births(),
         diag.missed_births_extinct,
         diag.missed_births_insolvent,
+        capped_suffix,
         diag.ticks_with_missed_births,
         diag.first_divergence_tick,
     ))
@@ -3061,8 +3380,9 @@ pub fn run_live_drift_pair(
     )?;
     selected_adapter.install_turnover_recorder(total_ticks);
 
-    let sel_prov = live_run_provenance(selected_manifest, registry, seed);
-    let drf_prov = live_run_provenance(drift_manifest, registry, seed);
+    let world_identity = selected_adapter.world_identity();
+    let sel_prov = live_run_provenance(selected_manifest, registry, seed, world_identity);
+    let drf_prov = live_run_provenance(drift_manifest, registry, seed, world_identity);
     let sel_queue =
         crate::core::intervention::InterventionQueue::new(selected_manifest.interventions.clone());
     let drf_queue =

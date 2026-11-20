@@ -18,6 +18,7 @@ last_reviewed: 2026-11-18
 | [`ADR-0007`](ADR-0007-live-ecology-sustainability.md) | accepted | Duy trì quần thể live: sàn lực lái, lái tới nước, thú săn (QĐ-ECO) |
 | [`ADR-0008`](ADR-0008-world-past-and-time.md) | accepted | Quá khứ bất biến và bản ghi thế giới (ký ức của thế giới); ba lớp thời gian (QĐ-PAST, QĐ-TIME) |
 | [`ADR-0009`](ADR-0009-burn-022-flex-wgpu-upgrade.md) | proposed | Nâng Burn lên 0.22.1, dùng `burn-flex` và cô lập stream WGPU liên luồng (`QĐ-C`, `QĐ-R1c-a`, `QĐ-R1c-b`) |
+| [`ADR-0010`](ADR-0010-pinned-world-artifact.md) | accepted | Một world artifact ghim, chia ô, là nguồn sự thật cho mô phỏng và bản đồ (thế giới thật trên bản đồ, 2026-11-19) |
 
 **Front matter thắng banner trong thân.** ADR-0005, 0006 và 0007 mở đầu thân bằng dòng "Trạng thái: đề xuất,
 chờ chủ dự án", viết lúc soạn; mỗi ADR có một mục "Quyết định (2026-11-16)" ở cuối ghi việc chấp nhận, và

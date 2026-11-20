@@ -95,7 +95,8 @@ pub fn run() {
             commands::get_energy_flux_matrix,
             commands::get_spatial_density_matrix,
             commands::export_phylogenetic_tree,
-            commands::export_scientific_dataset
+            commands::export_scientific_dataset,
+            commands::start_from_manifest
         ])
         .setup(move |app| {
             let app_state = app.state::<AppState>();

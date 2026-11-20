@@ -33,10 +33,10 @@ interface FogProfile {
 function fogProfile(weather: WeatherKind, timeOfDay: number, s: number): FogProfile {
   const night = timeOfDay < 5 || timeOfDay > 20;
   if (weather === 'fog') return { near: s * 0.4, far: s * 2.4, color: night ? '#0a0c14' : '#9fb0bd' };
-  if (weather === 'rain') return { near: s * 0.9, far: s * 4.0, color: night ? '#070a12' : '#8a9ba8' };
-  if (weather === 'snow') return { near: s * 1.0, far: s * 4.5, color: night ? '#0c1018' : '#d0dce5' };
-  // clear
-  return { near: s * 2.0, far: s * 8.0, color: night ? '#05060f' : '#bfe2f2' };
+  if (weather === 'rain') return { near: s * 0.9, far: s * 3.8, color: night ? '#070a12' : '#8a9ba8' };
+  if (weather === 'snow') return { near: s * 1.0, far: s * 4.2, color: night ? '#0c1018' : '#d0dce5' };
+  // clear — distance haze blends outer ocean into the sky horizon (eliminates floating-slab seam)
+  return { near: s * 1.05, far: s * 3.8, color: night ? '#08111f' : '#c4dfef' };
 }
 
 /**

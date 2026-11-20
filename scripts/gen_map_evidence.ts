@@ -1,5 +1,7 @@
 // Generate `artifacts/map_evidence.json` — the navigation and collision claims the canonical
-// `navigation` and `collision` views draw and `mapEvidence.test.ts` re-verifies.
+// `navigation` and `collision` views draw and `mapEvidence.test.ts` re-verifies, and the shared
+// world's composition (ocean, biomes, their largest regions, waterfalls, caves), which the same test
+// recomputes and holds inside `COMPOSITION_BANDS` (`utils/worldComposition.ts`).
 //
 // # Why the record exists at all
 //
@@ -44,6 +46,11 @@ import {
   type MapEvidenceRecord,
 } from '../src/components/Landscape/utils/mapEvidence';
 import { isPointInFrame } from '../src/components/Landscape/utils/viewFraming';
+import {
+  compositionViolations,
+  measureComposition,
+  type WorldComposition,
+} from '../src/components/Landscape/utils/worldComposition';
 import {
   SHARED_WORLD_SEED,
   SHARED_WORLD_SHAPE,
@@ -194,7 +201,22 @@ for (const p of collision.pushOutCases) {
   p.resolvedDistance = roundRecord(p.resolvedDistance);
 }
 
-const record: MapEvidenceRecord & { _generated: Record<string, unknown> } = {
+// Composition: refuse to publish a record that already fails its own gate, so the failure is seen
+// where the world was generated rather than in a test run later.
+const composition = measureComposition(world);
+const violations = compositionViolations(composition, world.size);
+if (violations.length > 0) {
+  throw new Error(
+    `the shared world's composition is outside COMPOSITION_BANDS:\n  ${violations.join('\n  ')}\n` +
+      `Fix the generator, or change a band in utils/worldComposition.ts with the reason in the same ` +
+      `commit.`,
+  );
+}
+
+const record: MapEvidenceRecord & {
+  _generated: Record<string, unknown>;
+  composition: WorldComposition;
+} = {
   _generated: {
     by: 'scripts/gen_map_evidence.ts',
     seed: SHARED_WORLD_SEED,
@@ -225,6 +247,7 @@ const record: MapEvidenceRecord & { _generated: Record<string, unknown> } = {
     route,
   },
   collision,
+  composition,
 };
 
 const out = resolve(process.cwd(), 'artifacts/map_evidence.json');
@@ -239,5 +262,8 @@ console.log(
     `${verdict.samples} samples verified at ${ROUTE_SAMPLE_STEP}-unit steps, 0 failures\n` +
     `  collision: ${collision.collidersInRegion} trunks within ${COLLISION_REGION_HALF} units of ` +
     `(${collision.regionCentre[0]}, ${collision.regionCentre[1]}), ${collision.collidersDrawn} drawn, ` +
-    `${collision.pushOutCases.length} push-out cases`,
+    `${collision.pushOutCases.length} push-out cases\n` +
+    `  composition: ocean ${((composition.biomeCells.Ocean / composition.cells) * 100).toFixed(1)}%, ` +
+    `${composition.waterfallCount} waterfalls, ${composition.caveCount} caves ` +
+    `(closest ${composition.caveMinSpacingCells} cells apart), inside COMPOSITION_BANDS`,
 );

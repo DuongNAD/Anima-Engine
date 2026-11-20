@@ -22,19 +22,7 @@
  * only. `advisory` is the GHSA id, the last path segment of the advisory URL `npm audit` prints.
  */
 export const DEV_ONLY_EXEMPTIONS = [
-  {
-    advisory: 'GHSA-fc5q-39xc-vjpf',
-    package: 'picomatch',
-    added: '2026-11-18',
-    reason:
-      'picomatch: ReDoS through single-branch repeated extglobs (CVSS 7.5). The advisory covers ' +
-      'every published version (range <=4.0.7, and 4.0.7 was the latest on 2026-11-18), so there ' +
-      'is no version to upgrade to; `npm audit fix --force` instead offers to downgrade vite to 6 ' +
-      'and vitest to 3, which this build cannot take (vite 8 bundles with rolldown). It reaches ' +
-      'the lockfiles only through vite, vitest, tinyglobby, fdir and typescript-eslint: build, ' +
-      'test and lint tooling that globs the repository`s own paths with patterns written in this ' +
-      'repository`s config. No pattern comes from a user of the app, and none of these packages ' +
-      'is in the shipped bundle. Remove this entry when a patched picomatch is published and the ' +
-      'lockfiles move to it; rule 3 will fail the gate at that point until it is removed.',
-  },
+  // Empty since 2026-11-19. The last entry, GHSA-fc5q-39xc-vjpf (picomatch ReDoS), was removed
+  // when GitHub withdrew that advisory (withdrawn_at 2026-11-18T15:38:56Z): `npm audit` stopped
+  // reporting it, and rule 3 failed the gate on the stale entry.
 ];

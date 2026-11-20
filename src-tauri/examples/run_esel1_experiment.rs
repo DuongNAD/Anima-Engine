@@ -29,6 +29,30 @@
 //! | `--smoke` | the smoke seed only, all arms of the smoke manifests | `<out>/smoke/` | nothing |
 //! | `--ensemble` | the preregistered seeds, all arms | `<out>/` | `<out>/execution-lock.json` |
 //! | `--replay` | one seed of one arm | `<out>/replay/` | nothing |
+//! | `--trial` | one chosen seed, all arms of the smoke manifests, chosen `N0`, caps and duration | `<out>/trial/` | nothing (`--manifest-dir` optional) |
+//!
+//! `--trial` is the unit of an exploratory parameter sweep (one OxideSwarm work unit, for example),
+//! not a registered experiment and not part of the E-SEL1 preregistration. It takes the smoke
+//! manifests as its template, overrides `seeds`, `live.founders`, the two `live.food_cap` values and
+//! `duration_ticks` from `--seed`, `--founders`, `--food-cap-abundant`, `--food-cap-scarce` and
+//! `--duration-ticks` (any positive duration; a flag left out keeps the smoke manifest's value), and
+//! keeps the smoke's blinding: only the smoke's allow-listed observables are requested or written,
+//! never a body-mass value. It refuses a seed of the registered execution order, so a sweep cannot
+//! spend a confirmation seed. The seed comes from `--seed`, or from `ANIMA_SIM_SEED` when `--seed`
+//! is absent; if both are set they must agree. Without `--manifest-dir` the trial reads the
+//! preregistration and the three smoke manifests compiled into this binary from
+//! `src-tauri/tests/fixtures/experiments_esel1/`, so a task needs to stage nothing but the binary.
+//!
+//! A trial writes `verify_checksums.txt` (sorted LF lines `seed,arm,final_checksum`), `runs.csv`,
+//! `trial-series.csv`, `provenance.json` and `checksums.sha256`, none of which holds a wall-clock
+//! value: two runs of one binary with the same arguments write the same bytes. Wall-clock time goes
+//! only to `timing.json`, which `checksums.sha256` does not cover. The live adapter is deterministic
+//! by construction (`DeterministicMode::on()`, CPU brain), whatever `ANIMA_DETERMINISTIC` and
+//! `ANIMA_USE_GPU` say; `final_checksum` still differs between operating systems and
+//! architectures, so compare two runs of one OS and architecture.
+//!
+//! `--smoke`, `--ensemble` and `--replay` are unchanged: they ignore `ANIMA_SIM_SEED` (a note says
+//! so on stderr) and refuse the trial flags.
 //!
 //! `execution-lock.json` is written **by hand** after the smoke (draft section 7). `--ensemble`
 //! refuses to start without it, refuses a lock that lacks `duration_ticks`, `N0`, `F_hi` or `F_lo`,
@@ -61,9 +85,11 @@ use anima_engine_lib::core::experiment_runner::{
     PairedEnsembleReport, RunResult, RunStatus,
 };
 use anima_engine_lib::core::live_experiment::{
-    LiveExperimentAdapter, LIVE_EXTENDED_OBSERVABLE_IDS, LIVE_MODEL_VERSION, LIVE_OBSERVABLE_IDS,
+    LiveExperimentAdapter, LiveWorldConfig, LIVE_EXTENDED_OBSERVABLE_IDS, LIVE_MODEL_VERSION,
+    LIVE_OBSERVABLE_IDS,
 };
-use anima_engine_lib::core::sha256::sha256_file;
+use anima_engine_lib::core::sha256::{sha256_file, sha256_hex};
+use anima_engine_lib::core::world_artifact::WorldIdentity;
 
 /// Every observable id the live registry knows, legacy then extended.
 fn live_all_ids() -> impl Iterator<Item = &'static str> {
@@ -117,20 +143,81 @@ const MATERIALITY_RELATIVE_SHIFT: f64 = 0.05;
 /// Relative spread of `live.closed_eu_total` within one run above which it is filed as a defect.
 const CLOSED_EU_TOLERANCE: f64 = 1e-6;
 
+/// The environment variable `--trial` accepts as its seed when `--seed` is absent.
+const SIM_SEED_ENV: &str = "ANIMA_SIM_SEED";
+/// The subdirectory of `--out` a trial writes, and the files it writes there.
+const TRIAL_DIR: &str = "trial";
+const VERIFY_FILE: &str = "verify_checksums.txt";
+const TIMING_FILE: &str = "timing.json";
+/// Every trial file except `timing.json` and `checksums.sha256`, sorted: the files whose bytes two
+/// runs of one binary with the same arguments must reproduce, and the files `checksums.sha256` covers.
+const TRIAL_DETERMINISTIC_FILES: [&str; 4] = [
+    "provenance.json",
+    "runs.csv",
+    "trial-series.csv",
+    VERIFY_FILE,
+];
+
+/// The preregistration and the smoke manifests, compiled in from the committed fixtures, so a trial
+/// needs no staged input. `--manifest-dir` replaces the whole set.
+const BUILT_IN_MANIFESTS: [(&str, &str); 4] = [
+    (
+        PREREG_FILE,
+        include_str!("../tests/fixtures/experiments_esel1/esel1-preregistration.json"),
+    ),
+    (
+        "esel1-smoke-abundant.json",
+        include_str!("../tests/fixtures/experiments_esel1/esel1-smoke-abundant.json"),
+    ),
+    (
+        "esel1-smoke-scarce.json",
+        include_str!("../tests/fixtures/experiments_esel1/esel1-smoke-scarce.json"),
+    ),
+    (
+        "esel1-smoke-drift-scarce-mutation-off.json",
+        include_str!(
+            "../tests/fixtures/experiments_esel1/esel1-smoke-drift-scarce-mutation-off.json"
+        ),
+    ),
+];
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Mode {
     Smoke,
     Ensemble,
     Replay,
+    Trial,
+}
+
+/// The `--trial` flags. Each `None` keeps the template manifest's value; the seed has no default.
+#[derive(Clone, Copy, Default, Debug)]
+struct TrialFlags {
+    seed: Option<u64>,
+    founders: Option<u64>,
+    food_cap_abundant: Option<u64>,
+    food_cap_scarce: Option<u64>,
+    duration_ticks: Option<u64>,
+}
+
+impl TrialFlags {
+    fn any(&self) -> bool {
+        self.seed.is_some()
+            || self.founders.is_some()
+            || self.food_cap_abundant.is_some()
+            || self.food_cap_scarce.is_some()
+            || self.duration_ticks.is_some()
+    }
 }
 
 struct Args {
     mode: Mode,
-    manifest_dir: PathBuf,
+    /// Required by every mode but `--trial`, which falls back to [`BUILT_IN_MANIFESTS`].
+    manifest_dir: Option<PathBuf>,
     out: PathBuf,
     duration_rung: Option<u64>,
     replay_seed: Option<u64>,
     replay_arm: Option<String>,
+    trial: TrialFlags,
 }
 
 // Unused when this file is `#[path]`-included by a test; that is the only reason for the allow.
@@ -144,14 +231,35 @@ fn main() {
 }
 
 /// The whole program, taking its arguments explicitly so a test can drive it in-process.
+/// `ANIMA_SIM_SEED` is read here, once; [`run_with_env`] takes it as an argument instead.
 pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
+    run_with_env(argv, std::env::var(SIM_SEED_ENV).ok())
+}
+
+/// [`run_with_args`] with the value of `ANIMA_SIM_SEED` passed in, so a test never has to mutate
+/// the process environment (which every test thread shares).
+pub fn run_with_env(argv: Vec<String>, sim_seed_env: Option<String>) -> Result<(), String> {
     let args = parse_args(argv)?;
     let registry = ObservableRegistry::live_default();
     registry
         .validate()
         .map_err(|e| format!("the live registry is invalid: {e}"))?;
 
-    let prereg_path = args.manifest_dir.join(PREREG_FILE);
+    if args.mode == Mode::Trial {
+        return trial_run(&args, sim_seed_env.as_deref(), &registry);
+    }
+    if let Some(v) = sim_seed_env.as_deref().filter(|v| !v.trim().is_empty()) {
+        eprintln!(
+            "note: {SIM_SEED_ENV}={v} is ignored: --smoke, --ensemble and --replay run only the \
+             seeds their manifests declare. Use --trial --seed <SEED> to choose a seed."
+        );
+    }
+    let manifest_dir = args
+        .manifest_dir
+        .clone()
+        .ok_or("--manifest-dir is required")?;
+
+    let prereg_path = manifest_dir.join(PREREG_FILE);
     let prereg = read_json(&prereg_path)?;
     let plan = Plan::from_prereg(&prereg)?;
 
@@ -169,10 +277,10 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
             plan.drift_file.clone(),
         )
     };
-    let mut control = load_manifest(&args.manifest_dir.join(&control_name))?;
-    let mut treatment = load_manifest(&args.manifest_dir.join(&treatment_name))?;
+    let mut control = load_manifest(&manifest_dir.join(&control_name))?;
+    let mut treatment = load_manifest(&manifest_dir.join(&treatment_name))?;
     let mut drift = match &drift_name {
-        Some(n) => Some(load_manifest(&args.manifest_dir.join(n))?),
+        Some(n) => Some(load_manifest(&manifest_dir.join(n))?),
         None => None,
     };
 
@@ -186,7 +294,7 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
     for n in &file_names {
         manifest_hashes.insert(
             n.clone(),
-            sha256_file(&args.manifest_dir.join(n)).map_err(|e| format!("hash {n}: {e}"))?,
+            sha256_file(&manifest_dir.join(n)).map_err(|e| format!("hash {n}: {e}"))?,
         );
     }
 
@@ -277,6 +385,7 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         Mode::Smoke => args.out.join("smoke"),
         Mode::Ensemble => args.out.clone(),
         Mode::Replay => args.out.join("replay"),
+        Mode::Trial => unreachable!("--trial returned before the preregistered modes"),
     };
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
 
@@ -343,7 +452,7 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
     write_artifacts(&WriteInput {
         mode: args.mode,
         out_dir: &out_dir,
-        manifest_dir: &args.manifest_dir,
+        manifest_dir: &manifest_dir,
         file_names: &file_names,
         manifest_hashes: &manifest_hashes,
         control: &control,
@@ -375,8 +484,31 @@ struct SmokeRun {
     status: RunStatus,
     checksum: u32,
     elapsed_secs: f64,
+    terrain_source: Option<String>,
+    world_identity: Option<WorldIdentity>,
     /// `(tick, [value of each SMOKE_ALLOWED_OBSERVABLES])`.
     series: Vec<(u64, [Option<f64>; 5])>,
+}
+
+fn uniform_world_provenance<'a, I>(label: &str, items: I) -> Result<(String, WorldIdentity), String>
+where
+    I: IntoIterator<Item = (Option<&'a str>, Option<WorldIdentity>)>,
+{
+    let mut expected: Option<(String, WorldIdentity)> = None;
+    for (src, id) in items {
+        let src = src.ok_or_else(|| format!("{label}: missing provenance.terrain_source"))?;
+        let id = id.ok_or_else(|| format!("{label}: missing provenance.world_identity"))?;
+        match &expected {
+            None => expected = Some((src.to_string(), id)),
+            Some((es, ei)) if es == src && *ei == id => {}
+            Some((es, ei)) => {
+                return Err(format!(
+                    "{label}: mixed terrain across runs: ({es}, {ei:?}) vs ({src}, {id:?})"
+                ));
+            }
+        }
+    }
+    expected.ok_or_else(|| format!("{label}: no runs executed"))
 }
 
 impl SmokeRun {
@@ -447,28 +579,18 @@ fn scrub(text: &str) -> String {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn smoke_run(
-    control: &ExperimentManifest,
-    treatment: &ExperimentManifest,
-    drift: Option<&ExperimentManifest>,
+/// Run every seed of every present arm with `observable_ids` restricted, in memory, to
+/// [`SMOKE_ALLOWED_OBSERVABLES`]. The smoke and `--trial` both run through here, so a trial whose
+/// manifests equal the smoke's ends on the smoke's checksums. `what` names the mode in stdout lines.
+fn run_allow_listed(
+    what: &str,
+    arms: [(&'static str, Option<&ExperimentManifest>); 3],
     registry: &ObservableRegistry,
-    out_dir: &Path,
-    file_names: &[String],
-    manifest_hashes: &BTreeMap<String, String>,
-    plan: &Plan,
-    rung: u64,
-) -> Result<(), String> {
-    let started = SystemTime::now();
+) -> Result<Vec<SmokeRun>, String> {
     let mut runs: Vec<SmokeRun> = Vec::new();
-    let arms: [(&'static str, Option<&ExperimentManifest>); 3] = [
-        ("control", Some(control)),
-        ("treatment", Some(treatment)),
-        ("drift", drift),
-    ];
     for (arm, manifest) in arms {
         let Some(m) = manifest else { continue };
-        // Never even request a body-mass observable in the smoke.
+        // Never even request a body-mass observable in the smoke or a trial.
         let mut restricted = m.clone();
         restricted
             .observable_ids
@@ -503,15 +625,42 @@ fn smoke_run(
                 status: run.status.clone(),
                 checksum: run.final_checksum,
                 elapsed_secs,
+                terrain_source: run.provenance.terrain_source.clone(),
+                world_identity: run.provenance.world_identity,
                 series,
             });
             if let Some((tick, reason)) = failure {
                 say(&format!(
-                    "E-SEL1 smoke: {arm} seed {seed} FAILED at tick {tick}: {reason}"
+                    "E-SEL1 {what}: {arm} seed {seed} FAILED at tick {tick}: {reason}"
                 ))?;
             }
         }
     }
+    Ok(runs)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn smoke_run(
+    control: &ExperimentManifest,
+    treatment: &ExperimentManifest,
+    drift: Option<&ExperimentManifest>,
+    registry: &ObservableRegistry,
+    out_dir: &Path,
+    file_names: &[String],
+    manifest_hashes: &BTreeMap<String, String>,
+    plan: &Plan,
+    rung: u64,
+) -> Result<(), String> {
+    let started = SystemTime::now();
+    let runs = run_allow_listed(
+        "smoke",
+        [
+            ("control", Some(control)),
+            ("treatment", Some(treatment)),
+            ("drift", drift),
+        ],
+        registry,
+    )?;
     let ended = SystemTime::now();
     let max_us = runs
         .iter()
@@ -594,12 +743,19 @@ fn smoke_run(
         "runs": per_run,
         "max_us_per_tick": max_us,
     });
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "smoke",
+        runs.iter()
+            .map(|r| (r.terrain_source.as_deref(), r.world_identity)),
+    )?;
     let exe = std::env::current_exe().ok();
     let prov = serde_json::json!({
         "kind": "e-sel1-smoke-provenance-EXCLUDED-FROM-ANALYSIS",
         "mode": "smoke",
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "build": {
             "git_commit": git(&["rev-parse", "HEAD"]),
             "git_describe": git(&["describe", "--always", "--dirty"]),
@@ -676,6 +832,421 @@ fn smoke_run(
     Ok(())
 }
 
+// ---- The trial: one chosen seed and parameter set, verifiable byte for byte --------------------
+
+/// Where a trial reads the preregistration and the smoke manifests from.
+enum ManifestSource<'a> {
+    Dir(&'a Path),
+    BuiltIn,
+}
+
+impl ManifestSource<'_> {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Dir(_) => "--manifest-dir",
+            Self::BuiltIn => {
+                "built-in: compiled into this binary from src-tauri/tests/fixtures/experiments_esel1/"
+            }
+        }
+    }
+
+    fn read(&self, name: &str) -> Result<String, String> {
+        match self {
+            Self::Dir(dir) => {
+                let path = dir.join(name);
+                std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))
+            }
+            Self::BuiltIn => BUILT_IN_MANIFESTS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, text)| text.to_string())
+                .ok_or_else(|| {
+                    format!("the built-in manifest set has no {name}; pass --manifest-dir")
+                }),
+        }
+    }
+}
+
+/// The trial's seed and where it came from. `--seed` is used when given; `ANIMA_SIM_SEED` is used
+/// when `--seed` is absent; when both are set they must name the same seed. An empty
+/// `ANIMA_SIM_SEED` counts as unset, and a value that is not an unsigned integer is refused rather
+/// than ignored, because a work unit that silently ran some other seed would still verify.
+pub fn resolve_trial_seed(
+    flag: Option<u64>,
+    env: Option<&str>,
+) -> Result<(u64, &'static str), String> {
+    let env_seed = match env.map(str::trim).filter(|v| !v.is_empty()) {
+        None => None,
+        Some(raw) => Some(raw.parse::<u64>().map_err(|e| {
+            format!("{SIM_SEED_ENV}='{raw}' is not an unsigned integer ({e}); fix or unset it")
+        })?),
+    };
+    match (flag, env_seed) {
+        (Some(f), Some(e)) if f != e => Err(format!(
+            "--seed {f} disagrees with {SIM_SEED_ENV}={e}; a trial runs exactly one seed"
+        )),
+        (Some(f), Some(_)) => Ok((f, "--seed (ANIMA_SIM_SEED agrees)")),
+        (Some(f), None) => Ok((f, "--seed")),
+        (None, Some(e)) => Ok((e, SIM_SEED_ENV)),
+        (None, None) => Err(format!(
+            "--trial needs a seed: pass --seed <SEED> or set {SIM_SEED_ENV}"
+        )),
+    }
+}
+
+/// A count parameter of the trial: the flag if given, else the template manifest's value.
+fn trial_count(
+    flag: Option<u64>,
+    flag_name: &str,
+    template: &ExperimentManifest,
+    key: &str,
+) -> Result<(u64, &'static str), String> {
+    if let Some(v) = flag {
+        return Ok((v, "flag"));
+    }
+    match ic_value(template, key) {
+        Some(v) if v >= 0.0 && v.fract() == 0.0 => Ok((v as u64, "smoke manifest")),
+        Some(v) => Err(format!(
+            "'{}' declares {key} = {v}, which is not a count; pass {flag_name}",
+            template.experiment_id
+        )),
+        None => Err(format!(
+            "'{}' declares no {key}; pass {flag_name}",
+            template.experiment_id
+        )),
+    }
+}
+
+/// Replace one initial condition in place (its position is kept), or append it if absent.
+fn set_initial_condition(m: &mut ExperimentManifest, key: &str, value: f64) {
+    match m
+        .initial_conditions
+        .values
+        .iter_mut()
+        .find(|(k, _)| k == key)
+    {
+        Some((_, v)) => *v = value,
+        None => m.initial_conditions.values.push((key.to_string(), value)),
+    }
+}
+
+/// sha256 of the running executable, computed once per process (the file is large and does not
+/// change while it runs). `None` when the platform will not say where the executable is.
+fn binary_sha256() -> Option<String> {
+    static DIGEST: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| sha256_file(&p).ok())
+        })
+        .clone()
+}
+
+/// `--trial`: one seed of every arm of the smoke manifests, at the chosen founders, food caps and
+/// duration. Writes `<out>/trial/`; see the module documentation for the file set.
+fn trial_run(
+    args: &Args,
+    sim_seed_env: Option<&str>,
+    registry: &ObservableRegistry,
+) -> Result<(), String> {
+    let source = match &args.manifest_dir {
+        Some(dir) => ManifestSource::Dir(dir),
+        None => ManifestSource::BuiltIn,
+    };
+    let prereg_text = source.read(PREREG_FILE)?;
+    let prereg: serde_json::Value = serde_json::from_str(&prereg_text)
+        .map_err(|e| format!("parse {PREREG_FILE} ({}): {e}", source.label()))?;
+    let plan = Plan::from_prereg(&prereg)?;
+
+    let mut manifest_hashes: BTreeMap<String, String> = BTreeMap::new();
+    manifest_hashes.insert(PREREG_FILE.to_string(), sha256_hex(prereg_text.as_bytes()));
+    let mut load = |name: &str| -> Result<ExperimentManifest, String> {
+        let text = source.read(name)?;
+        manifest_hashes.insert(name.to_string(), sha256_hex(text.as_bytes()));
+        serde_json::from_str(&text).map_err(|e| {
+            format!(
+                "{name} ({}) is not an ExperimentManifest: {e}",
+                source.label()
+            )
+        })
+    };
+    let mut control = load(&plan.smoke_control_file)?;
+    let mut treatment = load(&plan.smoke_treatment_file)?;
+    let mut drift = match &plan.smoke_drift_file {
+        Some(n) => Some(load(n)?),
+        None => None,
+    };
+
+    let (seed, seed_source) = resolve_trial_seed(args.trial.seed, sim_seed_env)?;
+    if plan.seeds.contains(&seed) {
+        return Err(format!(
+            "seed {seed} belongs to the preregistered execution order {:?}; a trial may not spend \
+             a confirmation seed",
+            plan.seeds
+        ));
+    }
+    let (founders, founders_from) =
+        trial_count(args.trial.founders, "--founders", &control, FOUNDERS_KEY)?;
+    let (cap_abundant, cap_abundant_from) = trial_count(
+        args.trial.food_cap_abundant,
+        "--food-cap-abundant",
+        &control,
+        FOOD_KEY,
+    )?;
+    let (cap_scarce, cap_scarce_from) = trial_count(
+        args.trial.food_cap_scarce,
+        "--food-cap-scarce",
+        &treatment,
+        FOOD_KEY,
+    )?;
+    let (duration, duration_from) = match args.trial.duration_ticks {
+        Some(t) => (t, "flag"),
+        None => (control.duration_ticks, "smoke manifest"),
+    };
+    if cap_abundant == cap_scarce {
+        return Err(format!(
+            "the abundant and scarce food caps are both {cap_abundant}; the control and treatment \
+             arms would be the same world"
+        ));
+    }
+
+    for m in [Some(&mut control), Some(&mut treatment), drift.as_mut()]
+        .into_iter()
+        .flatten()
+    {
+        m.seeds = vec![seed];
+        m.duration_ticks = duration;
+        set_initial_condition(m, FOUNDERS_KEY, founders as f64);
+    }
+    set_initial_condition(&mut control, FOOD_KEY, cap_abundant as f64);
+    set_initial_condition(&mut treatment, FOOD_KEY, cap_scarce as f64);
+    if let Some(d) = drift.as_mut() {
+        set_initial_condition(d, FOOD_KEY, cap_scarce as f64);
+    }
+
+    // Refuse before a tick runs: one factor per contrast, values the live adapter accepts, a
+    // structurally valid manifest, and the two observables runs.csv reads.
+    check_factors(&control, &treatment, drift.as_ref())?;
+    for m in [Some(&control), Some(&treatment), drift.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        LiveWorldConfig::from_initial_conditions(&m.initial_conditions).map_err(|e| {
+            format!(
+                "arm '{}': the live adapter refuses it: {e}",
+                m.experiment_id
+            )
+        })?;
+        m.validate(registry)
+            .map_err(|e| format!("arm '{}' is not a valid manifest: {e}", m.experiment_id))?;
+        if !SMOKE_ALLOWED_OBSERVABLES
+            .iter()
+            .take(2)
+            .all(|o| m.observable_ids.iter().any(|x| x == o))
+        {
+            return Err(format!(
+                "arm '{}' must request live.agent_count and live.standing_crop",
+                m.experiment_id
+            ));
+        }
+    }
+
+    let out_dir = args.out.join(TRIAL_DIR);
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+
+    let started = SystemTime::now();
+    let runs = run_allow_listed(
+        "trial",
+        [
+            ("control", Some(&control)),
+            ("treatment", Some(&treatment)),
+            ("drift", drift.as_ref()),
+        ],
+        registry,
+    )?;
+    let ended = SystemTime::now();
+
+    // verify_checksums.txt: the file two replicas compare. Sorted, LF, nothing but final_checksum.
+    let mut verify_lines: Vec<String> = runs
+        .iter()
+        .map(|r| format!("{},{},{}", r.seed, r.arm, r.checksum))
+        .collect();
+    verify_lines.sort();
+    let verify = verify_lines.join("\n") + "\n";
+
+    // runs.csv: one row per run, allow-listed columns only, no wall-clock column.
+    let mut csv = String::from(
+        "# TRIAL: exploratory, not a registered experiment; allow-listed observables only (live.agent_count, live.standing_crop, live.closed_eu_total, live.births, live.deaths); no body-mass value and no wall-clock value is written here (timing.json holds the timing)\n\
+         seed,arm,status,failed_tick,failure_reason,extinct_tick,min_agent_count,max_agent_count,standing_crop_tail_mean_tick_gt_half_T,final_checksum\n",
+    );
+    for r in &runs {
+        let (failed_tick, reason) = match &r.status {
+            RunStatus::Completed => (String::new(), String::new()),
+            RunStatus::Failed { tick, reason, .. } => (tick.to_string(), scrub(reason)),
+        };
+        csv.push_str(&format!(
+            "{},{},{},{failed_tick},{reason},{},{},{},{},{}\n",
+            r.seed,
+            r.arm,
+            status_label(&r.status),
+            r.extinct_tick().map(|t| t.to_string()).unwrap_or_default(),
+            r.min_agents().map(|v| v.to_string()).unwrap_or_default(),
+            r.max_agents().map(|v| v.to_string()).unwrap_or_default(),
+            r.standing_crop_tail_mean(duration)
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            r.checksum,
+        ));
+    }
+
+    // trial-series.csv: the allow-listed sample series, the same layout as smoke-series.csv.
+    let mut series = String::from("seed,arm,tick");
+    for id in SMOKE_ALLOWED_OBSERVABLES {
+        series.push(',');
+        series.push_str(id);
+    }
+    series.push('\n');
+    for r in &runs {
+        for (tick, v) in &r.series {
+            series.push_str(&format!("{},{},{tick}", r.seed, r.arm));
+            for x in v {
+                series.push(',');
+                if let Some(x) = x {
+                    series.push_str(&x.to_string());
+                }
+            }
+            series.push('\n');
+        }
+    }
+
+    // provenance.json: everything that identifies the run, nothing that depends on the clock, the
+    // checkout or a path. No git or rustc subprocess: a sandboxed task may have neither.
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "trial",
+        runs.iter()
+            .map(|r| (r.terrain_source.as_deref(), r.world_identity)),
+    )?;
+    let env_value = |name: &str| std::env::var(name).ok();
+    let prov = serde_json::json!({
+        "kind": "e-sel1-trial-provenance",
+        "mode": "trial",
+        "status": "exploratory trial: not a registered experiment, not part of the E-SEL1 preregistration (whose registration is closed), and no body-mass value was requested or written",
+        "model": "core::live_experiment::LiveExperimentAdapter",
+        "model_version": LIVE_MODEL_VERSION,
+        "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
+        "parameters": {
+            "seed": seed,
+            "founders": founders,
+            "food_cap_abundant": cap_abundant,
+            "food_cap_scarce": cap_scarce,
+            "duration_ticks": duration,
+            "sample_period": control.sample_period,
+        },
+        "parameter_sources": {
+            "seed": seed_source,
+            "founders": founders_from,
+            "food_cap_abundant": cap_abundant_from,
+            "food_cap_scarce": cap_scarce_from,
+            "duration_ticks": duration_from,
+        },
+        "arms": {
+            "control": "food cap = food_cap_abundant",
+            "treatment": "food cap = food_cap_scarce",
+            "drift": drift.as_ref().map(|_| "food cap = food_cap_scarce, live.mutation_rate = 0"),
+        },
+        "initial_conditions_by_arm": {
+            "control": control.initial_conditions.values,
+            "treatment": treatment.initial_conditions.values,
+            "drift": drift.as_ref().map(|d| d.initial_conditions.values.clone()),
+        },
+        "manifests": {
+            "source": source.label(),
+            "sha256_as_read": manifest_hashes,
+            "note": "the smoke manifests are the template; seeds, duration_ticks, live.founders and live.food_cap are overridden as listed under parameters",
+        },
+        "seeds_the_trial_refuses": plan.seeds,
+        "observables_written": SMOKE_ALLOWED_OBSERVABLES,
+        "build": {
+            "profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+            "package_version": env!("CARGO_PKG_VERSION"),
+            "binary_sha256": binary_sha256(),
+        },
+        "host": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH },
+        "environment": {
+            "ANIMA_SIM_SEED": sim_seed_env,
+            "ANIMA_DETERMINISTIC": env_value("ANIMA_DETERMINISTIC"),
+            "ANIMA_USE_GPU": env_value("ANIMA_USE_GPU"),
+            "note": "recorded, not consulted, except ANIMA_SIM_SEED as the seed when --seed is absent: the live adapter installs DeterministicMode::on(), a CPU brain and TerrainSource::Generated (ignoring ANIMA_WORLD_ARTIFACT and temp artifacts) whatever the environment says",
+        },
+        "verification": {
+            "file": VERIFY_FILE,
+            "format": "sorted LF lines seed,arm,final_checksum",
+            "deterministic_files": TRIAL_DETERMINISTIC_FILES,
+            "wall_clock_files": [TIMING_FILE],
+            "compare_within": "one OS and CPU architecture: final_checksum differs between them",
+        },
+    });
+    let prov_text = pretty(&prov)? + "\n";
+
+    // timing.json: the only file in trial/ whose bytes depend on the clock.
+    let total_secs: f64 = runs.iter().map(|r| r.elapsed_secs).sum();
+    let timing = serde_json::json!({
+        "kind": "e-sel1-trial-timing",
+        "note": "wall clock; the only file in this directory that differs between two identical runs, so checksums.sha256 leaves it out",
+        "started_utc": iso8601_utc(unix_seconds(started)),
+        "ended_utc": iso8601_utc(unix_seconds(ended)),
+        "wall_clock_seconds_all_runs": total_secs,
+        "duration_ticks": duration,
+        "runs": runs.iter().map(|r| serde_json::json!({
+            "arm": r.arm,
+            "seed": r.seed,
+            "wall_clock_seconds": r.elapsed_secs,
+            "us_per_tick": r.us_per_tick(duration),
+        })).collect::<Vec<_>>(),
+    });
+    let timing_text = pretty(&timing)? + "\n";
+
+    let files: [(&str, &String); 5] = [
+        ("provenance.json", &prov_text),
+        ("runs.csv", &csv),
+        ("trial-series.csv", &series),
+        (VERIFY_FILE, &verify),
+        (TIMING_FILE, &timing_text),
+    ];
+    for (name, text) in files {
+        guard_no_body_mass(name, text)?;
+    }
+    for (name, text) in files {
+        write_text(&out_dir.join(name), text)?;
+    }
+    let mut lines = String::new();
+    for name in TRIAL_DETERMINISTIC_FILES {
+        let digest = sha256_file(&out_dir.join(name)).map_err(|e| format!("hash {name}: {e}"))?;
+        lines.push_str(&format!("{digest}  {name}\n"));
+    }
+    write_text(&out_dir.join("checksums.sha256"), &lines)?;
+
+    for r in &runs {
+        say(&format!(
+            "E-SEL1 trial: seed {} {} {} final_checksum {} ({:.1} s, {:.1} us/tick)",
+            r.seed,
+            r.arm,
+            status_label(&r.status),
+            r.checksum,
+            r.elapsed_secs,
+            r.us_per_tick(duration)
+        ))?;
+    }
+    say(&format!(
+        "  trial artifacts written to {}; replicas compare {VERIFY_FILE}",
+        out_dir.display()
+    ))?;
+    Ok(())
+}
+
 // ---- Arguments ---------------------------------------------------------------------------------
 
 fn parse_args(argv: Vec<String>) -> Result<Args, String> {
@@ -685,14 +1256,15 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     let mut duration_rung: Option<u64> = None;
     let mut replay_seed: Option<u64> = None;
     let mut replay_arm: Option<String> = None;
+    let mut trial = TrialFlags::default();
 
     let mut it = argv.into_iter();
     while let Some(arg) = it.next() {
         let mut set_mode = |m: Mode| -> Result<(), String> {
             if let Some(existing) = mode {
                 return Err(format!(
-                    "--smoke, --ensemble and --replay are mutually exclusive; {existing:?} was \
-                     already selected"
+                    "--smoke, --ensemble, --replay and --trial are mutually exclusive; \
+                     {existing:?} was already selected"
                 ));
             }
             mode = Some(m);
@@ -702,6 +1274,16 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             "--smoke" => set_mode(Mode::Smoke)?,
             "--ensemble" => set_mode(Mode::Ensemble)?,
             "--replay" => set_mode(Mode::Replay)?,
+            "--trial" => set_mode(Mode::Trial)?,
+            "--seed" => set_once(&mut trial.seed, &arg, &need(&mut it, &arg)?)?,
+            "--founders" => set_once(&mut trial.founders, &arg, &need(&mut it, &arg)?)?,
+            "--food-cap-abundant" => {
+                set_once(&mut trial.food_cap_abundant, &arg, &need(&mut it, &arg)?)?
+            }
+            "--food-cap-scarce" => {
+                set_once(&mut trial.food_cap_scarce, &arg, &need(&mut it, &arg)?)?
+            }
+            "--duration-ticks" => set_once(&mut trial.duration_ticks, &arg, &need(&mut it, &arg)?)?,
             "--manifest-dir" => manifest_dir = Some(PathBuf::from(need(&mut it, &arg)?)),
             "--out" => out = Some(PathBuf::from(need(&mut it, &arg)?)),
             "--duration-rung" => {
@@ -728,12 +1310,33 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     }
 
     let mode = mode.ok_or_else(|| {
-        format!("exactly one of --smoke, --ensemble or --replay is required\n\n{USAGE}")
+        format!("exactly one of --smoke, --ensemble, --replay or --trial is required\n\n{USAGE}")
     })?;
-    let manifest_dir = manifest_dir.ok_or("--manifest-dir is required")?;
+    if mode != Mode::Trial && manifest_dir.is_none() {
+        return Err("--manifest-dir is required (only --trial has built-in manifests)".into());
+    }
     let out = out.ok_or("--out is required")?;
-    if !manifest_dir.is_dir() {
-        return Err(format!("{} is not a directory", manifest_dir.display()));
+    if let Some(dir) = &manifest_dir {
+        if !dir.is_dir() {
+            return Err(format!("{} is not a directory", dir.display()));
+        }
+    }
+    if mode != Mode::Trial && trial.any() {
+        return Err(
+            "--seed, --founders, --food-cap-abundant, --food-cap-scarce and --duration-ticks are \
+             only meaningful with --trial; --smoke, --ensemble and --replay run exactly what the \
+             preregistration's manifests declare"
+                .into(),
+        );
+    }
+    if mode == Mode::Trial && duration_rung.is_some() {
+        return Err(
+            "--duration-rung belongs to the preregistered ladder; a trial takes --duration-ticks"
+                .into(),
+        );
+    }
+    if trial.duration_ticks == Some(0) {
+        return Err("--duration-ticks must be at least 1".into());
     }
     if mode == Mode::Replay && (replay_seed.is_none() || replay_arm.is_none()) {
         return Err("--replay needs --replay-seed and --replay-arm control|treatment|drift".into());
@@ -748,13 +1351,35 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
         duration_rung,
         replay_seed,
         replay_arm,
+        trial,
     })
+}
+
+/// Parse one unsigned integer flag value, refusing a flag given twice: a work unit with two
+/// different seeds must fail, not silently keep the last one.
+fn set_once(slot: &mut Option<u64>, flag: &str, raw: &str) -> Result<(), String> {
+    if slot.is_some() {
+        return Err(format!("{flag} was given twice"));
+    }
+    *slot = Some(
+        raw.parse()
+            .map_err(|e| format!("{flag} must be an unsigned integer, not '{raw}': {e}"))?,
+    );
+    Ok(())
 }
 
 const USAGE: &str = "\
 run_esel1_experiment --smoke|--ensemble|--replay --manifest-dir <dir> --out <dir>
                      [--duration-rung <ticks>]
                      [--replay-seed <seed> --replay-arm control|treatment|drift]
+run_esel1_experiment --trial --out <dir> --seed <seed> [--manifest-dir <dir>]
+                     [--founders <N0>] [--food-cap-abundant <FA>] [--food-cap-scarce <FS>]
+                     [--duration-ticks <T>]
+
+--trial runs one seed of the smoke manifests' arms (control at FA, treatment and drift at FS),
+writes <out>/trial/, and compares runs through <out>/trial/verify_checksums.txt. A flag left out
+keeps the smoke manifest's value. The seed may come from ANIMA_SIM_SEED instead of --seed. Without
+--manifest-dir the manifests compiled into this binary are used.
 
 Build with:
   cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop \\
@@ -867,6 +1492,8 @@ impl Plan {
                     ));
                 }
             }
+            // A trial overrides the seeds itself and refuses the execution order in `trial_run`.
+            Mode::Trial => {}
         }
         Ok(())
     }
@@ -1607,6 +2234,15 @@ fn runs_csv(w: &WriteInput<'_>) -> String {
 
 fn provenance_json(w: &WriteInput<'_>) -> Result<String, String> {
     let (started, ended) = (unix_seconds(w.started), unix_seconds(w.ended));
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "ensemble",
+        w.report
+            .pairs
+            .iter()
+            .flat_map(|p| [&p.control.provenance, &p.treatment.provenance])
+            .chain(w.drift_runs.into_iter().flatten().map(|r| &r.provenance))
+            .map(|prov| (prov.terrain_source.as_deref(), prov.world_identity)),
+    )?;
     let exe = std::env::current_exe().ok();
     let doc = serde_json::json!({
         "kind": if w.mode == Mode::Smoke { "e-sel1-smoke-provenance-EXCLUDED-FROM-ANALYSIS" } else { "e-sel1-provenance" },
@@ -1614,6 +2250,8 @@ fn provenance_json(w: &WriteInput<'_>) -> Result<String, String> {
         "mode": format!("{:?}", w.mode).to_lowercase(),
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "harness": "core::experiment_runner::run_paired_ensemble_with_control + paired_effect",
         "registry": "core::experiment::ObservableRegistry::live_default",
         "build": {

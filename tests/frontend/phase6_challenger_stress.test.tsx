@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 // No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
 // this file names `React` itself.
@@ -73,6 +74,7 @@ import { App } from '../../src/App';
 vi.setConfig({ testTimeout: 30_000 });
 
 describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   const setupDefaultInvokeMock = (overrides: Record<string, unknown> = {}) => {
     vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
       if (overrides[cmd] !== undefined) {

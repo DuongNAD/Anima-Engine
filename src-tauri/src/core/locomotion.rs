@@ -26,6 +26,16 @@
 //! No RNG, no heap allocation once warm (the two snapshot buffers keep their capacity), and no
 //! energy charge: activity cost already flows through `total_cost` in `metabolic_decay_system`
 //! as `k_velocity * speed`.
+//!
+//! With [`crate::core::resources::GrassSteeringPolicy::enabled`] on (`live.grass_steering = 1.0`,
+//! ported from card S11 `226d4b2`/`95044c4b` and adapted to LAND1), non-predator `Prey` resolve
+//! targets with explicit priority order:
+//! 1. **Thirst (> 50% deficit):** nearest non-empty `Lake` when `thirst_steering` is on.
+//! 2. **Local `Food` items:** nearest `Food` within `(GRASS_SCAN_RADIUS + 0.5)` cell widths.
+//! 3. **Pasture grass (`ResourceField`):** stay (`target_velocity = Vec3::ZERO`) if current cell's
+//!    walkable grazeable grass is `>= GRASS_STAY_FRACTION * r_max`, else steer to the walkable cell
+//!    with strictly highest grazeable grass above the current cell in the clipped `(2R + 1)^2`
+//!    scan window (ties broken by lowest `(row, col)`), falling back to global nearest `Food`.
 
 use bevy_ecs::prelude::*;
 use glam::Vec3;
@@ -51,6 +61,110 @@ pub const ARRIVAL_RADIUS: f32 = 0.3;
 /// (ADR-0007 option A). Above it the agent returns to its normal target.
 pub const THIRST_STEERING_FRACTION: f32 = 0.5;
 
+/// With `GrassSteeringPolicy::enabled` on (`live.grass_steering = 1.0`, card SEL2P2-PREP / S11
+/// `226d4b2`), a non-thirsty prey agent without local `Food` stays (`target_velocity = Vec3::ZERO`)
+/// when its current walkable cell holds grazeable grass `>= GRASS_STAY_FRACTION * r_max`.
+pub const GRASS_STAY_FRACTION: f32 = 0.25;
+
+/// Half-width in pasture cells of the square window (`(2 * R + 1) x (2 * R + 1)`, so `3` scans
+/// a clipped `7 x 7` window) searched for richer walkable grass when a prey leaves a depleted
+/// cell (card SEL2P2-PREP / S11 `226d4b2`).
+pub const GRASS_SCAN_RADIUS: usize = 3;
+
+struct GrassContext<'a> {
+    field: &'a crate::core::ecology::ResourceField,
+    reserve: crate::core::resources::PlantReservePolicy,
+    nav: Option<(
+        &'a crate::core::terrain::TerrainMap,
+        &'a crate::core::resources::MapBounds,
+    )>,
+    local_food_radius_sq: f32,
+}
+
+impl GrassContext<'_> {
+    #[inline]
+    fn is_walkable(&self, pos: Vec3) -> bool {
+        match self.nav {
+            Some((tm, bounds)) => crate::core::terrain_navigation::is_pos_walkable(tm, bounds, pos),
+            None => true,
+        }
+    }
+}
+
+#[inline]
+fn find_nearest_point(pos: Vec3, candidates: &[Vec3]) -> Option<(Vec3, f32)> {
+    let mut nearest: Option<Vec3> = None;
+    let mut min_dist_sq = f32::MAX;
+    for target in candidates.iter() {
+        let d = pos.distance_squared(*target);
+        if d < min_dist_sq {
+            min_dist_sq = d;
+            nearest = Some(*target);
+        }
+    }
+    nearest.map(|t| (t, min_dist_sq))
+}
+
+fn select_prey_grass_target(
+    pos: Vec3,
+    grass: &GrassContext<'_>,
+    food_cache: &[Vec3],
+) -> Option<Vec3> {
+    let field = grass.field;
+    let nearest_food = find_nearest_point(pos, food_cache);
+    // Priority 2: local Food item inside the local scan radius wins over pasture grass.
+    if let Some((food_pos, food_d2)) = nearest_food {
+        if food_d2 <= grass.local_food_radius_sq {
+            return Some(food_pos);
+        }
+    }
+
+    // Priority 3: pasture grass (`ResourceField` + S10 reserve floor + LAND1 walkability).
+    if let Some(cur_idx) = field.cell_index(pos.x, pos.z) {
+        let cell_w = (field.max_x - field.min_x) / field.width as f32;
+        let cell_h = (field.max_z - field.min_z) / field.height as f32;
+        let cur_row = cur_idx / field.width;
+        let cur_col = cur_idx % field.width;
+        let cur_walkable = grass.is_walkable(pos);
+        let cur_r_max = field.r_max[cur_idx];
+        let cur_grazeable = (field.r[cur_idx] - grass.reserve.floor(cur_r_max)).max(0.0);
+        if cur_walkable && cur_r_max > 0.0 && cur_grazeable >= GRASS_STAY_FRACTION * cur_r_max {
+            return None;
+        }
+
+        let r0 = cur_row.saturating_sub(GRASS_SCAN_RADIUS);
+        let r1 = (cur_row + GRASS_SCAN_RADIUS).min(field.height - 1);
+        let c0 = cur_col.saturating_sub(GRASS_SCAN_RADIUS);
+        let c1 = (cur_col + GRASS_SCAN_RADIUS).min(field.width - 1);
+        let mut best_grazeable = if cur_walkable { cur_grazeable } else { 0.0 };
+        let mut best_cell: Option<Vec3> = None;
+
+        for row in r0..=r1 {
+            let cz = field.min_z + (row as f32 + 0.5) * cell_h;
+            for col in c0..=c1 {
+                let cx = field.min_x + (col as f32 + 0.5) * cell_w;
+                let center = Vec3::new(cx, 0.0, cz);
+                if !grass.is_walkable(center) {
+                    continue;
+                }
+                let j = row * field.width + col;
+                let g = (field.r[j] - grass.reserve.floor(field.r_max[j])).max(0.0);
+                // Strictly greater preserves lowest-(row, col) tie-breaking and requires beating
+                // the current cell before leaving Food fallback.
+                if g > best_grazeable {
+                    best_grazeable = g;
+                    best_cell = Some(center);
+                }
+            }
+        }
+        if let Some(grass_target) = best_cell {
+            return Some(grass_target);
+        }
+    }
+
+    nearest_food.map(|(p, _)| p)
+}
+
 /// Normalised drive in `[0, 1]` from the mean amplitude of the agent's direct body segments.
 fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOscillator>) -> f32 {
     let Some(children) = children else { return 0.0 };
@@ -69,16 +183,23 @@ fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOsci
 }
 
 /// Writes `InertiaComponent.target_velocity` toward each living agent's sensory target.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn steering_drive_system(
     policy: Option<Res<LocomotionPolicy>>,
     income: Option<Res<crate::core::resources::PredatorIncomePolicy>>,
+    grass_policy: Option<Res<crate::core::resources::GrassSteeringPolicy>>,
+    field: Option<Res<crate::core::ecology::ResourceField>>,
+    reserve: Option<Res<crate::core::resources::PlantReservePolicy>>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
+    bounds: Option<Res<crate::core::resources::MapBounds>>,
     lake_query: Query<(&Position, &Lake)>,
     mut agents: Query<
         (
             &Position,
             &HomeostaticState,
             Option<&Predator>,
+            Option<&Prey>,
             Option<&ChildrenLinks>,
             &mut InertiaComponent,
         ),
@@ -96,6 +217,38 @@ pub fn steering_drive_system(
     // ADR-0007 option B: predators only chase prey holding at least this much energy. `0.0` (or no
     // resource) admits every living prey, which is the historical rule.
     let target_min_energy = income.map(|p| p.target_min_energy).unwrap_or(0.0);
+    let grass_enabled = grass_policy.is_some_and(|p| p.enabled);
+    let grass_ctx = if grass_enabled {
+        let reserve_policy = reserve.map(|r| *r).unwrap_or_default();
+        let nav = if terrain_nav.is_some_and(|t| t.enabled) {
+            terrain_map.as_deref().zip(bounds.as_deref())
+        } else {
+            None
+        };
+        field.as_deref().and_then(|f| {
+            let n_cells = f.width.checked_mul(f.height)?;
+            if n_cells == 0
+                || f.r.len() < n_cells
+                || f.r_max.len() < n_cells
+                || f.max_x <= f.min_x
+                || f.max_z <= f.min_z
+            {
+                return None;
+            }
+            let cell_w = (f.max_x - f.min_x) / f.width as f32;
+            let cell_h = (f.max_z - f.min_z) / f.height as f32;
+            let local_radius = (GRASS_SCAN_RADIUS as f32 + 0.5) * cell_w.max(cell_h);
+            Some(GrassContext {
+                field: f,
+                reserve: reserve_policy,
+                nav,
+                local_food_radius_sq: local_radius * local_radius,
+            })
+        })
+    } else {
+        None
+    };
+
     let (prey_cache, food_cache, lake_cache) = &mut *caches;
     lake_cache.clear();
     if policy.thirst_steering {
@@ -116,7 +269,7 @@ pub fn steering_drive_system(
         food_cache.push(pos.0);
     }
 
-    for (pos, homeo, predator, children, mut inertia) in agents.iter_mut() {
+    for (pos, homeo, predator, prey, children, mut inertia) in agents.iter_mut() {
         if homeo.energy <= 0.0 {
             inertia.target_velocity = Vec3::ZERO;
             continue;
@@ -128,24 +281,28 @@ pub fn steering_drive_system(
         };
         let thirsty = policy.thirst_steering
             && homeo.hydration < homeo.hydration_target * THIRST_STEERING_FRACTION;
-        let candidates = if thirsty && !lake_cache.is_empty() {
-            &*lake_cache
-        } else if predator.is_some() {
-            &*prey_cache
-        } else {
-            &*food_cache
-        };
-        let mut nearest: Option<Vec3> = None;
-        let mut min_dist_sq = f32::MAX;
-        for target in candidates.iter() {
-            let d = pos.0.distance_squared(*target);
-            if d < min_dist_sq {
-                min_dist_sq = d;
-                nearest = Some(*target);
+        let steering_to_water = thirsty && !lake_cache.is_empty();
+        // Priority 1 (thirst) and legacy paths use candidate scans; Priority 2/3 run only for
+        // non-thirsty Prey when GrassSteeringPolicy::enabled is true.
+        let selected = if !steering_to_water && predator.is_none() && prey.is_some() {
+            if let Some(grass) = grass_ctx.as_ref() {
+                select_prey_grass_target(pos.0, grass, food_cache)
+                    .map(|target| (target, pos.0.distance_squared(target)))
+            } else {
+                find_nearest_point(pos.0, food_cache)
             }
-        }
-        inertia.target_velocity = match nearest {
-            Some(target) if min_dist_sq > ARRIVAL_RADIUS * ARRIVAL_RADIUS => {
+        } else {
+            let candidates = if steering_to_water {
+                &*lake_cache
+            } else if predator.is_some() {
+                &*prey_cache
+            } else {
+                &*food_cache
+            };
+            find_nearest_point(pos.0, candidates)
+        };
+        inertia.target_velocity = match selected {
+            Some((target, min_dist_sq)) if min_dist_sq > ARRIVAL_RADIUS * ARRIVAL_RADIUS => {
                 let speed = max_speed * drive_from_cpg(children, &oscillators).max(drive_floor);
                 (target - pos.0).normalize_or_zero() * speed
             }

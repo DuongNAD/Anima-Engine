@@ -635,6 +635,16 @@ pub fn agent_mortality_system(
 /// 0.95 for predators) and exceeds its safe reserve, it invests part of that reserve, funds an
 /// offspring through `ecology::REPRODUCTION_EFFICIENCY` (eta = 0.60), routes the remainder
 /// (1 - eta) directly to detritus with zero leakage, and queues a SpawnOffspringCommand.
+///
+/// Population caps (`live.prey_cap` for prey; `pred_count >= 8 || prey_count < pred_count * 5` for
+/// predators) are checked before each birth against snapshot counts (`strict = false`, legacy
+/// default, bypassed during neutral-drift `Replay`) or against running counts incremented when
+/// a birth is queued (`strict = true`, both normal and neutral-drift `Replay` modes). Because the
+/// predator 5:1 ratio is evaluated *before* each birth against the running count, prey queued
+/// earlier in the same tick count toward it and `prey_count / pred_count` may sit below 5:1
+/// immediately after the final allowed predator birth. In `Replay` mode with `strict = true`,
+/// cap-blocked scheduled births increment `DriftDiagnostics::missed_births_capped` and mark
+/// tick divergence instead of drawing parents or marking insolvency.
 /// The numbers live in the body below and in `ecology.rs`; this comment only names them.
 pub fn autonomous_reproduction_system(
     mut commands: Commands,
@@ -664,14 +674,19 @@ pub fn autonomous_reproduction_system(
     mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
     prey_cap_policy: Option<Res<crate::core::resources::PreyCapPolicy>>,
     mut drift: Option<ResMut<crate::core::drift_control::DriftControlState>>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
     }
-    // Absent policy == the historical ceiling of 80 prey (`live.prey_cap`, card S6).
+    let land_nav = terrain_nav.as_deref().is_some_and(|p| p.enabled);
+    // Absent policy == the historical ceiling of 80 prey (`live.prey_cap`, card S6) and soft
+    // per-tick counting (`strict = false`, card FIX-CAP / F-052).
     let prey_cap = prey_cap_policy
         .as_deref()
         .map_or(crate::core::resources::DEFAULT_PREY_CAP, |p| p.cap);
+    let strict_cap = prey_cap_policy.as_deref().is_some_and(|p| p.strict);
     // Absent policy == the historical 5%. Exactly 0.0 == offspring are exact copies (no body or
     // brain mutation); see `live.mutation_rate`.
     let mutation_rate = mutation_policy
@@ -691,6 +706,7 @@ pub fn autonomous_reproduction_system(
         let mut actual_total = 0u64;
         let mut missed_extinct = 0u64;
         let mut missed_insolvent = 0u64;
+        let mut missed_capped = 0u64;
         let mut missed_any_this_tick = false;
 
         {
@@ -705,6 +721,8 @@ pub fn autonomous_reproduction_system(
                     prey_buf.push(e);
                 }
             }
+            let mut prey_count = prey_buf.len();
+            let mut pred_count = pred_buf.len();
 
             for (is_predator, req, guild_buf) in
                 [(false, req_prey, prey_buf), (true, req_pred, pred_buf)]
@@ -745,6 +763,18 @@ pub fn autonomous_reproduction_system(
 
                 let invest_fraction = if is_predator { 0.65 } else { 0.50 };
                 for _ in 0..req {
+                    if strict_cap {
+                        let capped = if is_predator {
+                            pred_count >= 8 || prey_count < pred_count * 5
+                        } else {
+                            prey_count >= prey_cap
+                        };
+                        if capped {
+                            missed_capped += 1;
+                            missed_any_this_tick = true;
+                            continue;
+                        }
+                    }
                     if solvent_buf.is_empty() {
                         missed_insolvent += 1;
                         missed_any_this_tick = true;
@@ -829,6 +859,8 @@ pub fn autonomous_reproduction_system(
                         &mut next_node_id,
                         &mut demographic_tracker,
                         &mut vital_stats,
+                        land_nav,
+                        terrain_map.as_deref(),
                     );
                     if payer_homeo.energy < crate::core::drift_control::MIN_DRIFT_BIRTH_PAYMENT_EU {
                         if let Some(pos_idx) = solvent_buf.iter().position(|&e| e == p_pay) {
@@ -837,6 +869,13 @@ pub fn autonomous_reproduction_system(
                     }
                     if spawned {
                         actual_total += 1;
+                        if strict_cap {
+                            if is_predator {
+                                pred_count += 1;
+                            } else {
+                                prey_count += 1;
+                            }
+                        }
                     } else {
                         missed_insolvent += 1;
                         missed_any_this_tick = true;
@@ -849,6 +888,7 @@ pub fn autonomous_reproduction_system(
         drift_res.diagnostics.actual_births += actual_total;
         drift_res.diagnostics.missed_births_extinct += missed_extinct;
         drift_res.diagnostics.missed_births_insolvent += missed_insolvent;
+        drift_res.diagnostics.missed_births_capped += missed_capped;
         if missed_any_this_tick {
             drift_res.diagnostics.ticks_with_missed_births += 1;
             drift_res.diagnostics.note_divergence(world_tick);
@@ -939,8 +979,17 @@ pub fn autonomous_reproduction_system(
                 &mut next_node_id,
                 &mut demographic_tracker,
                 &mut vital_stats,
+                land_nav,
+                terrain_map.as_deref(),
             );
             if spawned {
+                if strict_cap {
+                    if is_predator {
+                        pred_count += 1;
+                    } else {
+                        prey_count += 1;
+                    }
+                }
                 if let Some(drift_res) = drift.as_deref_mut() {
                     drift_res.record_birth(is_predator);
                 }
@@ -973,6 +1022,8 @@ fn execute_reproduction_birth(
     next_node_id: &mut Option<ResMut<NextNodeId>>,
     demographic_tracker: &mut Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
     vital_stats: &mut Option<ResMut<crate::core::resources::VitalStatistics>>,
+    land_nav: bool,
+    terrain_map: Option<&crate::core::terrain::TerrainMap>,
 ) -> bool {
     use rand::Rng;
 
@@ -1035,6 +1086,18 @@ fn execute_reproduction_birth(
     if let Some(ref b) = bounds {
         spawn_pos.x = spawn_pos.x.clamp(b.min.x + 1.0, b.max.x - 1.0);
         spawn_pos.z = spawn_pos.z.clamp(b.min.z + 1.0, b.max.z - 1.0);
+    }
+    if land_nav {
+        if let (Some(tm), Some(ref b)) = (terrain_map, bounds) {
+            if !crate::core::terrain_navigation::is_pos_walkable(tm, b, spawn_pos) {
+                spawn_pos = if crate::core::terrain_navigation::is_pos_walkable(tm, b, parent_pos) {
+                    parent_pos
+                } else {
+                    crate::core::terrain_navigation::snap_to_nearest_walkable(tm, b, parent_pos)
+                        .unwrap_or(parent_pos)
+                };
+            }
+        }
     }
 
     // Mutate child morphology with declared mutation probability
@@ -1250,8 +1313,12 @@ pub fn apply_staggered_evolution_system(
     evolution_receiver: Res<EvolutionReceiver>,
     mut queue: ResMut<EvolutionQueue>,
     position_query: Query<&Position>,
+    last_walkable_query: Query<&crate::core::components::LastWalkablePosition>,
     predator_query: Query<&Predator>,
     mut vitals: Option<ResMut<crate::core::resources::VitalStatistics>>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
+    bounds: Option<Res<crate::core::ecs::MapBounds>>,
     // The corpse's reserve and its segments are both handled by
     // `ReclaimAndDespawnAgentCommand` at the sync point, so this system no longer needs the
     // segment query or direct access to the biomass pool.
@@ -1274,10 +1341,27 @@ pub fn apply_staggered_evolution_system(
     if let Some((old_entity, next_genotype, default_pos, lineage_id, generation, parent_ids)) =
         queue.pending_replacements.pop()
     {
-        let spawn_pos = position_query
+        let mut spawn_pos = position_query
             .get(old_entity)
             .map(|p| p.0)
             .unwrap_or(default_pos);
+        if terrain_nav.as_deref().is_some_and(|p| p.enabled) {
+            if let (Some(tm), Some(b)) = (terrain_map.as_deref(), bounds.as_deref()) {
+                if !crate::core::terrain_navigation::is_pos_walkable(tm, b, spawn_pos) {
+                    spawn_pos = last_walkable_query
+                        .get(old_entity)
+                        .ok()
+                        .map(|l| l.pos)
+                        .filter(|&p| crate::core::terrain_navigation::is_pos_walkable(tm, b, p))
+                        .or_else(|| {
+                            crate::core::terrain_navigation::snap_to_nearest_walkable(
+                                tm, b, spawn_pos,
+                            )
+                        })
+                        .unwrap_or(spawn_pos);
+                }
+            }
+        }
 
         let agent_class = if predator_query.get(old_entity).is_ok() {
             AgentClass::Predator

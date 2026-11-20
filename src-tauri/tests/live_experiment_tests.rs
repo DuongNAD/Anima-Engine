@@ -538,7 +538,22 @@ fn run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run() {
         "a live run resumed from a checkpoint diverged from an uninterrupted one; some piece of \
          trajectory-relevant state is missing from the snapshot"
     );
-    assert_eq!(reference_observables, resumed.observables());
+    let resumed_observables = resumed.observables();
+    assert_eq!(reference_observables, resumed_observables);
+    let integral_ref = reference_observables
+        .iter()
+        .find(|(k, _)| k == "live.mean_energy_integral")
+        .map(|(_, v)| *v)
+        .expect("live.mean_energy_integral emitted");
+    let integral_resumed = resumed_observables
+        .iter()
+        .find(|(k, _)| k == "live.mean_energy_integral")
+        .map(|(_, v)| *v)
+        .expect("live.mean_energy_integral emitted on resume");
+    assert!(
+        integral_ref > 0.0 && integral_ref.to_bits() == integral_resumed.to_bits(),
+        "mean_energy_integral must survive disk checkpoint fork bit-for-bit ({integral_ref} vs {integral_resumed})"
+    );
 }
 
 #[test]

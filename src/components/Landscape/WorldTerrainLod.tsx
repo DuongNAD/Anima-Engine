@@ -8,6 +8,7 @@ import {
   buildRoughnessTexture,
   buildDetailTexture,
   buildRiverMaskTexture,
+  buildSplatTexture,
 } from './utils/worldTerrainTextures';
 import {
   makeChunkGrid,
@@ -17,6 +18,9 @@ import {
   resForLod,
 } from './utils/chunkLod';
 import { sceneElapsed } from './utils/sceneClock';
+import { isCaptureRequested } from './utils/captureMode';
+import type { QualityTier } from './utils/qualityTiers';
+import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 
 // ---------------------------------------------------------------------------------------
 // WorldTerrainLod — the chunked, distance-LOD, streamable terrain (M3), an opt-in alternative
@@ -54,6 +58,8 @@ export interface WorldTerrainLodProps {
   loadRadius?: number;
   /** Chunks unload past this radius (hysteresis). Defaults to loadRadius × 1.35 when streaming. */
   unloadRadius?: number;
+  /** Quality tier controlling CC0 PBR array resolution (`512` on low, `1024` on medium/high). */
+  tier?: QualityTier;
 }
 
 // Re-evaluate LOD / streaming only after the camera has moved this far (world units).
@@ -70,6 +76,7 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
   dynamicLod = true,
   loadRadius = 0,
   unloadRadius,
+  tier = 'high',
 }) => {
   const streamingOn = loadRadius > 0;
   const unload = unloadRadius && unloadRadius > loadRadius ? unloadRadius : loadRadius * 1.35;
@@ -82,6 +89,7 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
   const roughnessMap = useMemo(() => buildRoughnessTexture(world), [world]);
   const detailMap = useMemo(() => buildDetailTexture(), []);
   const riverMaskMap = useMemo(() => buildRiverMaskTexture(world), [world]);
+  const splatMap = useMemo(() => buildSplatTexture(world), [world]);
 
   const grid = useMemo(() => makeChunkGrid(chunksPerSide), [chunksPerSide]);
 
@@ -150,45 +158,42 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
     }
   }, [activeChunks, streamingOn, cacheBundle]);
 
-  // One shared material with the exact same look + flowing-river shimmer as WorldTerrain.
-  const shaderRef = useRef<{ uniforms: Record<string, { value: unknown }> } | null>(null);
-  const material = useMemo(() => {
-    const m = new THREE.MeshStandardMaterial({
-      map: colorMap,
-      normalMap,
-      roughnessMap,
-      roughness: 1.0,
-      metalness: 0.0,
+  // One shared material with the exact same PBR splat + flowing-river shimmer as WorldTerrain.
+  const terrainMat = useMemo(
+    () =>
+      createTerrainPbrMaterial({
+        colorMap,
+        normalMap,
+        roughnessMap,
+        detailMap,
+        riverMaskMap,
+        splatMap,
+        heightUnits: renderSize * heightRatio,
+      }),
+    [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, splatMap, renderSize, heightRatio],
+  );
+
+  useEffect(() => {
+    terrainMat.handle.applyPbrArrays(null);
+    if (typeof window !== 'undefined' && isCaptureRequested(window.location.search)) {
+      return;
+    }
+    let cancelled = false;
+    void import('./assets/worldAssets').then(({ loadTerrainPbrArrays }) => {
+      if (cancelled) return;
+      return loadTerrainPbrArrays(tier).then((arrays) => {
+        if (!cancelled && arrays) {
+          terrainMat.handle.applyPbrArrays(arrays);
+        }
+      });
     });
-    m.normalScale = new THREE.Vector2(1, 1);
-    m.onBeforeCompile = (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
-      shader.uniforms.uDetail = { value: detailMap };
-      shader.uniforms.uRiverMask = { value: riverMaskMap };
-      shader.uniforms.uTime = { value: 0 };
-      shader.fragmentShader =
-        'uniform sampler2D uDetail;\nuniform sampler2D uRiverMask;\nuniform float uTime;\n' +
-        shader.fragmentShader.replace(
-          '#include <map_fragment>',
-          `#include <map_fragment>
-          {
-            float dtl = texture2D(uDetail, vMapUv * 220.0).r * 2.0;
-            diffuseColor.rgb *= mix(1.0, dtl, 0.34);
-            float riv = texture2D(uRiverMask, vMapUv).r;
-            if (riv > 0.01) {
-              float flow1 = texture2D(uDetail, vMapUv * 260.0 + vec2(uTime * 0.025, uTime * 0.045)).r * 2.0;
-              float flow2 = texture2D(uDetail, vMapUv * 140.0 - vec2(uTime * 0.018, uTime * 0.03)).r * 2.0;
-              diffuseColor.rgb *= mix(1.0, flow1 * 0.55 + flow2 * 0.45, riv * 0.3);
-            }
-          }`,
-        );
-      shaderRef.current = shader;
+    return () => {
+      cancelled = true;
     };
-    return m;
-  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap]);
+  }, [terrainMat, tier]);
 
   useFrame((state) => {
-    const sh = shaderRef.current;
-    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = sceneElapsed(state.clock);
+    terrainMat.handle.updateTime(sceneElapsed(state.clock));
 
     const cam = state.camera && state.camera.position;
     if (!cam || !Number.isFinite(cam.x) || !Number.isFinite(cam.z)) return; // (also skips test mocks)
@@ -226,11 +231,12 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
       roughnessMap.dispose();
       detailMap.dispose();
       riverMaskMap.dispose();
-      if (typeof material.dispose === 'function') material.dispose();
+      splatMap.dispose();
+      terrainMat.handle.dispose();
       cacheBundle.cache.forEach((g) => typeof g.dispose === 'function' && g.dispose());
       cacheBundle.cache.clear();
     };
-  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, material, cacheBundle]);
+  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, splatMap, terrainMat, cacheBundle]);
 
   const rendered = streamingOn ? Array.from(activeChunks) : grid.map((_, i) => i);
   return (
@@ -248,7 +254,7 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
             // ever shows the default geometry three's Mesh constructor supplies.
             if (m) m.geometry = cacheBundle.get(i, lodState.current[i] ?? initialLods[i]);
           }}
-          material={material}
+          material={terrainMat.material}
           receiveShadow
         />
       ))}

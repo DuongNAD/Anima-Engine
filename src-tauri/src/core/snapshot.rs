@@ -675,7 +675,7 @@ fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
         shared
             .validate(state.sim_rng_seed)
             .map_err(|error| invalid(format!("shared learner checkpoint: {error}")))?;
-        let pending_by_lineage: std::collections::HashMap<_, _> = shared
+        let mut pending_by_lineage: std::collections::HashSet<_> = shared
             .pending_inference
             .iter()
             .flat_map(|batch| batch.responses.iter())
@@ -691,24 +691,13 @@ fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
                 _ => None,
             });
         for (lineage, request_id) in pending_agents {
-            if pending_by_lineage.get(lineage) != Some(&request_id) {
+            if !pending_by_lineage.remove(&(lineage, request_id)) {
                 return Err(invalid(format!(
                     "pending inference response does not match agent '{lineage}'"
                 )));
             }
         }
-        if pending_by_lineage.len()
-            != state
-                .agents
-                .iter()
-                .filter(|agent| {
-                    matches!(
-                        agent.cognitive_state,
-                        crate::core::components::CognitiveState::PendingInference(_)
-                    )
-                })
-                .count()
-        {
+        if !pending_by_lineage.is_empty() {
             return Err(invalid(
                 "pending inference responses do not match the pending agent population".to_owned(),
             ));
@@ -1025,6 +1014,7 @@ mod tests {
             action_gates: None,
             segments: Vec::new(),
             brain: None,
+            sex: None,
         }
     }
 

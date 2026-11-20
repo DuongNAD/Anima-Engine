@@ -1,0 +1,428 @@
+{
+  "build": {
+    "binary_sha256": "6825ce28dc7c409b2ebc18a090f1e247600730b79bf80c747fd9abd0a7e82fac",
+    "git_commit": "a1229a6b59f1849091d0f2e5c0028769f892c553",
+    "git_describe": "a1229a6-dirty",
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "harness": "core::experiment_runner::{run_paired_ensemble_with_control, run_manifest_seed}",
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "kind": "e3-smoke-provenance-EXCLUDED-FROM-ANALYSIS",
+  "manifests": {
+    "control_law_fingerprint": 11173561918340764083,
+    "control_uniform_fingerprint_as_run": 5376023189473572108,
+    "control_uniform_initial_conditions": [
+      [
+        "live.ecological_fitness",
+        1.0
+      ],
+      [
+        "live.mortality",
+        1.0
+      ],
+      [
+        "live.reproduction",
+        1.0
+      ],
+      [
+        "live.locomotion",
+        1.0
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1.0
+      ],
+      [
+        "live.evolved_brains",
+        0.0
+      ],
+      [
+        "live.founders",
+        120.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.resource_capacity_scale",
+        1.0
+      ]
+    ],
+    "control_uniform_interventions": [
+      {
+        "cause_id": 1,
+        "curve": "Step",
+        "duration_ticks": 18000,
+        "id": 1,
+        "intensity": 0.0,
+        "kind": "Deforest",
+        "region": {
+          "Rect": {
+            "max_x": 127,
+            "max_y": 255,
+            "min_x": 0,
+            "min_y": 0
+          }
+        },
+        "reversible": false,
+        "signed_negative": false,
+        "start_tick": 1
+      },
+      {
+        "cause_id": 2,
+        "curve": "Step",
+        "duration_ticks": 18000,
+        "id": 2,
+        "intensity": 0.0,
+        "kind": "AddNutrient",
+        "region": {
+          "Rect": {
+            "max_x": 255,
+            "max_y": 255,
+            "min_x": 128,
+            "min_y": 0
+          }
+        },
+        "reversible": false,
+        "signed_negative": false,
+        "start_tick": 1
+      }
+    ],
+    "control_uniform_scarcity_fingerprint_as_run": 588209060852373186,
+    "control_uniform_scarcity_initial_conditions": [
+      [
+        "live.ecological_fitness",
+        1.0
+      ],
+      [
+        "live.mortality",
+        1.0
+      ],
+      [
+        "live.reproduction",
+        1.0
+      ],
+      [
+        "live.locomotion",
+        1.0
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1.0
+      ],
+      [
+        "live.evolved_brains",
+        0.0
+      ],
+      [
+        "live.founders",
+        120.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.resource_capacity_scale",
+        0.42
+      ]
+    ],
+    "control_uniform_scarcity_interventions": [
+      {
+        "cause_id": 1,
+        "curve": "Step",
+        "duration_ticks": 18000,
+        "id": 1,
+        "intensity": 0.0,
+        "kind": "Deforest",
+        "region": {
+          "Rect": {
+            "max_x": 127,
+            "max_y": 255,
+            "min_x": 0,
+            "min_y": 0
+          }
+        },
+        "reversible": false,
+        "signed_negative": false,
+        "start_tick": 1
+      },
+      {
+        "cause_id": 2,
+        "curve": "Step",
+        "duration_ticks": 18000,
+        "id": 2,
+        "intensity": 1.0,
+        "kind": "AddNutrient",
+        "region": {
+          "Rect": {
+            "max_x": 255,
+            "max_y": 255,
+            "min_x": 0,
+            "min_y": 0
+          }
+        },
+        "reversible": false,
+        "signed_negative": false,
+        "start_tick": 1
+      }
+    ],
+    "declared_factors": [
+      "initial_conditions.live.resource_capacity_scale",
+      "interventions"
+    ],
+    "manifest_dir": "src-tauri/tests/fixtures/experiments_e3",
+    "note": "manifest IDs and observable lists are verified by SHA-256 above so body-mass observable names stay out of the smoke directory",
+    "preregistration_hash_note": "e3-preregistration.json is hashed separately at run time rather than inside sha256_as_committed because wp2_smoke_calibration is copied into it after this single deterministic run.",
+    "preregistration_sha256_at_run": "681850c43caa696efe26cbd4c54faa79c8198062e5ae3cb8c6540863233aec6f",
+    "registry_fingerprint": 14152389948449814764,
+    "sha256_as_committed": {
+      "e3-control-uniform-scarcity.json": "ebe5b15464802d0ccef4a6f12c4002df68145380b59c03b520ab048252452444",
+      "e3-control-uniform.json": "a20487c02cc16df831bf3cbded89f8ea79172db723f7699729ef7e2cc9ef718c",
+      "e3-smoke-control-uniform-scarcity.json": "e27c9ed872bf920f283f9dfc2c860568c202281e7f093d9fbf18d376981cc0ee",
+      "e3-smoke-control-uniform.json": "505f2967a80fea7a852b9f914bd871f3c890974dd85e59be40f186aba8979db3",
+      "e3-smoke-treatment-gradient.json": "8646a63044854dc0b2a7881fdea4904e179cd3d0405e9778254e846271cb9e8d",
+      "e3-treatment-gradient.json": "68672182ff9e3f42103a793c61ca75700228f87b527b845c86b2b9522eff3277",
+      "src-tauri/examples/e3_smoke.rs": "d9df2c29f5ec4cc42cb4fa383a6db9b3b0b85fc8d8d1814a401f9c59147f3b55"
+    },
+    "treatment_gradient_fingerprint_as_run": 1911411189023690011,
+    "treatment_gradient_initial_conditions": [
+      [
+        "live.ecological_fitness",
+        1.0
+      ],
+      [
+        "live.mortality",
+        1.0
+      ],
+      [
+        "live.reproduction",
+        1.0
+      ],
+      [
+        "live.locomotion",
+        1.0
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1.0
+      ],
+      [
+        "live.evolved_brains",
+        0.0
+      ],
+      [
+        "live.founders",
+        120.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.resource_capacity_scale",
+        1.0
+      ]
+    ],
+    "treatment_gradient_interventions": [
+      {
+        "cause_id": 1,
+        "curve": "Step",
+        "duration_ticks": 18000,
+        "id": 1,
+        "intensity": 0.30000001192092896,
+        "kind": "Deforest",
+        "region": {
+          "Rect": {
+            "max_x": 127,
+            "max_y": 255,
+            "min_x": 0,
+            "min_y": 0
+          }
+        },
+        "reversible": false,
+        "signed_negative": false,
+        "start_tick": 1
+      },
+      {
+        "cause_id": 2,
+        "curve": "Step",
+        "duration_ticks": 18000,
+        "id": 2,
+        "intensity": 1.0,
+        "kind": "AddNutrient",
+        "region": {
+          "Rect": {
+            "max_x": 255,
+            "max_y": 255,
+            "min_x": 128,
+            "min_y": 0
+          }
+        },
+        "reversible": false,
+        "signed_negative": false,
+        "start_tick": 1
+      }
+    ],
+    "treatment_law_fingerprint": 11173561918340764083
+  },
+  "mode": "smoke",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "model_version": "live-bevy-world/2",
+  "observables": {
+    "body_mass_consulted": false,
+    "manifests_requested_observable_count": 27,
+    "observables_written_to_smoke_series": [
+      "plants",
+      "detritus",
+      "live.animals_eu",
+      "live.dormant_eu",
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.herbivore_count",
+      "live.predator_count",
+      "live.food_items",
+      "live.standing_crop",
+      "live.mean_agent_energy",
+      "live.season_phase",
+      "live.shannon",
+      "live.simpson",
+      "live.births",
+      "live.deaths",
+      "live.mean_lifespan",
+      "live.archive_coverage",
+      "live.deaths_starvation",
+      "live.deaths_dehydration",
+      "live.mean_energy_integral"
+    ],
+    "registry_total_count": 27
+  },
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "seeds": {
+    "executed": [
+      999979
+    ],
+    "experimental_seeds_run": 0,
+    "registered_experimental_seeds": [
+      730001,
+      731001,
+      732001,
+      733001,
+      734001,
+      735001,
+      736001,
+      737001,
+      738001,
+      739001,
+      740001,
+      741001
+    ],
+    "smoke_seed": 999979
+  },
+  "timing": {
+    "ended_utc": "2026-11-19T10:07:43Z",
+    "max_wall_clock_minutes_registered": 90.0,
+    "planned_ensemble_runs": 36,
+    "projected_ensemble_minutes_by_rung": [
+      {
+        "duration_ticks": 18000,
+        "projected_minutes": 3.54547542
+      },
+      {
+        "duration_ticks": 12000,
+        "projected_minutes": 2.36365028
+      },
+      {
+        "duration_ticks": 6000,
+        "projected_minutes": 1.18182514
+      }
+    ],
+    "started_utc": "2026-11-19T10:07:25Z",
+    "us_per_tick": 328.2847611111111,
+    "wall_clock_seconds": 17.727377099999998
+  },
+  "what_this_run_does_not_claim": [
+    "No desktop-app run was made; no Tauri handle, window, GPU, learner or evolution thread exists in this process.",
+    "Smoke seed 999979 is calibration only and is mechanically excluded from all experimental manifests.",
+    "No body-mass observable value was written, printed, or used in any gate except a finiteness check (is_finite() over every emitted observable)."
+  ],
+  "world_identity_observed": {
+    "checksum": 3152323152,
+    "generator_version": 1,
+    "height": 256,
+    "seed": 1337,
+    "width": 256
+  },
+  "wp3_schedule_lock": {
+    "duration_ticks_as_run": 18000,
+    "duration_ticks_ladder": [
+      18000,
+      12000,
+      6000
+    ],
+    "duration_ticks_locked": 18000,
+    "sample_period": 600,
+    "tail_window_ticks": [
+      14400,
+      18000
+    ],
+    "warmup_samples_excluded": 5,
+    "warmup_ticks": 3000
+  }
+}

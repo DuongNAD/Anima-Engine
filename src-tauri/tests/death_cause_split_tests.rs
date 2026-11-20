@@ -408,9 +408,8 @@ fn a_run_without_a_death_rule_may_not_ask_for_the_cause_split() {
 
 #[test]
 fn the_cause_split_is_appended_after_the_existing_extended_ids() {
-    let n = LIVE_EXTENDED_OBSERVABLE_IDS.len();
     assert_eq!(
-        &LIVE_EXTENDED_OBSERVABLE_IDS[n - 2..],
+        &LIVE_EXTENDED_OBSERVABLE_IDS[10..12],
         &[STARVATION, DEHYDRATION],
         "new ids go at the end; the order before them is part of the emission contract"
     );

@@ -1,9 +1,11 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { FloraType } from './utils/worldGen';
 import { makeFloraGeometry } from './utils/floraGeometry';
+import type { FloraGeomEntry } from './assets/worldAssets';
+import { createFloraWindMaterial } from './materials/floraWindMaterial';
 import { VEGETATION_BASE_SIZE } from './utils/floraClearance';
 import { sampleMeshHeight } from './utils/worldSample';
 import { debugFloraDensityScale, installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
@@ -17,6 +19,7 @@ import {
 } from './utils/floraChunks';
 import { isCaptureRequested } from './utils/captureMode';
 import { getQualityTierConfig, type QualityTier } from './utils/qualityTiers';
+import { sceneElapsed } from './utils/sceneClock';
 import {
   CELL_FAR,
   CELL_MID,
@@ -195,13 +198,23 @@ const FRUSTUM_PAD = 40;
 
 const ChunkedFlora: React.FC<{
   world: World;
-  geoms: ReadonlyArray<{ type: FloraType; geometry: THREE.BufferGeometry }>;
+  geoms: ReadonlyArray<FloraGeomEntry>;
+  usingCc0Assets: boolean;
   renderSize: number;
   heightRatio: number;
   meshResolution: number;
   baseSize: number;
   tier: QualityTier;
-}> = ({ world, geoms, renderSize, heightRatio, meshResolution, baseSize, tier }) => {
+}> = ({
+  world,
+  geoms,
+  usingCc0Assets,
+  renderSize,
+  heightRatio,
+  meshResolution,
+  baseSize,
+  tier,
+}) => {
   const cfg = getQualityTierConfig(tier);
   // Test-only (RW-C4 negative control); `1` in every production build.
   const densityScale = useMemo(() => debugFloraDensityScale(), []);
@@ -219,6 +232,29 @@ const ChunkedFlora: React.FC<{
   const impostorGeometry = useMemo(() => makeImpostorGeometry(), []);
   useEffect(() => () => impostorGeometry.dispose(), [impostorGeometry]);
 
+  const animatedBundle = useMemo(
+    () =>
+      createFloraWindMaterial({
+        enableWind: tier !== 'low',
+        smoothShading: usingCc0Assets,
+      }),
+    [tier, usingCc0Assets],
+  );
+  const staticBundle = useMemo(
+    () =>
+      createFloraWindMaterial({
+        enableWind: false,
+        smoothShading: usingCc0Assets,
+      }),
+    [usingCc0Assets],
+  );
+  useEffect(() => {
+    return () => {
+      animatedBundle.dispose();
+      staticBundle.dispose();
+    };
+  }, [animatedBundle, staticBundle]);
+
   const meshes = useRef<Array<THREE.InstancedMesh | null>>([]);
   const impostorMesh = useRef<THREE.InstancedMesh | null>(null);
   const last = useRef<{
@@ -234,6 +270,7 @@ const ChunkedFlora: React.FC<{
   });
 
   useFrame((state) => {
+    animatedBundle.updateTime(sceneElapsed(state.clock));
     const cam = state.camera as THREE.Camera | undefined;
     const proj = cam?.projectionMatrix?.elements;
     const view = cam?.matrixWorldInverse?.elements;
@@ -311,12 +348,18 @@ const ChunkedFlora: React.FC<{
   });
 
   const shadows = cfg.shadows;
+  const geomTag = usingCc0Assets ? 'cc0' : 'proc';
   return (
     <>
-      {sources.types.map((src, k) =>
-        src.count === 0 ? null : (
+      {sources.types.map((src, k) => {
+        if (src.count === 0) return null;
+        const mat =
+          src.type === FloraType.Rock || src.type === FloraType.Coral
+            ? staticBundle.material
+            : animatedBundle.material;
+        return (
           <instancedMesh
-            key={`${src.type}-${src.count}`}
+            key={`${src.type}-${src.count}-${geomTag}`}
             ref={(m: THREE.InstancedMesh | null) => {
               meshes.current[k] = m;
               if (m && m.instanceColor === null) {
@@ -325,18 +368,16 @@ const ChunkedFlora: React.FC<{
                 m.visible = false;
               }
             }}
-            args={[geoms[k].geometry, null, src.count]}
+            args={[geoms[k].geometry, mat, src.count]}
             name={`flora-${src.type}`}
             castShadow={shadows && CASTS_SHADOW.has(src.type)}
             frustumCulled={false}
-          >
-            <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
-          </instancedMesh>
-        ),
-      )}
+          />
+        );
+      })}
       {sources.impostor.count > 0 ? (
         <instancedMesh
-          key={`impostor-${sources.impostor.count}`}
+          key={`impostor-${sources.impostor.count}-${geomTag}`}
           ref={(m: THREE.InstancedMesh | null) => {
             impostorMesh.current = m;
             if (m && m.instanceColor === null) {
@@ -390,17 +431,56 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
   quality = 'high',
   tier,
 }) => {
-  const geoms = useMemo(() => TYPES.map((type) => ({ type, geometry: makeFloraGeometry(type) })), []);
+  const fallbackGeoms = useMemo(
+    () => TYPES.map((type) => ({ type, geometry: makeFloraGeometry(type) })),
+    [],
+  );
 
   useEffect(() => {
     return () => {
-      geoms.forEach((d) => d.geometry.dispose());
+      fallbackGeoms.forEach((d) => d.geometry.dispose());
     };
-  }, [geoms]);
+  }, [fallbackGeoms]);
 
   // Capture mode (`?capture=1`) keeps the full legacy drawing path so the canonical views do not
   // depend on camera-driven selection (RW4-4); so does a caller that passes no `tier`.
-  const chunked = tier !== undefined && !isCaptureRequested(window.location.search);
+  const captureMode = typeof window !== 'undefined' && isCaptureRequested(window.location.search);
+  const chunked = tier !== undefined && !captureMode;
+  const [cc0State, setCc0State] = useState<{ tier: QualityTier; geoms: FloraGeomEntry[] } | null>(
+    null,
+  );
+  const loadedCc0Ref = useRef(false);
+
+  useEffect(() => {
+    if (!chunked || tier === undefined) return;
+    if (tier === 'low') {
+      if (loadedCc0Ref.current) {
+        loadedCc0Ref.current = false;
+        void import('./assets/worldAssets').then(({ disposeFloraAssetGeometries }) => {
+          disposeFloraAssetGeometries();
+        });
+      }
+      return;
+    }
+    let cancelled = false;
+    void import('./assets/worldAssets').then(({ loadFloraAssetGeometries }) => {
+      if (cancelled) return;
+      return loadFloraAssetGeometries(TYPES, tier).then((loaded) => {
+        if (!cancelled && loaded && loaded.length === TYPES.length) {
+          loadedCc0Ref.current = true;
+          setCc0State({ tier, geoms: loaded });
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [chunked, tier]);
+
+  const usingCc0Assets = Boolean(
+    chunked && tier !== undefined && tier !== 'low' && cc0State && cc0State.tier === tier,
+  );
+  const activeGeoms = usingCc0Assets && cc0State ? cc0State.geoms : fallbackGeoms;
 
   return (
     <group name="world-vegetation">
@@ -408,7 +488,8 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
       {chunked ? (
         <ChunkedFlora
           world={world}
-          geoms={geoms}
+          geoms={activeGeoms}
+          usingCc0Assets={usingCc0Assets}
           renderSize={renderSize}
           heightRatio={heightRatio}
           meshResolution={meshResolution}
@@ -416,7 +497,7 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
           tier={tier}
         />
       ) : (
-        geoms.map((d) => (
+        fallbackGeoms.map((d) => (
           <TypedInstances
             key={d.type}
             world={world}

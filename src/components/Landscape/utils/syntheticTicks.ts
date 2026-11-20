@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { AgentType } from '../../../types/generated/AgentType';
+import type { EnvironmentalElement } from '../../../types/generated/EnvironmentalElement';
 import type { SegmentState } from '../../../types/generated/SegmentState';
 import type { SimulationTickPayload } from '../../../types/generated/SimulationTickPayload';
 import { SIM_BOUNDS_HALF } from './liveAgentTransform';
@@ -105,18 +106,58 @@ interface SyntheticAgentSpec {
 }
 
 /**
- * Land anchors inside the shipped 2048x2048 world (`CANONICAL_VIEW_CAMERAS` targets in
- * `mapManifest.ts`), so synthetic herds remain visible from `spawn`, `ecosystem`, `navigation`,
- * and `overview` without drifting onto the map boundary.
+ * Lowland land anchors inside the shipped 2048x2048 `#161` `supercontinent` world (`[-100, 100]`
+ * canonical bounds), chosen strictly on lowland terrestrial biomes (`Grassland`, `Forest`,
+ * `Jungle`, `Savanna`, `Swamp`) well away from peaks, snow/glacier, rivers, lakes, beaches, and
+ * ocean so synthetic `tree`/`lake`/`food` fixtures and herds never strand on snow peaks or water.
  */
-const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
-  [-21.4, -15.6], // spawn grassland
-  [-38.3, -1.7], // ecosystem swamp clearing
-  [-45.1, -24.0], // alpine/biome transition
-  [2.1, -8.8], // navigation grassland
-  [-54.0, 6.0], // jungle edge
-  [-67.3, 64.0], // lake shore
+export const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [-53.0, 8.0], // western lowland forest (elev 0.138)
+  [-29.0, 20.0], // western lowland savanna (elev 0.164)
+  [-53.0, 4.0], // western lowland jungle (elev 0.140)
+  [-25.0, 20.0], // western lowland chaparral (elev 0.194)
+  [-49.0, 16.0], // western lowland savanna (elev 0.143)
+  [-17.0, 28.0], // western lowland steppe (elev 0.150)
 ];
+
+/**
+ * Deterministically generate clearly-labelled synthetic `environmental_state` elements
+ * (`lake`, `tree`, `food`) near `LAND_ANCHORS` from an independent PRNG stream (`(seed ^ 0x517e0e1e)
+ * >>> 0`), preserving trunk root trajectories and segment PRNG draws while chaining spine
+ * `jointAnchor.z` inside Rust's `mutation.rs` `|z| <= parent.length / 2` clamp.
+ */
+function buildSyntheticEnvironmentalElements(seed: number): EnvironmentalElement[] {
+  const envRand = mulberry32((seed ^ 0x517e0e1e) >>> 0);
+  const elements: EnvironmentalElement[] = [];
+  const bound = Math.min(80, SIM_BOUNDS_HALF - 16);
+
+  const pushSpec = (
+    count: number,
+    type: 'lake' | 'tree' | 'food',
+    minRadius: number,
+    radiusSpan: number,
+    minResources: number,
+    resourcesSpan: number,
+    spread: number,
+    anchorOffset: number,
+  ): void => {
+    for (let i = 0; i < count; i++) {
+      const anchor = LAND_ANCHORS[(i + anchorOffset) % LAND_ANCHORS.length];
+      elements.push({
+        type,
+        x: clamp(anchor[0] + (envRand() - 0.5) * spread * 2, -bound, bound),
+        y: clamp(anchor[1] + (envRand() - 0.5) * spread * 2, -bound, bound),
+        radius: minRadius + envRand() * radiusSpan,
+        resources: minResources + envRand() * resourcesSpan,
+      });
+    }
+  };
+
+  pushSpec(3, 'lake', 2.6, 1.4, 75, 25, 16, 0);
+  pushSpec(8, 'tree', 1.0, 0.5, 65, 35, 18, 1);
+  pushSpec(10, 'food', 0.42, 0.18, 45, 50, 14, 2);
+  return elements;
+}
 
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
@@ -209,8 +250,8 @@ function buildAgentMorphology(
     jointCycles: 1,
   });
 
-  // Axial body spine (up to 6 segments) followed by paired lateral limbs or tail tips to span
-  // morphologies from 3 to 15 segments cleanly.
+  // Axial body spine (up to 6 segments) chained cleanly forward inside Rust `mutation.rs`
+  // `|z| <= parent.length / 2` (`dynamics.rs`: P_child = P_parent + anchor + R_child * (0,0,+L/2)).
   const spineTarget = Math.min(segmentCount, 1 + Math.max(2, Math.ceil((segmentCount - 1) * 0.45)));
   for (let idx = 1; idx < spineTarget; idx++) {
     const parentIndex = idx - 1;
@@ -224,7 +265,7 @@ function buildAgentMorphology(
       parentSegmentId: parent.segmentId,
       length: segLen,
       radius: segRad,
-      jointAnchor: [0, 0, -parent.length * 0.48],
+      jointAnchor: [0, 0, parent.length * 0.48],
       jointAxis: [0, 1, 0],
       swingAmplitude: 0.24 + rand() * 0.24,
       phaseOffset: agentIndex * 0.47 + idx * 0.75,
@@ -232,7 +273,7 @@ function buildAgentMorphology(
     });
   }
 
-  // Remaining segments attach as lateral limb chains off the root/spine segments.
+  // Remaining segments attach as paired lateral limb chains beside/below torso (`|x|,|y| <= r`).
   for (let idx = spineTarget; idx < segmentCount; idx++) {
     const limbSlot = idx - spineTarget;
     const side = limbSlot % 2 === 0 ? 1 : -1;
@@ -313,6 +354,7 @@ export function createSyntheticTickGenerator(
 ): SyntheticTickGenerator {
   const options = normalizeSyntheticOptions(opts);
   const agents = buildAgentSpecs(options);
+  const syntheticEnvElements = buildSyntheticEnvironmentalElements(options.seed);
 
   // Scratch math objects reused inside synchronous `tickAt` calls.
   const qParent = new THREE.Quaternion();
@@ -462,14 +504,14 @@ export function createSyntheticTickGenerator(
 
     return {
       segments,
-      environmental_state: { elements: [] },
+      environmental_state: { elements: syntheticEnvElements },
       head_directions: headDirections,
     };
   };
 
   return {
     options,
-    screenLabel: `${SYNTHETIC_SCREEN_LABEL} · ${options.agents} agents`,
+    screenLabel: `${SYNTHETIC_SCREEN_LABEL} · ${options.agents} agents · ${syntheticEnvElements.length} synthetic env`,
     tickAt,
   };
 }
