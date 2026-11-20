@@ -187,6 +187,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "anima-worldgen"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "rand 0.8.7",
+ "rand_chacha 0.3.1",
+ "rayon",
+ "serde",
+ "sha2",
+]
+
+[[package]]
 name = "anstyle"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,37 @@
+[package]
+name = "anima-worldgen"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic World v2 geomorphic generator, ANMW v3 codec, and offline bake pipeline."
+license.workspace = true
+repository.workspace = true
+
+# Strictly zero default dependencies (G2 gate): downstream crates that only read metadata or
+# constants pay zero compile cost unless they explicitly opt into `reader`, `generate`, or `bake`.
+[dependencies]
+libm = { version = "0.2", optional = true }
+rand = { version = "0.8", optional = true }
+rand_chacha = { version = "0.3", optional = true }
+rayon = { version = "1.10", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+sha2 = { version = "0.10", optional = true }
+
+[features]
+default = []
+# Minimal ANMW v3 reader surface (added to engine in WV2-3; no C deps, no generator/bake deps).
+reader = ["dep:sha2"]
+# Offline deterministic generator (libm-only transcendentals + ChaCha12 + rayon).
+generate = [
+    "reader",
+    "dep:libm",
+    "dep:rand",
+    "dep:rand_chacha",
+    "dep:rayon",
+    "dep:serde",
+]
+# Offline tile/lighting bake surface stub (populated in WV2-5; wired early for CI clippy).
+bake = ["generate"]
+
+[[test]]
+name = "wv2_1a_tectonic_tests"
+required-features = ["generate"]

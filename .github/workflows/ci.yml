@@ -125,17 +125,27 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo clippy --all-targets --features desktop -- -D warnings
 
+      - name: cargo clippy (anima-worldgen CPU reader/generate/bake)
+        if: ${{ !cancelled() }}
+        run: cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings
+
       # G2 gate #2: a DEFAULT build must not compile the optional subsystems. Checking it here — not
       # just that it builds, but that the crates are absent from the dependency graph — is what stops
       # the gate from rotting the first time someone adds an unconditional `use`.
-      - name: Default build excludes Neo4j, the WebSocket stack and Burn/WGPU
+      - name: Default build excludes Neo4j, the WebSocket stack, Burn/WGPU and anima-worldgen
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           cargo clippy --all-targets --no-default-features -- -D warnings
-          leaked=$(cargo tree --no-default-features -e normal | grep -cE 'neo4rs|tokio-tungstenite|burn-wgpu|naga' || true)
-          echo "gated crates present in a default build: $leaked"
+          leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu) v' || true)
+          echo "gated crates present in --no-default-features workspace tree: $leaked"
           test "$leaked" -eq 0
+          engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu|anima-worldgen) v' || true)
+          echo "gated crates present in default anima-engine tree: $engine_leaked"
+          test "$engine_leaked" -eq 0
+          worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu(-[a-z0-9-]+)?) v' || true)
+          echo "forbidden engine/GPU crates present in anima-worldgen tree: $worldgen_leaked"
+          test "$worldgen_leaked" -eq 0
 
       # G1.4 parity gate. ts-rs writes src/types/generated/ during `cargo test`; if a Rust IPC
       # struct changed without its TypeScript being regenerated, the working tree is dirty here and
@@ -180,6 +190,17 @@ jobs:
       - name: No test target ran zero tests
         if: ${{ !cancelled() }}
         run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt
+
+      - name: cargo test (anima-worldgen CPU reader/generate/bake)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture 2>&1 | tee ../cargo-test-worldgen-output.txt
+
+      - name: No anima-worldgen test target ran zero tests
+        if: ${{ !cancelled() }}
+        run: node ../scripts/check_test_targets.mjs ../cargo-test-worldgen-output.txt --profile worldgen-cpu
 
       # The licensing artifacts run on THIS job, not the frontend one, because all of them read the
       # Rust graph with `cargo tree --features desktop` — and this is the job that has a toolchain
