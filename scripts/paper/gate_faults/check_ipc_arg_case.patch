@@ -1,8 +1,8 @@
 diff --git a/src/components/Landscape/utils/worldCache.ts b/src/components/Landscape/utils/worldCache.ts
-index 8608135..a406c9d 100644
+index 45df12d..a215ba4 100644
 --- a/src/components/Landscape/utils/worldCache.ts
 +++ b/src/components/Landscape/utils/worldCache.ts
-@@ -207,3 +207,8 @@ export function clearWorldCache(): Promise<void> {
+@@ -235,3 +235,8 @@ export function clearWorldCache(): Promise<void> {
      req.onblocked = () => resolve();
    });
  }

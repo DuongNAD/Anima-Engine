@@ -1,8 +1,8 @@
 diff --git a/src-tauri/src/core/simulation_schedule.rs b/src-tauri/src/core/simulation_schedule.rs
-index 8d5d11a..ce3e9f0 100644
+index ef08ed1..29815f5 100644
 --- a/src-tauri/src/core/simulation_schedule.rs
 +++ b/src-tauri/src/core/simulation_schedule.rs
-@@ -171,9 +171,8 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
+@@ -172,9 +172,8 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
                  apply_environmental_effects_system,
                  lake_replenishment_system,
                  fruit_growth_system,

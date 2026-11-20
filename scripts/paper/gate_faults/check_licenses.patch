@@ -1,8 +1,8 @@
 diff --git a/licensing/third-party-index.json b/licensing/third-party-index.json
-index 155d4f3..6f9f0b8 100644
+index c4de593..1e90ed2 100644
 --- a/licensing/third-party-index.json
 +++ b/licensing/third-party-index.json
-@@ -32,7 +32,7 @@
+@@ -33,7 +33,7 @@
            "filename": "LICENSE-0BSD",
            "origin": "installed",
            "provenance": "cargo-registry:adler2-2.0.1/LICENSE-0BSD",

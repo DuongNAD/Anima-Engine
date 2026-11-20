@@ -1,8 +1,8 @@
 diff --git a/src-tauri/src/core/ecs.rs b/src-tauri/src/core/ecs.rs
-index 90ffe92..e74a2f0 100644
+index 4360d67..2abe3a1 100644
 --- a/src-tauri/src/core/ecs.rs
 +++ b/src-tauri/src/core/ecs.rs
-@@ -91,7 +91,7 @@ pub fn init_world() -> World {
+@@ -131,7 +131,7 @@ pub fn init_world_with(terrain_source: TerrainSource) -> World {
      // state — invariant D07 of the creature-development contract. Resolved here, where the world's
      // identity is first known, so there is exactly one place that decides it.
      world.insert_resource(crate::core::resources::SimRng::for_world(

@@ -110,6 +110,42 @@ function cargoEnv() {
   };
 }
 
+function readWindowsCargoGuardState(targetDriveLetter) {
+  const drive = /^[A-Z]$/i.test(targetDriveLetter) ? targetDriveLetter.toUpperCase() : 'E';
+  const psScript = [
+    '$os = Get-CimInstance Win32_OperatingSystem;',
+    '$freeKb = [int64]$os.FreePhysicalMemory;',
+    '$virtKb = [int64]$os.FreeVirtualMemory;',
+    `$drv = [System.IO.DriveInfo]::new('${drive}');`,
+    '$driveFreeBytes = [int64]$drv.AvailableFreeSpace;',
+    '$procs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match "cargo|rustc" });',
+    'Write-Output ("FREE_KB=" + $freeKb + ";VIRT_KB=" + $virtKb + ";DRIVE_FREE=" + $driveFreeBytes + ";PROCS=" + $procs.Count);',
+    'foreach ($p in $procs) { Write-Output ("PROC=" + $p.ProcessId + " " + $p.Name + " " + $p.CommandLine) }',
+  ].join(' ');
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-Command', psScript], {
+    encoding: 'utf8',
+  });
+  const out = res.stdout || '';
+  const m = /FREE_KB=(\d+);VIRT_KB=(\d+);DRIVE_FREE=(\d+);PROCS=(\d+)/.exec(out);
+  if (!m) {
+    return { ok: false, raw: `${out}\n${res.stderr || ''}` };
+  }
+  return {
+    ok: true,
+    freeKb: Number(m[1]),
+    virtKb: Number(m[2]),
+    driveFreeBytes: Number(m[3]),
+    procs: Number(m[4]),
+    raw: out,
+  };
+}
+
+function sleepMs(ms) {
+  if (ms > 0) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  }
+}
+
 function ensureSafeAnimaCargo() {
   if (process.platform !== 'win32') return;
   try {
@@ -117,42 +153,59 @@ function ensureSafeAnimaCargo() {
   } catch {
     // Best-effort low priority so concurrent host tasks keep headroom.
   }
-  const psScript = [
-    '$os = Get-CimInstance Win32_OperatingSystem;',
-    '$freeKb = [int64]$os.FreePhysicalMemory;',
-    '$virtKb = [int64]$os.FreeVirtualMemory;',
-    '$procs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match "^(cargo|rustc)\\.exe$" });',
-    '$anima = @($procs | Where-Object { $_.CommandLine -match "Anima-Engine|anima-wt|anima-m2-wt|anima_engine" });',
-    '$other = @($procs | Where-Object { $_.CommandLine -notmatch "Anima-Engine|anima-wt|anima-m2-wt|anima_engine" });',
-    'Write-Output ("FREE_KB=" + $freeKb + ";VIRT_KB=" + $virtKb + ";ANIMA=" + $anima.Count + ";OTHER=" + $other.Count);',
-    'foreach ($p in $anima) { Write-Output ("ANIMA_PROC=" + $p.ProcessId + " " + $p.Name + " " + $p.CommandLine) }',
-  ].join(' ');
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    const res = spawnSync('powershell.exe', ['-NoProfile', '-Command', psScript], {
-      encoding: 'utf8',
-    });
-    const out = res.stdout || '';
-    const m = /FREE_KB=(\d+);VIRT_KB=(\d+);ANIMA=(\d+);OTHER=(\d+)/.exec(out);
-    if (!m) {
-      if (attempt === 59) {
-        throw new Error(`Could not inspect Windows cargo/RAM state:\n${out}\n${res.stderr || ''}`);
+  const targetDir = cargoEnv().CARGO_TARGET_DIR;
+  const driveMatch = /^([A-Za-z]):/.exec(targetDir);
+  const driveLetter = driveMatch ? driveMatch[1].toUpperCase() : 'E';
+  const minFreeKb = 5 * 1024 * 1024; // 5 GiB physical RAM (AGENT_RULES §5, 2026-11-20)
+  const minDriveBytes = 20 * 1024 * 1024 * 1024; // 20 GiB free on target drive
+  const quietSecs = Number(
+    process.env.ANIMA_GATE_QUIET_SECS ?? (os.totalmem() < 24 * 1024 * 1024 * 1024 ? '60' : '0'),
+  );
+  const quietMs = Number.isFinite(quietSecs) && quietSecs > 0 ? Math.round(quietSecs * 1000) : 0;
+
+  let lastState = null;
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    const first = readWindowsCargoGuardState(driveLetter);
+    lastState = first;
+    if (!first.ok) {
+      if (attempt === 239) {
+        throw new Error(`Could not inspect Windows cargo/RAM state:\n${first.raw}`);
       }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+      sleepMs(5000);
       continue;
     }
-    const freeKb = Number(m[1]);
-    const virtKb = Number(m[2]);
-    const animaCount = Number(m[3]);
-    const otherCount = Number(m[4]);
-    const ramReady = otherCount === 0 || (freeKb >= 3_000_000 && virtKb >= 8_000_000);
-    if (animaCount === 0 && ramReady) return;
-    if (attempt === 59) {
-      throw new Error(
-        `Shared Dell cargo guard timed out (FREE_KB=${freeKb}, VIRT_KB=${virtKb}, ANIMA=${animaCount}, OTHER=${otherCount}):\n${out}`,
+    const firstReady =
+      first.procs === 0 && first.freeKb >= minFreeKb && first.driveFreeBytes >= minDriveBytes;
+    if (!firstReady) {
+      console.error(
+        `[m2] cargo guard waiting (check #1: procs=${first.procs}, freeRAM=${(first.freeKb / (1024 * 1024)).toFixed(2)}GiB, ${driveLetter}:=${(first.driveFreeBytes / (1024 * 1024 * 1024)).toFixed(2)}GiB)...`,
       );
+      sleepMs(30_000);
+      continue;
     }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15_000);
+    if (quietMs > 0) {
+      sleepMs(quietMs);
+      const second = readWindowsCargoGuardState(driveLetter);
+      lastState = second;
+      if (!second.ok) {
+        sleepMs(5000);
+        continue;
+      }
+      const secondReady =
+        second.procs === 0 && second.freeKb >= minFreeKb && second.driveFreeBytes >= minDriveBytes;
+      if (!secondReady) {
+        console.error(
+          `[m2] cargo guard waiting (check #2 after ${quietSecs}s: procs=${second.procs}, freeRAM=${(second.freeKb / (1024 * 1024)).toFixed(2)}GiB, ${driveLetter}:=${(second.driveFreeBytes / (1024 * 1024 * 1024)).toFixed(2)}GiB)...`,
+        );
+        sleepMs(30_000);
+        continue;
+      }
+    }
+    return;
   }
+  throw new Error(
+    `Dell no-parallel-cargo guard timed out (${JSON.stringify(lastState)}):\n${lastState?.raw || ''}`,
+  );
 }
 
 function runShell(cmd, cwd, env = process.env) {
@@ -462,6 +515,7 @@ function runCheckTestTargetsFromCi(wt, tmpBase, ctx, profileArg, cacheKey = null
     );
   }
 
+  ensureSafeAnimaCargo();
   const docRes = runCommandToFile(
     'cargo',
     ['test', '--workspace', '--doc', '--', '--nocapture'],
@@ -511,7 +565,7 @@ const GATES = [
     ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
     faultSummary: 'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:174`',
     patch: 'check_test_targets_unscheduled.patch',
-    needsCargo: true,
+    needsCargo: (ctx) => !ctx.captures.unscheduled,
     run(wt, tmpBase, ctx) {
       return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'unscheduled');
     },
@@ -519,7 +573,7 @@ const GATES = [
   },
   {
     id: 'ci_ipc_arg_case',
-    source: 'ci.yml vs package.json:33',
+    source: 'ci.yml vs package.json:34',
     ciCommand:
       'npm run lint && node scripts/eslint_ratchet.mjs && npm run typecheck:tests && npm run test && npm run test:frontend && npm run build && node scripts/check_ipc_reference.mjs',
     faultSummary:
@@ -555,9 +609,26 @@ const GATES = [
           `Prerequisite gen_third_party_licenses failed (exit ${genRes.status}):\n${genRes.output.slice(-2000)}`,
         );
       }
+      ensureSafeAnimaCargo();
       return runShell('npm run check:licenses', wt, env);
     },
     matchers: [/third-party licences check: up to date.*1 unresolved/i, /third-party licences check:/i],
+  },
+  {
+    id: 'ci_e3',
+    source: 'ci.yml vs package.json:33',
+    ciCommand: 'npm run check:e2 && npm run test && npm run test:frontend',
+    faultSummary:
+      'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json` (`check:e3` absent from `ci.yml`)',
+    patch: 'check_e3.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:e2 && npm run test && npm run test:frontend', wt, {
+        ...process.env,
+        CI: 'true',
+      });
+    },
+    matchers: [/effects\.json/, /digest|sha256|mismatch|residual/i, /Test Files\s+\d+ passed/, /verify_e2_artifacts OK/],
   },
 
   // ---- Missing / >30 min gates -------------------------------------------------------------
@@ -575,7 +646,7 @@ const GATES = [
   },
   {
     id: 'check_licenses_complete',
-    source: 'package.json:42',
+    source: 'package.json:43',
     ciCommand: 'npm run check:licenses-complete',
     faultSummary:
       'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/`',
@@ -590,6 +661,7 @@ const GATES = [
           `Prerequisite gen_third_party_licenses failed (exit ${genRes.status}):\n${genRes.output.slice(-2000)}`,
         );
       }
+      ensureSafeAnimaCargo();
       return runShell('npm run check:licenses-complete', wt, env);
     },
     matchers: [/distributed component\(s\) have no obtainable licence text/i, /UNRESOLVED\.md/],
@@ -695,6 +767,7 @@ const GATES = [
           `Prerequisite default-feature clippy failed (exit ${clippyRes.status}):\n${clippyRes.output.slice(-2000)}`,
         );
       }
+      ensureSafeAnimaCargo();
       return runBash(
         "leaked=$(cargo tree --no-default-features -e normal | grep -cE 'neo4rs|tokio-tungstenite|burn-wgpu|naga' || true); echo \"gated crates present in a default build: $leaked\"; test \"$leaked\" -eq 0",
         tauriDir,
@@ -754,7 +827,7 @@ const GATES = [
     faultSummary:
       'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:174` (checked with `--profile desktop`)',
     patch: 'check_test_targets_unscheduled.patch',
-    needsCargo: true,
+    needsCargo: (ctx) => !ctx.captures.unscheduled,
     run(wt, tmpBase, ctx) {
       return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'unscheduled');
     },
@@ -1046,6 +1119,19 @@ const GATES = [
     matchers: [/effects\.json/, /digest|sha256|mismatch/i],
   },
   {
+    id: 'check_e3',
+    source: 'package.json:33',
+    ciCommand: 'npm run check:e3',
+    faultSummary:
+      'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json`',
+    patch: 'check_e3.patch',
+    needsNodeModules: false,
+    run(wt) {
+      return runShell('npm run check:e3', wt);
+    },
+    matchers: [/SHA-256 mismatch for effects\.json/, /effects\.json/, /residual|mismatch/i],
+  },
+  {
     id: 'npm_lint',
     source: 'ci.yml:305',
     ciCommand: 'npm run lint',
@@ -1233,7 +1319,7 @@ const GATES = [
   },
   {
     id: 'check_ipc_arg_case',
-    source: 'package.json:33',
+    source: 'package.json:34',
     ciCommand: 'npm run check:ipc',
     faultSummary:
       'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts`',
@@ -1258,7 +1344,7 @@ const GATES = [
   },
   {
     id: 'verify_upstream_licenses',
-    source: 'package.json:47',
+    source: 'package.json:48',
     ciCommand: 'npm run verify:upstream-licenses',
     faultSummary: 'Flip 1 hex char in `ts-rs` `sha256` inside `licensing/upstream/sources.json`',
     patch: 'verify_upstream_licenses.patch',
@@ -1297,11 +1383,13 @@ function evaluateGate(gate, ctx) {
     };
   }
 
+  const needsCargo =
+    typeof gate.needsCargo === 'function' ? Boolean(gate.needsCargo(ctx)) : Boolean(gate.needsCargo);
   const res = withTempWorktree(
     gate.patch,
     {
       needsNodeModules: Boolean(gate.needsNodeModules),
-      needsCargo: Boolean(gate.needsCargo),
+      needsCargo,
     },
     (wt, tmpBase) => gate.run(wt, tmpBase, ctx),
   );

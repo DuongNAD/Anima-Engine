@@ -1,8 +1,8 @@
 diff --git a/NOTICE b/NOTICE
-index 10592e0..101aa23 100644
+index 551e8f0..cc45436 100644
 --- a/NOTICE
 +++ b/NOTICE
-@@ -38,7 +38,6 @@ The remaining **1** are enumerated with the reason, and with what was searched,
+@@ -52,7 +52,6 @@ The remaining **0** are enumerated with the reason, and with what was searched,
  Three closures, which are genuinely different sets. Conflating them is the error this section exists
  to prevent — the earlier version of this file did, in both directions at once.
  
