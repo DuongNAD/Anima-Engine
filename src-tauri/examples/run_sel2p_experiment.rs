@@ -2516,7 +2516,7 @@ fn contrast_json(c: &ContrastEffect) -> serde_json::Value {
 }
 
 fn drift_diag_json(d: &DriftDiagnostics) -> serde_json::Value {
-    serde_json::json!({
+    let mut obj = serde_json::json!({
         "scheduled_deaths": d.scheduled_deaths,
         "actual_deaths": d.actual_deaths,
         "missed_deaths": d.missed_deaths,
@@ -2528,7 +2528,11 @@ fn drift_diag_json(d: &DriftDiagnostics) -> serde_json::Value {
         "ticks_with_missed_births": d.ticks_with_missed_births,
         "first_divergence_tick": d.first_divergence_tick,
         "has_shortfall": d.has_shortfall(),
-    })
+    });
+    if d.missed_births_capped > 0 {
+        obj["missed_births_capped"] = serde_json::json!(d.missed_births_capped);
+    }
+    obj
 }
 
 fn write_checksums(dir: &Path, names: &[&str]) -> Result<(), String> {

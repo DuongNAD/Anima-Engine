@@ -224,3 +224,4 @@ Thứ tự là bắt buộc. Cả WP-2 (b1) và (b2) đều đạt chặt chẽ 
 - **Kết quả âm là một kết quả.** "Gradient năng suất không làm phương sai khối lượng hay trung bình Tây/Đông khác nhau trong harness này" là một câu trả lời dùng được và được viết ra y như một kết quả dương.
 
 2026-11-19 amendment (FIX-CAP): new live key live.strict_prey_cap registered as default-absent (0 = legacy); E3 runs are unaffected.
+2026-11-20 amendment (SEL2P2-PREP): new live key live.grass_steering registered as default-absent (0 = legacy); E3 runs are unaffected.

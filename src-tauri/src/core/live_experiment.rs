@@ -142,6 +142,13 @@ pub const LIVE_KEY_DRIVE_FLOOR: &str = "live.drive_floor";
 /// A). Exact boolean; absent/`0.0` = off, bit-identical. **Only takes effect when
 /// `live.locomotion = 1`.**
 pub const LIVE_KEY_THIRST_STEERING: &str = "live.thirst_steering";
+/// Card SEL2P2-PREP (ported from S11 `226d4b2`/`95044c4b`): `1.0` enables
+/// [`crate::core::resources::GrassSteeringPolicy`] in `locomotion::steering_drive_system` for
+/// prey with explicit priority: thirst (`> 50%` deficit) -> local `Food` -> `ResourceField`
+/// grass (`GRASS_STAY_FRACTION` / `7x7` scan respecting `PlantReservePolicy` and LAND1
+/// walkability) -> global `Food` fallback. `0.0`/absent keeps legacy trajectories bit-identical.
+/// **Requires `live.locomotion = 1.0`.**
+pub const LIVE_KEY_GRASS_STEERING: &str = "live.grass_steering";
 /// ADR-0007 option B (thẻ B): a predator strike that credits it `ΔE` EU also adds `k × ΔE` to its
 /// hydration, capped at its hydration target. `k >= 0`; absent/`0.0` = off, bit-identical.
 /// Hydration is outside the EU ledger. Acts in `combat_system`, so it does not need
@@ -230,7 +237,7 @@ pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 27] = [
+pub const LIVE_KEYS: [&str; 28] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -243,6 +250,7 @@ pub const LIVE_KEYS: [&str; 27] = [
     LIVE_KEY_LOCOMOTION,
     LIVE_KEY_DRIVE_FLOOR,
     LIVE_KEY_THIRST_STEERING,
+    LIVE_KEY_GRASS_STEERING,
     LIVE_KEY_MUTATION_RATE,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
@@ -291,6 +299,10 @@ pub struct LiveWorldConfig {
     /// ADR-0007 option A: thirsty agents steer to the nearest lake. Needs `locomotion`.
     #[serde(default)]
     pub thirst_steering: bool,
+    /// Card SEL2P2-PREP (S11): prey steer toward pasture grass (`1.0` on, `0.0`/absent off). Needs
+    /// `locomotion`.
+    #[serde(default)]
+    pub grass_steering: bool,
     /// Offspring body-mutation probability (see [`LIVE_KEY_MUTATION_RATE`]); absent reads back as
     /// the historical `0.05`.
     #[serde(default = "default_mutation_rate")]
@@ -391,6 +403,7 @@ impl Default for LiveWorldConfig {
             locomotion: false,
             drive_floor: 0.0,
             thirst_steering: false,
+            grass_steering: false,
             mutation_rate: default_mutation_rate(),
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
@@ -516,6 +529,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_THIRST_STEERING => match *value {
                     0.0 => config.thirst_steering = false,
                     1.0 => config.thirst_steering = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_GRASS_STEERING => match *value {
+                    0.0 => config.grass_steering = false,
+                    1.0 => config.grass_steering = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -696,6 +721,11 @@ impl LiveWorldConfig {
         if config.drift_reset_ticks > 0 && !config.drift_control {
             return Err(ExperimentError::InvalidLaw {
                 reason: "live.drift_reset_ticks > 0 requires live.drift_control = 1.0".into(),
+            });
+        }
+        if config.grass_steering && !config.locomotion {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.grass_steering = 1.0 requires live.locomotion = 1.0".into(),
             });
         }
         Ok(config)
@@ -2464,6 +2494,9 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
         enabled: config.locomotion,
         drive_floor: config.drive_floor,
         thirst_steering: config.thirst_steering,
+    });
+    world.insert_resource(crate::core::resources::GrassSteeringPolicy {
+        enabled: config.grass_steering,
     });
     // Card LAND1 (`live.land_mask`): absent/0 keeps land navigation disabled so pre-LAND1
     // manifests stay bit-identical.

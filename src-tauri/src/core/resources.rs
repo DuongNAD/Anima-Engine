@@ -742,6 +742,24 @@ impl LocomotionPolicy {
     }
 }
 
+/// Opt-in prey pasture-seeking steering policy (`live.grass_steering`, card SEL2P2-PREP / ported
+/// from S11 `226d4b2` and `95044c4b`).
+///
+/// **Off by default and when absent.** With no resource or `enabled == false`,
+/// `steering_drive_system` skips all grass queries and matches pre-SEL2P2 trajectories bit-for-bit.
+/// Only acts when `LocomotionPolicy::enabled` is `true` and the agent is a non-thirsty `Prey`
+/// without a local `Food` item inside its scan neighbourhood.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct GrassSteeringPolicy {
+    pub enabled: bool,
+}
+
+impl GrassSteeringPolicy {
+    pub const fn disabled() -> Self {
+        Self { enabled: false }
+    }
+}
+
 /// Whether agents and newly spawned world entities are constrained to walkable `TerrainMap` cells
 /// (Card LAND1; `live.land_mask` in headless experiments, enabled by default in the desktop app).
 ///
