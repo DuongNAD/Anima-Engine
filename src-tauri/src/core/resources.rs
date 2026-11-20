@@ -635,14 +635,19 @@ pub const DEFAULT_MUTATION_RATE: f64 = 0.05;
 pub const DEFAULT_PREY_CAP: usize = 80;
 
 /// Prey reproduction ceiling (QD-SEL1b = A, card S6, `live.prey_cap`) and optional strict
-/// per-birth counting (`live.strict_prey_cap`, card FIX-CAP / F-052). **Absent resource ==
-/// [`DEFAULT_PREY_CAP`] with `strict = false`**, so the desktop app and every earlier manifest
-/// remain bit-identical.
+/// per-birth counting (`live.strict_prey_cap`, card FIX-CAP / F-052, extended to drift replay in
+/// FIX-CAP2). **Absent resource == [`DEFAULT_PREY_CAP`] with `strict = false`**, so the desktop
+/// app and every earlier manifest remain bit-identical.
 ///
-/// With `strict = false` (default), `prey_count` and `pred_count` are counted once per tick so a
-/// tick in which many mothers are eligible can overshoot the ceiling. With `strict = true`,
-/// `autonomous_reproduction_system` increments `prey_count` and `pred_count` each time a birth is
-/// queued so one tick never overshoots `cap`, the 8-predator ceiling, or the 5:1 prey/predator gate.
+/// With `strict = false` (default), `prey_count` and `pred_count` are counted once per tick in
+/// normal mode (and bypassed in neutral-drift replay) so a tick with multiple eligible or scheduled
+/// births can overshoot the ceiling. With `strict = true`, `autonomous_reproduction_system` checks
+/// `prey_count >= cap` and `pred_count >= 8 || prey_count < pred_count * 5` against running counts
+/// before each birth and increments `prey_count` or `pred_count` when a birth is queued (in both
+/// normal mode and neutral-drift replay, where cap-blocked births are recorded under
+/// `DriftDiagnostics::missed_births_capped`). Note that the 5:1 ratio is a pre-birth running gate,
+/// not a post-birth invariant: prey queued earlier in the same tick count toward it, and after the
+/// final allowed predator birth `prey_count / pred_count` may sit below 5:1.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreyCapPolicy {
     pub cap: usize,

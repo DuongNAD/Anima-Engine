@@ -217,11 +217,16 @@ pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
 /// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
 /// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
 pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
-/// Card FIX-CAP (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`] in
-/// `autonomous_reproduction_system`, incrementing `prey_count` and `pred_count` each time a birth
-/// is queued so one tick never overshoots `prey_cap`, the 8-predator ceiling, or the 5:1
-/// prey-to-predator ratio gate; `0.0`/absent keeps the legacy soft gate bit-identical so frozen E3
-/// and historical manifests stay reproducible.
+/// Card FIX-CAP / FIX-CAP2 (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`]
+/// in `autonomous_reproduction_system`, checking `prey_count >= prey_cap` and `pred_count >= 8 ||
+/// prey_count < pred_count * 5` against running counts before each birth and incrementing
+/// `prey_count`/`pred_count` after each queued birth in both normal and neutral-drift replay modes
+/// (recording replay cap-blocked births in
+/// [`crate::core::drift_control::DriftDiagnostics::missed_births_capped`]). Because the 5:1 ratio is
+/// checked *before* each birth against the running count, prey queued earlier in the same tick count
+/// toward it and after the final permitted predator birth `prey_count / pred_count` can fall below
+/// 5:1. `0.0`/absent keeps the legacy soft/uncapped path bit-identical so frozen E3 and historical
+/// manifests stay reproducible.
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
@@ -3288,14 +3293,20 @@ fn shortfall_warning(diag: &crate::core::drift_control::DriftDiagnostics) -> Opt
     if !diag.has_shortfall() {
         return None;
     }
+    let capped_suffix = if diag.missed_births_capped > 0 {
+        format!(", capped={}", diag.missed_births_capped)
+    } else {
+        String::new()
+    };
     Some(format!(
         "neutral-drift schedule shortfall: missed_deaths={} (ticks={}), missed_births={} \
-         (extinct={}, insolvent={}, ticks={}), first_divergence_tick={:?}",
+         (extinct={}, insolvent={}{}, ticks={}), first_divergence_tick={:?}",
         diag.missed_deaths,
         diag.ticks_with_missed_deaths,
         diag.missed_births(),
         diag.missed_births_extinct,
         diag.missed_births_insolvent,
+        capped_suffix,
         diag.ticks_with_missed_births,
         diag.first_divergence_tick,
     ))

@@ -103,9 +103,16 @@ pub enum DriftMode {
     /// Read-only observer mode for the `selected` arm: existing death and birth rules run
     /// untouched while incrementing per-tick trophic turnover counters.
     Record,
-    /// Lockstep neutral-drift replay mode: skips physiological deaths and threshold/cap fecundity
-    /// gates, executing the recorded per-tick counts with uniform trait-blind selection.
+    /// Lockstep neutral-drift replay mode: skips physiological deaths and fecundity thresholds,
+    /// executing the recorded per-tick counts with uniform trait-blind selection (while still
+    /// enforcing strict population caps when `PreyCapPolicy::strict` is enabled, recording any
+    /// cap-blocked scheduled births in [`DriftDiagnostics::missed_births_capped`]).
     Replay,
+}
+
+#[inline]
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 /// Summary of how faithfully the drift replay tracked the recorded [`TurnoverSchedule`].
@@ -121,6 +128,8 @@ pub struct DriftDiagnostics {
     pub actual_births: u64,
     pub missed_births_extinct: u64,
     pub missed_births_insolvent: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub missed_births_capped: u64,
     pub ticks_with_missed_deaths: u64,
     pub ticks_with_missed_births: u64,
     pub first_divergence_tick: Option<u64>,
@@ -129,7 +138,7 @@ pub struct DriftDiagnostics {
 impl DriftDiagnostics {
     #[inline]
     pub fn missed_births(&self) -> u64 {
-        self.missed_births_extinct + self.missed_births_insolvent
+        self.missed_births_extinct + self.missed_births_insolvent + self.missed_births_capped
     }
 
     #[inline]
@@ -153,6 +162,7 @@ impl DriftDiagnostics {
         self.actual_births += other.actual_births;
         self.missed_births_extinct += other.missed_births_extinct;
         self.missed_births_insolvent += other.missed_births_insolvent;
+        self.missed_births_capped += other.missed_births_capped;
         self.ticks_with_missed_deaths += other.ticks_with_missed_deaths;
         self.ticks_with_missed_births += other.ticks_with_missed_births;
         self.first_divergence_tick = match (self.first_divergence_tick, other.first_divergence_tick)
