@@ -1,0 +1,12 @@
+diff --git a/NOTICE b/NOTICE
+index 551e8f0..cc45436 100644
+--- a/NOTICE
++++ b/NOTICE
+@@ -52,7 +52,6 @@ The remaining **0** are enumerated with the reason, and with what was searched,
+ Three closures, which are genuinely different sets. Conflating them is the error this section exists
+ to prevent — the earlier version of this file did, in both directions at once.
+ 
+-- **Rust — 524 crates.** Everything reachable by
+   `cargo tree --features desktop -e normal`. `desktop` is the feature set `npm run tauri:build`
+   passes, so it is what ships. `-e normal` excludes dev-dependencies (test-only) and
+   build-dependencies (run at build time, not linked). `cargo tree` resolves for the **host target**,

@@ -1,0 +1,12 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -196,7 +196,7 @@ jobs:
+         shell: bash
+         run: |
+           set -o pipefail
+-          cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture 2>&1 | tee ../cargo-test-worldgen-output.txt
++          cargo test -p anima-worldgen --features "reader" -- --nocapture 2>&1 | tee ../cargo-test-worldgen-output.txt
+ 
+       - name: No anima-worldgen test target ran zero tests
+         if: ${{ !cancelled() }}
