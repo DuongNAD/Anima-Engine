@@ -526,12 +526,12 @@ pub fn classify_biomes(
                             2.45 + gauss_ll(h_m, ela + 150.0, 360.0) + gate_ll(snow_slope);
 
                         if h_m >= glacier_hard_floor_m && slope_deg <= cfg.glacier_max_slope_deg {
-                            let cirque = smoothstep_c2(cfg.glacier_max_slope_deg, 16.0, slope_deg);
-                            let ice_boost = smoothstep_c2(0.5, 6.5, glac_row[c]);
-                            ll[BiomeId::Glacier as usize] = 1.85
-                                + 2.4 * ice_boost
-                                + gate_ll(cirque)
-                                + gauss_ll(h_m, ela + 320.0, 460.0);
+                            let cirque = smoothstep_c2(cfg.glacier_max_slope_deg, 18.0, slope_deg);
+                            let ice_boost = smoothstep_c2(0.15, 3.2, glac_row[c]);
+                            ll[BiomeId::Glacier as usize] = 2.25
+                                + 2.30 * ice_boost
+                                + 0.65 * gate_ll(cirque)
+                                + gauss_ll(h_m, ela + 190.0, 460.0);
                         }
                     } else {
                         // Sub-nival terrestrial + coastal strip (14 zoned biomes + Beach).
@@ -566,24 +566,25 @@ pub fn classify_biomes(
                         // 2. Mangrove (warm, wet, calm coast/delta <= 640 m, h <= 36 m, slope <= 20 deg).
                         if coast_d_m <= 640.0 && h_m <= 36.0 && slope_deg <= 20.0 && moist >= 0.32 {
                             let mg = smoothstep_c2(640.0, 80.0, coast_d_m)
-                                * smoothstep_c2(36.0, 3.0, h_m)
-                                * smoothstep_c2(20.0, 4.0, slope_deg)
-                                * smoothstep_c2(0.32, 0.56, moist)
-                                * smoothstep_c2(20.0, 24.5, t_c);
-                            ll[BiomeId::Mangrove as usize] = 4.7 + 1.2 * alluv + gate_ll(mg);
+                                * smoothstep_c2(34.0, 3.0, h_m)
+                                * smoothstep_c2(20.0, 5.0, slope_deg)
+                                * smoothstep_c2(0.32, 0.48, moist)
+                                * smoothstep_c2(20.0, 24.0, t_c);
+                            let mg_soft = libm::powf(mg.clamp(0.0, 1.0), 0.62);
+                            ll[BiomeId::Mangrove as usize] = 4.55 + 1.15 * alluv + gate_ll(mg_soft);
                         }
 
                         // 3. Swamp (lowland wetland/floodplain: high moisture or convergent TWI/alluvial hollows).
-                        if h_w <= 540.0 && slope_deg <= 15.0 {
+                        if h_w <= 600.0 && slope_deg <= 15.0 {
                             let twi_boost = smoothstep_c2(6.5, 10.2, twi_v);
                             let wetland_idx =
                                 (moist_w + 0.18 * twi_boost + 0.14 * alluv).clamp(0.0, 1.0);
-                            let wet_g = smoothstep_c2(0.32, 0.46, moist_w)
-                                * smoothstep_c2(0.44, 0.68, wetland_idx)
+                            let wet_g = smoothstep_c2(0.30, 0.45, moist_w)
+                                * smoothstep_c2(0.42, 0.66, wetland_idx)
                                 * smoothstep_c2(15.0, 4.0, slope_deg)
-                                * smoothstep_c2(540.0, 80.0, h_w);
+                                * smoothstep_c2(600.0, 80.0, h_w);
                             ll[BiomeId::Swamp as usize] =
-                                2.65 + 1.45 * twi_boost + 1.0 * alluv + gate_ll(wet_g);
+                                2.90 + 1.65 * twi_boost + 1.10 * alluv + gate_ll(wet_g);
                         }
 
                         // 4. Jungle (humid windward lowland/foothill rainforest).
@@ -1052,8 +1053,13 @@ mod tests {
             1_u64,
             0xdead_beef_u64,
             101_u64,
+            505_u64,
             707_u64,
             314_159_u64,
+            9001_u64,
+            10_009_u64,
+            10_044_u64,
+            10_045_u64,
         ] {
             let n = 512usize;
             let wcfg = WorldV2Config::for_size(seed, n as u32);

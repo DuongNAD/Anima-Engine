@@ -6,7 +6,7 @@
 use crate::hydrology::{HydrologyField, NO_RECEIVER, SECONDS_PER_YEAR};
 use crate::WaterKind;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
 use std::fmt;
 
 const DX8: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
@@ -904,12 +904,11 @@ pub fn generate_lakes_and_waterfalls(
                 suppress_subtree_descendants(self.nodes, node_u, &mut self.suppressed_child);
                 self.evaluate_basin(node_u, q_tot);
             } else if fa ^ fb {
-                let (full_c, empty_c) = if fa { (a, b) } else { (b, a) };
+                let (_full_c, empty_c) = if fa { (a, b) } else { (b, a) };
                 let s_inner = self.nodes[empty_c as usize].spill_elev_m;
                 let (evap_empty, _, _) = self.evap_to_sill(empty_c, s_inner);
                 if self.absorbed_q[empty_c as usize] + q_spill <= evap_empty {
-                    let outlet = self.nodes[full_c as usize].outlet_cell;
-                    self.route_spill_into_subtree(empty_c, q_spill, outlet);
+                    self.route_spill_into_subtree(empty_c, q_spill, entry_outlet_cell);
                     if self.filled_to_sill[empty_c as usize] {
                         suppress_subtree_descendants(
                             self.nodes,
@@ -923,70 +922,42 @@ pub fn generate_lakes_and_waterfalls(
                     self.evaluate_basin_with_floor(node_u, q_tot, s_inner);
                 }
             } else {
-                let (recv_c, other_c) = pick_receiving_child(
-                    self.nodes,
-                    a,
-                    b,
-                    entry_outlet_cell,
-                    self.w,
-                    &mut self.scratch_cells,
-                );
-                let s_inner = self.nodes[recv_c as usize].spill_elev_m;
-                let (evap_recv, _, _) = self.evap_to_sill(recv_c, s_inner);
-                let q_recv_new = self.absorbed_q[recv_c as usize] + q_spill;
-                if q_recv_new <= evap_recv {
-                    self.route_spill_into_subtree(recv_c, q_spill, entry_outlet_cell);
-                    if self.filled_to_sill[recv_c as usize] {
-                        let excess = self.excess_q[recv_c as usize];
-                        let (evap_other, _, _) = self.evap_to_sill(other_c, s_inner);
-                        if self.absorbed_q[other_c as usize] + excess <= evap_other
-                            && !self.filled_to_sill[other_c as usize]
-                        {
-                            let slot = self.pending_idx[recv_c as usize];
-                            if slot != NO_RECEIVER {
-                                self.pending[slot as usize].spills_into_sib = Some(other_c);
-                            }
-                            let outlet = self.nodes[recv_c as usize].outlet_cell;
-                            self.route_spill_into_subtree(other_c, excess, outlet);
-                            if self.filled_to_sill[other_c as usize] {
-                                suppress_subtree_descendants(
-                                    self.nodes,
-                                    node_u,
-                                    &mut self.suppressed_child,
-                                );
-                                self.evaluate_basin(node_u, q_tot);
-                            }
-                        } else {
-                            suppress_subtree_descendants(
-                                self.nodes,
-                                node_u,
-                                &mut self.suppressed_child,
-                            );
-                            self.evaluate_basin_with_floor(node_u, q_tot, s_inner);
-                        }
-                    }
-                } else {
-                    let excess = q_recv_new - evap_recv;
+                self.route_into_children(node_u, a, b, q_spill, entry_outlet_cell, q_tot);
+            }
+        }
+
+        fn route_into_children(
+            &mut self,
+            node_u: u32,
+            a: u32,
+            b: u32,
+            q_in: f64,
+            entry_outlet_cell: u32,
+            q_node_total: f64,
+        ) {
+            let (recv_c, other_c) = pick_receiving_child(
+                self.nodes,
+                a,
+                b,
+                entry_outlet_cell,
+                self.w,
+                &mut self.scratch_cells,
+            );
+            let s_inner = self.nodes[recv_c as usize].spill_elev_m;
+            let (evap_recv, _, _) = self.evap_to_sill(recv_c, s_inner);
+            let q_recv_new = self.absorbed_q[recv_c as usize] + q_in;
+            if q_recv_new <= evap_recv {
+                self.route_spill_into_subtree(recv_c, q_in, entry_outlet_cell);
+                if self.filled_to_sill[recv_c as usize] {
+                    let excess = self.excess_q[recv_c as usize];
                     let (evap_other, _, _) = self.evap_to_sill(other_c, s_inner);
                     if self.absorbed_q[other_c as usize] + excess <= evap_other
                         && !self.filled_to_sill[other_c as usize]
                     {
-                        suppress_subtree_descendants(
-                            self.nodes,
-                            recv_c,
-                            &mut self.suppressed_child,
-                        );
-                        self.absorbed_q[recv_c as usize] = q_recv_new;
-                        self.filled_to_sill[recv_c as usize] = true;
-                        self.excess_q[recv_c as usize] = excess;
-                        self.upsert_pending(PendingLake {
-                            node_idx: recv_c,
-                            water_level_m: s_inner,
-                            is_endorheic: false,
-                            q_in_m3_yr: q_recv_new,
-                            q_out_m3_yr: excess,
-                            spills_into_sib: Some(other_c),
-                        });
+                        let slot = self.pending_idx[recv_c as usize];
+                        if slot != NO_RECEIVER {
+                            self.pending[slot as usize].spills_into_sib = Some(other_c);
+                        }
                         let outlet = self.nodes[recv_c as usize].outlet_cell;
                         self.route_spill_into_subtree(other_c, excess, outlet);
                         if self.filled_to_sill[other_c as usize] {
@@ -995,7 +966,7 @@ pub fn generate_lakes_and_waterfalls(
                                 node_u,
                                 &mut self.suppressed_child,
                             );
-                            self.evaluate_basin(node_u, q_tot);
+                            self.evaluate_basin(node_u, q_node_total);
                         }
                     } else {
                         suppress_subtree_descendants(
@@ -1003,8 +974,40 @@ pub fn generate_lakes_and_waterfalls(
                             node_u,
                             &mut self.suppressed_child,
                         );
-                        self.evaluate_basin_with_floor(node_u, q_tot, s_inner);
+                        self.evaluate_basin_with_floor(node_u, q_node_total, s_inner);
                     }
+                }
+            } else {
+                let excess = q_recv_new - evap_recv;
+                let (evap_other, _, _) = self.evap_to_sill(other_c, s_inner);
+                if self.absorbed_q[other_c as usize] + excess <= evap_other
+                    && !self.filled_to_sill[other_c as usize]
+                {
+                    suppress_subtree_descendants(self.nodes, recv_c, &mut self.suppressed_child);
+                    self.absorbed_q[recv_c as usize] = q_recv_new;
+                    self.filled_to_sill[recv_c as usize] = true;
+                    self.excess_q[recv_c as usize] = excess;
+                    self.upsert_pending(PendingLake {
+                        node_idx: recv_c,
+                        water_level_m: s_inner,
+                        is_endorheic: false,
+                        q_in_m3_yr: q_recv_new,
+                        q_out_m3_yr: excess,
+                        spills_into_sib: Some(other_c),
+                    });
+                    let outlet = self.nodes[recv_c as usize].outlet_cell;
+                    self.route_spill_into_subtree(other_c, excess, outlet);
+                    if self.filled_to_sill[other_c as usize] {
+                        suppress_subtree_descendants(
+                            self.nodes,
+                            node_u,
+                            &mut self.suppressed_child,
+                        );
+                        self.evaluate_basin(node_u, q_node_total);
+                    }
+                } else {
+                    suppress_subtree_descendants(self.nodes, node_u, &mut self.suppressed_child);
+                    self.evaluate_basin_with_floor(node_u, q_node_total, s_inner);
                 }
             }
         }
@@ -1041,19 +1044,20 @@ pub fn generate_lakes_and_waterfalls(
                 let sib_spill = nodes[empty_c as usize].spill_elev_m;
                 let (evap_sib, _, _) = fsm.evap_to_sill(empty_c, sib_spill);
                 let excess = fsm.excess_q[full_c as usize];
-                let q_sib_new = fsm.absorbed_q[empty_c as usize] + excess;
+                let q_into_sib = excess + node_inflow_m3_yr[u];
+                let q_sib_new = fsm.absorbed_q[empty_c as usize] + q_into_sib;
                 if q_sib_new > evap_sib {
                     suppress_subtree_descendants(&nodes, u as u32, &mut fsm.suppressed_child);
                     fsm.evaluate_basin_with_floor(u as u32, q_total, sib_spill);
                     continue;
                 } else {
-                    // Sibling absorbs spillover below sill `S` without merging into `u`.
+                    // Sibling absorbs spillover + internal `own_cells` runoff below sill `S`.
                     let slot = fsm.pending_idx[full_c as usize];
                     if slot != NO_RECEIVER {
                         fsm.pending[slot as usize].spills_into_sib = Some(empty_c);
                     }
                     let outlet = nodes[full_c as usize].outlet_cell;
-                    fsm.route_spill_into_subtree(empty_c, excess, outlet);
+                    fsm.route_spill_into_subtree(empty_c, q_into_sib, outlet);
                     if fsm.filled_to_sill[empty_c as usize] {
                         suppress_subtree_descendants(&nodes, u as u32, &mut fsm.suppressed_child);
                         fsm.evaluate_basin(u as u32, q_total);
@@ -1061,7 +1065,11 @@ pub fn generate_lakes_and_waterfalls(
                     continue;
                 }
             } else {
-                // Neither child reached internal sill; keep independent children.
+                // Route internal node `own_cells` runoff into the receiving child subtree.
+                let q_own = node_inflow_m3_yr[u];
+                if q_own > 0.0 {
+                    fsm.route_into_children(u as u32, a, b, q_own, NO_RECEIVER, q_total);
+                }
                 continue;
             }
         }
@@ -1248,6 +1256,8 @@ pub fn generate_lakes_and_waterfalls(
 
         // Trace internal sibling spillways downhill on unfilled `elev_m` into `target_sib`
         // (never using `d8_rec` over `filled_h` so water stays inside `u`'s rim).
+        // Across multi-cell flat saddles/terraces (`dh == 0.0`), run a deterministic BFS with
+        // visited guard so the river traces continuously to a lower cell or `target_sib`.
         for (start_cell, full_id, q_out, target_sib) in internal_spill_traces {
             scratch_cells.clear();
             collect_subtree_cells(&nodes, target_sib, &mut scratch_cells);
@@ -1255,7 +1265,11 @@ pub fn generate_lakes_and_waterfalls(
             let depth = (0.25 * libm::powf(q_out.max(0.05), 0.40)).clamp(0.15, 3.0);
             let mut cur = start_cell;
             let mut steps = 0usize;
+            let mut trace_visited: BTreeSet<u32> = BTreeSet::new();
             while cur != NO_RECEIVER && steps < n {
+                if !trace_visited.insert(cur) {
+                    break;
+                }
                 let cu = cur as usize;
                 if elev_m[cu] <= cfg.sea_level_m {
                     break;
@@ -1276,7 +1290,7 @@ pub fn generate_lakes_and_waterfalls(
                         continue;
                     }
                     let nb = nr as usize * w + nc as usize;
-                    if lake_id[nb] == full_id {
+                    if lake_id[nb] == full_id || trace_visited.contains(&(nb as u32)) {
                         continue;
                     }
                     let in_sib = scratch_cells.binary_search(&(nb as u32)).is_ok()
@@ -1284,7 +1298,7 @@ pub fn generate_lakes_and_waterfalls(
                     let dh = elev_m[cu] - elev_m[nb];
                     let s = dh / DIST8[dir];
                     if cur == start_cell {
-                        if in_sib && (!best_in_sib || s > best_slope) {
+                        if in_sib && dh >= 0.0 && (!best_in_sib || s > best_slope) {
                             best_in_sib = true;
                             best_slope = s;
                             best_nb = nb as u32;
@@ -1297,13 +1311,149 @@ pub fn generate_lakes_and_waterfalls(
                         best_nb = nb as u32;
                     }
                 }
-                if best_nb == NO_RECEIVER {
+                if best_nb == NO_RECEIVER && cur == start_cell {
+                    let mut fallback_slope = f32::NEG_INFINITY;
+                    for dir in 0..8 {
+                        let nr = r as isize + DZ8[dir];
+                        let nc = c as isize + DX8[dir];
+                        if nr < 0 || nc < 0 || nr >= h as isize || nc >= w as isize {
+                            continue;
+                        }
+                        let nb = nr as usize * w + nc as usize;
+                        if lake_id[nb] == full_id || trace_visited.contains(&(nb as u32)) {
+                            continue;
+                        }
+                        let in_sib = scratch_cells.binary_search(&(nb as u32)).is_ok()
+                            || (lake_id[nb] != 0 && lake_id[nb] != full_id);
+                        if in_sib {
+                            let s = (elev_m[cu] - elev_m[nb]) / DIST8[dir];
+                            if s > fallback_slope {
+                                fallback_slope = s;
+                                best_nb = nb as u32;
+                            }
+                        }
+                    }
+                }
+                if best_nb != NO_RECEIVER {
+                    if lake_id[best_nb as usize] != 0 {
+                        break;
+                    }
+                    cur = best_nb;
+                    steps += 1;
+                    continue;
+                }
+
+                // Multi-cell flat saddle / terrace: deterministic BFS across `elev == h_flat`.
+                let h_flat = elev_m[cu];
+                let mut flat_q: VecDeque<u32> = VecDeque::new();
+                let mut flat_parent: BTreeMap<u32, u32> = BTreeMap::new();
+                flat_q.push_back(cur);
+                flat_parent.insert(cur, cur);
+                let mut exit_pair: Option<(u32, u32)> = None;
+                let max_flat_expand = n.min(65_536);
+
+                while let Some(v) = flat_q.pop_front() {
+                    let vu = v as usize;
+                    let vr = vu / w;
+                    let vc = vu % w;
+                    let mut best_exit = NO_RECEIVER;
+                    let mut best_exit_is_lake = false;
+                    let mut best_exit_slope = 0.0_f32;
+                    for dir in 0..8 {
+                        let nr = vr as isize + DZ8[dir];
+                        let nc = vc as isize + DX8[dir];
+                        if nr < 0 || nc < 0 || nr >= h as isize || nc >= w as isize {
+                            continue;
+                        }
+                        let nb = nr as usize * w + nc as usize;
+                        let nb_u32 = nb as u32;
+                        if lake_id[nb] == full_id || trace_visited.contains(&nb_u32) {
+                            continue;
+                        }
+                        let is_other_lake = lake_id[nb] != 0 && lake_id[nb] != full_id;
+                        let dh = h_flat - elev_m[nb];
+                        if is_other_lake && dh >= 0.0 {
+                            let s = dh / DIST8[dir];
+                            if !best_exit_is_lake || s > best_exit_slope {
+                                best_exit_is_lake = true;
+                                best_exit_slope = s;
+                                best_exit = nb_u32;
+                            }
+                        } else if !best_exit_is_lake && dh > 0.0 {
+                            let s = dh / DIST8[dir];
+                            if s > best_exit_slope {
+                                best_exit_slope = s;
+                                best_exit = nb_u32;
+                            }
+                        }
+                    }
+                    if best_exit != NO_RECEIVER {
+                        exit_pair = Some((v, best_exit));
+                        break;
+                    }
+                    if flat_parent.len() >= max_flat_expand {
+                        continue;
+                    }
+                    for pass_sib in [true, false] {
+                        if v != start_cell && pass_sib {
+                            continue;
+                        }
+                        for dir in 0..8 {
+                            let nr = vr as isize + DZ8[dir];
+                            let nc = vc as isize + DX8[dir];
+                            if nr < 0 || nc < 0 || nr >= h as isize || nc >= w as isize {
+                                continue;
+                            }
+                            let nb = nr as usize * w + nc as usize;
+                            let nb_u32 = nb as u32;
+                            if lake_id[nb] == full_id
+                                || trace_visited.contains(&nb_u32)
+                                || flat_parent.contains_key(&nb_u32)
+                            {
+                                continue;
+                            }
+                            if v == start_cell {
+                                let in_sib = scratch_cells.binary_search(&nb_u32).is_ok();
+                                if in_sib != pass_sib {
+                                    continue;
+                                }
+                            }
+                            if elev_m[nb] == h_flat {
+                                flat_parent.insert(nb_u32, v);
+                                flat_q.push_back(nb_u32);
+                            }
+                        }
+                    }
+                }
+
+                let Some((exit_from, exit_to)) = exit_pair else {
+                    break;
+                };
+                let mut bridge: Vec<u32> = Vec::new();
+                let mut p = exit_from;
+                while p != cur {
+                    bridge.push(p);
+                    p = flat_parent[&p];
+                }
+                bridge.reverse();
+                for &bc in &bridge {
+                    if !trace_visited.insert(bc) {
+                        break;
+                    }
+                    let bu = bc as usize;
+                    if elev_m[bu] <= cfg.sea_level_m {
+                        break;
+                    }
+                    if lake_id[bu] == 0 {
+                        water_kind[bu] = WaterKind::River as u8;
+                        water_h_m[bu] = water_h_m[bu].max(elev_m[bu] + depth);
+                    }
+                    steps += 1;
+                }
+                if lake_id[exit_to as usize] != 0 {
                     break;
                 }
-                if lake_id[best_nb as usize] != 0 {
-                    break;
-                }
-                cur = best_nb;
+                cur = exit_to;
                 steps += 1;
             }
         }
@@ -2096,9 +2246,9 @@ mod tests {
         let mut precip_b = vec![0.18_f32; n * n];
         let pet_b = vec![4.50_f32; n * n];
         // Give sub1 just enough excess to spill over saddle into sub2a+sub2b without filling outer rim.
-        for r in 28..44 {
-            for c in 28..44 {
-                precip_b[r * n + c] = 9.5;
+        for r in 30..42 {
+            for c in 30..42 {
+                precip_b[r * n + c] = 7.2;
             }
         }
         let input_b = LakesFallsInput {
@@ -2185,9 +2335,9 @@ mod tests {
                 pet[r * n + c] = 15.0;
             }
         }
-        for r in 28..44 {
-            for c in 28..44 {
-                precip[r * n + c] = 6.5;
+        for r in 30..42 {
+            for c in 30..42 {
+                precip[r * n + c] = 5.0;
             }
         }
         // Humid shoreline ring around `sub2a` (`r in [2.5, 4.5]`) while pit stays arid (`0.20`).
@@ -2594,6 +2744,346 @@ mod tests {
             assert_ne!(field.lake_id[pit_b], 0);
             assert!((elev[pit_a] - elev_before[pit_a]).abs() < 1e-3);
             assert!((elev[pit_b] - elev_before[pit_b]).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn mid_slope_rain_in_internal_merge_node_routes_into_sub_basins() {
+        let n = 128;
+        let build_3basin = || -> Vec<f32> {
+            let mut elev = vec![0.0_f32; n * n];
+            for r in 0..n {
+                for c in 0..n {
+                    let idx = r * n + c;
+                    if r == 0 || r + 1 == n || c == 0 || c + 1 == n {
+                        elev[idx] = -5.0;
+                        continue;
+                    }
+                    let d_main = libm::hypotf(r as f32 - 64.0, c as f32 - 64.0);
+                    let outer = if d_main <= 52.0 {
+                        165.0 - 0.015 * (52.0 - d_main) * (52.0 - d_main)
+                    } else {
+                        165.0 - (d_main - 52.0) * 10.0
+                    };
+                    let da = libm::hypotf(r as f32 - 48.0, c as f32 - 38.0);
+                    let db = libm::hypotf(r as f32 - 74.0, c as f32 - 42.0);
+                    let dc = libm::hypotf(r as f32 - 64.0, c as f32 - 86.0);
+                    let pa = -60.0 * libm::expf(-(da / 8.0) * (da / 8.0));
+                    let pb = -96.0 * libm::expf(-(db / 8.0) * (db / 8.0));
+                    let pc = -92.0 * libm::expf(-(dc / 9.0) * (dc / 9.0));
+                    // Lower saddle between a and b (~108 m) vs saddle between u12 and c (~154 m).
+                    let d_sab = libm::hypotf(r as f32 - 61.0, c as f32 - 40.0);
+                    let sab = -42.0 * libm::expf(-(d_sab / 6.0) * (d_sab / 6.0));
+                    elev[idx] = (outer + pa + pb + pc + sab).max(1.0);
+                }
+            }
+            elev
+        };
+
+        let pit_a = 48 * n + 38;
+        let pit_b = 74 * n + 42;
+        let pit_c = 64 * n + 86;
+        let q = vec![0.0_f32; n * n];
+        let rw = vec![0.0_f32; n * n];
+        let is_ch = vec![false; n * n];
+
+        // Case 1: Dry inner sub-basins (<= 112 m), wet mid-slope u12.own_cells (112..=140 m on c < 64).
+        {
+            let mut elev = build_3basin();
+            let elev_before = elev.clone();
+            let mut sed = vec![5.0_f32; n * n];
+            let mut wh = elev.clone();
+            let mut wk = vec![0_u8; n * n];
+            let mut precip = vec![0.05_f32; n * n];
+            let mut pet = vec![25.0_f32; n * n];
+            for r in 0..n {
+                for c in 0..64 {
+                    let i = r * n + c;
+                    if elev[i] <= 112.0 {
+                        precip[i] = 0.1;
+                        pet[i] = 0.3;
+                    } else if elev[i] <= 140.0 {
+                        precip[i] = 3.5;
+                        pet[i] = 1.2;
+                    }
+                }
+            }
+            let input = LakesFallsInput {
+                width: n,
+                height: n,
+                precip_m_yr: &precip,
+                pet_m_yr: &pet,
+                discharge_q_m3_s: &q,
+                river_w_m: &rw,
+                is_channel: &is_ch,
+            };
+            let field = generate_lakes_and_waterfalls(
+                &mut elev,
+                &mut sed,
+                &mut wh,
+                &mut wk,
+                &input,
+                &LakesFallsConfig::default(),
+            )
+            .expect("MidSlopeRain_LostInInternalNode");
+            assert!(
+                !field.basins.is_empty(),
+                "mid-slope internal-node runoff must form retained lake(s), not 0 basins"
+            );
+            assert_eq!(field.endorheic_humid_fraction, 0.0);
+            assert_eq!(field.unmodeled_micro_pits, 0);
+            assert_eq!(field.severed_humid_spillways, 0);
+            assert_ne!(field.lake_id[pit_b], 0);
+            assert!((elev[pit_a] - elev_before[pit_a]).abs() < 1e-3);
+            assert!((elev[pit_b] - elev_before[pit_b]).abs() < 1e-3);
+            assert!((elev[pit_c] - elev_before[pit_c]).abs() < 1e-3);
+        }
+
+        // Case 2: Multi-level ancestor own_cells runoff (rain only at 156..=161 m above s(u12, c)).
+        {
+            let mut elev = build_3basin();
+            let elev_before = elev.clone();
+            let mut sed = vec![5.0_f32; n * n];
+            let mut wh = elev.clone();
+            let mut wk = vec![0_u8; n * n];
+            let mut precip = vec![0.05_f32; n * n];
+            let mut pet = vec![25.0_f32; n * n];
+            for r in 0..n {
+                for c in 0..n {
+                    let i = r * n + c;
+                    let d_main = libm::hypotf(r as f32 - 64.0, c as f32 - 64.0);
+                    if d_main <= 50.0 {
+                        if elev[i] <= 155.0 {
+                            precip[i] = 0.05;
+                            pet[i] = 1.5;
+                        } else if elev[i] <= 161.5 {
+                            precip[i] = 4.0;
+                            pet[i] = 1.0;
+                        }
+                    }
+                }
+            }
+            let input = LakesFallsInput {
+                width: n,
+                height: n,
+                precip_m_yr: &precip,
+                pet_m_yr: &pet,
+                discharge_q_m3_s: &q,
+                river_w_m: &rw,
+                is_channel: &is_ch,
+            };
+            let field = generate_lakes_and_waterfalls(
+                &mut elev,
+                &mut sed,
+                &mut wh,
+                &mut wk,
+                &input,
+                &LakesFallsConfig::default(),
+            )
+            .expect("MultiLevelAncestorOwnCellsRain");
+            assert!(!field.basins.is_empty());
+            assert_eq!(field.endorheic_humid_fraction, 0.0);
+            assert_eq!(field.unmodeled_micro_pits, 0);
+            assert_eq!(field.severed_humid_spillways, 0);
+            assert!((elev[pit_b] - elev_before[pit_b]).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn internal_spillway_crosses_multi_cell_flat_saddle_and_preserves_entry_outlet() {
+        // Part 1: [FlatSaddle_2Basins] 4-cell equal-elevation saddle bridge (48, 46..=49)
+        // connecting overflowing sub2a to dry endorheic sub2b.
+        {
+            let n = 96;
+            let mut elev = vec![0.0_f32; n * n];
+            for r in 0..n {
+                for c in 0..n {
+                    let idx = r * n + c;
+                    if r == 0 || r + 1 == n || c == 0 || c + 1 == n {
+                        elev[idx] = -5.0;
+                        continue;
+                    }
+                    let d_main = libm::hypotf(r as f32 - 48.0, c as f32 - 48.0);
+                    let outer = if d_main <= 38.0 {
+                        165.0 - 0.015 * (38.0 - d_main) * (38.0 - d_main)
+                    } else {
+                        165.0 - (d_main - 38.0) * 9.0
+                    };
+                    let da = libm::hypotf(r as f32 - 48.0, c as f32 - 34.0);
+                    let db = libm::hypotf(r as f32 - 48.0, c as f32 - 64.0);
+                    let pa = -65.0 * libm::expf(-(da / 7.0) * (da / 7.0));
+                    let pb = -80.0 * libm::expf(-(db / 8.5) * (db / 8.5));
+                    elev[idx] = (outer + pa + pb).max(1.0);
+                }
+            }
+            // Carve ridge wall along c = 44..=57 except flat bridge + monotonic chute at r = 48.
+            for r in 30..66 {
+                for c in 44..=57 {
+                    if r != 48 {
+                        elev[r * n + c] = elev[r * n + c].max(145.0);
+                    }
+                }
+            }
+            elev[48 * n + 43] = 131.5;
+            elev[48 * n + 44] = 131.0;
+            elev[48 * n + 45] = 130.5;
+            for c in 46..=49 {
+                elev[48 * n + c] = 129.83;
+            }
+            elev[48 * n + 50] = 128.0;
+            elev[48 * n + 51] = 126.0;
+            elev[48 * n + 52] = 124.0;
+            elev[48 * n + 53] = 122.0;
+            elev[48 * n + 54] = 120.0;
+            elev[48 * n + 55] = 117.0;
+            elev[48 * n + 56] = 114.0;
+            elev[48 * n + 57] = 110.0;
+
+            let mut sed = vec![5.0_f32; n * n];
+            let mut wh = elev.clone();
+            let mut wk = vec![0_u8; n * n];
+            let mut precip = vec![0.10_f32; n * n];
+            let mut pet = vec![15.0_f32; n * n];
+            for r in 34..62 {
+                for c in 22..44 {
+                    precip[r * n + c] = 6.5;
+                    pet[r * n + c] = 1.2;
+                }
+            }
+            let q = vec![0.0_f32; n * n];
+            let rw = vec![0.0_f32; n * n];
+            let is_ch = vec![false; n * n];
+            let input = LakesFallsInput {
+                width: n,
+                height: n,
+                precip_m_yr: &precip,
+                pet_m_yr: &pet,
+                discharge_q_m3_s: &q,
+                river_w_m: &rw,
+                is_channel: &is_ch,
+            };
+            let field = generate_lakes_and_waterfalls(
+                &mut elev,
+                &mut sed,
+                &mut wh,
+                &mut wk,
+                &input,
+                &LakesFallsConfig::default(),
+            )
+            .expect("FlatSaddle_2Basins");
+            assert_eq!(field.basins.len(), 2);
+            assert_eq!(field.severed_humid_spillways, 0);
+            assert_eq!(field.unmodeled_micro_pits, 0);
+            assert_eq!(field.endorheic_humid_fraction, 0.0);
+            let bridge_wet = (46..=49)
+                .filter(|&c| wk[48 * n + c] == WaterKind::River as u8)
+                .count();
+            assert_eq!(
+                bridge_wet, 4,
+                "expected full 4-cell flat bridge wet, got {bridge_wet}/4"
+            );
+        }
+
+        // Part 2: `route_spill_into_subtree` `fa ^ fb` preserves `entry_outlet_cell` instead of
+        // replacing it with `full_c.outlet_cell`.
+        {
+            let n = 128;
+            let mut elev = vec![0.0_f32; n * n];
+            for r in 0..n {
+                for c in 0..n {
+                    let idx = r * n + c;
+                    if r == 0 || r + 1 == n || c == 0 || c + 1 == n {
+                        elev[idx] = -5.0;
+                        continue;
+                    }
+                    let d_main = libm::hypotf(r as f32 - 64.0, c as f32 - 64.0);
+                    let outer = if d_main <= 54.0 {
+                        175.0 - 0.012 * (54.0 - d_main) * (54.0 - d_main)
+                    } else {
+                        175.0 - (d_main - 54.0) * 10.0
+                    };
+                    // 4 pits:
+                    //   sub_spill at (64, 28) -> spills east across saddle (~140 m) into sub_near (64, 52)
+                    //   sub_near at (64, 52) & sub_far at (64, 78) form empty_c (saddle ~125 m)
+                    //   sub_full at (64, 100) merges with empty_c at saddle (~132 m) -> adjacent to sub_far
+                    let d_sp = libm::hypotf(r as f32 - 64.0, c as f32 - 28.0);
+                    let d_nr = libm::hypotf(r as f32 - 64.0, c as f32 - 52.0);
+                    let d_fr = libm::hypotf(r as f32 - 64.0, c as f32 - 78.0);
+                    let d_fl = libm::hypotf(r as f32 - 64.0, c as f32 - 100.0);
+                    let p_sp = -65.0 * libm::expf(-(d_sp / 6.5) * (d_sp / 6.5));
+                    let p_nr = -75.0 * libm::expf(-(d_nr / 6.5) * (d_nr / 6.5));
+                    let p_fr = -75.0 * libm::expf(-(d_fr / 6.5) * (d_fr / 6.5));
+                    let p_fl = -60.0 * libm::expf(-(d_fl / 6.0) * (d_fl / 6.0));
+                    // Carve ordered saddles: (nr<->fr) ~117 m < (fr<->fl) ~127 m < (sp<->nr) ~136 m < outer ~175 m.
+                    let d_nf = libm::hypotf(r as f32 - 64.0, c as f32 - 65.0);
+                    let d_ff = libm::hypotf(r as f32 - 64.0, c as f32 - 89.0);
+                    let d_sn = libm::hypotf(r as f32 - 64.0, c as f32 - 40.0);
+                    let s_nf = -24.0 * libm::expf(-(d_nf / 8.0) * (d_nf / 8.0));
+                    let s_ff = -38.0 * libm::expf(-(d_ff / 6.0) * (d_ff / 6.0));
+                    let s_sn = -28.0 * libm::expf(-(d_sn / 6.0) * (d_sn / 6.0));
+                    elev[idx] = (outer + p_sp + p_nr + p_fr + p_fl + s_nf + s_ff + s_sn).max(1.0);
+                }
+            }
+            let mut sed = vec![5.0_f32; n * n];
+            let mut wh = elev.clone();
+            let mut wk = vec![0_u8; n * n];
+            let mut precip = vec![0.05_f32; n * n];
+            let mut pet = vec![12.0_f32; n * n];
+            // sub_spill fills & overflows moderately into u at entry_outlet_cell near (64, 40) -> sub_near
+            // (small enough that sub_near absorbs it below s(sub_near, sub_far)).
+            for r in 56..72 {
+                for c in 20..36 {
+                    let d_sp = libm::hypotf(r as f32 - 64.0, c as f32 - 28.0);
+                    if d_sp <= 6.5 {
+                        precip[r * n + c] = 12.0;
+                        pet[r * n + c] = 1.0;
+                    }
+                }
+            }
+            // sub_full just barely fills via local humid pit so its seasonal excess is tiny,
+            // leaving empty_c=(sub_near, sub_far) unfilled (`fa ^ fb` at node u).
+            for r in 58..70 {
+                for c in 94..106 {
+                    let d_fl = libm::hypotf(r as f32 - 64.0, c as f32 - 100.0);
+                    if d_fl <= 3.0 {
+                        precip[r * n + c] = 0.8;
+                        pet[r * n + c] = 1.2; // P/PET = 0.67 >= 0.5 -> humid seasonal_out
+                    }
+                }
+            }
+            let q = vec![0.0_f32; n * n];
+            let rw = vec![0.0_f32; n * n];
+            let is_ch = vec![false; n * n];
+            let input = LakesFallsInput {
+                width: n,
+                height: n,
+                precip_m_yr: &precip,
+                pet_m_yr: &pet,
+                discharge_q_m3_s: &q,
+                river_w_m: &rw,
+                is_channel: &is_ch,
+            };
+            let field = generate_lakes_and_waterfalls(
+                &mut elev,
+                &mut sed,
+                &mut wh,
+                &mut wk,
+                &input,
+                &LakesFallsConfig::default(),
+            )
+            .expect("fa^fb entry_outlet_cell preservation");
+            assert_eq!(field.endorheic_humid_fraction, 0.0);
+            assert_eq!(field.unmodeled_micro_pits, 0);
+            let pit_nr = 64 * n + 52;
+            let pit_fr = 64 * n + 78;
+            assert_ne!(
+                field.lake_id[pit_nr], 0,
+                "spillover entering near sub_near must route into sub_near, not be diverted to sub_far"
+            );
+            assert_eq!(
+                field.lake_id[pit_fr], 0,
+                "sub_far must remain dry when sub_spill enters near sub_near (entry_outlet_cell preserved)"
+            );
         }
     }
 }

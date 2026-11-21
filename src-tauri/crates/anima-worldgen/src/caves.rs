@@ -1062,4 +1062,100 @@ mod tests {
         let roundtrip = CaveNetwork::from_bytes(&field.network.to_bytes()).expect("ANMC roundtrip");
         assert_eq!(roundtrip, field.network);
     }
+
+    #[cfg(feature = "generate")]
+    #[test]
+    fn caves_rejects_all_nan_temp_or_glacier_and_skips_isolated_nan_cells() {
+        let n = 128;
+        let mut total_h = vec![0.0_f32; n * n];
+        for r in 0..n {
+            for c in 0..n {
+                total_h[r * n + c] = 120.0 + c as f32 * 4.5 + 15.0 * libm::sinf(r as f32 * 0.25);
+            }
+        }
+        let lith = vec![2_u8; n * n];
+        let wk = vec![0_u8; n * n];
+        let dom = vec![BiomeId::Forest as u8; n * n];
+        let cfg = CaveConfig::default();
+
+        // All-NaN temp_c must return Err(CaveError).
+        let nan_temp = vec![f32::NAN; n * n];
+        let zero_glacier = vec![0.0_f32; n * n];
+        let err_temp = generate_caves(
+            &CaveInput {
+                width: n,
+                height: n,
+                total_h_m: &total_h,
+                lithology_id: &lith,
+                water_kind: &wk,
+                temp_c: &nan_temp,
+                glacier_h_m: &zero_glacier,
+                dominant_biome: &dom,
+            },
+            &cfg,
+        );
+        assert!(err_temp.is_err(), "all-NaN temp_c must fail");
+
+        // All-NaN glacier_h_m must return Err(CaveError).
+        let warm_temp = vec![20.0_f32; n * n];
+        let nan_glacier = vec![f32::NAN; n * n];
+        let err_glacier = generate_caves(
+            &CaveInput {
+                width: n,
+                height: n,
+                total_h_m: &total_h,
+                lithology_id: &lith,
+                water_kind: &wk,
+                temp_c: &warm_temp,
+                glacier_h_m: &nan_glacier,
+                dominant_biome: &dom,
+            },
+            &cfg,
+        );
+        assert!(err_glacier.is_err(), "all-NaN glacier_h_m must fail");
+
+        // Isolated NaN cells in temp_c and glacier_h_m must be skipped cleanly without poisoning outputs.
+        let mut mixed_temp = warm_temp;
+        let mut mixed_glacier = zero_glacier;
+        let nan_cells = [
+            32 * n + 40,
+            48 * n + 64,
+            64 * n + 64,
+            80 * n + 96,
+            96 * n + 50,
+        ];
+        for (i, &cell) in nan_cells.iter().enumerate() {
+            if i % 2 == 0 {
+                mixed_temp[cell] = f32::NAN;
+            } else {
+                mixed_glacier[cell] = f32::NAN;
+            }
+        }
+        let field = generate_caves(
+            &CaveInput {
+                width: n,
+                height: n,
+                total_h_m: &total_h,
+                lithology_id: &lith,
+                water_kind: &wk,
+                temp_c: &mixed_temp,
+                glacier_h_m: &mixed_glacier,
+                dominant_biome: &dom,
+            },
+            &cfg,
+        )
+        .expect("isolated NaN temp_c/glacier_h_m must be skipped");
+        assert!((30..=48).contains(&field.network.entrances.len()));
+        for e in &field.network.entrances {
+            let node = &field.network.nodes[e.node_idx as usize];
+            let gc = (node.x_m / cfg.dx_m).floor() as usize;
+            let gr = (node.z_m / cfg.dx_m).floor() as usize;
+            let idx = gr * n + gc;
+            assert!(mixed_temp[idx].is_finite());
+            assert!(mixed_glacier[idx].is_finite());
+            assert!(e.yaw_rad.is_finite());
+            assert!(e.elevation_m.is_finite());
+            assert!(e.clearance_m.is_finite());
+        }
+    }
 }
