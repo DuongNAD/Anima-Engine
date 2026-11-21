@@ -153,6 +153,48 @@ fn total_elev(bedrock_h: &[f32], sediment_s: &[f32], idx: usize) -> f32 {
     bedrock_h[idx] + sediment_s[idx]
 }
 
+#[inline]
+fn bit_get(bits: &[u64], idx: usize) -> bool {
+    (bits[idx >> 6] & (1_u64 << (idx & 63))) != 0
+}
+
+#[inline]
+fn bit_set(bits: &mut [u64], idx: usize) {
+    bits[idx >> 6] |= 1_u64 << (idx & 63);
+}
+
+fn compute_polyline_normals_curv(pts: &[(f32, f32)]) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+    let m = pts.len();
+    let mut s_arc = vec![0.0_f32; m];
+    for k in 1..m {
+        s_arc[k] = s_arc[k - 1] + libm::hypotf(pts[k].0 - pts[k - 1].0, pts[k].1 - pts[k - 1].1);
+    }
+    let mut curv = vec![0.0_f32; m];
+    let mut nx = vec![0.0_f32; m];
+    let mut nz = vec![0.0_f32; m];
+    for k in 1..m.saturating_sub(1) {
+        let ds_back = libm::hypotf(pts[k].0 - pts[k - 1].0, pts[k].1 - pts[k - 1].1).max(1.0);
+        let ds_fwd = libm::hypotf(pts[k + 1].0 - pts[k].0, pts[k + 1].1 - pts[k].1).max(1.0);
+        let ds_tot = ds_back + ds_fwd;
+        let tx = (pts[k + 1].0 - pts[k - 1].0) / ds_tot;
+        let tz = (pts[k + 1].1 - pts[k - 1].1) / ds_tot;
+        let t_len = libm::hypotf(tx, tz).max(1e-5);
+        // Outward normal for positive curvature `C`: (tz, -tx) / |t|.
+        nx[k] = tz / t_len;
+        nz[k] = -tx / t_len;
+
+        let x1 = (pts[k].0 - pts[k - 1].0) / ds_back;
+        let z1 = (pts[k].1 - pts[k - 1].1) / ds_back;
+        let x2 = (pts[k + 1].0 - pts[k].0) / ds_fwd;
+        let z2 = (pts[k + 1].1 - pts[k].1) / ds_fwd;
+        let xpp = (x2 - x1) / (0.5 * ds_tot);
+        let zpp = (z2 - z1) / (0.5 * ds_tot);
+        let speed3 = t_len * t_len * t_len;
+        curv[k] = (tx * zpp - tz * xpp) / speed3.max(1e-6);
+    }
+    (s_arc, curv, nx, nz)
+}
+
 fn steepest_downstream(
     bedrock_h: &[f32],
     sediment_s: &[f32],
@@ -536,12 +578,13 @@ pub fn apply_deposition(
     // -------------------------------------------------------------------------
     // 2. Howard & Knutson (1984) 35-Step Kinematic Meanders (`AER-07`, `RIV-01`)
     // -------------------------------------------------------------------------
-    let mut visited_meander = vec![false; n];
+    let word_count = (n + 63) >> 6;
+    let mut visited_meander = vec![0_u64; word_count];
     let mut meander_reach_count = 0usize;
     let mut oxbow_count = 0usize;
 
     // Collect candidate low-slope trunk starts sorted by Q descending.
-    let mut trunk_cells: Vec<(f32, usize)> = Vec::new();
+    let mut trunk_cells: Vec<(f32, u32)> = Vec::new();
     for r in 2..(h - 2) {
         for c in 2..(w - 2) {
             let idx = r * w + c;
@@ -560,7 +603,7 @@ pub fn apply_deposition(
                 let d_m = libm::hypotf(dc, dr) * cfg.dx_m;
                 let s = (e - total_elev(bedrock_h, sediment_s, nxt)) / d_m.max(cfg.dx_m);
                 if s >= 0.0 && s < cfg.meander_max_slope {
-                    trunk_cells.push((input.discharge_q_m3_s[idx], idx));
+                    trunk_cells.push((input.discharge_q_m3_s[idx], idx as u32));
                 }
             }
         }
@@ -568,17 +611,18 @@ pub fn apply_deposition(
     trunk_cells.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
     // Build upstream-to-downstream reaches (smallest Q upstream first -> longest continuous trunk).
-    for &(_, start_idx) in &trunk_cells {
-        if visited_meander[start_idx] {
+    for &(_, start_u32) in &trunk_cells {
+        let start_idx = start_u32 as usize;
+        if bit_get(&visited_meander, start_idx) {
             continue;
         }
         let mut chain = vec![start_idx];
-        visited_meander[start_idx] = true;
+        bit_set(&mut visited_meander, start_idx);
         let mut cur = start_idx;
         while let Some(nxt) =
             steepest_downstream(bedrock_h, sediment_s, input.d8_receiver, w, h, cur)
         {
-            if visited_meander[nxt] {
+            if bit_get(&visited_meander, nxt) {
                 break;
             }
             let e_cur = total_elev(bedrock_h, sediment_s, cur);
@@ -593,7 +637,7 @@ pub fn apply_deposition(
             if s >= cfg.meander_max_slope || input.discharge_q_m3_s[nxt] < cfg.meander_min_q_m3_s {
                 break;
             }
-            visited_meander[nxt] = true;
+            bit_set(&mut visited_meander, nxt);
             chain.push(nxt);
             cur = nxt;
         }
@@ -635,37 +679,7 @@ pub fn apply_deposition(
             if m < 7 {
                 break;
             }
-            let mut s_arc = vec![0.0_f32; m];
-            for k in 1..m {
-                s_arc[k] =
-                    s_arc[k - 1] + libm::hypotf(pts[k].0 - pts[k - 1].0, pts[k].1 - pts[k - 1].1);
-            }
-
-            let mut curv = vec![0.0_f32; m];
-            let mut nx = vec![0.0_f32; m];
-            let mut nz = vec![0.0_f32; m];
-            for k in 1..(m - 1) {
-                let ds_back =
-                    libm::hypotf(pts[k].0 - pts[k - 1].0, pts[k].1 - pts[k - 1].1).max(1.0);
-                let ds_fwd =
-                    libm::hypotf(pts[k + 1].0 - pts[k].0, pts[k + 1].1 - pts[k].1).max(1.0);
-                let ds_tot = ds_back + ds_fwd;
-                let tx = (pts[k + 1].0 - pts[k - 1].0) / ds_tot;
-                let tz = (pts[k + 1].1 - pts[k - 1].1) / ds_tot;
-                let t_len = libm::hypotf(tx, tz).max(1e-5);
-                // Outward normal for positive curvature `C`: (tz, -tx) / |t|.
-                nx[k] = tz / t_len;
-                nz[k] = -tx / t_len;
-
-                let x1 = (pts[k].0 - pts[k - 1].0) / ds_back;
-                let z1 = (pts[k].1 - pts[k - 1].1) / ds_back;
-                let x2 = (pts[k + 1].0 - pts[k].0) / ds_fwd;
-                let z2 = (pts[k + 1].1 - pts[k].1) / ds_fwd;
-                let xpp = (x2 - x1) / (0.5 * ds_tot);
-                let zpp = (z2 - z1) / (0.5 * ds_tot);
-                let speed3 = t_len * t_len * t_len;
-                curv[k] = (tx * zpp - tz * xpp) / speed3.max(1e-6);
-            }
+            let (s_arc, mut curv, mut nx, mut nz) = compute_polyline_normals_curv(&pts);
 
             // Upstream-weighted Howard-Knutson migration.
             let mut next_pts = pts.clone();
@@ -707,24 +721,55 @@ pub fn apply_deposition(
                     }
                 }
             }
+            let did_cutoff = cut_span.is_some();
             if let Some((k1, k2)) = cut_span {
-                // Excavate bypassed loop as crescent oxbow lake (`WaterKind::FreshwaterLake = 2`).
-                let ox_rad = (0.75 * w_bank / cfg.dx_m).clamp(1.0, 2.5);
+                // Excavate bypassed loop as a single coherent crescent oxbow lake (`WaterKind::FreshwaterLake = 2`).
+                let ox_rad = (0.75 * w_bank / cfg.dx_m).clamp(1.2, 2.5);
+                let mut ox_cells: Vec<usize> = Vec::new();
+                let mut min_loop_surf = f32::INFINITY;
                 for &(px, pz) in &pts[(k1 + 1)..k2] {
-                    stamp_disk_river(
-                        bedrock_h,
-                        sediment_s,
-                        water_h_m,
-                        water_kind,
-                        (w, h),
-                        DiskStamp {
-                            cx: px / cfg.dx_m,
-                            cz: pz / cfg.dx_m,
-                            rad_cells: ox_rad,
-                            depth_m: 1.4,
-                            wk: WaterKind::FreshwaterLake as u8,
-                        },
-                    );
+                    let cx = px / cfg.dx_m;
+                    let cz = pz / cfg.dx_m;
+                    let r0 = (libm::floorf(cz - ox_rad) as isize).max(1) as usize;
+                    let r1 = (libm::ceilf(cz + ox_rad) as isize).min(h as isize - 2) as usize;
+                    let c0 = (libm::floorf(cx - ox_rad) as isize).max(1) as usize;
+                    let c1 = (libm::ceilf(cx + ox_rad) as isize).min(w as isize - 2) as usize;
+                    let rad_sq = ox_rad * ox_rad;
+                    for rr in r0..=r1 {
+                        for cc in c0..=c1 {
+                            let dr = rr as f32 - cz;
+                            let dc = cc as f32 - cx;
+                            if dr * dr + dc * dc <= rad_sq {
+                                let nb = rr * w + cc;
+                                let e_nb = total_elev(bedrock_h, sediment_s, nb);
+                                if e_nb > cfg.sea_level_m + 0.5 {
+                                    min_loop_surf = min_loop_surf.min(e_nb);
+                                    ox_cells.push(nb);
+                                }
+                            }
+                        }
+                    }
+                }
+                ox_cells.sort_unstable();
+                ox_cells.dedup();
+                if min_loop_surf.is_finite() && !ox_cells.is_empty() {
+                    let target_floor = (min_loop_surf - 1.35).max(cfg.sea_level_m + 0.25);
+                    let target_water = (min_loop_surf - 0.15).max(target_floor + 0.6);
+                    for nb in ox_cells {
+                        let cur_e = total_elev(bedrock_h, sediment_s, nb);
+                        if cur_e > target_floor {
+                            let cut = cur_e - target_floor;
+                            if sediment_s[nb] >= cut {
+                                sediment_s[nb] -= cut;
+                            } else {
+                                let rem = cut - sediment_s[nb].max(0.0);
+                                sediment_s[nb] = 0.0;
+                                bedrock_h[nb] -= rem;
+                            }
+                        }
+                        water_h_m[nb] = water_h_m[nb].max(target_water);
+                        water_kind[nb] = WaterKind::FreshwaterLake as u8;
+                    }
                 }
                 pts.drain((k1 + 1)..k2);
                 oxbow_count += 1;
@@ -732,6 +777,12 @@ pub fn apply_deposition(
 
             // Imprint point bars, scroll ridges, and cut banks on periodic snapshots.
             if step % 5 == 4 || step + 1 == cfg.meander_steps {
+                if did_cutoff && pts.len() >= 3 {
+                    let (_, c_new, nx_new, nz_new) = compute_polyline_normals_curv(&pts);
+                    curv = c_new;
+                    nx = nx_new;
+                    nz = nz_new;
+                }
                 let phase = step as f32 * 0.7;
                 for k in 1..(pts.len().saturating_sub(1)) {
                     let cx = pts[k].0 / cfg.dx_m;
@@ -740,16 +791,8 @@ pub fn apply_deposition(
                     let r1 = (libm::ceilf(cz + rad_fp_cells) as isize).min(h as isize - 2) as usize;
                     let c0 = (libm::floorf(cx - rad_fp_cells) as isize).max(1) as usize;
                     let c1 = (libm::ceilf(cx + rad_fp_cells) as isize).min(w as isize - 2) as usize;
-                    let sign_c = if k < curv.len() && curv[k] >= 0.0 {
-                        1.0_f32
-                    } else {
-                        -1.0_f32
-                    };
-                    let (nkx, nkz) = if k < nx.len() {
-                        (nx[k], nz[k])
-                    } else {
-                        (0.0, 0.0)
-                    };
+                    let sign_c = if curv[k] >= 0.0 { 1.0_f32 } else { -1.0_f32 };
+                    let (nkx, nkz) = (nx[k], nz[k]);
 
                     for rr in r0..=r1 {
                         for cc in c0..=c1 {
@@ -760,7 +803,9 @@ pub fn apply_deposition(
                                 continue;
                             }
                             let nb = rr * w + cc;
-                            if total_elev(bedrock_h, sediment_s, nb) <= cfg.sea_level_m + 0.5 {
+                            if total_elev(bedrock_h, sediment_s, nb) <= cfg.sea_level_m + 0.5
+                                || water_kind[nb] == WaterKind::FreshwaterLake as u8
+                            {
                                 continue;
                             }
                             let side = (dx_c * nkx + dz_c * nkz) * sign_c;
@@ -1071,7 +1116,7 @@ pub fn apply_deposition(
     // 4. Upland Flat-Slope Braided Micro-Ponds (`AER-08`, > 3,300 m, S < 0.035)
     // -------------------------------------------------------------------------
     let mut pond_rng = stage_rng(cfg.seed, w as u32, h as u32, &cfg.schema_tag, "S4-POND");
-    let mut upland_cands: Vec<usize> = Vec::new();
+    let mut upland_cands: Vec<u32> = Vec::new();
     for r in 3..(h - 3) {
         for c in 3..(w - 3) {
             let idx = r * w + c;
@@ -1081,7 +1126,7 @@ pub fn apply_deposition(
             }
             let s = local_slope_tan(bedrock_h, sediment_s, w, h, r, c, cfg.dx_m);
             if s < cfg.paramo_max_slope {
-                upland_cands.push(idx);
+                upland_cands.push(idx as u32);
             }
         }
     }
@@ -1102,7 +1147,7 @@ pub fn apply_deposition(
                 break;
             }
             let pick = pond_rng.gen_range(0..cand_len);
-            let idx = upland_cands[(pick + i) % cand_len];
+            let idx = upland_cands[(pick + i) % cand_len] as usize;
             let pr = idx / w;
             let pc = idx % w;
             let too_close = pond_centers.iter().any(|&(ar, ac)| {
@@ -1113,12 +1158,13 @@ pub fn apply_deposition(
             if too_close {
                 continue;
             }
-            let rad = pond_rng.gen_range(1.2_f32..2.6_f32);
+            let rad = pond_rng.gen_range(1.6_f32..2.8_f32);
             let phase = pond_rng.gen_range(0.0_f32..std::f32::consts::TAU);
-            let depth = pond_rng.gen_range(0.6_f32..1.6_f32);
-            let center_e = total_elev(bedrock_h, sediment_s, idx);
-            let r_lim = (rad + 1.5).ceil() as isize;
+            let depth = pond_rng.gen_range(0.85_f32..1.75_f32);
+            let r_lim = (rad + 2.0).ceil() as isize;
 
+            let mut interior: Vec<(usize, f32)> = Vec::new();
+            let mut min_rim_e = f32::INFINITY;
             for dr in -r_lim..=r_lim {
                 for dc in -r_lim..=r_lim {
                     let nr = pr as isize + dr;
@@ -1130,22 +1176,35 @@ pub fn apply_deposition(
                     let theta = libm::atan2f(dr as f32, dc as f32);
                     let r_eff = rad
                         * (1.0
-                            + 0.28 * libm::sinf(3.0 * theta + phase)
-                            + 0.15 * libm::cosf(5.0 * theta - phase));
+                            + 0.25 * libm::sinf(3.0 * theta + phase)
+                            + 0.12 * libm::cosf(5.0 * theta - phase));
+                    let nb = nr as usize * w + nc as usize;
                     if dist <= r_eff {
-                        let nb = nr as usize * w + nc as usize;
-                        let cut = depth * (1.0 - 0.5 * (dist / r_eff.max(0.5)));
-                        if sediment_s[nb] >= cut {
-                            sediment_s[nb] -= cut;
-                        } else {
-                            let rem = cut - sediment_s[nb].max(0.0);
-                            sediment_s[nb] = 0.0;
-                            bedrock_h[nb] -= rem;
-                        }
-                        water_kind[nb] = WaterKind::FreshwaterLake as u8;
-                        water_h_m[nb] = center_e - 0.1;
+                        interior.push((nb, dist / r_eff.max(0.5)));
+                    } else if dist <= r_eff + 1.5 {
+                        min_rim_e = min_rim_e.min(total_elev(bedrock_h, sediment_s, nb));
                     }
                 }
+            }
+            if interior.len() < 4 || !min_rim_e.is_finite() {
+                continue;
+            }
+            let pond_water_h = min_rim_e - 0.05;
+            for (nb, frac) in interior {
+                let target_bed = min_rim_e - 0.65 - (depth - 0.65).max(0.2) * (1.0 - 0.5 * frac);
+                let cur_e = total_elev(bedrock_h, sediment_s, nb);
+                if cur_e > target_bed {
+                    let cut = cur_e - target_bed;
+                    if sediment_s[nb] >= cut {
+                        sediment_s[nb] -= cut;
+                    } else {
+                        let rem = cut - sediment_s[nb].max(0.0);
+                        sediment_s[nb] = 0.0;
+                        bedrock_h[nb] -= rem;
+                    }
+                }
+                water_kind[nb] = WaterKind::FreshwaterLake as u8;
+                water_h_m[nb] = pond_water_h;
             }
             // Link to previous nearby pond with shallow anastomosing braid.
             if let Some(&(prev_r, prev_c)) = pond_centers.last() {
@@ -1613,5 +1672,186 @@ mod tests {
             "expected >= 10 upland micro-ponds"
         );
         assert!(water_kind.contains(&(WaterKind::FreshwaterLake as u8)));
+    }
+
+    #[test]
+    fn s4_to_s6_chain_preserves_coherent_ponds_and_step4_cutoff_scrolls() {
+        // 1. Upland micro-ponds chained from S4 -> S6 leave zero FreshwaterLake cells with lake_id == 0.
+        let n = 64;
+        let dx_m = 10.0_f32;
+        let mut bedrock = vec![0.0_f32; n * n];
+        let mut sed = vec![4.0_f32; n * n];
+        let mut water_h = vec![0.0_f32; n * n];
+        let mut water_kind = vec![0_u8; n * n];
+        let q = vec![0.05_f32; n * n];
+        let rw = vec![0.0_f32; n * n];
+        let rd = vec![0.0_f32; n * n];
+        let fx = vec![1.0_f32; n * n];
+        let fz = vec![0.0_f32; n * n];
+        let is_ch = vec![false; n * n];
+
+        for r in 0..n {
+            for c in 0..n {
+                let idx = r * n + c;
+                if r == 0 || r + 1 == n || c == 0 || c + 1 == n {
+                    bedrock[idx] = -5.0;
+                    sed[idx] = 0.0;
+                } else {
+                    bedrock[idx] = 3_550.0 + c as f32 * 0.08;
+                }
+                water_h[idx] = bedrock[idx] + sed[idx];
+            }
+        }
+        let s4_in = DepositionInput {
+            width: n,
+            height: n,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            river_d_m: &rd,
+            flow_dir_x: &fx,
+            flow_dir_z: &fz,
+            is_channel: &is_ch,
+            d8_receiver: None,
+        };
+        let s4_cfg = DepositionConfig {
+            dx_m,
+            target_micro_ponds: 8,
+            ..DepositionConfig::default()
+        };
+        let s4 = apply_deposition(
+            &mut bedrock,
+            &mut sed,
+            &mut water_h,
+            &mut water_kind,
+            &s4_in,
+            &s4_cfg,
+        )
+        .expect("s4 ponds");
+        assert!(s4.micro_pond_count >= 4);
+
+        let mut total_e: Vec<f32> = bedrock
+            .iter()
+            .zip(sed.iter())
+            .map(|(&b, &s)| b + s)
+            .collect();
+        let precip = vec![2.2_f32; n * n];
+        let pet = vec![0.6_f32; n * n];
+        let s6_in = crate::lakes_falls::LakesFallsInput {
+            width: n,
+            height: n,
+            precip_m_yr: &precip,
+            pet_m_yr: &pet,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            is_channel: &is_ch,
+        };
+        let s6 = crate::lakes_falls::generate_lakes_and_waterfalls(
+            &mut total_e,
+            &mut sed,
+            &mut water_h,
+            &mut water_kind,
+            &s6_in,
+            &crate::lakes_falls::LakesFallsConfig::default(),
+        )
+        .expect("s6 after s4");
+        assert!(!s6.basins.is_empty(), "S6 should retain S4 upland ponds");
+        for (i, &wk_i) in water_kind.iter().enumerate() {
+            if wk_i == WaterKind::FreshwaterLake as u8 {
+                assert_ne!(
+                    s6.lake_id[i], 0,
+                    "S4->S6 cell {i} marked FreshwaterLake without S6 lake_id"
+                );
+            }
+        }
+
+        // 2. Step-4 cutoff (step % 5 == 4) recomputes scroll normals cleanly without panic or corruption.
+        let m = 128;
+        let mut m_bed = vec![40.0_f32; m * m];
+        let mut m_sed = vec![6.0_f32; m * m];
+        let mut m_wh = vec![46.0_f32; m * m];
+        let mut m_wk = vec![0_u8; m * m];
+        let mut m_q = vec![0.0_f32; m * m];
+        let mut m_rw = vec![0.0_f32; m * m];
+        let mut m_rd = vec![0.0_f32; m * m];
+        let m_fx = vec![1.0_f32; m * m];
+        let m_fz = vec![0.0_f32; m * m];
+        let mut m_ch = vec![false; m * m];
+        let mut m_d8 = vec![crate::hydrology::NO_RECEIVER; m * m];
+        for r in 0..m {
+            for c in 0..m {
+                let idx = r * m + c;
+                m_bed[idx] = 50.0 - 0.02 * c as f32;
+                m_wh[idx] = m_bed[idx] + m_sed[idx];
+            }
+        }
+        let mut chain: Vec<usize> = Vec::new();
+        for c in 10..=62 {
+            chain.push(64 * m + c);
+        }
+        for k in 1..48 {
+            let frac = k as f32 / 48.0;
+            let th = frac * std::f32::consts::TAU;
+            let c = (63.5 + (frac - 0.5) * 2.0 - 11.0 * libm::sinf(th))
+                .round()
+                .clamp(10.0, 118.0) as usize;
+            let r = (65.0 + 16.0 * (1.0 - libm::cosf(th))).round() as usize;
+            let idx = r * m + c;
+            if !chain.contains(&idx) {
+                chain.push(idx);
+            }
+        }
+        for c in 64..=114 {
+            let idx = 64 * m + c;
+            if !chain.contains(&idx) {
+                chain.push(idx);
+            }
+        }
+        let mut full: Vec<usize> = Vec::new();
+        for w_pair in chain.windows(2) {
+            let mut cr = (w_pair[0] / m) as isize;
+            let mut cc = (w_pair[0] % m) as isize;
+            let tr = (w_pair[1] / m) as isize;
+            let tc = (w_pair[1] % m) as isize;
+            while cr != tr || cc != tc {
+                let idx = cr as usize * m + cc as usize;
+                if !full.contains(&idx) {
+                    full.push(idx);
+                }
+                cr += (tr - cr).signum();
+                cc += (tc - cc).signum();
+            }
+        }
+        if let Some(&last) = chain.last() {
+            if !full.contains(&last) {
+                full.push(last);
+            }
+        }
+        for pair in full.windows(2) {
+            m_d8[pair[0]] = pair[1] as u32;
+            m_ch[pair[0]] = true;
+            m_q[pair[0]] = 12.0;
+            m_rw[pair[0]] = 12.0;
+            m_rd[pair[0]] = 0.8;
+        }
+        let m_in = DepositionInput {
+            width: m,
+            height: m,
+            discharge_q_m3_s: &m_q,
+            river_w_m: &m_rw,
+            river_d_m: &m_rd,
+            flow_dir_x: &m_fx,
+            flow_dir_z: &m_fz,
+            is_channel: &m_ch,
+            d8_receiver: Some(&m_d8),
+        };
+        let m_cfg = DepositionConfig {
+            dx_m: 10.0,
+            meander_steps: 5, // step 4 is `step % 5 == 4`
+            ..DepositionConfig::default()
+        };
+        let m_out = apply_deposition(&mut m_bed, &mut m_sed, &mut m_wh, &mut m_wk, &m_in, &m_cfg)
+            .expect("step4 meander");
+        assert!(m_out.meander_scroll.iter().all(|v| v.is_finite()));
+        assert!(m_out.meander_scroll.iter().any(|&v| v > 0.1));
     }
 }

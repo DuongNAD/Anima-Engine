@@ -428,7 +428,7 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
 
     struct Cand {
         score: f32,
-        idx: usize,
+        idx: u32,
         slope_deg: f32,
         dh_dx: f32,
         dh_dz: f32,
@@ -445,7 +445,7 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
                 continue;
             }
             let elev = input.total_h_m[idx];
-            if elev <= cfg.sea_level_m + 8.0 {
+            if !elev.is_finite() || elev <= cfg.sea_level_m + 8.0 {
                 continue;
             }
             if input.water_kind[idx] != WaterKind::None as u8 {
@@ -464,15 +464,24 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
                 continue;
             }
 
-            let dh_dx = (input.total_h_m[idx + 1] - input.total_h_m[idx - 1]) * inv_2dx;
-            let dh_dz =
-                (input.total_h_m[(r + 1) * w + c] - input.total_h_m[(r - 1) * w + c]) * inv_2dx;
+            let h_r = input.total_h_m[idx + 1];
+            let h_l = input.total_h_m[idx - 1];
+            let h_d = input.total_h_m[(r + 1) * w + c];
+            let h_u = input.total_h_m[(r - 1) * w + c];
+            if !h_r.is_finite() || !h_l.is_finite() || !h_d.is_finite() || !h_u.is_finite() {
+                continue;
+            }
+            let dh_dx = (h_r - h_l) * inv_2dx;
+            let dh_dz = (h_d - h_u) * inv_2dx;
             let slope_deg =
                 libm::atanf(libm::hypotf(dh_dx, dh_dz)) * (180.0 / std::f32::consts::PI);
+            if !dh_dx.is_finite() || !dh_dz.is_finite() || !slope_deg.is_finite() {
+                continue;
+            }
             let jitter: f32 = rng.gen_range(0.0_f32..3.0_f32);
             cands.push(Cand {
                 score: slope_deg + jitter,
-                idx,
+                idx: idx as u32,
                 slope_deg,
                 dh_dx,
                 dh_dz,
@@ -490,7 +499,6 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
         .clamp(cfg.min_entrances, cfg.max_entrances);
 
     let mut chosen: Vec<&Cand> = Vec::with_capacity(target);
-    let mut chosen_set = vec![false; n];
 
     // Tiered slope fallback: steep cliffs (>=20 deg), moderate slopes (>=5 deg), then any (>=0 deg).
     for &min_slope in &[20.0_f32, 5.0_f32, 0.0_f32] {
@@ -501,20 +509,21 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
             if chosen.len() >= target {
                 break;
             }
-            if cand.slope_deg < min_slope || chosen_set[cand.idx] {
+            if cand.slope_deg < min_slope || chosen.iter().any(|o| o.idx == cand.idx) {
                 continue;
             }
-            let r = (cand.idx / w) as f64;
-            let c = (cand.idx % w) as f64;
+            let cand_idx = cand.idx as usize;
+            let r = (cand_idx / w) as f64;
+            let c = (cand_idx % w) as f64;
             let too_close = chosen.iter().any(|other| {
-                let or = (other.idx / w) as f64;
-                let oc = (other.idx % w) as f64;
+                let o_idx = other.idx as usize;
+                let or = (o_idx / w) as f64;
+                let oc = (o_idx % w) as f64;
                 let dr = r - or;
                 let dc = c - oc;
                 dr * dr + dc * dc < min_dist_sq
             });
             if !too_close {
-                chosen_set[cand.idx] = true;
                 chosen.push(cand);
             }
         }
@@ -534,13 +543,14 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
     let mut nodes: Vec<CaveNode> = Vec::new();
     let mut edges: Vec<CaveEdge> = Vec::new();
     let mut entrances: Vec<CaveEntrance> = Vec::new();
-    let mut system_roots: Vec<(usize, u32, u8)> = Vec::new();
+    let mut system_roots: Vec<(u32, u32, u8)> = Vec::new();
 
     for cand in chosen {
-        let r = cand.idx / w;
-        let c = cand.idx % w;
-        let lith = input.lithology_id[cand.idx];
-        let elev = input.total_h_m[cand.idx];
+        let cand_idx = cand.idx as usize;
+        let r = cand_idx / w;
+        let c = cand_idx % w;
+        let lith = input.lithology_id[cand_idx];
+        let elev = input.total_h_m[cand_idx];
         let x0 = (c as f32 + 0.5) * cfg.dx_m;
         let z0 = (r as f32 + 0.5) * cfg.dx_m;
 
@@ -588,7 +598,7 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
             elevation_m: elev,
             clearance_m,
         });
-        cave_mask[cand.idx] = 2;
+        cave_mask[cand_idx] = 2;
 
         // March 4..=8 subterranean passage segments with occasional karst branching.
         let seg_count = rng.gen_range(4_usize..=8_usize);
@@ -609,7 +619,11 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
             let gr = (cz / cfg.dx_m).floor() as usize;
             let g_idx = gr.min(h - 1) * w + gc.min(w - 1);
             let surf_h = input.total_h_m[g_idx];
-            let node_y = surf_h - 6.5 - (s as f32 * 2.5);
+            let node_y = if surf_h.is_finite() {
+                surf_h - 6.5 - (s as f32 * 2.5)
+            } else {
+                nodes[prev_node as usize].y_m - 2.5
+            };
 
             let new_idx = nodes.len() as u32;
             nodes.push(CaveNode {
@@ -648,9 +662,15 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
                 let bg_idx = ((bz / cfg.dx_m).floor() as usize).min(h - 1) * w
                     + ((bx / cfg.dx_m).floor() as usize).min(w - 1);
                 let br_idx = nodes.len() as u32;
+                let br_surf = input.total_h_m[bg_idx];
+                let br_y = if br_surf.is_finite() {
+                    br_surf - 12.0
+                } else {
+                    node_y - 4.0
+                };
                 nodes.push(CaveNode {
                     x_m: bx,
-                    y_m: input.total_h_m[bg_idx] - 12.0,
+                    y_m: br_y,
                     z_m: bz,
                     radius_m: rng.gen_range(1.6_f32..3.2_f32),
                     light_decay: 0.30,
@@ -984,5 +1004,45 @@ mod tests {
         };
         let cfg = CaveConfig::default();
         assert!(generate_caves(&input, &cfg).is_err());
+    }
+
+    #[cfg(feature = "generate")]
+    #[test]
+    fn caves_skips_nan_neighbor_cells_and_produces_valid_anmc_roundtrip() {
+        let n = 128;
+        let mut total_h = vec![0.0_f32; n * n];
+        for r in 0..n {
+            for c in 0..n {
+                total_h[r * n + c] = 120.0 + c as f32 * 4.5 + 15.0 * libm::sinf(r as f32 * 0.25);
+            }
+        }
+        // Inject a NaN cell right in the middle of eligible karst terrain.
+        total_h[64 * n + 64] = f32::NAN;
+        let lith = vec![2_u8; n * n];
+        let wk = vec![0_u8; n * n];
+        let temp = vec![20.0_f32; n * n];
+        let glacier = vec![0.0_f32; n * n];
+        let dom = vec![BiomeId::Forest as u8; n * n];
+
+        let input = CaveInput {
+            width: n,
+            height: n,
+            total_h_m: &total_h,
+            lithology_id: &lith,
+            water_kind: &wk,
+            temp_c: &temp,
+            glacier_h_m: &glacier,
+            dominant_biome: &dom,
+        };
+        let cfg = CaveConfig::default();
+        let field = generate_caves(&input, &cfg).expect("caves with NaN neighbor");
+        assert!((30..=48).contains(&field.network.entrances.len()));
+        for e in &field.network.entrances {
+            assert!(e.yaw_rad.is_finite());
+            assert!(e.elevation_m.is_finite());
+            assert!(e.clearance_m.is_finite());
+        }
+        let roundtrip = CaveNetwork::from_bytes(&field.network.to_bytes()).expect("ANMC roundtrip");
+        assert_eq!(roundtrip, field.network);
     }
 }

@@ -108,6 +108,27 @@ impl ClimateConfig {
         if !self.dx_m.is_finite() || self.dx_m <= 0.0 {
             return Err(err("dx_m must be finite and > 0"));
         }
+        if !self.sea_level_m.is_finite()
+            || !self.latitude_deg.is_finite()
+            || !self.t0_sea_level_c.is_finite()
+            || !self.maritime_buffer_c.is_finite()
+            || !self.aspect_temp_amp_c.is_finite()
+            || !self.ela_aspect_amp_m.is_finite()
+            || !self.ela_precip_amp_m.is_finite()
+            || !self.wind_deflect_gain.is_finite()
+        {
+            return Err(err("climate configuration scalar fields must be finite"));
+        }
+        if !self.maritime_decay_m.is_finite() || self.maritime_decay_m <= 0.0 {
+            return Err(err("maritime_decay_m must be finite and > 0"));
+        }
+        if !self.moisture_scale_height_m.is_finite() || self.moisture_scale_height_m <= 0.0 {
+            return Err(err("moisture_scale_height_m must be finite and > 0"));
+        }
+        if !self.windward_precip_target_m_yr.is_finite() || self.windward_precip_target_m_yr <= 0.0
+        {
+            return Err(err("windward_precip_target_m_yr must be finite and > 0"));
+        }
         if !self.ela_base_m.is_finite() || !(4_800.0..=5_100.0).contains(&self.ela_base_m) {
             return Err(err("ela_base_m must lie within [4800.0, 5100.0] m"));
         }
@@ -376,6 +397,11 @@ pub fn compute_climate(
             ),
         });
     }
+    if elev_m.iter().any(|h| !h.is_finite()) {
+        return Err(ClimateError {
+            message: "elev_m contains non-finite values".to_owned(),
+        });
+    }
     if let Some(acc) = flow_acc_m2 {
         if acc.len() != n {
             return Err(ClimateError {
@@ -526,7 +552,6 @@ pub fn compute_climate(
     let s_noon_y = libm::cosf(lat_rad);
     let s_noon_z = libm::sinf(lat_rad);
 
-    let inv_2dx = 0.5 / cfg.dx_m;
     let denom_x = (width - 1) as f32;
     let denom_z = (height - 1) as f32;
 
@@ -616,7 +641,6 @@ pub fn compute_climate(
                     let aridity_frac = p / (p + pet);
                     let twi_frac = ((twi_val - 4.0) / 10.0).clamp(0.0, 1.0);
                     m_row[c] = (0.78 * aridity_frac + 0.22 * twi_frac).clamp(0.0, 1.0);
-                    let _ = inv_2dx;
                 }
             },
         );
@@ -636,9 +660,12 @@ pub fn compute_climate(
 
 /// 2-pass climate–erosion coupling helper (`§2.2.7` item 4).
 ///
-/// Pass 1 solves on `(src_w, src_h)` (e.g., `512^2`) and bilinearly upsamples onto `(target_w, target_h)`
-/// (`1024^2`) when `flow_acc_m2` is `None`; Pass 2 computes directly at `(target_w, target_h)` when
-/// routed drainage area `flow_acc_m2` is provided.
+/// # Resolution contract
+/// `cfg.dx_m` MUST be the cell spacing (in metres) of the source `(src_w, src_h)` grid `elev_m`.
+/// Pass 1 solves on `(src_w, src_h)` (e.g., `512^2`) and bilinearly upsamples onto `(target_w,
+/// target_h)` (`1024^2`) when `flow_acc_m2` is `None`. When `flow_acc_m2` is provided at
+/// `(target_w, target_h)`, Pass 2 automatically scales `target_dx = cfg.dx_m * (src_w / target_w)`
+/// and recomputes full-resolution `twi` and `moisture` on the upsampled grid.
 pub fn couple_climate_for_resolution(
     elev_m: &[f32],
     src_w: usize,
@@ -952,5 +979,31 @@ mod tests {
             .filter(|(&h, &ela)| h >= ela)
             .count();
         assert_eq!(above_ela, 0, "flattened DEM must have zero cells >= ELA");
+    }
+
+    #[test]
+    fn climate_rejects_invalid_config_and_non_finite_elevation() {
+        let bad_decay = ClimateConfig {
+            maritime_decay_m: 0.0,
+            ..ClimateConfig::default()
+        };
+        assert!(bad_decay.validate().is_err());
+
+        let bad_scale_h = ClimateConfig {
+            moisture_scale_height_m: -10.0,
+            ..ClimateConfig::default()
+        };
+        assert!(bad_scale_h.validate().is_err());
+
+        let bad_precip = ClimateConfig {
+            windward_precip_target_m_yr: f32::NAN,
+            ..ClimateConfig::default()
+        };
+        assert!(bad_precip.validate().is_err());
+
+        let mut elev = vec![100.0_f32; 16 * 16];
+        elev[5 * 16 + 5] = f32::NAN;
+        let cfg = ClimateConfig::default();
+        assert!(compute_climate(&elev, 16, 16, None, &cfg).is_err());
     }
 }
