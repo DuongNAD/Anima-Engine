@@ -456,7 +456,11 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
             if input.water_kind[idx] != WaterKind::None as u8 {
                 continue;
             }
-            if input.glacier_h_m[idx] > 0.0 || input.temp_c[idx] <= 0.5 {
+            if !input.glacier_h_m[idx].is_finite()
+                || input.glacier_h_m[idx] > 0.0
+                || !input.temp_c[idx].is_finite()
+                || input.temp_c[idx] <= 0.5
+            {
                 continue;
             }
             let dom = input.dominant_biome[idx];

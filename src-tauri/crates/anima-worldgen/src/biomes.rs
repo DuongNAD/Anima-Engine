@@ -338,6 +338,11 @@ pub fn classify_biomes(
             message: "dx_m must be finite and > 0".to_owned(),
         });
     }
+    if !cfg.wind_dir.0.is_finite() || !cfg.wind_dir.1.is_finite() {
+        return Err(BiomeError {
+            message: "wind_dir components must be finite".to_owned(),
+        });
+    }
 
     let coast_dist_u16 =
         compute_coast_distance_u16(input.total_h_m, input.water_kind, w, h, cfg.sea_level_m);
@@ -558,24 +563,27 @@ pub fn classify_biomes(
                             ll[BiomeId::Beach as usize] = 3.2 + gate_ll(d_gate);
                         }
 
-                        // 2. Mangrove (warm, wet, calm coast/delta <= 550 m, h <= 22 m, slope <= 16 deg).
-                        if coast_d_m <= 550.0 && h_m <= 22.0 && slope_deg <= 16.0 && moist >= 0.40 {
-                            let mg = smoothstep_c2(550.0, 80.0, coast_d_m)
-                                * smoothstep_c2(22.0, 2.0, h_m)
-                                * smoothstep_c2(16.0, 3.0, slope_deg)
-                                * smoothstep_c2(0.40, 0.62, moist)
+                        // 2. Mangrove (warm, wet, calm coast/delta <= 640 m, h <= 36 m, slope <= 20 deg).
+                        if coast_d_m <= 640.0 && h_m <= 36.0 && slope_deg <= 20.0 && moist >= 0.32 {
+                            let mg = smoothstep_c2(640.0, 80.0, coast_d_m)
+                                * smoothstep_c2(36.0, 3.0, h_m)
+                                * smoothstep_c2(20.0, 4.0, slope_deg)
+                                * smoothstep_c2(0.32, 0.56, moist)
                                 * smoothstep_c2(20.0, 24.5, t_c);
-                            ll[BiomeId::Mangrove as usize] = 4.6 + 1.2 * alluv + gate_ll(mg);
+                            ll[BiomeId::Mangrove as usize] = 4.7 + 1.2 * alluv + gate_ll(mg);
                         }
 
-                        // 3. Swamp (lowland wetland/floodplain: TWI / alluvial / moist > 0.60, slope < 14 deg).
-                        if h_w <= 420.0 && slope_deg <= 14.0 {
-                            let wet_g = smoothstep_c2(0.58, 0.76, moist_w)
-                                * smoothstep_c2(14.0, 4.0, slope_deg)
-                                * smoothstep_c2(420.0, 80.0, h_w);
-                            let twi_boost = smoothstep_c2(6.5, 10.0, twi_v);
+                        // 3. Swamp (lowland wetland/floodplain: high moisture or convergent TWI/alluvial hollows).
+                        if h_w <= 540.0 && slope_deg <= 15.0 {
+                            let twi_boost = smoothstep_c2(6.5, 10.2, twi_v);
+                            let wetland_idx =
+                                (moist_w + 0.18 * twi_boost + 0.14 * alluv).clamp(0.0, 1.0);
+                            let wet_g = smoothstep_c2(0.32, 0.46, moist_w)
+                                * smoothstep_c2(0.44, 0.68, wetland_idx)
+                                * smoothstep_c2(15.0, 4.0, slope_deg)
+                                * smoothstep_c2(540.0, 80.0, h_w);
                             ll[BiomeId::Swamp as usize] =
-                                2.4 + 1.4 * twi_boost + 1.0 * alluv + gate_ll(wet_g);
+                                2.65 + 1.45 * twi_boost + 1.0 * alluv + gate_ll(wet_g);
                         }
 
                         // 4. Jungle (humid windward lowland/foothill rainforest).
@@ -663,14 +671,14 @@ pub fn classify_biomes(
                             + gauss_ll(t_w, 4.2, 3.0)
                             + gate_ll(al_gate);
 
-                        // 13. Bog (high-páramo cushion peatlands & gentle wet hollows > 2,800 m).
-                        let bg_gate = smoothstep_c2(2_750.0, 3_050.0, h_w)
-                            * smoothstep_c2(4_450.0, 4_000.0, h_w)
-                            * smoothstep_c2(26.0, 16.0, slope_deg)
-                            * smoothstep_c2(0.34, 0.48, moist_w);
-                        ll[BiomeId::Bog as usize] = 3.65
-                            + 1.2 * smoothstep_c2(4.5, 7.5, twi_v)
-                            + 0.6 * smoothstep_c2(0.42, 0.62, moist_w)
+                        // 13. Bog (high-páramo cushion peatlands & gentle wet hollows > 2,650 m).
+                        let bg_gate = smoothstep_c2(2_650.0, 2_950.0, h_w)
+                            * smoothstep_c2(4_550.0, 4_150.0, h_w)
+                            * smoothstep_c2(28.0, 18.0, slope_deg)
+                            * smoothstep_c2(0.32, 0.44, moist_w);
+                        ll[BiomeId::Bog as usize] = 3.85
+                            + 1.3 * smoothstep_c2(4.0, 7.2, twi_v)
+                            + 0.7 * smoothstep_c2(0.38, 0.58, moist_w)
                             + gate_ll(bg_gate);
 
                         // 14. Tundra (superpáramo cushion grassland 3,850 m .. ELA).
@@ -1016,6 +1024,15 @@ mod tests {
             assert!(!ids.contains(&(BiomeId::Chaparral as u8)));
             assert!(!ids.contains(&(BiomeId::Steppe as u8)));
         }
+
+        for bad_wind in [(f32::NAN, 0.0), (1.0, f32::INFINITY)] {
+            let bad_cfg = BiomeConfig {
+                dx_m,
+                wind_dir: bad_wind,
+                ..BiomeConfig::default()
+            };
+            assert!(classify_biomes(&input, &bad_cfg).is_err());
+        }
     }
 
     #[test]
@@ -1029,7 +1046,15 @@ mod tests {
         };
         use crate::tectonic::generate_uplift;
 
-        for &seed in &[0x0057_5632_2026_1120_u64, 42_u64, 1_u64, 0xdead_beef_u64] {
+        for &seed in &[
+            0x0057_5632_2026_1120_u64,
+            42_u64,
+            1_u64,
+            0xdead_beef_u64,
+            101_u64,
+            707_u64,
+            314_159_u64,
+        ] {
             let n = 512usize;
             let wcfg = WorldV2Config::for_size(seed, n as u32);
             let dx_m = wcfg.cell_size_m();

@@ -634,12 +634,21 @@ pub fn compute_climate(
                     let pet = (0.10 + 1.28 * libm::powf(t_term, 1.35)).clamp(0.08, 1.65);
                     pet_row[c] = pet;
 
-                    // TWI = ln((A_spec + dx) / max(tan(beta), 0.002)).
-                    let a_spec = match flow_acc_m2 {
-                        Some(acc) => (acc[idx] as f32) / cfg.dx_m,
-                        None => cfg.dx_m,
+                    // TWI = ln((A_spec + dx) / max(tan(beta), 0.002)) computed in f64 to avoid
+                    // f32 overflow on extreme finite flow accumulation values.
+                    let twi_val = match flow_acc_m2 {
+                        Some(acc) => {
+                            let dx = f64::from(cfg.dx_m);
+                            let denom = f64::from(slope_tan.max(0.002));
+                            let log_num = if acc[idx] > 1e300_f64 {
+                                libm::log(acc[idx]) - libm::log(dx)
+                            } else {
+                                libm::log(acc[idx] / dx + dx)
+                            };
+                            (log_num - libm::log(denom)) as f32
+                        }
+                        None => libm::logf((cfg.dx_m + cfg.dx_m) / slope_tan.max(0.002)),
                     };
-                    let twi_val = libm::logf((a_spec + cfg.dx_m) / slope_tan.max(0.002));
                     twi_row[c] = twi_val;
 
                     // Normalized moisture in [0, 1] combining P/(P+PET) and valley wetness TWI.
@@ -682,6 +691,11 @@ pub fn couple_climate_for_resolution(
 ) -> Result<ClimateField, ClimateError> {
     if src_w == target_w && src_h == target_h {
         return compute_climate(elev_m, target_w, target_h, flow_acc_m2, cfg);
+    }
+    if target_w < 2 || target_h < 2 {
+        return Err(ClimateError {
+            message: format!("target dimensions {}x{} must be >= 2x2", target_w, target_h),
+        });
     }
     if elev_m.len() != src_w * src_h {
         return Err(ClimateError {
@@ -737,8 +751,14 @@ pub fn couple_climate_for_resolution(
                     let hz =
                         (elev_up[r_hi * target_w + c] - elev_up[r_lo * target_w + c]) / dz_span;
                     let slope_tan = libm::hypotf(hx, hz);
-                    let a_spec = (acc[idx] as f32) / target_dx;
-                    let twi_val = libm::logf((a_spec + target_dx) / slope_tan.max(0.002));
+                    let dx = f64::from(target_dx);
+                    let denom = f64::from(slope_tan.max(0.002));
+                    let log_num = if acc[idx] > 1e300_f64 {
+                        libm::log(acc[idx]) - libm::log(dx)
+                    } else {
+                        libm::log(acc[idx] / dx + dx)
+                    };
+                    let twi_val = (log_num - libm::log(denom)) as f32;
                     twi_row[c] = twi_val;
                     let p = upsampled.precip_m_yr[idx];
                     let pet = upsampled.pet_m_yr[idx];
@@ -1039,5 +1059,22 @@ mod tests {
             &cfg
         )
         .is_err());
+
+        // Reject target dimensions < 2x2 cleanly without panicking in resample_bilinear.
+        assert!(couple_climate_for_resolution(&clean_elev, 16, 16, 1, 1, None, &cfg).is_err());
+        assert!(couple_climate_for_resolution(&clean_elev, 16, 16, 1, 16, None, &cfg).is_err());
+        assert!(couple_climate_for_resolution(&clean_elev, 16, 16, 16, 1, None, &cfg).is_err());
+
+        // Extreme finite f64 flow accumulation must yield finite TWI (never f32::INFINITY).
+        let huge_acc = vec![1e40_f64; 16 * 16];
+        let huge_clim = compute_climate(&clean_elev, 16, 16, Some(&huge_acc), &cfg)
+            .expect("huge finite flow_acc_m2");
+        assert!(huge_clim.twi.iter().all(|v| v.is_finite()));
+
+        let huge_up_acc = vec![1e40_f64; 32 * 32];
+        let huge_up_clim =
+            couple_climate_for_resolution(&clean_elev, 16, 16, 32, 32, Some(&huge_up_acc), &cfg)
+                .expect("huge finite upsampled flow_acc_m2");
+        assert!(huge_up_clim.twi.iter().all(|v| v.is_finite()));
     }
 }
