@@ -72,5 +72,11 @@ jobs:
 
       - name: cấm thêm nguồn phi tất định vào src
         run: |
-          n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true)
-          [ "$n" -eq 0 ] || { echo "::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng."; exit 1; }
+          hits=$(grep -rnE '(^|[^[:alnum:]_])(thread_rng|ThreadRng)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])rand[[:space:]]*::[[:space:]]*rng([^[:alnum:]_]|$)' src-tauri/src src-tauri/crates --include='*.rs' \
+            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+          if [ -n "$hits" ]; then
+            n=$(printf '%s\n' "$hits" | wc -l | tr -d ' ')
+            printf '%s\n' "$hits"
+            echo "::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng."
+            exit 1
+          fi
