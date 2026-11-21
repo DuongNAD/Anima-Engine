@@ -521,12 +521,12 @@ pub fn classify_biomes(
                             2.45 + gauss_ll(h_m, ela + 150.0, 360.0) + gate_ll(snow_slope);
 
                         if h_m >= glacier_hard_floor_m && slope_deg <= cfg.glacier_max_slope_deg {
-                            let cirque = smoothstep_c2(cfg.glacier_max_slope_deg, 18.0, slope_deg);
-                            let ice_boost = smoothstep_c2(2.5, 14.0, glac_row[c]);
-                            ll[BiomeId::Glacier as usize] = 1.35
+                            let cirque = smoothstep_c2(cfg.glacier_max_slope_deg, 16.0, slope_deg);
+                            let ice_boost = smoothstep_c2(0.5, 6.5, glac_row[c]);
+                            ll[BiomeId::Glacier as usize] = 1.85
                                 + 2.4 * ice_boost
                                 + gate_ll(cirque)
-                                + gauss_ll(h_m, ela + 420.0, 460.0);
+                                + gauss_ll(h_m, ela + 320.0, 460.0);
                         }
                     } else {
                         // Sub-nival terrestrial + coastal strip (14 zoned biomes + Beach).
@@ -558,14 +558,14 @@ pub fn classify_biomes(
                             ll[BiomeId::Beach as usize] = 3.2 + gate_ll(d_gate);
                         }
 
-                        // 2. Mangrove (warm, wet, calm coast/delta <= 400 m, h <= 18 m, slope <= 14 deg).
-                        if coast_d_m <= 400.0 && h_m <= 18.0 && slope_deg <= 14.0 && moist >= 0.45 {
-                            let mg = smoothstep_c2(400.0, 50.0, coast_d_m)
-                                * smoothstep_c2(18.0, 2.0, h_m)
-                                * smoothstep_c2(14.0, 3.0, slope_deg)
-                                * smoothstep_c2(0.45, 0.68, moist)
-                                * smoothstep_c2(21.0, 25.0, t_c);
-                            ll[BiomeId::Mangrove as usize] = 3.8 + 1.2 * alluv + gate_ll(mg);
+                        // 2. Mangrove (warm, wet, calm coast/delta <= 550 m, h <= 22 m, slope <= 16 deg).
+                        if coast_d_m <= 550.0 && h_m <= 22.0 && slope_deg <= 16.0 && moist >= 0.40 {
+                            let mg = smoothstep_c2(550.0, 80.0, coast_d_m)
+                                * smoothstep_c2(22.0, 2.0, h_m)
+                                * smoothstep_c2(16.0, 3.0, slope_deg)
+                                * smoothstep_c2(0.40, 0.62, moist)
+                                * smoothstep_c2(20.0, 24.5, t_c);
+                            ll[BiomeId::Mangrove as usize] = 4.6 + 1.2 * alluv + gate_ll(mg);
                         }
 
                         // 3. Swamp (lowland wetland/floodplain: TWI / alluvial / moist > 0.60, slope < 14 deg).
@@ -598,12 +598,12 @@ pub fn classify_biomes(
                             + gate_ll(gr_gate);
 
                         // 6. Desert (driest leeward sandy pocket & thorn scrub).
-                        let d_gate = smoothstep_c2(0.55, 0.30, p_w)
-                            * smoothstep_c2(0.32, 0.18, moist_w)
-                            * smoothstep_c2(20.0, 8.0, slope_deg);
-                        ll[BiomeId::Desert as usize] = 3.1
-                            + gauss_ll(moist_w, 0.14, 0.09)
-                            + gauss_ll(p_w, 0.22, 0.14)
+                        let d_gate = smoothstep_c2(0.66, 0.28, p_w)
+                            * smoothstep_c2(0.44, 0.16, moist_w)
+                            * smoothstep_c2(22.0, 8.0, slope_deg);
+                        ll[BiomeId::Desert as usize] = 3.05
+                            + gauss_ll(moist_w, 0.16, 0.11)
+                            + gauss_ll(p_w, 0.22, 0.16)
                             + 0.6 * smoothstep_c2(0.0, 6.0, dune_row[c])
                             + gate_ll(d_gate);
 
@@ -619,7 +619,7 @@ pub fn classify_biomes(
                         let sv_gate = smoothstep_c2(1_250.0, 750.0, h_w)
                             * smoothstep_c2(24.0, 10.0, slope_deg);
                         ll[BiomeId::Savanna as usize] = 2.25
-                            + gauss_ll(moist_w, 0.34, 0.10)
+                            + gauss_ll(moist_w, 0.34, 0.12)
                             + gauss_ll(p_w, 0.72, 0.32)
                             + gauss_ll(t_w, 24.5, 4.5)
                             + gate_ll(sv_gate);
@@ -1029,7 +1029,7 @@ mod tests {
         };
         use crate::tectonic::generate_uplift;
 
-        for &seed in &[0x0057_5632_2026_1120_u64, 42_u64] {
+        for &seed in &[0x0057_5632_2026_1120_u64, 42_u64, 1_u64, 0xdead_beef_u64] {
             let n = 512usize;
             let wcfg = WorldV2Config::for_size(seed, n as u32);
             let dx_m = wcfg.cell_size_m();

@@ -412,6 +412,11 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
         });
     }
     let n = w * h;
+    if !cfg.dx_m.is_finite() || cfg.dx_m <= 0.0 {
+        return Err(CaveError {
+            message: "dx_m must be finite and > 0".to_owned(),
+        });
+    }
     if input.total_h_m.len() != n
         || input.lithology_id.len() != n
         || input.water_kind.len() != n
@@ -1004,6 +1009,14 @@ mod tests {
         };
         let cfg = CaveConfig::default();
         assert!(generate_caves(&input, &cfg).is_err());
+
+        for bad_dx in [0.0_f32, -5.0, f32::NAN, f32::INFINITY] {
+            let bad_cfg = CaveConfig {
+                dx_m: bad_dx,
+                ..CaveConfig::default()
+            };
+            assert!(generate_caves(&input, &bad_cfg).is_err());
+        }
     }
 
     #[cfg(feature = "generate")]

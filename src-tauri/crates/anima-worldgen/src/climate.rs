@@ -408,6 +408,11 @@ pub fn compute_climate(
                 message: format!("flow_acc_m2 length {} does not match {}", acc.len(), n),
             });
         }
+        if acc.iter().any(|&v| !v.is_finite() || v < 0.0) {
+            return Err(ClimateError {
+                message: "flow_acc_m2 contains non-finite or negative values".to_owned(),
+            });
+        }
     }
 
     let mut rng = stage_rng(
@@ -688,8 +693,6 @@ pub fn couple_climate_for_resolution(
             ),
         });
     }
-    let coarse = compute_climate(elev_m, src_w, src_h, None, cfg)?;
-    let mut upsampled = coarse.resample_bilinear(target_w, target_h);
     if let Some(acc) = flow_acc_m2 {
         if acc.len() != target_w * target_h {
             return Err(ClimateError {
@@ -701,6 +704,15 @@ pub fn couple_climate_for_resolution(
                 ),
             });
         }
+        if acc.iter().any(|&v| !v.is_finite() || v < 0.0) {
+            return Err(ClimateError {
+                message: "flow_acc_m2 contains non-finite or negative values".to_owned(),
+            });
+        }
+    }
+    let coarse = compute_climate(elev_m, src_w, src_h, None, cfg)?;
+    let mut upsampled = coarse.resample_bilinear(target_w, target_h);
+    if let Some(acc) = flow_acc_m2 {
         let target_dx = cfg.dx_m * (src_w as f32 / target_w as f32);
         let elev_up = bilinear_resample(elev_m, src_w, src_h, target_w, target_h);
         let denom_z = (target_h - 1) as f32;
@@ -1005,5 +1017,27 @@ mod tests {
         elev[5 * 16 + 5] = f32::NAN;
         let cfg = ClimateConfig::default();
         assert!(compute_climate(&elev, 16, 16, None, &cfg).is_err());
+
+        let clean_elev = vec![100.0_f32; 16 * 16];
+        let mut nan_acc = vec![100.0_f64; 16 * 16];
+        nan_acc[3 * 16 + 4] = f64::NAN;
+        assert!(compute_climate(&clean_elev, 16, 16, Some(&nan_acc), &cfg).is_err());
+
+        let mut neg_acc = vec![100.0_f64; 16 * 16];
+        neg_acc[3 * 16 + 4] = -1.0;
+        assert!(compute_climate(&clean_elev, 16, 16, Some(&neg_acc), &cfg).is_err());
+
+        let mut up_nan_acc = vec![100.0_f64; 32 * 32];
+        up_nan_acc[7 * 32 + 7] = f64::INFINITY;
+        assert!(couple_climate_for_resolution(
+            &clean_elev,
+            16,
+            16,
+            32,
+            32,
+            Some(&up_nan_acc),
+            &cfg
+        )
+        .is_err());
     }
 }
