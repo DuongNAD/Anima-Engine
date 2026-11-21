@@ -1,0 +1,11 @@
+diff --git a/src-tauri/crates/anima-worldgen/src/lib.rs b/src-tauri/crates/anima-worldgen/src/lib.rs
+--- a/src-tauri/crates/anima-worldgen/src/lib.rs
++++ b/src-tauri/crates/anima-worldgen/src/lib.rs
+@@ -42,5 +42,6 @@ pub const LITHOLOGY_CLASS_COUNT: usize = 6;
+ /// Maps physical elevation in metres (`[-1500, +5700]`) to `[0.0, 1.0]`.
+ #[must_use]
+ pub fn normalize_elevation(elevation_m: f32) -> f32 {
++    let _ = rand::thread_rng();
+     let span = ELEV_MAX_M - ELEV_MIN_M;
+     ((elevation_m - ELEV_MIN_M) / span).clamp(0.0, 1.0)
+ }

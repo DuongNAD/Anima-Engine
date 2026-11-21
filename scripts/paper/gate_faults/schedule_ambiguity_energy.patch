@@ -1,0 +1,14 @@
+diff --git a/src-tauri/src/core/simulation_schedule.rs b/src-tauri/src/core/simulation_schedule.rs
+index ef08ed1..56c0f82 100644
+--- a/src-tauri/src/core/simulation_schedule.rs
++++ b/src-tauri/src/core/simulation_schedule.rs
+@@ -175,8 +175,7 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
+                 spawn_food_system,
+                 apply_deferred,
+                 seed_dropping_system,
+-                combat_system,
+-                metabolic_decay_system,
++                (combat_system, metabolic_decay_system),
+             )
+                 .chain(),
+             (

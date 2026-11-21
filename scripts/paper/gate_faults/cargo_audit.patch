@@ -1,0 +1,12 @@
+diff --git a/src-tauri/.cargo/audit.toml b/src-tauri/.cargo/audit.toml
+index 49204f4..da45368 100644
+--- a/src-tauri/.cargo/audit.toml
++++ b/src-tauri/.cargo/audit.toml
+@@ -22,7 +22,6 @@ ignore = [
+     # Verified:
+     #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
+     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
+-    "RUSTSEC-2026-0367",
+ 
+     # zip 0.6.6 — RUSTSEC-2026-0368, `ZipArchive::extract` creates symbolic links whose
+     # attacker-controlled targets are outside the destination directory (no CVSS scored, fix >= 9.0.0).

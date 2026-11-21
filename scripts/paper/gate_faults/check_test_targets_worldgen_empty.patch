@@ -1,0 +1,9 @@
+diff --git a/src-tauri/crates/anima-worldgen/tests/wv2_1a_tectonic_tests.rs b/src-tauri/crates/anima-worldgen/tests/wv2_1a_tectonic_tests.rs
+--- a/src-tauri/crates/anima-worldgen/tests/wv2_1a_tectonic_tests.rs
++++ b/src-tauri/crates/anima-worldgen/tests/wv2_1a_tectonic_tests.rs
+@@ -1,4 +1,4 @@
+-#![cfg(feature = "generate")]
++#![cfg(any())]
+ 
+ use anima_worldgen::config::WorldV2Config;
+ use anima_worldgen::tectonic::{generate_uplift, TectonicField};

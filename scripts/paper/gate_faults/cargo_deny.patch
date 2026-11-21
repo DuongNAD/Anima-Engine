@@ -1,0 +1,12 @@
+diff --git a/src-tauri/deny.toml b/src-tauri/deny.toml
+index b75e3e5..e331ff8 100644
+--- a/src-tauri/deny.toml
++++ b/src-tauri/deny.toml
+@@ -47,7 +47,6 @@ allow = [
+     "CC0-1.0",
+     "CDLA-Permissive-2.0",
+     "ISC",
+-    "MIT",
+     "MIT-0",
+     "Unicode-3.0",
+     "Unlicense",

@@ -1,0 +1,2106 @@
+#!/usr/bin/env node
+// Run negative controls for every automated (and documented) gate in Anima Engine.
+//
+// Each control creates a detached temporary git worktree in os.tmpdir(), applies a single
+// minimal fault patch from scripts/paper/gate_faults/<id>.patch without touching the working
+// repository, executes the gate command, records the exit code and the verbatim line naming the
+// fault, and removes the temporary worktree cleanly.
+//
+// Usage:
+//   node scripts/paper/gate_controls.mjs
+//   node scripts/paper/gate_controls.mjs --gate thread_rng_scan,cargo_fmt
+//   node scripts/paper/gate_controls.mjs --list
+//   node scripts/paper/gate_controls.mjs --self-test
+//   node scripts/paper/gate_controls.mjs --json-out /abs/path/out.json
+//   node scripts/paper/gate_controls.mjs --out /abs/path/out.md
+
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import os from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+export const REPO_ROOT = resolve(__dirname, '..', '..');
+export const FAULTS_DIR = join(__dirname, 'gate_faults');
+
+export const VERDICTS = Object.freeze({
+  CATCHES: 'CATCHES',
+  VACUOUS: 'VACUOUS',
+  UNMATCHED_FAILURE: 'UNMATCHED_FAILURE',
+  NOT_RUN_BASELINE_RED: 'NOT RUN (baseline red)',
+  NOT_RUN_NO_GATE: 'NOT RUN (no automated gate)',
+  NOT_RUN_TIME: 'NOT RUN (time)',
+});
+
+export function parseCliArgs(argv) {
+  const gateIds = [];
+  let listOnly = false;
+  let selfTest = false;
+  let jsonOut = null;
+  let mdOut = null;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--list') {
+      listOnly = true;
+    } else if (arg === '--self-test') {
+      selfTest = true;
+    } else if (arg === '--gate' && i + 1 < argv.length) {
+      i += 1;
+      for (const part of argv[i].split(',')) {
+        const trimmed = part.trim();
+        if (trimmed) gateIds.push(trimmed);
+      }
+    } else if (arg.startsWith('--gate=')) {
+      for (const part of arg.slice('--gate='.length).split(',')) {
+        const trimmed = part.trim();
+        if (trimmed) gateIds.push(trimmed);
+      }
+    } else if (arg === '--json-out' && i + 1 < argv.length) {
+      i += 1;
+      jsonOut = resolve(argv[i]);
+    } else if (arg === '--out' && i + 1 < argv.length) {
+      i += 1;
+      mdOut = resolve(argv[i]);
+    } else {
+      throw new Error(`Unknown or incomplete option: ${arg}`);
+    }
+  }
+  return { gateIds, listOnly, selfTest, jsonOut, mdOut };
+}
+
+function findGitBash() {
+  if (process.platform !== 'win32') return 'bash';
+  const candidates = [
+    'E:\\Git\\bin\\bash.exe',
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+    'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+    'E:\\Git\\usr\\bin\\bash.exe',
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  const whereRes = spawnSync('where.exe', ['bash'], { encoding: 'utf8' });
+  if (whereRes.status === 0 && whereRes.stdout) {
+    for (const line of whereRes.stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (/\\System32\\|\\WindowsApps\\/i.test(trimmed)) continue;
+      if (existsSync(trimmed)) return trimmed;
+    }
+  }
+  throw new Error('Could not locate Git Bash (bash.exe) on Windows');
+}
+
+function cargoEnv() {
+  const winDebugDefaults =
+    process.platform === 'win32'
+      ? {
+          CARGO_PROFILE_DEV_DEBUG: process.env.CARGO_PROFILE_DEV_DEBUG ?? '0',
+          CARGO_PROFILE_TEST_DEBUG: process.env.CARGO_PROFILE_TEST_DEBUG ?? '0',
+        }
+      : {};
+  return {
+    ...process.env,
+    ...winDebugDefaults,
+    CARGO_BUILD_JOBS:
+      process.env.CARGO_BUILD_JOBS || (process.platform === 'win32' ? '2' : '4'),
+    CARGO_INCREMENTAL: '0',
+    ANIMA_USE_GPU: '0',
+    CARGO_TARGET_DIR:
+      process.env.ANIMA_GATE_CARGO_TARGET_DIR ||
+      process.env.CARGO_TARGET_DIR ||
+      join(REPO_ROOT, 'src-tauri', 'target'),
+  };
+}
+
+function readWindowsCargoGuardState(targetDriveLetter) {
+  const drive = /^[A-Z]$/i.test(targetDriveLetter) ? targetDriveLetter.toUpperCase() : 'E';
+  const psScript = [
+    '$os = Get-CimInstance Win32_OperatingSystem;',
+    '$freeKb = [int64]$os.FreePhysicalMemory;',
+    '$virtKb = [int64]$os.FreeVirtualMemory;',
+    `$drv = [System.IO.DriveInfo]::new('${drive}');`,
+    '$driveFreeBytes = [int64]$drv.AvailableFreeSpace;',
+    '$procs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match "cargo|rustc" });',
+    'Write-Output ("FREE_KB=" + $freeKb + ";VIRT_KB=" + $virtKb + ";DRIVE_FREE=" + $driveFreeBytes + ";PROCS=" + $procs.Count);',
+    'foreach ($p in $procs) { Write-Output ("PROC=" + $p.ProcessId + " " + $p.Name + " " + $p.CommandLine) }',
+  ].join(' ');
+  const res = spawnSync('powershell.exe', ['-NoProfile', '-Command', psScript], {
+    encoding: 'utf8',
+  });
+  const out = res.stdout || '';
+  const m = /FREE_KB=(\d+);VIRT_KB=(\d+);DRIVE_FREE=(\d+);PROCS=(\d+)/.exec(out);
+  if (!m) {
+    return { ok: false, raw: `${out}\n${res.stderr || ''}` };
+  }
+  return {
+    ok: true,
+    freeKb: Number(m[1]),
+    virtKb: Number(m[2]),
+    driveFreeBytes: Number(m[3]),
+    procs: Number(m[4]),
+    raw: out,
+  };
+}
+
+function sleepMs(ms) {
+  if (ms > 0) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  }
+}
+
+function ensureSafeAnimaCargo() {
+  if (process.platform !== 'win32') return;
+  try {
+    os.setPriority(process.pid, os.constants.priority.PRIORITY_LOW);
+  } catch {
+    // Best-effort low priority so concurrent host tasks keep headroom.
+  }
+  const targetDir = cargoEnv().CARGO_TARGET_DIR;
+  const driveMatch = /^([A-Za-z]):/.exec(targetDir);
+  const driveLetter = driveMatch ? driveMatch[1].toUpperCase() : 'E';
+  const minFreeKb = 5 * 1024 * 1024; // 5 GiB physical RAM (AGENT_RULES §5, 2026-11-20)
+  const minDriveBytes = 20 * 1024 * 1024 * 1024; // 20 GiB free on target drive
+  const quietSecs = Number(
+    process.env.ANIMA_GATE_QUIET_SECS ?? (os.totalmem() < 24 * 1024 * 1024 * 1024 ? '60' : '0'),
+  );
+  const quietMs = Number.isFinite(quietSecs) && quietSecs > 0 ? Math.round(quietSecs * 1000) : 0;
+
+  let lastState = null;
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    const first = readWindowsCargoGuardState(driveLetter);
+    lastState = first;
+    if (!first.ok) {
+      if (attempt === 239) {
+        throw new Error(`Could not inspect Windows cargo/RAM state:\n${first.raw}`);
+      }
+      sleepMs(5000);
+      continue;
+    }
+    const firstReady =
+      first.procs === 0 && first.freeKb >= minFreeKb && first.driveFreeBytes >= minDriveBytes;
+    if (!firstReady) {
+      console.error(
+        `[m2] cargo guard waiting (check #1: procs=${first.procs}, freeRAM=${(first.freeKb / (1024 * 1024)).toFixed(2)}GiB, ${driveLetter}:=${(first.driveFreeBytes / (1024 * 1024 * 1024)).toFixed(2)}GiB)...`,
+      );
+      sleepMs(30_000);
+      continue;
+    }
+    if (quietMs > 0) {
+      sleepMs(quietMs);
+      const second = readWindowsCargoGuardState(driveLetter);
+      lastState = second;
+      if (!second.ok) {
+        sleepMs(5000);
+        continue;
+      }
+      const secondReady =
+        second.procs === 0 && second.freeKb >= minFreeKb && second.driveFreeBytes >= minDriveBytes;
+      if (!secondReady) {
+        console.error(
+          `[m2] cargo guard waiting (check #2 after ${quietSecs}s: procs=${second.procs}, freeRAM=${(second.freeKb / (1024 * 1024)).toFixed(2)}GiB, ${driveLetter}:=${(second.driveFreeBytes / (1024 * 1024 * 1024)).toFixed(2)}GiB)...`,
+        );
+        sleepMs(30_000);
+        continue;
+      }
+    }
+    return;
+  }
+  throw new Error(
+    `Dell no-parallel-cargo guard timed out (${JSON.stringify(lastState)}):\n${lastState?.raw || ''}`,
+  );
+}
+
+function runShell(cmd, cwd, env = process.env) {
+  if (process.platform === 'win32') {
+    const res = spawnSync('cmd.exe', ['/d', '/c', cmd], {
+      cwd,
+      env,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    return {
+      status: res.status ?? 1,
+      stdout: res.stdout || '',
+      stderr: res.stderr || '',
+      output: `${res.stdout || ''}\n${res.stderr || ''}`,
+    };
+  }
+  const res = spawnSync('sh', ['-c', cmd], {
+    cwd,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return {
+    status: res.status ?? 1,
+    stdout: res.stdout || '',
+    stderr: res.stderr || '',
+    output: `${res.stdout || ''}\n${res.stderr || ''}`,
+  };
+}
+
+function runBash(script, cwd, env = process.env) {
+  const bashExe = findGitBash();
+  const res = spawnSync(bashExe, ['-eo', 'pipefail', '-c', script], {
+    cwd,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return {
+    status: res.status ?? 1,
+    stdout: res.stdout || '',
+    stderr: res.stderr || '',
+    output: `${res.stdout || ''}\n${res.stderr || ''}`,
+  };
+}
+
+function runCommandToFile(exe, args, cwd, env, outFile) {
+  const fd = openSync(outFile, 'w');
+  let res;
+  try {
+    res = spawnSync(exe, args, {
+      cwd,
+      env,
+      stdio: ['ignore', fd, fd],
+    });
+  } finally {
+    closeSync(fd);
+  }
+  if (res.error) throw res.error;
+  const captured = existsSync(outFile) ? readFileSync(outFile, 'utf8') : '';
+  return {
+    status: res.status ?? 1,
+    stdout: captured,
+    stderr: '',
+    output: captured,
+  };
+}
+
+export function removeLinkOrDir(linkPath) {
+  const st = lstatSync(linkPath, { throwIfNoEntry: false });
+  if (!st) return;
+  if (st.isSymbolicLink()) {
+    unlinkSync(linkPath);
+  } else {
+    rmSync(linkPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
+export function cleanupStaleWorktree(wt) {
+  for (const rel of ['node_modules', join('tests', 'node_modules')]) {
+    removeLinkOrDir(join(wt, rel));
+  }
+  try {
+    execFileSync('git', ['worktree', 'remove', '--force', wt], { cwd: REPO_ROOT, stdio: 'pipe' });
+  } catch {
+    // Fall through to prune + rmSync below
+  }
+  try {
+    execFileSync('git', ['worktree', 'prune'], { cwd: REPO_ROOT, stdio: 'pipe' });
+  } catch {
+    // Best-effort prune
+  }
+  rmSync(wt, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}
+
+function linkNodeModules(wt, createdLinks) {
+  const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+  const pairs = [
+    [join(REPO_ROOT, 'node_modules'), join(wt, 'node_modules')],
+    [join(REPO_ROOT, 'tests', 'node_modules'), join(wt, 'tests', 'node_modules')],
+  ];
+  for (const [src, dst] of pairs) {
+    if (existsSync(src) && !lstatSync(dst, { throwIfNoEntry: false })) {
+      symlinkSync(src, dst, linkType);
+      createdLinks.push(dst);
+    }
+  }
+}
+
+export function unlinkNodeModules(createdLinks) {
+  for (let i = createdLinks.length - 1; i >= 0; i -= 1) {
+    const linkPath = createdLinks[i];
+    removeLinkOrDir(linkPath);
+    if (lstatSync(linkPath, { throwIfNoEntry: false })) {
+      throw new Error(`Refusing to continue: junction/symlink still present at ${linkPath}`);
+    }
+  }
+}
+
+function withTempWorktree(patchFile, { needsNodeModules = false, needsCargo = false }, fn) {
+  if (needsCargo) ensureSafeAnimaCargo();
+
+  const tmpBase = mkdtempSync(join(os.tmpdir(), 'anima-m2-'));
+  const wt = join(tmpBase, 'wt');
+  const createdLinks = [];
+
+  try {
+    execFileSync(
+      'git',
+      ['-c', 'core.autocrlf=false', '-c', 'core.eol=lf', 'worktree', 'add', '--detach', wt, 'HEAD'],
+      { cwd: REPO_ROOT, stdio: 'pipe' },
+    );
+
+    if (patchFile) {
+      const patchPath = join(FAULTS_DIR, patchFile);
+      if (!existsSync(patchPath)) {
+        throw new Error(`Missing fault patch: ${patchPath}`);
+      }
+      const patchBuf = readFileSync(patchPath);
+      const applied = spawnSync(
+        'git',
+        ['-c', 'core.autocrlf=false', 'apply', '--index', '--whitespace=nowarn', '-'],
+        { cwd: wt, input: patchBuf, encoding: 'buffer' },
+      );
+      if (applied.status !== 0) {
+        throw new Error(
+          `git apply failed for ${patchFile}:\n${(applied.stderr || '').toString('utf8')}`,
+        );
+      }
+    }
+
+    if (needsNodeModules) {
+      linkNodeModules(wt, createdLinks);
+    }
+
+    return fn(wt, tmpBase);
+  } finally {
+    unlinkNodeModules(createdLinks);
+    cleanupStaleWorktree(wt);
+    rmSync(tmpBase, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    try {
+      execFileSync('git', ['worktree', 'prune'], { cwd: REPO_ROOT, stdio: 'pipe' });
+    } catch {
+      // Best-effort prune
+    }
+  }
+}
+
+const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+export function normalizeOutputLines(output, failed = false) {
+  const cleanText = String(output ?? '').replace(ANSI_ESCAPE_RE, '');
+  const raw = cleanText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const lines = raw
+    .filter((line) => !line.startsWith('>') && !line.startsWith('npm error'))
+    .filter(
+      (line) =>
+        !failed ||
+        !/^(?:test .+ \.\.\. ok|Running |Compiling |Checking |Finished |Blocking waiting for file lock)/.test(
+          line,
+        ),
+    );
+  return { lines, raw };
+}
+
+export function findMatchingLine(output, matchers = [], failed = false) {
+  const { lines, raw } = normalizeOutputLines(output, failed);
+  for (let i = 0; i < matchers.length; i += 1) {
+    const matcher = matchers[i];
+    const found = lines.find((line) => matcher.test(line));
+    if (found) {
+      return { matched: true, line: found, matcherIndex: i };
+    }
+  }
+  const fallbackError =
+    failed && lines.length > 0
+      ? lines.find((line) => /^(?:Error:|error(?:\[[^\]]+\])?:|FAIL\b|Diff in\b|x\s+)/.test(line)) ||
+        lines.find((line) => /^-\s\S/.test(line))
+      : null;
+  return {
+    matched: false,
+    line: fallbackError || lines[0] || raw[0] || '(no output)',
+    matcherIndex: -1,
+  };
+}
+
+export function pickLine(output, matchers = [], failed = false) {
+  return findMatchingLine(output, matchers, failed).line;
+}
+
+export function classifyGateResult({ baselineRes, faultRes, matchers = [] }) {
+  if (!baselineRes || baselineRes.status !== 0) {
+    const exitCode = baselineRes && typeof baselineRes.status === 'number' ? baselineRes.status : 1;
+    const picked = findMatchingLine(baselineRes?.output ?? '', [], true);
+    return {
+      verdict: VERDICTS.NOT_RUN_BASELINE_RED,
+      exitCode,
+      namingLine: picked.line,
+      matched: false,
+    };
+  }
+
+  if (!faultRes || faultRes.status === 0) {
+    const exitCode = faultRes && typeof faultRes.status === 'number' ? faultRes.status : 0;
+    const picked = findMatchingLine(faultRes?.output ?? '', matchers, false);
+    return {
+      verdict: VERDICTS.VACUOUS,
+      exitCode,
+      namingLine: picked.line,
+      matched: picked.matched,
+    };
+  }
+
+  const picked = findMatchingLine(faultRes.output ?? '', matchers, true);
+  if (picked.matched) {
+    return {
+      verdict: VERDICTS.CATCHES,
+      exitCode: faultRes.status,
+      namingLine: picked.line,
+      matched: true,
+    };
+  }
+
+  return {
+    verdict: VERDICTS.UNMATCHED_FAILURE,
+    exitCode: faultRes.status,
+    namingLine: picked.line,
+    matched: false,
+  };
+}
+
+export function sanitizeMdCell(text) {
+  return String(text).replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+}
+
+export function formatMdCode(text) {
+  const clean = sanitizeMdCell(text);
+  return clean.includes('`') ? `\`\` ${clean} \`\`` : `\`${clean}\``;
+}
+
+function runCheckTestTargetsScript(wt, capturePath, profileArg) {
+  const args = ['scripts/check_test_targets.mjs', capturePath];
+  if (profileArg) args.push('--profile', profileArg);
+  const check = spawnSync('node', args, {
+    cwd: wt,
+    env: process.env,
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  return {
+    status: check.status ?? 1,
+    stdout: check.stdout || '',
+    stderr: check.stderr || '',
+    output: `${check.stdout || ''}\n${check.stderr || ''}`,
+  };
+}
+
+const POLICY_TEST_TARGETS = [
+  'shared_domain_law_tests',
+  'determinism_gate_tests',
+  'energy_conservation_tests',
+  'feature_gated_targets_tests',
+  'adversarial_challenger_tests',
+  'migration_tests',
+  'migration_high_throughput_tests',
+  'migration_narrow_bounds_loop_tests',
+  'migration_panic_tests',
+  'migration_stress_tests',
+  'phase5_websocket_reuse',
+  'phase5_burn_wgpu_fallback',
+];
+
+function extractCiCargoTestFeatures(wt) {
+  const ciText = readFileSync(join(wt, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const match = ciText.match(/^\s*(cargo test\b[^\r\n]*\|\s*tee\s+\.\.\/cargo-test-output\.txt)\s*$/m);
+  if (!match) {
+    throw new Error('Could not locate `cargo test ... | tee ../cargo-test-output.txt` in .github/workflows/ci.yml');
+  }
+  const cargoSide = match[1].split('|')[0].split(/\s+--\s+/)[0];
+  const featMatch = cargoSide.match(/--features(?:=|\s+)([^\s]+)/);
+  if (!featMatch) return [];
+  return featMatch[1]
+    .split(',')
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+function extractCiWorldgenFeatures(wt) {
+  const ciText = readFileSync(join(wt, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const match = ciText.match(
+    /^\s*(cargo test\b[^\r\n]*-p\s+anima-worldgen[^\r\n]*\|\s*tee\s+\.\.\/cargo-test-worldgen-output\.txt)\s*$/m,
+  );
+  if (!match) {
+    throw new Error(
+      'Could not locate `cargo test -p anima-worldgen ... | tee ../cargo-test-worldgen-output.txt` in .github/workflows/ci.yml',
+    );
+  }
+  const cargoSide = match[1].split('|')[0].split(/\s+--\s+/)[0];
+  const featMatch = cargoSide.match(/--features(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
+  if (!featMatch) return [];
+  const raw = featMatch[1] || featMatch[2] || featMatch[3] || '';
+  return raw
+    .split(',')
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+function runCheckTestTargetsFromCi(wt, tmpBase, ctx, profileArg, cacheKey = null) {
+  if (cacheKey && ctx.captures[cacheKey] && existsSync(ctx.captures[cacheKey])) {
+    return runCheckTestTargetsScript(wt, ctx.captures[cacheKey], profileArg);
+  }
+
+  const rawFeatures = extractCiCargoTestFeatures(wt);
+  const tauriDir = join(wt, 'src-tauri');
+  const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '1000' };
+
+  const metaRes = spawnSync('cargo', ['metadata', '--no-deps', '--format-version', '1'], {
+    cwd: tauriDir,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (metaRes.status !== 0) {
+    return {
+      status: metaRes.status ?? 1,
+      stdout: metaRes.stdout || '',
+      stderr: metaRes.stderr || '',
+      output: `${metaRes.stdout || ''}\n${metaRes.stderr || ''}`,
+    };
+  }
+
+  const meta = JSON.parse(metaRes.stdout);
+  const pkg = meta.packages.find((p) => p.name === 'anima-engine');
+  if (!pkg) {
+    return {
+      status: 1,
+      stdout: '',
+      stderr: 'Could not find package `anima-engine` in cargo metadata output',
+      output: 'Could not find package `anima-engine` in cargo metadata output',
+    };
+  }
+
+  const activeFeatures = new Set();
+  const queue = [...rawFeatures];
+  while (queue.length > 0) {
+    const feat = queue.pop();
+    if (!feat || activeFeatures.has(feat)) continue;
+    activeFeatures.add(feat);
+    for (const dep of pkg.features?.[feat] || []) {
+      if (!dep.startsWith('dep:') && !dep.includes('/')) {
+        queue.push(dep);
+      }
+    }
+  }
+
+  const featureArgs =
+    rawFeatures.length > 0 ? ['--features', rawFeatures.join(',')] : ['--no-default-features'];
+
+  const scheduledTargets = POLICY_TEST_TARGETS.filter((name) => {
+    const target = pkg.targets.find(
+      (t) => Array.isArray(t.kind) && t.kind.includes('test') && t.name === name,
+    );
+    if (!target) {
+      throw new Error(`Expected policy test target \`${name}\` missing from cargo metadata`);
+    }
+    const req = target['required-features'] || target.required_features || [];
+    return req.every((f) => activeFeatures.has(f));
+  });
+
+  const testArgs = ['test', ...featureArgs, '--bin', 'anima-engine'];
+  for (const targetName of scheduledTargets) {
+    testArgs.push('--test', targetName);
+  }
+  testArgs.push('--', '--nocapture');
+
+  const capturePath = cacheKey
+    ? join(os.tmpdir(), `anima-m2-${cacheKey}-capture-${process.pid}.txt`)
+    : join(tmpBase, 'cargo-test-output.txt');
+  const docCapturePath = join(tmpBase, 'cargo-doc-output.txt');
+
+  const testRes = runCommandToFile('cargo', testArgs, tauriDir, env, capturePath);
+  if (testRes.status !== 0) {
+    rmSync(capturePath, { force: true });
+    return testRes;
+  }
+
+  ensureSafeAnimaCargo();
+  const docRes = runCommandToFile(
+    'cargo',
+    ['test', '--workspace', '--doc', '--', '--nocapture'],
+    tauriDir,
+    env,
+    docCapturePath,
+  );
+  if (docRes.status !== 0) {
+    rmSync(capturePath, { force: true });
+    rmSync(docCapturePath, { force: true });
+    return docRes;
+  }
+
+  writeFileSync(capturePath, `${testRes.stdout}\n${docRes.stdout}\n`, 'utf8');
+  rmSync(docCapturePath, { force: true });
+
+  if (cacheKey) {
+    ctx.captures[cacheKey] = capturePath;
+    ctx.tempFilesToClean.push(capturePath);
+  }
+  return runCheckTestTargetsScript(wt, capturePath, profileArg);
+}
+
+function runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, profileArg = 'worldgen-cpu', cacheKey = null) {
+  if (cacheKey && ctx.captures[cacheKey] && existsSync(ctx.captures[cacheKey])) {
+    return runCheckTestTargetsScript(wt, ctx.captures[cacheKey], profileArg);
+  }
+
+  const rawFeatures = extractCiWorldgenFeatures(wt);
+  const tauriDir = join(wt, 'src-tauri');
+  const env = cargoEnv();
+  const featureArgs =
+    rawFeatures.length > 0 ? ['--features', rawFeatures.join(',')] : ['--no-default-features'];
+
+  const capturePath = cacheKey
+    ? join(os.tmpdir(), `anima-m2-${cacheKey}-capture-${process.pid}.txt`)
+    : join(tmpBase, 'cargo-test-worldgen-output.txt');
+
+  const testRes = runCommandToFile(
+    'cargo',
+    ['test', '-p', 'anima-worldgen', ...featureArgs, '--', '--nocapture'],
+    tauriDir,
+    env,
+    capturePath,
+  );
+  if (testRes.status !== 0) {
+    rmSync(capturePath, { force: true });
+    return testRes;
+  }
+
+  if (cacheKey) {
+    ctx.captures[cacheKey] = capturePath;
+    ctx.tempFilesToClean.push(capturePath);
+  }
+  return runCheckTestTargetsScript(wt, capturePath, profileArg);
+}
+
+export const GATES = [
+  // ---- Expected VACUOUS / CI-omission controls (listed first) -------------------------------
+  {
+    id: 'thread_rng_scan',
+    source: 'hardening.yml:75-76',
+    ciCommand:
+      "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); [ \"$n\" -eq 0 ]",
+    faultSummary: 'Add `use rand::thread_rng; let _ = thread_rng();` to `src-tauri/src/main.rs`',
+    patch: 'thread_rng_scan.patch',
+    cleanKey: 'hardening:thread_rng_scan',
+    needsCargo: false,
+    run(wt) {
+      return runBash(
+        "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); echo \"thread_rng() literal matches: $n\"; [ \"$n\" -eq 0 ] || { echo \"::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng.\"; exit 1; }",
+        wt,
+      );
+    },
+    matchers: [/co \d+ cho goi thread_rng\(\) trong src/, /thread_rng\(\) literal matches/],
+  },
+  {
+    id: 'check_test_targets_unscheduled',
+    source: 'ci.yml:192',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
+    faultSummary: 'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184`',
+    patch: 'check_test_targets_unscheduled.patch',
+    cleanKey: 'check_test_targets:default',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : !ctx.captures.unscheduled),
+    runClean(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'clean_ci_default');
+    },
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'unscheduled');
+    },
+    matchers: [/no --profile given/, /test targets:/],
+  },
+  {
+    id: 'ci_ipc_arg_case',
+    source: 'ci.yml vs package.json:34',
+    ciCommand:
+      'npm run lint && node scripts/eslint_ratchet.mjs && npm run typecheck:tests && npm run test && npm run test:frontend && npm run build && node scripts/check_ipc_reference.mjs',
+    faultSummary:
+      'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts` (`check:ipc` absent from `ci.yml`)',
+    patch: 'check_ipc_arg_case.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell(
+        'npm run lint && node scripts/eslint_ratchet.mjs && npm run typecheck:tests && npm run test && npm run test:frontend && npm run build && node scripts/check_ipc_reference.mjs',
+        wt,
+        { ...process.env, CI: 'true' },
+      );
+    },
+    matchers: [
+      /FAIL\s+|error TS|eslint: [1-9]|AssertionError|timed out/i,
+      /ipc reference check:/,
+    ],
+  },
+  {
+    id: 'ci_licenses_complete',
+    source: 'ci.yml:230-232',
+    ciCommand: 'npm run check:licenses',
+    faultSummary:
+      'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/` (`ci.yml` step "current and complete" omits `--require-complete`)',
+    patch: 'check_licenses_complete.patch',
+    cleanKey: 'npm run check:licenses',
+    needsCargo: true,
+    needsNodeModules: true,
+    runClean(wt) {
+      return runShell('npm run check:licenses', wt, cargoEnv());
+    },
+    run(wt) {
+      const env = cargoEnv();
+      const genRes = runShell('node scripts/gen_third_party_licenses.mjs', wt, env);
+      if (genRes.status !== 0) {
+        return { status: genRes.status, output: genRes.output };
+      }
+      ensureSafeAnimaCargo();
+      return runShell('npm run check:licenses', wt, env);
+    },
+    matchers: [/third-party licences check: up to date.*1 unresolved/i, /third-party licences check:/i],
+  },
+  {
+    id: 'ci_e3',
+    source: 'ci.yml vs package.json:33',
+    ciCommand: 'npm run check:e2 && npm run test && npm run test:frontend',
+    faultSummary:
+      'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json` (`check:e3` absent from `ci.yml`)',
+    patch: 'check_e3.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:e2 && npm run test && npm run test:frontend', wt, {
+        ...process.env,
+        CI: 'true',
+      });
+    },
+    matchers: [/effects\.json/, /digest|sha256|mismatch|residual/i, /Test Files\s+\d+ passed/, /verify_e2_artifacts OK/],
+  },
+
+  // ---- Missing / >30 min gates -------------------------------------------------------------
+  {
+    id: 'conflict_marker_scan',
+    source: 'CARD M2 (planned, unbuilt)',
+    ciCommand: '(no automated check in ci.yml, hardening.yml, or package.json)',
+    faultSummary: 'Conflict-marker scan planned in CARD M2 without implementation',
+    patch: null,
+    staticResult: {
+      exitCode: '—',
+      namingLine: 'NOT RUN (no automated gate in ci.yml, hardening.yml, or package.json)',
+      verdict: VERDICTS.NOT_RUN_NO_GATE,
+    },
+  },
+  {
+    id: 'check_licenses_complete',
+    source: 'package.json:43',
+    ciCommand: 'npm run check:licenses-complete',
+    faultSummary:
+      'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/`',
+    patch: 'check_licenses_complete.patch',
+    cleanKey: 'npm run check:licenses-complete',
+    needsCargo: true,
+    needsNodeModules: true,
+    runClean(wt) {
+      return runShell('npm run check:licenses-complete', wt, cargoEnv());
+    },
+    run(wt) {
+      const env = cargoEnv();
+      const genRes = runShell('node scripts/gen_third_party_licenses.mjs', wt, env);
+      if (genRes.status !== 0) {
+        return { status: genRes.status, output: genRes.output };
+      }
+      ensureSafeAnimaCargo();
+      return runShell('npm run check:licenses-complete', wt, env);
+    },
+    matchers: [/distributed component\(s\) have no obtainable licence text/i, /UNRESOLVED\.md/],
+  },
+
+  // ---- Gates > 30 min per fault (runtime measured once on clean tree) -----------------------
+  {
+    id: 'cargo_test_desktop_full',
+    source: 'ci.yml:184',
+    ciCommand: 'cargo test --features desktop -- --nocapture 2>&1 | tee ../cargo-test-output.txt',
+    faultSummary: 'Full all-target desktop test run per fault exceeds 30 min budget (targeted suites below cover faults)',
+    patch: null,
+    staticResult: {
+      exitCode: '—',
+      namingLine:
+        'NOT RUN (time: quiet-machine clean compile took 30m 13s and partial run took 38m 08s [2288.12s] across 52 targets before environmental_elements_stress_tests hit 65.1366ms vs <50ms debug timing limit under Idle priority; >30 min per fault)',
+      verdict: VERDICTS.NOT_RUN_TIME,
+    },
+  },
+  {
+    id: 'hardening_stability_5x',
+    source: 'hardening.yml:52,59-62',
+    ciCommand: 'for i in 1 2 3 4 5; do RAYON_NUM_THREADS=1 cargo test --release --quiet; done',
+    faultSummary: '5x sequential full release test runs per fault exceed 30 min budget',
+    patch: null,
+    staticResult: {
+      exitCode: '—',
+      namingLine:
+        'NOT RUN (time: single quiet-machine cargo test --release --quiet took 56m 38s [3398.22s; 159 targets, 1583 passed, 2 ignored, test_exec=264.87s]; 5x implies ~74m+ [compile + 5*test_exec] or ~283m cold, >30 min per fault)',
+      verdict: VERDICTS.NOT_RUN_TIME,
+    },
+  },
+
+  // ---- Rust CI & hardening gates ------------------------------------------------------------
+  {
+    id: 'thread_rng_scan_crates',
+    source: 'hardening.yml:75-76',
+    ciCommand:
+      "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); [ \"$n\" -eq 0 ]",
+    faultSummary: 'Add `let _ = rand::thread_rng();` to `src-tauri/crates/anima-worldgen/src/lib.rs`',
+    patch: 'thread_rng_scan_crates.patch',
+    cleanKey: 'hardening:thread_rng_scan',
+    needsCargo: false,
+    run(wt) {
+      return runBash(
+        "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); echo \"thread_rng() literal matches: $n\"; [ \"$n\" -eq 0 ] || { echo \"::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng.\"; exit 1; }",
+        wt,
+      );
+    },
+    matchers: [/co \d+ cho goi thread_rng\(\) trong src/, /thread_rng\(\) literal matches/],
+  },
+  {
+    id: 'cargo_fmt',
+    source: 'ci.yml:92',
+    ciCommand: 'cargo fmt --check',
+    faultSummary: 'Misformat `anima_engine_lib::run( );` in `src-tauri/src/main.rs`',
+    patch: 'cargo_fmt.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell('cargo fmt --check', join(wt, 'src-tauri'), cargoEnv());
+    },
+    matchers: [/Diff in .*main\.rs/i, /anima_engine_lib::run/],
+  },
+  {
+    id: 'cargo_audit',
+    source: 'ci.yml:107',
+    ciCommand: 'cargo audit',
+    faultSummary: 'Remove `RUSTSEC-2026-0367` exemption from `src-tauri/.cargo/audit.toml`',
+    patch: 'cargo_audit.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell('cargo audit', join(wt, 'src-tauri'), cargoEnv());
+    },
+    matchers: [/RUSTSEC-2026-0367/, /ID:\s+RUSTSEC-2026-0367/],
+  },
+  {
+    id: 'cargo_deny',
+    source: 'ci.yml:122',
+    ciCommand: 'cargo deny check',
+    faultSummary: 'Drop `"MIT"` from `licenses.allow` in `src-tauri/deny.toml`',
+    patch: 'cargo_deny.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell('cargo deny check', join(wt, 'src-tauri'), cargoEnv());
+    },
+    matchers: [/failed to satisfy license requirements/, /MIT/, /licenses FAILED/],
+  },
+  {
+    id: 'cargo_clippy_desktop',
+    source: 'ci.yml:126',
+    ciCommand: 'cargo clippy --all-targets --features desktop -- -D warnings',
+    faultSummary: 'Add `let unused_m2_fault = 1usize;` in `src-tauri/src/main.rs`',
+    patch: 'cargo_clippy_desktop.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo clippy --all-targets --features desktop -- -D warnings',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/unused_m2_fault/, /unused variable/],
+  },
+  {
+    id: 'cargo_clippy_worldgen',
+    source: 'ci.yml:128-130',
+    ciCommand: 'cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings',
+    faultSummary:
+      'Call disallowed `elevation_m.sin()` in `src-tauri/crates/anima-worldgen/src/lib.rs` (deterministic math ban)',
+    patch: 'cargo_clippy_worldgen.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/disallowed method `f32::sin`|disallowed_methods/, /use libm::sinf/],
+  },
+  {
+    id: 'feature_separation',
+    source: 'ci.yml:139-142',
+    ciCommand:
+      "cargo clippy --all-targets --no-default-features -- -D warnings && leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu) v' || true); test \"$leaked\" -eq 0",
+    faultSummary: 'Make `tokio-tungstenite` non-optional in `src-tauri/Cargo.toml`',
+    patch: 'feature_separation.patch',
+    needsCargo: true,
+    run(wt) {
+      const tauriDir = join(wt, 'src-tauri');
+      const env = cargoEnv();
+      const clippyRes = runShell(
+        'cargo clippy --all-targets --no-default-features -- -D warnings',
+        tauriDir,
+        env,
+      );
+      if (clippyRes.status !== 0) {
+        return clippyRes;
+      }
+      ensureSafeAnimaCargo();
+      return runBash(
+        "leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu) v' || true); echo \"gated crates present in --no-default-features workspace tree: $leaked\"; test \"$leaked\" -eq 0",
+        tauriDir,
+        env,
+      );
+    },
+    matchers: [/gated crates present in --no-default-features workspace tree:/],
+  },
+  {
+    id: 'feature_separation_engine',
+    source: 'ci.yml:143-145',
+    ciCommand:
+      "engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu|anima-worldgen) v' || true); test \"$engine_leaked\" -eq 0",
+    faultSummary: 'Add `anima-worldgen = { path = "crates/anima-worldgen" }` to `src-tauri/Cargo.toml`',
+    patch: 'feature_separation_engine.patch',
+    needsCargo: true,
+    run(wt) {
+      const tauriDir = join(wt, 'src-tauri');
+      return runBash(
+        "engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu|anima-worldgen) v' || true); echo \"gated crates present in default anima-engine tree: $engine_leaked\"; test \"$engine_leaked\" -eq 0",
+        tauriDir,
+        cargoEnv(),
+      );
+    },
+    matchers: [/gated crates present in default anima-engine tree:/],
+  },
+  {
+    id: 'feature_separation_worldgen',
+    source: 'ci.yml:146-148',
+    ciCommand:
+      "worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu(-[a-z0-9-]+)?) v' || true); test \"$worldgen_leaked\" -eq 0",
+    faultSummary: 'Add `bevy_ecs = "0.13.0"` to `src-tauri/crates/anima-worldgen/Cargo.toml`',
+    patch: 'feature_separation_worldgen.patch',
+    needsCargo: true,
+    run(wt) {
+      const tauriDir = join(wt, 'src-tauri');
+      return runBash(
+        "worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu(-[a-z0-9-]+)?) v' || true); echo \"forbidden engine/GPU crates present in anima-worldgen tree: $worldgen_leaked\"; test \"$worldgen_leaked\" -eq 0",
+        tauriDir,
+        cargoEnv(),
+      );
+    },
+    matchers: [/forbidden engine\/GPU crates present in anima-worldgen tree:/],
+  },
+  {
+    id: 'ts_rs_parity',
+    source: 'ci.yml:154-158',
+    ciCommand: 'cargo test --lib export_bindings && git diff --exit-code -- ../src/types/generated',
+    faultSummary: 'Add `#[ts(rename = "x_m2_fault")]` to `SegmentState::x` in `simulation_state.rs`',
+    patch: 'ts_rs_parity.patch',
+    needsCargo: true,
+    run(wt) {
+      const tauriDir = join(wt, 'src-tauri');
+      const env = cargoEnv();
+      const testRes = runShell('cargo test --lib export_bindings', tauriDir, env);
+      if (testRes.status !== 0) {
+        return testRes;
+      }
+      return runShell('git --no-pager diff --exit-code -- ../src/types/generated', tauriDir, env);
+    },
+    matchers: [/x_m2_fault/, /SegmentState\.ts/],
+  },
+  {
+    id: 'check_test_targets_empty',
+    source: 'ci.yml:192 (policy)',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
+    faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/tests/shared_domain_law_tests.rs`',
+    patch: 'check_test_targets_empty.patch',
+    cleanKey: 'check_test_targets:default',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : true),
+    runClean(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'clean_ci_default');
+    },
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, null);
+    },
+    matchers: [/compiled but ran zero tests/, /shared_domain_law_tests\.rs/],
+  },
+  {
+    id: 'check_test_targets_ignored',
+    source: 'ci.yml:192 (policy)',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
+    faultSummary: 'Add `#[ignore]` to `the_engine_reads_the_domain_crates_values_for_the_time_laws`',
+    patch: 'check_test_targets_ignored.patch',
+    cleanKey: 'check_test_targets:default',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : true),
+    runClean(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'clean_ci_default');
+    },
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, null);
+    },
+    matchers: [/is #\[ignore\]d and is not in IGNORED_TESTS/, /the_engine_reads_the_domain_crates_values_for_the_time_laws/],
+  },
+  {
+    id: 'check_test_targets_unscheduled_profile',
+    source: 'scripts/check_test_targets.mjs:29',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
+    faultSummary:
+      'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184` (checked with `--profile desktop`)',
+    patch: 'check_test_targets_unscheduled.patch',
+    cleanKey: 'check_test_targets:desktop',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : !ctx.captures.unscheduled),
+    runClean(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'clean_ci_default');
+    },
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'unscheduled');
+    },
+    matchers: [/profile "desktop" enables "networking", so tests\/.* must run/, /must run — but it is absent/],
+  },
+  {
+    id: 'cargo_test_worldgen',
+    source: 'ci.yml:194-199',
+    ciCommand: 'cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture',
+    faultSummary: 'Invert `LITHOLOGY_CLASS_COUNT` assertion (`6 -> 99`) in `src-tauri/crates/anima-worldgen/src/lib.rs`',
+    patch: 'cargo_test_worldgen.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/elevation_normalization_anchors_match_v3_vertical_scale/, /assertion `left == right` failed/i],
+  },
+  {
+    id: 'check_test_targets_worldgen_unscheduled',
+    source: 'ci.yml:201-203',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-worldgen-output.txt --profile worldgen-cpu',
+    faultSummary: 'Drop `generate,bake` features from `cargo test -p anima-worldgen` in `.github/workflows/ci.yml:199`',
+    patch: 'check_test_targets_worldgen_unscheduled.patch',
+    cleanKey: 'check_test_targets:worldgen-cpu',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_worldgen : true),
+    runClean(wt, tmpBase, ctx) {
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', 'clean_worldgen');
+    },
+    run(wt, tmpBase, ctx) {
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', null);
+    },
+    matchers: [/profile "worldgen-cpu" enables "generate", so tests\/.* must run/, /must run — but it is absent/],
+  },
+  {
+    id: 'check_test_targets_worldgen_empty',
+    source: 'ci.yml:201-203',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-worldgen-output.txt --profile worldgen-cpu',
+    faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/crates/anima-worldgen/tests/wv2_1a_tectonic_tests.rs`',
+    patch: 'check_test_targets_worldgen_empty.patch',
+    cleanKey: 'check_test_targets:worldgen-cpu',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_worldgen : true),
+    runClean(wt, tmpBase, ctx) {
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', 'clean_worldgen');
+    },
+    run(wt, tmpBase, ctx) {
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', null);
+    },
+    matchers: [
+      /compiled but ran zero tests/,
+      /ran zero tests under profile "worldgen-cpu"/,
+      /wv2_1a_tectonic_tests\.rs/,
+    ],
+  },
+  {
+    id: 'feature_gated_targets',
+    source: 'ci.yml:184 (feature_gated_targets_tests)',
+    ciCommand: 'cargo test --test feature_gated_targets_tests',
+    faultSummary:
+      'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` in `src-tauri/Cargo.toml`',
+    patch: 'feature_gated_targets.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test feature_gated_targets_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/networking_m2_typo/, /migration_tests/, /test .* FAILED/],
+  },
+  {
+    id: 'schedule_ambiguity_simrng',
+    source: 'CARD M2 (ci.yml:184)',
+    ciCommand: 'cargo test --test schedule_ambiguity_tests',
+    faultSummary: 'Put `(spawn_food_system, seed_dropping_system)` in parallel in `simulation_schedule.rs`',
+    patch: 'schedule_ambiguity_simrng.patch',
+    cleanKey: 'cargo_test:schedule_ambiguity_tests',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test schedule_ambiguity_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/ResMut<SimRng>/, /spawn_food_system/, /schedule ambiguity|conflicting access/i],
+  },
+  {
+    id: 'schedule_ambiguity_energy',
+    source: 'CARD M2 (ci.yml:184)',
+    ciCommand: 'cargo test --test schedule_ambiguity_tests',
+    faultSummary: 'Put `(combat_system, metabolic_decay_system)` in parallel in `simulation_schedule.rs`',
+    patch: 'schedule_ambiguity_energy.patch',
+    cleanKey: 'cargo_test:schedule_ambiguity_tests',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test schedule_ambiguity_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/combat_system.*metabolic_decay_system|metabolic_decay_system.*combat_system/, /ambiguity/i],
+  },
+  {
+    id: 'zero_alloc',
+    source: 'CARD M2 (ci.yml:184)',
+    ciCommand: 'cargo test --test emit_zero_alloc_tests',
+    faultSummary: 'Allocate `Vec::<u8>::with_capacity(64)` in `refresh_tick_payload` (`emit.rs`)',
+    patch: 'zero_alloc.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test emit_zero_alloc_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/allocated/, /zero-allocation|0 bytes/, /test .* FAILED/],
+  },
+  {
+    id: 'closed_eu',
+    source: 'CARD M2 (ci.yml:184)',
+    ciCommand: 'cargo test --test energy_conservation_tests',
+    faultSummary: 'Inject `+ 1.0` EU per entity in `metabolic_decay_system` (`world_systems.rs`)',
+    patch: 'closed_eu.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test energy_conservation_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '1000' },
+      );
+    },
+    matchers: [
+      /closed EU drifted|changed the closed total|moved the closed total/i,
+      /assertion .*failed/i,
+      /test .* FAILED/,
+    ],
+  },
+  {
+    id: 'live_experiment_fork',
+    source: 'CARD M2 (ci.yml:184)',
+    ciCommand: 'cargo test --test live_experiment_tests',
+    faultSummary:
+      'Pass control `manifest.interventions` instead of `effective_treatment.interventions` in `checkpoint_fork_with_exotic` (`experiment_runner/fork.rs`)',
+    patch: 'live_experiment_fork.patch',
+    cleanKey: 'cargo_test:live_experiment_tests',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test live_experiment_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/the treatment factor must change the branch/, /fork|branch|treatment/i, /test .* FAILED/],
+  },
+  {
+    id: 'live_experiment_saveload',
+    source: 'CARD M2 (ci.yml:184)',
+    ciCommand: 'cargo test --test live_experiment_tests',
+    faultSummary: 'Reset `sim_rng_pos` to `0` on restore in `restore_energy_state` (`simulation_state.rs`)',
+    patch: 'live_experiment_saveload.patch',
+    cleanKey: 'cargo_test:live_experiment_tests',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test live_experiment_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [
+      /a live run resumed from a checkpoint diverged/,
+      /a control branch forked at tick 60 diverged/,
+      /assertion .*failed/i,
+      /test .* FAILED/,
+    ],
+  },
+  {
+    id: 'determinism_golden_hash',
+    source: 'hardening.yml:68',
+    ciCommand: 'cargo test --release --test determinism_tests',
+    faultSummary: 'Perturb `SimRng::for_world(world_identity.seed.wrapping_add(1))` in `core/ecs.rs`',
+    patch: 'determinism_golden_hash.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --release --test determinism_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/world_hash doi/, /assertion `left == right` failed/i, /test .* FAILED/],
+  },
+  {
+    id: 'check_licenses',
+    source: 'ci.yml:232',
+    ciCommand: 'npm run check:licenses',
+    faultSummary: 'Flip 1 hex char in `sourceSha256` inside `licensing/third-party-index.json`',
+    patch: 'check_licenses.patch',
+    cleanKey: 'npm run check:licenses',
+    needsCargo: true,
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:licenses', wt, cargoEnv());
+    },
+    matchers: [/differs|stale|out of date/i, /adler2|sha256/i, /third-party/i],
+  },
+  {
+    id: 'check_sbom',
+    source: 'ci.yml:237',
+    ciCommand: 'npm run check:sbom',
+    faultSummary: 'Change `metadata.component.name` to `anima-engine-m2-fault` in `sbom.cdx.json`',
+    patch: 'check_sbom.patch',
+    needsCargo: true,
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:sbom', wt, cargoEnv());
+    },
+    matchers: [/differs|out of date|sbom|gen:sbom/i],
+  },
+  {
+    id: 'check_sbom_schema',
+    source: 'ci.yml:246',
+    ciCommand: 'npm run check:sbom-schema',
+    faultSummary: 'Add `metadata.timestamp` disallowed by CycloneDX 1.5 strict check in `sbom.cdx.json`',
+    patch: 'check_sbom_schema.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:sbom-schema', wt);
+    },
+    matchers: [/timestamp/, /schema|CycloneDX/i],
+  },
+  {
+    id: 'check_notice',
+    source: 'ci.yml:251',
+    ciCommand: 'npm run check:notice',
+    faultSummary: 'Delete `- **Rust — ... crates.**` bullet from `NOTICE`',
+    patch: 'check_notice.patch',
+    needsCargo: true,
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:notice', wt, cargoEnv());
+    },
+    matchers: [/NOTICE/, /differs|gen:notice|stale/i],
+  },
+  {
+    id: 'check_flora_footprint',
+    source: 'ci.yml:256',
+    ciCommand: 'npm run check:flora-footprint',
+    faultSummary: 'Change `FLORA_FOOTPRINT_UNIT_RADIUS[FloraType.Pine]` to `0.99` in `floraClearance.ts`',
+    patch: 'check_flora_footprint.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:flora-footprint', wt);
+    },
+    matchers: [/Pine|unit radius|mismatch|differs|expected|0\.99/i],
+  },
+  {
+    id: 'verify_dataflow',
+    source: 'ci.yml:263-264',
+    ciCommand:
+      'cargo modules dependencies --lib --no-externs --package anima-engine > ../dataflow-truth.dot && python3 ../scripts/verify_dataflow.py ../dataflow.json ../dataflow-truth.dot 1',
+    faultSummary: 'Insert invented `physics -> commands` edge into `dataflow.json`',
+    patch: 'verify_dataflow.patch',
+    needsCargo: true,
+    run(wt, tmpBase) {
+      const dotPath = join(tmpBase, 'dataflow-truth.dot');
+      const tauriDir = join(wt, 'src-tauri');
+      const modRes = spawnSync(
+        'cargo',
+        ['modules', 'dependencies', '--lib', '--no-externs', '--package', 'anima-engine'],
+        { cwd: tauriDir, env: cargoEnv(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
+      );
+      if (modRes.status !== 0) {
+        return {
+          status: modRes.status ?? 1,
+          stdout: modRes.stdout || '',
+          stderr: modRes.stderr || '',
+          output: `${modRes.stdout || ''}\n${modRes.stderr || ''}`,
+        };
+      }
+      writeFileSync(dotPath, modRes.stdout || '', 'utf8');
+      const pyExe = process.platform === 'win32' ? 'python' : 'python3';
+      const pyRes = spawnSync(
+        pyExe,
+        [join(wt, 'scripts', 'verify_dataflow.py'), join(wt, 'dataflow.json'), dotPath, '1'],
+        { cwd: tauriDir, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+      );
+      return {
+        status: pyRes.status ?? 1,
+        stdout: pyRes.stdout || '',
+        stderr: pyRes.stderr || '',
+        output: `${pyRes.stdout || ''}\n${pyRes.stderr || ''}`,
+      };
+    },
+    matchers: [/physics\s*->\s*commands/, /invented|unverified|extra/i],
+  },
+
+  // ---- Frontend, Hygiene, Docs & Policy Gates ----------------------------------------------
+  {
+    id: 'check_npm_audit',
+    source: 'ci.yml:301',
+    ciCommand: 'node scripts/check_npm_audit.mjs',
+    faultSummary: 'Add stale withdrawn exemption `GHSA-fc5q-39xc-vjpf` to `scripts/npm_audit_policy.mjs`',
+    patch: 'check_npm_audit.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('node scripts/check_npm_audit.mjs', wt);
+    },
+    matchers: [/GHSA-fc5q-39xc-vjpf/, /stale/i],
+  },
+  {
+    id: 'check_text_hygiene',
+    source: 'ci.yml:312',
+    ciCommand: 'npm run check:text-hygiene',
+    faultSummary: 'Embed NUL byte `\\x00` inside `scripts/npm_audit_policy.mjs` via binary patch',
+    patch: 'check_text_hygiene.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:text-hygiene', wt);
+    },
+    matchers: [/npm_audit_policy\.mjs/, /control byte|U\+0000/i],
+  },
+  {
+    id: 'check_root_hygiene',
+    source: 'ci.yml:318',
+    ciCommand: 'npm run check:root-hygiene',
+    faultSummary: 'Add unreviewed `unreviewed_m2_fault.txt` at repository root',
+    patch: 'check_root_hygiene.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:root-hygiene', wt);
+    },
+    matchers: [/unreviewed_m2_fault\.txt/, /allow-list|not in root_allowlist/i],
+  },
+  {
+    id: 'check_e2',
+    source: 'ci.yml:322',
+    ciCommand: 'npm run check:e2',
+    faultSummary: 'Alter `control_mean` in `artifacts/experiments/e2-evolved-brain-default/effects.json`',
+    patch: 'check_e2.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:e2', wt);
+    },
+    matchers: [/effects\.json/, /digest|sha256|mismatch/i],
+  },
+  {
+    id: 'check_e3',
+    source: 'package.json:33',
+    ciCommand: 'npm run check:e3',
+    faultSummary:
+      'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json`',
+    patch: 'check_e3.patch',
+    needsNodeModules: false,
+    run(wt) {
+      return runShell('npm run check:e3', wt);
+    },
+    matchers: [/SHA-256 mismatch for effects\.json/, /effects\.json/, /residual|mismatch/i],
+  },
+  {
+    id: 'npm_lint',
+    source: 'ci.yml:326',
+    ciCommand: 'npm run lint',
+    faultSummary: 'Add empty statement `if (Boolean(1)) {}` to `src/main.tsx`',
+    patch: 'npm_lint.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run lint', wt);
+    },
+    matchers: [/no-empty/, /Empty block statement/i],
+  },
+  {
+    id: 'eslint_ratchet',
+    source: 'ci.yml:330',
+    ciCommand: 'node scripts/eslint_ratchet.mjs',
+    faultSummary: 'Add `export const _m2AnyFault: any = 1;` to `src/main.tsx`',
+    patch: 'eslint_ratchet.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('node scripts/eslint_ratchet.mjs', wt);
+    },
+    matchers: [/warning\(s\)|ceiling/i, /no-explicit-any/, /ESLint/i],
+  },
+  {
+    id: 'typecheck_tests',
+    source: 'ci.yml:343',
+    ciCommand: 'npm run typecheck:tests',
+    faultSummary: "Add `export const _m2TypeFault: number = 'bad';` to `tests/frontend/mapManifestEvidence.test.ts`",
+    patch: 'typecheck_tests.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run typecheck:tests', wt);
+    },
+    matchers: [/_m2TypeFault/, /TS2322/],
+  },
+  {
+    id: 'vitest_src',
+    source: 'ci.yml:347',
+    ciCommand: 'npm run test',
+    faultSummary: 'Break `FLORA_COLLIDER_BASE_RADIUS` assertion in `src/__tests__/floraClearance.test.ts`',
+    patch: 'vitest_src.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run test', wt);
+    },
+    matchers: [/FAIL\s+src\/__tests__\/floraClearance\.test\.ts/, /AssertionError/],
+  },
+  {
+    id: 'vitest_tests',
+    source: 'ci.yml:351',
+    ciCommand: 'npm run test:frontend',
+    faultSummary: 'Invert `expect(res.ok).toBe(false)` in `tests/frontend/mapManifestEvidence.test.ts`',
+    patch: 'vitest_tests.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run test:frontend', wt, { ...process.env, CI: 'true' });
+    },
+    matchers: [/FAIL\s+frontend\/mapManifestEvidence\.test\.ts/, /AssertionError/],
+  },
+  {
+    id: 'npm_build',
+    source: 'ci.yml:355',
+    ciCommand: 'npm run build',
+    faultSummary: "Add `export const _m2BuildFault: number = 'bad';` to `src/main.tsx`",
+    patch: 'npm_build.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run build', wt);
+    },
+    matchers: [/_m2BuildFault/, /TS2322/],
+  },
+  {
+    id: 'check_bundle_closure',
+    source: 'ci.yml:373',
+    ciCommand: 'npm run build && npm run check:bundle-closure',
+    faultSummary: 'Import dev-only `ajv` into `src/main.tsx` so bundle closure shifts',
+    patch: 'check_bundle_closure.patch',
+    needsNodeModules: true,
+    run(wt) {
+      const buildRes = runShell('npm run build', wt);
+      if (buildRes.status !== 0) {
+        return buildRes;
+      }
+      return runShell('npm run check:bundle-closure', wt);
+    },
+    matchers: [/bundle-closure\.json differs/, /\+.*"ajv"/],
+  },
+  {
+    id: 'check_csp',
+    source: 'ci.yml:377',
+    ciCommand: 'npm run build && npm run check:csp',
+    faultSummary: 'Add external `<script src="https://example.com/m2-fault.js"></script>` to `index.html`',
+    patch: 'check_csp.patch',
+    needsNodeModules: true,
+    run(wt) {
+      const buildRes = runShell('npm run build', wt);
+      if (buildRes.status !== 0) {
+        return buildRes;
+      }
+      return runShell('npm run check:csp', wt);
+    },
+    matchers: [/example\.com\/m2-fault\.js/, /CSP|script-src|external/i],
+  },
+  {
+    id: 'check_bundle',
+    source: 'ci.yml:385',
+    ciCommand: 'npm run build && npm run check:bundle',
+    faultSummary: 'Eagerly import `three` into dashboard root `src/App.tsx`',
+    patch: 'check_bundle.patch',
+    needsNodeModules: true,
+    run(wt) {
+      const buildRes = runShell('npm run build', wt);
+      if (buildRes.status !== 0) {
+        return buildRes;
+      }
+      return runShell('npm run check:bundle', wt);
+    },
+    matchers: [
+      /^- .*statically loads the three\.js chunk/,
+      /^- .*(?:budget|KiB|exceeds|three)/i,
+      /bundle budget FAILED/,
+    ],
+  },
+  {
+    id: 'check_e2e_specs',
+    source: 'ci.yml:426',
+    ciCommand: 'node scripts/check_e2e_specs.mjs',
+    faultSummary: 'Narrow `tests/package.json` `test:e2e` script to `e2e/console_hygiene.spec.ts`',
+    patch: 'check_e2e_specs.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('node scripts/check_e2e_specs.mjs', wt);
+    },
+    matchers: [/missing from|policy|scheduled/i, /tier1_features|rw_budget/i],
+  },
+  {
+    id: 'playwright_e2e',
+    source: 'ci.yml:430',
+    ciCommand: 'npm run test:e2e',
+    faultSummary: 'Change `expect(owned.length).toBe(0)` to `.toBe(999)` in `tests/e2e/console_hygiene.spec.ts`',
+    patch: 'playwright_e2e.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run test:e2e', wt);
+    },
+    matchers: [/Anima-owned console output/, /console_hygiene\.spec\.ts/, /Expected: 999/],
+  },
+  {
+    id: 'check_docs_links',
+    source: 'ci.yml:442',
+    ciCommand: 'node scripts/check_docs_links.mjs',
+    faultSummary: 'Append broken markdown link labeled `m2-broken` targeting `./m2-missing-target.md` to `docs/README.md`',
+    patch: 'check_docs_links.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('node scripts/check_docs_links.mjs', wt);
+    },
+    matchers: [/m2-missing-target\.md/, /broken link/i],
+  },
+  {
+    id: 'check_docs_metadata',
+    source: 'ci.yml:448',
+    ciCommand: 'node scripts/check_docs_metadata.mjs',
+    faultSummary: 'Set `status: invalid-m2` in `docs/README.md` front matter',
+    patch: 'check_docs_metadata.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('node scripts/check_docs_metadata.mjs', wt);
+    },
+    matchers: [/invalid-m2/, /docs\/README\.md/],
+  },
+  {
+    id: 'check_ipc_reference',
+    source: 'ci.yml:453',
+    ciCommand: 'node scripts/check_ipc_reference.mjs',
+    faultSummary: 'Insert nonexistent `m2_ghost_cmd` row in `docs/reference/IPC_CONTRACT.md`',
+    patch: 'check_ipc_reference.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('node scripts/check_ipc_reference.mjs', wt);
+    },
+    matchers: [/m2_ghost_cmd/],
+  },
+  {
+    id: 'check_ipc_arg_case',
+    source: 'package.json:34',
+    ciCommand: 'npm run check:ipc',
+    faultSummary:
+      'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts`',
+    patch: 'check_ipc_arg_case.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:ipc', wt);
+    },
+    matchers: [/file_path/, /worldCache\.ts/],
+  },
+  {
+    id: 'check_map_vision_manifest',
+    source: 'package.json:23 (ci.yml:351)',
+    ciCommand: 'npm run check:map-vision-manifest',
+    faultSummary: 'Set `seaLevel: 0.99` in `animal-map.manifest.json`',
+    patch: 'check_map_vision_manifest.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run check:map-vision-manifest', wt);
+    },
+    matchers: [/seaLevel|animal-map\.manifest\.json|differs|stale|mismatch|out of date|Regenerate/i],
+  },
+  {
+    id: 'verify_upstream_licenses',
+    source: 'package.json:48',
+    ciCommand: 'npm run verify:upstream-licenses',
+    faultSummary: 'Flip 1 hex char in `ts-rs` `sha256` inside `licensing/upstream/sources.json`',
+    patch: 'verify_upstream_licenses.patch',
+    needsNodeModules: true,
+    run(wt) {
+      return runShell('npm run verify:upstream-licenses', wt);
+    },
+    matchers: [/manifest says/, /ts-rs/, /sha256 is/],
+  },
+  {
+    id: 'compare_checksums_self_test',
+    source: 'determinism-matrix.yml:113',
+    ciCommand: 'node scripts/paper/compare_checksums.mjs --self-test',
+    faultSummary: 'Force `checksumAgrees = true` in `scripts/paper/compare_checksums.mjs`',
+    patch: 'compare_checksums_self_test.patch',
+    needsNodeModules: false,
+    run(wt) {
+      return runShell('node scripts/paper/compare_checksums.mjs --self-test', wt);
+    },
+    matchers: [/FAIL\s+a checksum difference/i, /self-test: \d+ control\(s\) failed/],
+  },
+];
+
+export function defaultCleanKey(gate) {
+  const base = `${gate.ciCommand}@@${gate.needsCargo ? 'cargo' : 'nocargo'}@@${gate.needsNodeModules ? 'nm' : 'nonm'}`;
+  return typeof gate.runClean === 'function' ? `${base}@@clean:${gate.id}` : base;
+}
+
+function createWorktreeRunner(patchFile, gate, ctx, isClean) {
+  const needsCargo =
+    typeof gate.needsCargo === 'function'
+      ? Boolean(gate.needsCargo(ctx, isClean))
+      : Boolean(gate.needsCargo);
+  const runner = isClean && typeof gate.runClean === 'function' ? gate.runClean : gate.run;
+  return withTempWorktree(
+    patchFile,
+    {
+      needsNodeModules: Boolean(gate.needsNodeModules),
+      needsCargo,
+    },
+    (wt, tmpBase) => runner(wt, tmpBase, ctx),
+  );
+}
+
+export function evaluateGate(gate, ctx = { captures: {}, tempFilesToClean: [], cleanCache: new Map() }, deps = {}) {
+  const t0 = performance.now();
+  if (gate.staticResult) {
+    return {
+      id: gate.id,
+      source: gate.source,
+      ciCommand: gate.ciCommand,
+      fault: gate.faultSummary,
+      exitCode: gate.staticResult.exitCode,
+      namingLine: gate.staticResult.namingLine,
+      verdict: gate.staticResult.verdict,
+      baselineExitCode: null,
+      matched: false,
+      elapsedSecs: 0,
+    };
+  }
+
+  const runCleanFn = deps.runClean ?? ((g, c) => createWorktreeRunner(null, g, c, true));
+  const runFaultFn = deps.runFault ?? ((g, c) => createWorktreeRunner(g.patch, g, c, false));
+
+  if (!ctx.cleanCache) ctx.cleanCache = new Map();
+  const cleanKey = gate.cleanKey ?? defaultCleanKey(gate);
+  let baselineRes;
+  if (ctx.cleanCache.has(cleanKey)) {
+    baselineRes = ctx.cleanCache.get(cleanKey);
+  } else {
+    baselineRes = runCleanFn(gate, ctx);
+    ctx.cleanCache.set(cleanKey, baselineRes);
+  }
+
+  let faultRes = null;
+  if (baselineRes && baselineRes.status === 0) {
+    faultRes = runFaultFn(gate, ctx);
+  }
+
+  const classified = classifyGateResult({
+    baselineRes,
+    faultRes,
+    matchers: gate.matchers,
+  });
+  const elapsedSecs = Math.round(((performance.now() - t0) / 1000) * 100) / 100;
+  return {
+    id: gate.id,
+    source: gate.source,
+    ciCommand: gate.ciCommand,
+    fault: gate.faultSummary,
+    exitCode: classified.exitCode,
+    namingLine: classified.namingLine,
+    verdict: classified.verdict,
+    baselineExitCode: baselineRes ? baselineRes.status : null,
+    matched: classified.matched,
+    elapsedSecs,
+  };
+}
+
+export function verdictRank(verdict) {
+  if (verdict === VERDICTS.VACUOUS) return 0;
+  if (verdict === VERDICTS.UNMATCHED_FAILURE) return 1;
+  if (verdict.startsWith('NOT RUN')) return 2;
+  return 3;
+}
+
+export function sortAndSummarizeResults(results) {
+  const ordered = [...results].sort((a, b) => verdictRank(a.verdict) - verdictRank(b.verdict));
+  const counts = {
+    total: ordered.length,
+    vacuous: ordered.filter((r) => r.verdict === VERDICTS.VACUOUS).length,
+    unmatchedFailure: ordered.filter((r) => r.verdict === VERDICTS.UNMATCHED_FAILURE).length,
+    catches: ordered.filter((r) => r.verdict === VERDICTS.CATCHES).length,
+    notRunNoGate: ordered.filter((r) => r.verdict === VERDICTS.NOT_RUN_NO_GATE).length,
+    notRunTime: ordered.filter((r) => r.verdict === VERDICTS.NOT_RUN_TIME).length,
+    notRunBaselineRed: ordered.filter((r) => r.verdict.startsWith('NOT RUN (baseline red')).length,
+  };
+  return { ordered, counts };
+}
+
+export function formatMarkdownTable({ ordered, counts }) {
+  const lines = [
+    `SUMMARY total=${counts.total} VACUOUS=${counts.vacuous} UNMATCHED_FAILURE=${counts.unmatchedFailure} CATCHES=${counts.catches} ` +
+      `NOT_RUN_NO_GATE=${counts.notRunNoGate} NOT_RUN_TIME=${counts.notRunTime} ` +
+      `NOT_RUN_BASELINE_RED=${counts.notRunBaselineRed}`,
+    '| gate | CI command | fault | exit code | naming line (verbatim) | verdict |',
+    '|---|---|---|---|---|---|',
+  ];
+  for (const row of ordered) {
+    lines.push(
+      `| ${formatMdCode(row.id)} | ${formatMdCode(row.ciCommand)} | ${sanitizeMdCell(row.fault)} | ${row.exitCode} | ${formatMdCode(row.namingLine)} | **${row.verdict}** |`,
+    );
+  }
+  return lines.join('\n');
+}
+
+export function validateGateRegistry(gates = GATES, { faultsDir = FAULTS_DIR } = {}) {
+  const problems = [];
+  const seenIds = new Set();
+  const referencedPatches = new Set();
+
+  for (const gate of gates) {
+    if (!gate.id || typeof gate.id !== 'string') {
+      problems.push('gate missing valid string id');
+      continue;
+    }
+    if (seenIds.has(gate.id)) {
+      problems.push(`duplicate gate id: ${gate.id}`);
+    }
+    seenIds.add(gate.id);
+
+    if (!gate.source || !gate.ciCommand || !gate.faultSummary) {
+      problems.push(`${gate.id}: missing source, ciCommand, or faultSummary`);
+    }
+
+    if (gate.staticResult) {
+      if (gate.patch !== null) {
+        problems.push(`${gate.id}: staticResult gate must set patch: null`);
+      }
+      if (!gate.staticResult.verdict || !gate.staticResult.namingLine) {
+        problems.push(`${gate.id}: staticResult missing verdict or namingLine`);
+      }
+      continue;
+    }
+
+    if (typeof gate.run !== 'function') {
+      problems.push(`${gate.id}: missing run() function`);
+    }
+    if (!Array.isArray(gate.matchers) || gate.matchers.length === 0) {
+      problems.push(`${gate.id}: missing non-empty matchers array`);
+    } else {
+      for (const m of gate.matchers) {
+        if (!(m instanceof RegExp)) {
+          problems.push(`${gate.id}: matcher is not a RegExp`);
+        } else if (m.global) {
+          problems.push(`${gate.id}: matcher ${m} must not carry /g flag`);
+        }
+      }
+    }
+    if (typeof gate.patch !== 'string' || !gate.patch.endsWith('.patch')) {
+      problems.push(`${gate.id}: missing valid .patch filename`);
+    } else {
+      referencedPatches.add(gate.patch);
+      const patchPath = join(faultsDir, gate.patch);
+      if (!existsSync(patchPath)) {
+        problems.push(`${gate.id}: missing fault patch file ${patchPath}`);
+      }
+    }
+  }
+
+  if (existsSync(faultsDir)) {
+    for (const file of readdirSync(faultsDir)) {
+      if (file.endsWith('.patch') && !referencedPatches.has(file)) {
+        problems.push(`unreferenced fault patch in gate_faults/: ${file}`);
+      }
+    }
+  }
+  return problems;
+}
+
+export function runSelfTest() {
+  const failures = [];
+  let controls = 0;
+
+  // 1. classifyGateResult covers CATCHES, VACUOUS, NOT RUN (baseline red), and UNMATCHED_FAILURE
+  {
+    controls += 1;
+    const res = classifyGateResult({
+      baselineRes: { status: 0, output: 'ok' },
+      faultRes: { status: 1, output: 'error: expected failure_token in foo.rs' },
+      matchers: [/failure_token/],
+    });
+    if (res.verdict !== VERDICTS.CATCHES || res.exitCode !== 1 || !res.matched) {
+      failures.push(`CATCHES control failed: ${JSON.stringify(res)}`);
+    }
+  }
+  {
+    controls += 1;
+    const res = classifyGateResult({
+      baselineRes: { status: 0, output: 'ok' },
+      faultRes: { status: 0, output: 'all green 0 matches' },
+      matchers: [/all green/],
+    });
+    if (res.verdict !== VERDICTS.VACUOUS || res.exitCode !== 0) {
+      failures.push(`VACUOUS control failed: ${JSON.stringify(res)}`);
+    }
+  }
+  {
+    controls += 1;
+    const res = classifyGateResult({
+      baselineRes: { status: 2, output: 'Error: clean baseline broken on host' },
+      faultRes: { status: 1, output: 'should never be credited' },
+      matchers: [/should never/],
+    });
+    if (res.verdict !== VERDICTS.NOT_RUN_BASELINE_RED || res.exitCode !== 2) {
+      failures.push(`NOT RUN (baseline red) control failed: ${JSON.stringify(res)}`);
+    }
+  }
+  {
+    controls += 1;
+    const res = classifyGateResult({
+      baselineRes: { status: 0, output: 'ok' },
+      faultRes: { status: 101, output: 'error: unrelated compiler panic' },
+      matchers: [/expected_fault_signature/],
+    });
+    if (res.verdict !== VERDICTS.UNMATCHED_FAILURE || res.verdict === VERDICTS.CATCHES || res.matched) {
+      failures.push(`UNMATCHED_FAILURE control failed: ${JSON.stringify(res)}`);
+    }
+  }
+
+  // 2. evaluateGate does NOT run fault patch if clean baseline is red, and caches shared clean checks
+  {
+    controls += 1;
+    let cleanCalls = 0;
+    let faultCalls = 0;
+    const gateA = {
+      id: 'mock_a',
+      source: 'test',
+      ciCommand: 'mock cmd',
+      faultSummary: 'mock fault a',
+      patch: 'a.patch',
+      cleanKey: 'shared_mock',
+      matchers: [/fault_a/],
+      run: () => ({ status: 1, output: 'fault_a' }),
+    };
+    const gateB = {
+      id: 'mock_b',
+      source: 'test',
+      ciCommand: 'mock cmd',
+      faultSummary: 'mock fault b',
+      patch: 'b.patch',
+      cleanKey: 'shared_mock',
+      matchers: [/fault_b/],
+      run: () => ({ status: 1, output: 'fault_b' }),
+    };
+    const ctx = { captures: {}, tempFilesToClean: [], cleanCache: new Map() };
+    const deps = {
+      runClean: () => {
+        cleanCalls += 1;
+        return { status: 1, output: 'Error: baseline red' };
+      },
+      runFault: () => {
+        faultCalls += 1;
+        return { status: 1, output: 'fault_a' };
+      },
+    };
+    const rA = evaluateGate(gateA, ctx, deps);
+    const rB = evaluateGate(gateB, ctx, deps);
+    if (
+      cleanCalls !== 1 ||
+      faultCalls !== 0 ||
+      rA.verdict !== VERDICTS.NOT_RUN_BASELINE_RED ||
+      rB.verdict !== VERDICTS.NOT_RUN_BASELINE_RED
+    ) {
+      failures.push(
+        `evaluateGate baseline-red/cache control failed: clean=${cleanCalls} fault=${faultCalls} rA=${rA.verdict} rB=${rB.verdict}`,
+      );
+    }
+  }
+
+  // 3. Ordering & summary counts
+  {
+    controls += 1;
+    const summary = sortAndSummarizeResults([
+      { id: 'c', verdict: VERDICTS.CATCHES, ciCommand: 'c', fault: 'c', exitCode: 1, namingLine: 'c' },
+      { id: 'r', verdict: VERDICTS.NOT_RUN_BASELINE_RED, ciCommand: 'r', fault: 'r', exitCode: 1, namingLine: 'r' },
+      { id: 'u', verdict: VERDICTS.UNMATCHED_FAILURE, ciCommand: 'u', fault: 'u', exitCode: 1, namingLine: 'u' },
+      { id: 'v', verdict: VERDICTS.VACUOUS, ciCommand: 'v', fault: 'v', exitCode: 0, namingLine: 'v' },
+    ]);
+    const ids = summary.ordered.map((r) => r.id);
+    if (
+      JSON.stringify(ids) !== JSON.stringify(['v', 'u', 'r', 'c']) ||
+      summary.counts.vacuous !== 1 ||
+      summary.counts.unmatchedFailure !== 1 ||
+      summary.counts.notRunBaselineRed !== 1 ||
+      summary.counts.catches !== 1
+    ) {
+      failures.push(`sortAndSummarizeResults control failed: ${JSON.stringify(summary)}`);
+    }
+  }
+
+  // 4. Registry & patch completeness
+  {
+    controls += 1;
+    const regProblems = validateGateRegistry(GATES, { faultsDir: FAULTS_DIR });
+    if (regProblems.length > 0) {
+      failures.push(`registry validation failed: ${regProblems.join('; ')}`);
+    }
+  }
+
+  // 5. git apply --check on every registered patch against HEAD (isolated temp worktree)
+  {
+    const uniquePatches = [...new Set(GATES.map((g) => g.patch).filter(Boolean))];
+    try {
+      withTempWorktree(null, { needsNodeModules: false, needsCargo: false }, (wt) => {
+        for (const patchFile of uniquePatches) {
+          controls += 1;
+          const patchBuf = readFileSync(join(FAULTS_DIR, patchFile));
+          const check = spawnSync(
+            'git',
+            ['-c', 'core.autocrlf=false', 'apply', '--check', '--whitespace=nowarn', '-'],
+            { cwd: wt, input: patchBuf, encoding: 'buffer' },
+          );
+          if (check.status !== 0) {
+            failures.push(
+              `git apply --check against HEAD failed for ${patchFile}: ${(check.stderr || '').toString('utf8').trim()}`,
+            );
+          }
+        }
+      });
+    } catch (err) {
+      controls += uniquePatches.length;
+      failures.push(
+        `HEAD worktree setup for patch self-test failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  return { failures, controls };
+}
+
+function main() {
+  let cli;
+  try {
+    cli = parseCliArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
+  const { gateIds, listOnly, selfTest, jsonOut, mdOut } = cli;
+
+  if (selfTest) {
+    const st = runSelfTest();
+    if (st.failures.length > 0) {
+      for (const f of st.failures) console.error(`FAIL: ${f}`);
+      process.exit(1);
+    }
+    console.log(`gate_controls self-test: ${st.controls} controls ok (${GATES.length} gates registered)`);
+    return;
+  }
+
+  if (listOnly) {
+    for (const gate of GATES) {
+      console.log(`${gate.id}\t(${gate.source})`);
+    }
+    return;
+  }
+
+  const selected =
+    gateIds.length > 0
+      ? gateIds.map((id) => {
+          const found = GATES.find((g) => g.id === id);
+          if (!found) {
+            console.error(`Unknown gate id: ${id}`);
+            process.exit(2);
+          }
+          return found;
+        })
+      : GATES;
+
+  const statusBefore = execFileSync('git', ['status', '--porcelain'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+
+  const ctx = {
+    captures: {},
+    tempFilesToClean: [],
+    cleanCache: new Map(),
+  };
+  const results = [];
+  try {
+    for (const gate of selected) {
+      console.error(`[m2] running ${gate.id}...`);
+      const record = evaluateGate(gate, ctx);
+      results.push(record);
+      console.error(
+        `[m2] ${record.id}: verdict=${record.verdict} exit=${record.exitCode} elapsed=${record.elapsedSecs}s | ${record.namingLine}`,
+      );
+    }
+  } finally {
+    for (const tempFile of ctx.tempFilesToClean) {
+      rmSync(tempFile, { force: true });
+    }
+  }
+
+  const statusAfter = execFileSync('git', ['status', '--porcelain'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+  if (statusAfter !== statusBefore) {
+    console.error('ERROR: repository working tree status changed during gate_controls run!');
+    console.error(`Before:\n${statusBefore}\nAfter:\n${statusAfter}`);
+    process.exit(2);
+  }
+
+  const summary = sortAndSummarizeResults(results);
+  const tableText = formatMarkdownTable(summary);
+  console.log(tableText);
+
+  if (mdOut) {
+    writeFileSync(mdOut, `${tableText}\n`, 'utf8');
+  }
+  if (jsonOut) {
+    writeFileSync(
+      jsonOut,
+      JSON.stringify({ counts: summary.counts, results: summary.ordered }, null, 2),
+      'utf8',
+    );
+  }
+}
+
+const isDirectExecution =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isDirectExecution) {
+  main();
+}
