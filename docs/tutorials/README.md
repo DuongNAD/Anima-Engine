@@ -2,11 +2,17 @@
 title: Lộ trình làm quen Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-07-24
+last_reviewed: 2026-11-22
 review_cycle: per-release
 ---
 
 # Tutorials
+
+## Danh sách bài học thực hành
+
+| Bài | Nội dung | Trạng thái |
+|---|---|---|
+| [01 — Từ clone tới thí nghiệm headless đầu tiên](01-first-headless-experiment.md) | Đi từ clone sạch tới cài dependency, chạy `e2_seam_tests`, build release `run_e2_brain_experiment`, chạy E2 smoke, kiểm tra digest với `npm run check:e2` và đọc ranh giới suy luận | `active` |
 
 ## Lộ trình 60 phút
 
