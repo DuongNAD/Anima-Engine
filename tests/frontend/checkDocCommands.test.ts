@@ -271,8 +271,12 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
 
   it('rejects cargo/npm/npx/wrapper/subshell/heredoc/continuation/command-sub bypasses without false positives', () => {
     let deepNested = 'echo hi';
+    let deepEnvS = 'echo hi';
+    let deepNpmExec = 'echo hi';
     for (let i = 0; i < 6; i += 1) {
       deepNested = `bash -c ${JSON.stringify(deepNested)}`;
+      deepEnvS = `env -S ${JSON.stringify(deepEnvS)}`;
+      deepNpmExec = `npm exec -c ${JSON.stringify(deepNpmExec)}`;
     }
 
     const bypassAttempts = [
@@ -294,6 +298,8 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'eval "cargo run"',
       "eval -- 'npm run tauri:dev'",
       deepNested,
+      deepEnvS,
+      deepNpmExec,
       // 3. npm / npx flags & -- separator
       'npm --silent run tauri:dev',
       'npm --prefix . run tauri:dev',
@@ -319,10 +325,50 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'cat <<EOF-1\nhi\nEOF-1\ncargo run',
       'cat <<\\EOF\nhi\nEOF\ncargo run',
       'cat <<-EOF\n\t\thi\n\tEOF\ncargo run',
-      // 7. Double-quoted command substitutions
+      // 7. Double-quoted command substitutions (single-line and multi-line)
       'echo "$(cargo run)"',
       'echo "`npm run tauri:dev`"',
       'echo "$(echo "$(cargo run)")"',
+      'echo "$(\necho ok\ncargo run\n)"',
+      'echo "`\necho ok\ncargo run\n`"',
+      'echo "$(\necho ok\n# safe comment\ncargo run\n)"',
+      // 8. env -S / --split-string payloads & combined short flags
+      'env -S "cargo run"',
+      'env -S "npm run tauri:dev"',
+      'env --split-string "cargo run"',
+      'env --split-string="cargo run"',
+      'env -S "-u RUST_LOG cargo run"',
+      'env -S "cargo" run',
+      'env -iS "cargo run"',
+      'env -iu RUST_LOG cargo run',
+      // 9. bash/sh/zsh option-value flags (-co, -O, +O, --rcfile, --init-file)
+      "bash -co errexit 'cargo run'",
+      "bash -cO extglob 'cargo run'",
+      "bash -O extglob -c 'cargo run'",
+      "bash +O extglob -c 'cargo run'",
+      "bash --rcfile /dev/null -c 'cargo run'",
+      "bash --rcfile=/dev/null -c 'cargo run'",
+      "bash --init-file /dev/null -c 'cargo run'",
+      "bash --init-file=/dev/null -c 'cargo run'",
+      "sh -co errexit 'cargo run'",
+      "zsh -co errexit 'cargo run'",
+      // 10. exec wrapper & flags
+      'exec cargo run',
+      'exec -a foo cargo run',
+      'exec -c npm run tauri:dev',
+      'exec -ca foo cargo run',
+      // 11. npm exec / npm x / npx -c
+      'npm exec -- tauri dev',
+      'npm x -- tauri build',
+      'npm exec -- vite preview',
+      'npm exec -p @tauri-apps/cli -- tauri dev',
+      'npm exec --package=@tauri-apps/cli tauri dev',
+      "npm exec -c 'cargo run'",
+      "npm exec --call='cargo run'",
+      "npm x -c 'npm run tauri:dev'",
+      "npm --call='cargo run' exec",
+      "npx -c 'cargo run'",
+      'npx --call="npm run tauri:dev"',
     ];
 
     for (const cmd of bypassAttempts) {
@@ -335,9 +381,18 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
       'npm --silent run check:docs',
       'npm run -- check:e2',
+      'npm exec -- eslint src',
+      'npm x -- tsc --noEmit',
+      "npm exec -c 'echo ok'",
       'env -u RUST_LOG CARGO_BUILD_JOBS=4 nice -n 10 cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+      'env -S "echo ok"',
+      'env --split-string="RUST_LOG=info" echo ok',
+      'exec echo ok',
+      'exec -a custom-name echo ok',
       'cargo build --manifest-path src-tauri/Cargo.toml \\\n  --release --bin anima-lab',
       "bash -c 'echo ok'",
+      "bash -co errexit 'echo ok'",
+      "bash --rcfile /dev/null -c 'echo ok'",
       'eval "echo ok"',
       'cat <<EOF-1 > out.txt\ncargo run\nEOF-1\necho ok',
       'cat <<-EOF > out2.txt\n\tcargo run\n\tEOF\necho ok',
@@ -347,6 +402,9 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       "echo '$(cargo run)'",
       'echo "\\$(cargo run)"',
       'echo "$(echo ok)"',
+      'echo "$(echo ok\necho done)"',
+      'echo "$(\n# cargo run in comment\necho ok\n)"',
+      'echo "$(\ncat <<\'EOF\'\ncargo run\nEOF\n)"',
     ];
 
     for (const cmd of safeForms) {
