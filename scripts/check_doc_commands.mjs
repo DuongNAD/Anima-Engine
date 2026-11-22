@@ -60,8 +60,93 @@ const UNQUOTED_WORD_CHAR_RE = /^[A-Za-z0-9._/:=-]$/;
 const HEREDOC_IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const ENV_ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
 
-const NODE_EVAL_FORBIDDEN_RE =
-  /(?:child_process|worker_threads|inspector|createRequire|mainModule|getBuiltinModule|__proto__|WebAssembly|XMLHttpRequest|execSync|execFileSync|execFile|spawnSync|spawn|fork|rmSync|unlinkSync|rmdirSync|renameSync|truncateSync|chmodSync|chownSync|symlinkSync|linkSync|cpSync|copyFileSync|appendFileSync|openSync|createWriteStream)\b|\b(?:vm|net|http|https|dgram|tls|cluster|repl|dns|os|module|eval|Function|import|Reflect|Proxy|globalThis|global|window|constructor|prototype|fetch|setTimeout|setInterval|setImmediate|promises|binding|dlopen|exec|rm|unlink|rmdir|rename|truncate|chmod|chown|symlink|link)\b/;
+const ALLOWED_JS_KEYWORDS = new Set(['const', 'for', 'of']);
+const SAFE_JS_DATA_METHODS = new Set([
+  'split',
+  'join',
+  'replace',
+  'slice',
+  'toFixed',
+  'map',
+  'find',
+]);
+const SAFE_FILENAME_RE = /^[A-Za-z0-9._-]+$/;
+const RESERVED_JS_ROOTS = new Set(['process', 'require', 'JSON', 'console', 'Number', 'Object']);
+const FORBIDDEN_JS_IDENTIFIERS = new Set([
+  'constructor',
+  'prototype',
+  '__proto__',
+  'toString',
+  'valueOf',
+  'toLocaleString',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'call',
+  'apply',
+  'bind',
+  'arguments',
+  'caller',
+  'callee',
+  'global',
+  'globalThis',
+  'window',
+  'self',
+  'Function',
+  'Reflect',
+  'Proxy',
+  'eval',
+  'import',
+  'export',
+  'with',
+  'try',
+  'catch',
+  'finally',
+  'throw',
+  'while',
+  'do',
+  'if',
+  'else',
+  'switch',
+  'case',
+  'default',
+  'break',
+  'continue',
+  'async',
+  'await',
+  'yield',
+  'delete',
+  'typeof',
+  'void',
+  'in',
+  'instanceof',
+  'debugger',
+  'function',
+  'class',
+  'this',
+  'super',
+  'return',
+  'var',
+  'let',
+  'new',
+  'module',
+  'exports',
+  '__dirname',
+  '__filename',
+  'child_process',
+  'getBuiltinModule',
+  'mainModule',
+  'createRequire',
+  'binding',
+  'dlopen',
+  'setTimeout',
+  'setInterval',
+  'setImmediate',
+  'queueMicrotask',
+  'fetch',
+  'WebAssembly',
+  'Buffer',
+]);
 
 function toPosixPath(p) {
   return p.replace(/\\/g, '/');
@@ -353,8 +438,7 @@ function isTokenBoundaryChar(ch) {
     ch === '&' ||
     ch === '|' ||
     ch === '>' ||
-    ch === '<' ||
-    ch === '#'
+    ch === '<'
   );
 }
 
@@ -461,8 +545,8 @@ function tokenizeAllowedShell(script) {
     }
 
     if (ch === '#') {
-      if (currentWord !== null) {
-        return fail("unexpected '#' inside word", lineIndex);
+      if (currentWord !== null || !hadSpaceBefore) {
+        return fail("unexpected '#' inside or attached to word", lineIndex);
       }
       while (i < normalized.length && normalized[i] !== '\n') {
         const cCode = normalized.charCodeAt(i);
@@ -720,8 +804,7 @@ function tokenizeAllowedShell(script) {
         postChar !== undefined &&
         postChar !== ' ' &&
         postChar !== '\t' &&
-        postChar !== '\n' &&
-        postChar !== '#'
+        postChar !== '\n'
       ) {
         return fail('heredoc delimiter must be followed by whitespace or newline', lineIndex);
       }
@@ -949,50 +1032,726 @@ function parseAllowedPipelines(tokens, lines) {
   return { ok: true, commands };
 }
 
-function validateSafeNodeEval(payload) {
+function tokenizeSafeNodeJs(payload) {
   if (typeof payload !== 'string' || payload.trim().length === 0) {
-    return 'empty node -e payload';
-  }
-  if (payload.includes('..')) {
-    return "node -e payload may not contain '..'";
-  }
-  if (/\\(?:x|u|[0-7])/i.test(payload)) {
-    return 'node -e payload may not contain hex, unicode, or octal escapes';
-  }
-  if (payload.includes('${')) {
-    return "node -e payload may not contain '${'";
-  }
-  if (NODE_EVAL_FORBIDDEN_RE.test(payload)) {
-    return 'node -e payload uses disallowed module, eval, process, or destructive fs API';
-  }
-  if (/(?:require|fs|process|global|globalThis)\s*\[/.test(payload)) {
-    return 'node -e payload uses disallowed computed property access';
+    return { ok: false, reason: 'empty node -e payload' };
   }
 
-  for (const match of payload.matchAll(/\brequire\b/g)) {
-    const rest = payload.slice(match.index);
-    if (!/^require\s*\(\s*(?:'(?:fs|node:fs)'|"(?:fs|node:fs)")\s*\)/.test(rest)) {
-      return "node -e require() is strictly limited to 'fs' or 'node:fs'";
+  const tokens = [];
+  let i = 0;
+
+  while (i < payload.length) {
+    const ch = payload[i];
+    const code = ch.charCodeAt(0);
+
+    if (isDisallowedControlCode(code)) {
+      return { ok: false, reason: 'disallowed control byte in node -e' };
     }
-  }
-
-  for (const match of payload.matchAll(/\bprocess\b/g)) {
-    const rest = payload.slice(match.index);
-    if (!/^process\.exit\(\s*[0-9]+\s*\)/.test(rest)) {
-      return 'node -e process access is strictly limited to process.exit(<int>)';
+    if (code > 0x7e) {
+      return { ok: false, reason: 'disallowed non-ASCII byte in node -e' };
     }
-  }
 
-  if (/\bwriteFileSync\b/.test(payload)) {
-    const hasSafeTarget =
-      payload.includes("'src-tauri/target/") || payload.includes('"src-tauri/target/');
-    const hasUnsafeAbs = /['"]\/(?:etc|tmp|var|usr|bin|sbin|Users|home)/.test(payload);
-    if (!hasSafeTarget || hasUnsafeAbs) {
-      return 'node -e writeFileSync must target src-tauri/target/...';
+    if (ch === ' ' || ch === '\t' || ch === '\n') {
+      i += 1;
+      continue;
     }
+
+    if (ch === '`') {
+      return { ok: false, reason: 'template literals are disallowed in node -e' };
+    }
+
+    if (ch === '/') {
+      const next = payload[i + 1];
+      if (next === '/' || next === '*') {
+        return { ok: false, reason: 'JS comments are disallowed in node -e' };
+      }
+      i += 1;
+      let pattern = '';
+      let closed = false;
+      while (i < payload.length) {
+        const rc = payload[i];
+        const rCode = rc.charCodeAt(0);
+        if (isDisallowedControlCode(rCode) || rCode > 0x7e || rc === '\n') {
+          return { ok: false, reason: 'invalid regex literal in node -e' };
+        }
+        if (rc === '\\') {
+          const esc = payload[i + 1];
+          if (!esc || !'ntrswd,.-/[]^$'.includes(esc)) {
+            return { ok: false, reason: 'disallowed escape in node -e regex literal' };
+          }
+          pattern += `\\${esc}`;
+          i += 2;
+          continue;
+        }
+        if (rc === '/') {
+          closed = true;
+          i += 1;
+          break;
+        }
+        pattern += rc;
+        i += 1;
+      }
+      if (!closed || pattern.length === 0 || pattern.length > 64) {
+        return { ok: false, reason: 'unterminated or invalid regex literal in node -e' };
+      }
+      if (!/^\^?(?:\[\^?[A-Za-z0-9.,:_=\s\\-]+\]|[A-Za-z0-9.,:_=\\-]+)[+*?]?\$?$/.test(pattern)) {
+        return { ok: false, reason: 'disallowed regex pattern in node -e' };
+      }
+      if (i < payload.length && /[A-Za-z0-9_]/.test(payload[i])) {
+        return { ok: false, reason: 'regex flags are disallowed in node -e' };
+      }
+      tokens.push({ kind: 'REGEX', value: pattern });
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      i += 1;
+      let val = '';
+      let closed = false;
+      while (i < payload.length) {
+        const sc = payload[i];
+        const sCode = sc.charCodeAt(0);
+        if (isDisallowedControlCode(sCode) || sCode > 0x7e || sc === '\n') {
+          return { ok: false, reason: 'invalid or multi-line string literal in node -e' };
+        }
+        if (sc === '\\') {
+          const esc = payload[i + 1];
+          if (esc === quote) {
+            val += quote;
+          } else if (esc === '\\') {
+            val += '\\';
+          } else if (esc === 'n') {
+            val += '\n';
+          } else if (esc === 't') {
+            val += '\t';
+          } else if (esc === 'r') {
+            val += '\r';
+          } else {
+            return { ok: false, reason: 'disallowed escape sequence inside node -e string' };
+          }
+          i += 2;
+          continue;
+        }
+        if (sc === quote) {
+          closed = true;
+          i += 1;
+          break;
+        }
+        val += sc;
+        i += 1;
+      }
+      if (!closed) {
+        return { ok: false, reason: 'unterminated string literal in node -e' };
+      }
+      tokens.push({ kind: 'STRING', value: val });
+      continue;
+    }
+
+    if (/[A-Za-z_]/.test(ch)) {
+      let end = i + 1;
+      while (end < payload.length && /[A-Za-z0-9_]/.test(payload[end])) {
+        end += 1;
+      }
+      const word = payload.slice(i, end);
+      tokens.push({ kind: ALLOWED_JS_KEYWORDS.has(word) ? 'KW' : 'IDENT', value: word });
+      i = end;
+      continue;
+    }
+
+    if (/[0-9]/.test(ch)) {
+      const m = /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?/.exec(payload.slice(i));
+      if (!m) {
+        return { ok: false, reason: 'disallowed number literal in node -e' };
+      }
+      const raw = m[0];
+      const nextCh = payload[i + raw.length];
+      if (nextCh !== undefined && /[A-Za-z0-9_.]/.test(nextCh)) {
+        return { ok: false, reason: 'disallowed numeric suffix in node -e' };
+      }
+      const isInt = !raw.includes('.');
+      tokens.push({
+        kind: 'NUMBER',
+        value: raw,
+        isInt,
+        intVal: isInt ? Number(raw) : null,
+      });
+      i += raw.length;
+      continue;
+    }
+
+    if (payload.startsWith('===', i)) {
+      tokens.push({ kind: 'PUNCT', value: '===' });
+      i += 3;
+      continue;
+    }
+    if (payload.startsWith('=>', i)) {
+      tokens.push({ kind: 'PUNCT', value: '=>' });
+      i += 2;
+      continue;
+    }
+    if ('{}()[].;:,+='.includes(ch)) {
+      tokens.push({ kind: 'PUNCT', value: ch });
+      i += 1;
+      continue;
+    }
+
+    return { ok: false, reason: `disallowed token '${ch}' in node -e` };
   }
 
-  return null;
+  if (tokens.length === 0) {
+    return { ok: false, reason: 'empty node -e payload' };
+  }
+
+  return { ok: true, tokens };
+}
+
+function isForbiddenJsIdent(name) {
+  return FORBIDDEN_JS_IDENTIFIERS.has(name) || RESERVED_JS_ROOTS.has(name);
+}
+
+function validateSafeNodeJsTokens(tokens) {
+  let idx = 0;
+  const peek = (offset = 0) => tokens[idx + offset];
+  const atEnd = () => idx >= tokens.length;
+  const fail = (msg) => {
+    throw new Error(msg);
+  };
+  const consume = () => {
+    const t = tokens[idx];
+    idx += 1;
+    return t;
+  };
+  const expect = (kind, value) => {
+    const t = peek();
+    if (!t || t.kind !== kind || (value !== undefined && t.value !== value)) {
+      fail(`expected ${value ?? kind} in node -e`);
+    }
+    idx += 1;
+    return t;
+  };
+  const consumeOptionalSemi = () => {
+    if (peek()?.kind === 'PUNCT' && peek().value === ';') {
+      idx += 1;
+      return true;
+    }
+    return false;
+  };
+  const requireStmtEnd = () => {
+    const sawSemi = consumeOptionalSemi();
+    if (!atEnd() && peek()?.value !== '}' && !sawSemi) {
+      fail("expected ';' between statements in node -e");
+    }
+  };
+
+  const checkSafeReadPathArg = (arg) => {
+    if (arg.kind === 'string_lit' || arg.kind === 'string_const') {
+      if (!arg.safeRead) {
+        fail('node -e readFileSync path is outside allowlisted read/target directories');
+      }
+      return;
+    }
+    if (arg.kind === 'safe_read_concat') {
+      if (
+        arg.values.length === 0 ||
+        !arg.values.every((name) => isSafeRepoReadPath(arg.prefix + name) || isSafeTargetPath(arg.prefix + name))
+      ) {
+        fail('node -e readFileSync concatenated path is outside allowlisted read/target directories');
+      }
+      return;
+    }
+    fail('node -e readFileSync path must be a safe literal, const, or safe filename-loop concatenation');
+  };
+
+  const parseDataExpr = (scope) => {
+    const res = parseExpr(scope, {});
+    if (!res.isData) {
+      fail('expected data expression in node -e');
+    }
+    return res;
+  };
+
+  const parsePrimaryChain = (scope, opts) => {
+    const tok = peek();
+    if (!tok) {
+      fail('unexpected end of node -e expression');
+    }
+
+    let cur;
+    if (tok.kind === 'STRING') {
+      consume();
+      cur = {
+        kind: 'string_lit',
+        value: tok.value,
+        safeTarget: isSafeTargetPath(tok.value),
+        safeRead: isSafeRepoReadPath(tok.value) || isSafeTargetPath(tok.value),
+        isData: true,
+        canBracketIndex: false,
+      };
+    } else if (tok.kind === 'NUMBER') {
+      consume();
+      cur = {
+        kind: 'number_lit',
+        isInt: tok.isInt,
+        intVal: tok.intVal,
+        isData: true,
+        canBracketIndex: false,
+      };
+    } else if (tok.kind === 'REGEX') {
+      if (!opts.allowRegex) {
+        fail('regex literal is only allowed as first argument to .replace() in node -e');
+      }
+      consume();
+      cur = { kind: 'regex_lit', isData: false, canBracketIndex: false };
+    } else if (tok.kind === 'PUNCT' && tok.value === '[') {
+      consume();
+      const elements = [];
+      if (peek()?.value !== ']') {
+        while (true) {
+          elements.push(parseDataExpr(scope));
+          if (peek()?.value === ',') {
+            consume();
+            continue;
+          }
+          break;
+        }
+      }
+      expect('PUNCT', ']');
+      cur = { kind: 'data', isData: true, canBracketIndex: false };
+    } else if (tok.kind === 'PUNCT' && tok.value === '{') {
+      consume();
+      if (peek()?.value !== '}') {
+        while (true) {
+          const keyTok = expect('IDENT');
+          if (isForbiddenJsIdent(keyTok.value)) {
+            fail(`disallowed object key '${keyTok.value}' in node -e`);
+          }
+          expect('PUNCT', ':');
+          parseDataExpr(scope);
+          if (peek()?.value === ',') {
+            consume();
+            continue;
+          }
+          break;
+        }
+      }
+      expect('PUNCT', '}');
+      cur = { kind: 'data', isData: true, canBracketIndex: false };
+    } else if (tok.kind === 'PUNCT' && tok.value === '(') {
+      consume();
+      parseDataExpr(scope);
+      expect('PUNCT', ')');
+      cur = { kind: 'data', isData: true, canBracketIndex: false };
+    } else if (tok.kind === 'IDENT') {
+      consume();
+      const name = tok.value;
+      if (name === 'process') {
+        fail("'process' is only allowed as standalone process.exit(<int>) in node -e");
+      } else if (name === 'require') {
+        expect('PUNCT', '(');
+        const modTok = expect('STRING');
+        if (modTok.value !== 'fs' && modTok.value !== 'node:fs') {
+          fail("node -e require() is strictly limited to 'fs' or 'node:fs'");
+        }
+        expect('PUNCT', ')');
+        cur = { kind: 'fs_module', fromRequireCall: true, isData: false, canBracketIndex: false };
+      } else if (name === 'JSON') {
+        expect('PUNCT', '.');
+        expect('IDENT', 'parse');
+        expect('PUNCT', '(');
+        parseDataExpr(scope);
+        expect('PUNCT', ')');
+        cur = { kind: 'data', isData: true, canBracketIndex: true };
+      } else if (name === 'Number') {
+        expect('PUNCT', '(');
+        parseDataExpr(scope);
+        expect('PUNCT', ')');
+        cur = { kind: 'data', isData: true, canBracketIndex: false };
+      } else if (name === 'Object') {
+        expect('PUNCT', '.');
+        expect('IDENT', 'keys');
+        expect('PUNCT', '(');
+        parseDataExpr(scope);
+        expect('PUNCT', ')');
+        cur = { kind: 'object_keys_result', isData: true, canBracketIndex: true };
+      } else if (name === 'console') {
+        if (!opts.allowConsoleCall) {
+          fail('console call is only allowed as a statement in node -e');
+        }
+        expect('PUNCT', '.');
+        const methodTok = expect('IDENT');
+        if (methodTok.value !== 'log' && methodTok.value !== 'error') {
+          fail(`disallowed console method '${methodTok.value}' in node -e`);
+        }
+        expect('PUNCT', '(');
+        if (peek()?.value === ')') {
+          fail(`console.${methodTok.value}() requires at least one argument in node -e`);
+        }
+        while (true) {
+          parseDataExpr(scope);
+          if (peek()?.value === ',') {
+            consume();
+            continue;
+          }
+          break;
+        }
+        expect('PUNCT', ')');
+        return { kind: 'console_call', isData: false, canBracketIndex: false };
+      } else if (FORBIDDEN_JS_IDENTIFIERS.has(name)) {
+        fail(`disallowed identifier '${name}' in node -e`);
+      } else {
+        const entry = scope.get(name);
+        if (!entry) {
+          fail(`undeclared identifier '${name}' in node -e`);
+        }
+        cur = {
+          ...entry,
+          isData: entry.kind !== 'fs_module',
+          canBracketIndex: entry.kind === 'data',
+          isVarRoot: entry.kind === 'data',
+        };
+      }
+    } else {
+      fail(`unexpected token '${tok.value}' in node -e`);
+    }
+
+    while (peek()?.kind === 'PUNCT' && (peek().value === '.' || peek().value === '[')) {
+      if (cur.kind === 'fs_module') {
+        if (peek().value === '[') {
+          fail('disallowed bracket property access on fs module in node -e');
+        }
+        consume();
+        const methodTok = expect('IDENT');
+        if (methodTok.value === 'readFileSync') {
+          expect('PUNCT', '(');
+          const pathArg = parseExpr(scope, { allowSafeReadConcat: true });
+          checkSafeReadPathArg(pathArg);
+          expect('PUNCT', ',');
+          const encArg = parseExpr(scope, {});
+          if (encArg.kind !== 'string_lit' || encArg.value !== 'utf8') {
+            fail("node -e fs.readFileSync() requires 'utf8' encoding");
+          }
+          expect('PUNCT', ')');
+          cur = { kind: 'data', isData: true, canBracketIndex: true };
+          continue;
+        }
+        if (methodTok.value === 'writeFileSync') {
+          if (!opts.allowWriteCall) {
+            fail('fs.writeFileSync() is only allowed as a statement in node -e');
+          }
+          expect('PUNCT', '(');
+          const targetArg = parseExpr(scope, {});
+          if (
+            (targetArg.kind !== 'string_lit' && targetArg.kind !== 'string_const') ||
+            !targetArg.safeTarget
+          ) {
+            fail('node -e writeFileSync must target src-tauri/target/...');
+          }
+          expect('PUNCT', ',');
+          parseDataExpr(scope);
+          expect('PUNCT', ')');
+          return { kind: 'write_call', isData: false, canBracketIndex: false };
+        }
+        fail(`disallowed fs API '${methodTok.value}' in node -e`);
+      }
+
+      if (!cur.isData) {
+        fail('invalid member access in node -e');
+      }
+
+      if (peek().value === '.') {
+        consume();
+        const propTok = expect('IDENT');
+        if (isForbiddenJsIdent(propTok.value)) {
+          fail(`disallowed property '${propTok.value}' in node -e`);
+        }
+        if (peek()?.kind === 'PUNCT' && peek().value === '(') {
+          if (!SAFE_JS_DATA_METHODS.has(propTok.value)) {
+            fail(`disallowed method '.${propTok.value}()' in node -e`);
+          }
+          consume();
+          if (propTok.value === 'split' || propTok.value === 'join') {
+            const sepArg = parseExpr(scope, {});
+            if (sepArg.kind !== 'string_lit') {
+              fail(`.${propTok.value}() requires a string literal argument in node -e`);
+            }
+          } else if (propTok.value === 'replace') {
+            const patArg = parseExpr(scope, { allowRegex: true });
+            if (patArg.kind !== 'regex_lit' && patArg.kind !== 'string_lit') {
+              fail('.replace() first argument must be a safe regex or string literal in node -e');
+            }
+            expect('PUNCT', ',');
+            const repArg = parseExpr(scope, {});
+            if (repArg.kind !== 'string_lit') {
+              fail('.replace() second argument must be a string literal in node -e');
+            }
+          } else if (propTok.value === 'slice') {
+            const startArg = parseExpr(scope, {});
+            if (startArg.kind !== 'number_lit' || !startArg.isInt) {
+              fail('.slice() arguments must be non-negative integer literals in node -e');
+            }
+            if (peek()?.value === ',') {
+              consume();
+              const endArg = parseExpr(scope, {});
+              if (endArg.kind !== 'number_lit' || !endArg.isInt) {
+                fail('.slice() end argument must be a non-negative integer literal in node -e');
+              }
+            }
+          } else if (propTok.value === 'toFixed') {
+            const digitsArg = parseExpr(scope, {});
+            if (
+              digitsArg.kind !== 'number_lit' ||
+              !digitsArg.isInt ||
+              digitsArg.intVal < 0 ||
+              digitsArg.intVal > 20
+            ) {
+              fail('.toFixed() requires an integer literal 0..20 in node -e');
+            }
+          } else {
+            // map / find: single identifier arrow callback
+            const paramTok = expect('IDENT');
+            if (isForbiddenJsIdent(paramTok.value) || scope.has(paramTok.value)) {
+              fail(`disallowed callback parameter '${paramTok.value}' in node -e`);
+            }
+            expect('PUNCT', '=>');
+            if (peek()?.value === '{') {
+              fail('block body in arrow callback is disallowed in node -e');
+            }
+            const cbScope = new Map(scope);
+            cbScope.set(paramTok.value, {
+              kind: cur.kind === 'object_keys_result' && propTok.value === 'map' ? 'keys_loop_var' : 'data',
+            });
+            parseDataExpr(cbScope);
+          }
+          expect('PUNCT', ')');
+          cur = { kind: 'data', isData: true, canBracketIndex: true };
+        } else {
+          cur = { kind: 'data', isData: true, canBracketIndex: true };
+        }
+        continue;
+      }
+
+      // '[' bracket indexing
+      if (!cur.canBracketIndex) {
+        fail('disallowed bracket access in node -e');
+      }
+      consume();
+      const idxTok = peek();
+      if (idxTok?.kind === 'NUMBER' && idxTok.isInt) {
+        consume();
+        expect('PUNCT', ']');
+        cur = {
+          kind: 'data',
+          isData: true,
+          canBracketIndex: true,
+          isAssignableArraySlot: Boolean(cur.isVarRoot),
+        };
+      } else if (idxTok?.kind === 'IDENT' && scope.get(idxTok.value)?.kind === 'keys_loop_var') {
+        consume();
+        expect('PUNCT', ']');
+        cur = { kind: 'data', isData: true, canBracketIndex: true };
+      } else {
+        fail('disallowed computed bracket access in node -e');
+      }
+    }
+
+    if (cur.kind === 'fs_module' && (!opts.allowRequireModule || !cur.fromRequireCall)) {
+      fail("fs module cannot be aliased, passed, or returned as a value in node -e");
+    }
+
+    return cur;
+  };
+
+  function parseAdditive(scope, opts) {
+    const left = parsePrimaryChain(scope, opts);
+    if (peek()?.kind === 'PUNCT' && peek().value === '+') {
+      if (!opts.allowSafeReadConcat) {
+        fail("disallowed '+' concatenation in node -e");
+      }
+      consume();
+      const right = parsePrimaryChain(scope, {});
+      if (left.kind !== 'string_lit' || right.kind !== 'safe_filename_var') {
+        fail("readFileSync '+' is only allowed for '<safe_dir>/' + <loop_filename> in node -e");
+      }
+      if (peek()?.kind === 'PUNCT' && peek().value === '+') {
+        fail("chained '+' concatenation is disallowed in node -e");
+      }
+      return {
+        kind: 'safe_read_concat',
+        prefix: left.value,
+        values: right.values,
+        isData: false,
+      };
+    }
+    return left;
+  }
+
+  function parseExpr(scope, opts) {
+    const left = parseAdditive(scope, opts);
+    if (peek()?.kind === 'PUNCT' && peek().value === '===') {
+      if (!left.isData) {
+        fail("invalid left operand of '===' in node -e");
+      }
+      consume();
+      const right = parseAdditive(scope, {});
+      if (!right.isData) {
+        fail("invalid right operand of '===' in node -e");
+      }
+      return { kind: 'data', isData: true };
+    }
+    return left;
+  }
+
+  const parseStatement = (scope) => {
+    const first = peek();
+    if (!first) {
+      fail('unexpected end of node -e');
+    }
+
+    if (first.kind === 'KW' && first.value === 'const') {
+      consume();
+      const varTok = expect('IDENT');
+      if (isForbiddenJsIdent(varTok.value) || scope.has(varTok.value)) {
+        fail(`disallowed or duplicate const binding '${varTok.value}' in node -e`);
+      }
+      expect('PUNCT', '=');
+      const rhs = parseExpr(scope, { allowRequireModule: true });
+      if (rhs.kind === 'fs_module') {
+        scope.set(varTok.value, { kind: 'fs_module' });
+      } else if (rhs.kind === 'string_lit') {
+        scope.set(varTok.value, {
+          kind: 'string_const',
+          value: rhs.value,
+          safeTarget: rhs.safeTarget,
+          safeRead: rhs.safeRead,
+        });
+      } else if (rhs.isData) {
+        scope.set(varTok.value, { kind: 'data' });
+      } else {
+        fail(`invalid const initializer for '${varTok.value}' in node -e`);
+      }
+      requireStmtEnd();
+      return;
+    }
+
+    if (first.kind === 'KW' && first.value === 'for') {
+      consume();
+      expect('PUNCT', '(');
+      expect('KW', 'const');
+      const loopTok = expect('IDENT');
+      if (isForbiddenJsIdent(loopTok.value) || scope.has(loopTok.value)) {
+        fail(`disallowed or duplicate loop variable '${loopTok.value}' in node -e`);
+      }
+      expect('KW', 'of');
+      let loopBinding;
+      if (peek()?.kind === 'PUNCT' && peek().value === '[') {
+        consume();
+        const names = [];
+        while (true) {
+          const itemTok = expect('STRING');
+          if (!SAFE_FILENAME_RE.test(itemTok.value) || itemTok.value === '.' || itemTok.value === '..') {
+            fail(`disallowed filename literal '${itemTok.value}' in node -e for-of list`);
+          }
+          names.push(itemTok.value);
+          if (peek()?.value === ',') {
+            consume();
+            continue;
+          }
+          break;
+        }
+        if (names.length === 0) {
+          fail('for-of filename array cannot be empty in node -e');
+        }
+        expect('PUNCT', ']');
+        loopBinding = { kind: 'safe_filename_var', values: names };
+      } else if (peek()?.kind === 'IDENT' && peek().value === 'Object') {
+        consume();
+        expect('PUNCT', '.');
+        expect('IDENT', 'keys');
+        expect('PUNCT', '(');
+        parseDataExpr(scope);
+        expect('PUNCT', ')');
+        loopBinding = { kind: 'keys_loop_var' };
+      } else {
+        fail('for-of iterable must be a safe filename array literal or Object.keys(...) in node -e');
+      }
+      expect('PUNCT', ')');
+      expect('PUNCT', '{');
+      const childScope = new Map(scope);
+      childScope.set(loopTok.value, loopBinding);
+      let bodyStmts = 0;
+      while (!atEnd() && peek()?.value !== '}') {
+        parseStatement(childScope);
+        bodyStmts += 1;
+      }
+      if (bodyStmts === 0) {
+        fail('empty for-of body in node -e');
+      }
+      expect('PUNCT', '}');
+      consumeOptionalSemi();
+      return;
+    }
+
+    const lhs = parsePrimaryChain(scope, { allowConsoleCall: true, allowWriteCall: true });
+    if (peek()?.kind === 'PUNCT' && peek().value === '=') {
+      if (!lhs.isAssignableArraySlot) {
+        fail('assignment is only allowed on <var>[<int>] slots in node -e');
+      }
+      consume();
+      parseDataExpr(scope);
+      requireStmtEnd();
+      return;
+    }
+
+    if (lhs.kind !== 'console_call' && lhs.kind !== 'write_call') {
+      fail('disallowed standalone expression statement in node -e');
+    }
+    requireStmtEnd();
+  };
+
+  try {
+    const rootScope = new Map();
+    let stmtCount = 0;
+    let sawProcessExit = false;
+
+    while (!atEnd()) {
+      if (sawProcessExit) {
+        fail('process.exit(<int>) must be a standalone statement in node -e');
+      }
+      const cur = peek();
+      if (cur?.kind === 'IDENT' && cur.value === 'process') {
+        if (stmtCount > 0) {
+          fail('process.exit(<int>) must be a standalone statement in node -e');
+        }
+        consume();
+        expect('PUNCT', '.');
+        expect('IDENT', 'exit');
+        expect('PUNCT', '(');
+        const codeTok = expect('NUMBER');
+        if (!codeTok.isInt || codeTok.value.length > 3 || codeTok.intVal < 0 || codeTok.intVal > 999) {
+          fail('process.exit() requires a 1..3 digit integer in node -e');
+        }
+        expect('PUNCT', ')');
+        consumeOptionalSemi();
+        sawProcessExit = true;
+        stmtCount += 1;
+        continue;
+      }
+      parseStatement(rootScope);
+      stmtCount += 1;
+    }
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+function validateSafeNodeEval(payload) {
+  const lexed = tokenizeSafeNodeJs(payload);
+  if (!lexed.ok) {
+    return lexed.reason;
+  }
+  return validateSafeNodeJsTokens(lexed.tokens);
 }
 
 function validateCargoCommand(args) {
@@ -1417,6 +2176,10 @@ function validateSimpleCommand(rawCmd) {
       if (cmd.args.length - i !== 2) {
         return 'grep must specify 1 pattern and 1 safe repo read path';
       }
+      const patternTok = cmd.args[i];
+      if (patternTok.value.startsWith('-')) {
+        return `disallowed grep pattern starting with '-' ('${patternTok.value}')`;
+      }
       const fileTok = cmd.args[i + 1];
       if (fileTok.quoted !== null || !isSafeRepoReadPath(fileTok.value)) {
         return `disallowed grep file path '${fileTok.value}'`;
@@ -1726,6 +2489,25 @@ export function runStartupSelfChecks() {
     'node -e "process[\'mainModule\'].require(\'child_process\')"',
     'node -e "require(\'fs\').writeFileSync(\'package.json\', \'{}\')"',
     'node -e "eval(\'1+1\')"',
+    // R10 regressions: # boundary, grep quoted flag, node -e JS RCE & fs mutation
+    "echo 'foo'#; cargo run",
+    'echo "foo"#; cargo run',
+    "cat <<'EOF'#; cargo run\nhi\nEOF",
+    "cat <<'EOF'#comment\nhi\nEOF",
+    'grep "-fsecret.txt" docs/sample.txt',
+    'node -e "const p=this[\'pro\'+\'cess\']; p[\'get\'+\'BuiltinModule\'](\'ch\'+\'ild_pro\'+\'cess\')[\'ex\'+\'ecSync\'](\'cargo run\', {stdio:\'inherit\'})"',
+    'node -e "const fn = \'\'.trim[\'constr\' + \'uctor\']; const p = fn(\'return pro\' + \'cess\')(); p[\'getBuiltin\' + \'Module\'](\'child_\' + \'pro\' + \'cess\')[\'ex\' + \'ecSync\'](\'cargo run\', { stdio: \'inherit\' });"',
+    'node -e "(function(){return this})()[\'pro\'+\'cess\'][\'bind\'+\'ing\'](\'sp\'+\'awn_sync\')[\'sp\'+\'awn\']({file:\'/bin/sh\',args:[\'/bin/sh\',\'-c\',\'cargo run\']})"',
+    'node -e "require(\'fs\').writeFileSync(\'pwned_pkg.json\', \'PWNED\'); // \'src-tauri/target/\'"',
+    'node -e "const fs = require(\'fs\'); const d = \'src-tauri/target/\'; fs.writeFileSync(\'pwned.txt\', d);"',
+    'node -e "require(\'fs\').writeFile(\'pwned_async.txt\', \'PWNED3\', ()=>{})"',
+    'node -e "require(\'node:fs\').appendFile(\'pwned.txt\', \'x\', ()=>{})"',
+    'node -e "require(\'fs\').mkdirSync(\'pwned_dir\')"',
+    'node -e "const f = require(\'fs\'); f[\'wri\'+\'teFileSync\'](\'pwn_comp.txt\', \'X\'); f[\'r\'+\'mSync\'](\'important_file.txt\')"',
+    'node -e "const f = require(\'fs\'); f[\'un\'+\'lin\'+\'kSync\'](\'victim.txt\')"',
+    'node -e "const f = require(\'fs\'); f[\'syml\'+\'inkSync\'](\'.\', \'src-tauri/target/root_link\')"',
+    'node -e "const { [\'writeFile\' + \'Sync\']: w } = require(\'fs\'); w(\'pwned_destruct.txt\', \'PWN\')"',
+    'node -e "const f = require(\'fs\'); f.writeFileSync(\'src-tauri/target/a\', \'1\'); f.writeFileSync(\'package.json\', \'{}\')"',
   ];
   for (const cmd of unsafeCmds) {
     if (validateCommand(cmd).ok) {
@@ -1761,6 +2543,12 @@ export function runStartupSelfChecks() {
     '! node scripts/verify_e2_artifacts.mjs src-tauri/target/doc2-gate-neg',
     'node scripts/verify_esel1_artifacts.mjs --self-test',
     'node -e "const fs = require(\'fs\'); const p = \'src-tauri/target/doc2-gate-neg/smoke/per-seed-deltas.csv\'; const lines = fs.readFileSync(p, \'utf8\').split(\'\\n\'); lines[1] = lines[1].replace(/[^,]+$/, \'999999.0\'); fs.writeFileSync(p, lines.join(\'\\n\'));"',
+    'node -e "for (const f of [\'baseline.json\',\'mana.json\']) { const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/\' + f, \'utf8\')); console.log(f, { tool: r.tool, model: r.model, id: r.experiment_id, completed: r.completed_runs, failed: r.failed.length, metrics: r.metrics.map(m => [m.observable, Number(m.mean.toFixed(4))]) }); }"',
+    'node -e "const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/e2-live.json\',\'utf8\')); console.log({ model: r.model, registry: r.registry, completed: r.completed_runs, final_count: r.runs[0].final_observables.length, final_head: r.runs[0].final_observables.slice(0, 5) });"',
+    'node -e "const s = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/sweep.json\',\'utf8\')); console.log({ sweep_id: s.sweep_id, total_points: s.total_points, completed_points: s.completed_points, failed_runs: s.failed_runs, params: s.parameter_names, plants_corr: s.global_metrics.plants.parameter_correlations });"',
+    'node -e "const b = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/branch.json\',\'utf8\')); console.log({ tree_id: b.tree_id, root_id: b.root_id, nodes: Object.keys(b.nodes).map(k => ({ id: k, label: b.nodes[k].spec.label, status: b.nodes[k].status })), phase_space: b.divergences[0].phase_space, plants_div: b.divergences[0].observables.find(o => o.observable_id === \'plants\') });"',
+    'node -e "const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/custom-out.json\',\'utf8\')); console.log({ id: r.experiment_id, fingerprint: r.manifest_fingerprint, completed: r.completed_runs, metrics: r.metrics.map(m => [m.observable, Number(m.mean.toFixed(4))]) });"',
+    'node -e "require(\'node:fs\').writeFileSync(\'src-tauri/target/ran.txt\', \'1\')"',
   ];
   for (const cmd of safeCmds) {
     const res = validateCommand(cmd);

@@ -848,6 +848,34 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       "cat <<'EOF' > manifest.json\n{\"note\": \"outside src-tauri/target\"}\nEOF",
       'echo "escape" > package.json',
       'car"go" run',
+      // 23. Iteration 11 regressions (R10 # boundary, grep quoted flag, node -e JS RCE & fs mutation):
+      "echo 'foo'#; cargo run",
+      'echo "foo"#; cargo run',
+      "cat <<'EOF'#; cargo run\nhi\nEOF",
+      "cat <<'EOF'#comment\nhi\nEOF",
+      'grep "-fsecret.txt" docs/sample.txt',
+      'grep -q "-fsecret.txt" docs/sample.txt',
+      'node -e "const p=this[\'pro\'+\'cess\']; p[\'get\'+\'BuiltinModule\'](\'ch\'+\'ild_pro\'+\'cess\')[\'ex\'+\'ecSync\'](\'cargo run\', {stdio:\'inherit\'})"',
+      'node -e "const fn = \'\'.trim[\'constr\' + \'uctor\']; const p = fn(\'return pro\' + \'cess\')(); p[\'getBuiltin\' + \'Module\'](\'child_\' + \'pro\' + \'cess\')[\'ex\' + \'ecSync\'](\'cargo run\', { stdio: \'inherit\' });"',
+      'node -e "(function(){return this})()[\'pro\'+\'cess\'][\'bind\'+\'ing\'](\'sp\'+\'awn_sync\')[\'sp\'+\'awn\']({file:\'/bin/sh\',args:[\'/bin/sh\',\'-c\',\'cargo run\']})"',
+      'node -e "[][' + '\'at\'' + '][\'con\'+\'structor\'](\'return this\')()[\'pro\'+\'cess\'][\'getBuilt\'+\'inModule\'](\'child_\'+\'pro\'+\'cess\')[\'ex\'+\'ecSync\'](\'npm run tauri:dev\', {stdio:\'inherit\'})"',
+      'node -e "require(\'fs\').writeFileSync(\'pwned_pkg.json\', \'PWNED\'); // \'src-tauri/target/\'"',
+      'node -e "const fs = require(\'fs\'); const d = \'src-tauri/target/\'; fs.writeFileSync(\'pwned.txt\', d);"',
+      'node -e "const f = require(\'fs\'); f.writeFileSync(\'src-tauri/target/a\', \'1\'); f.writeFileSync(\'package.json\', \'{}\')"',
+      'node -e "require(\'fs\').writeFile(\'pwned_async.txt\', \'PWNED3\', ()=>{})"',
+      'node -e "require(\'node:fs\').appendFile(\'pwned.txt\', \'x\', ()=>{})"',
+      'node -e "require(\'fs\').mkdirSync(\'pwned_dir\')"',
+      'node -e "const f = require(\'fs\'); f[\'wri\'+\'teFileSync\'](\'pwn_comp.txt\', \'X\'); f[\'r\'+\'mSync\'](\'important_file.txt\')"',
+      'node -e "const f = require(\'fs\'); f[\'un\'+\'lin\'+\'kSync\'](\'victim.txt\')"',
+      'node -e "const f = require(\'fs\'); f[\'syml\'+\'inkSync\'](\'.\', \'src-tauri/target/root_link\')"',
+      'node -e "const { [\'writeFile\' + \'Sync\']: w } = require(\'fs\'); w(\'pwned_destruct.txt\', \'PWN\')"',
+      'node -e "const fs = require(\'fs\'); console.log(fs)"',
+      'node -e "const fs = require(\'fs\'); const g = fs; g.writeFileSync(\'src-tauri/target/a.txt\', \'1\')"',
+      'node -e "process.exit(7); require(\'fs\').writeFileSync(\'src-tauri/target/a.txt\', \'1\')"',
+      'node -e "const x = \'\\x70rocess\';"',
+      'node -e "const x = `hello`"',
+      'node -e "const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/a.json\', \'utf8\')); console.log(r.constructor)"',
+      'node -e "const p = \'src-tauri/target/\'; require(\'fs\').writeFileSync(p, \'1\')"',
     ];
 
     for (const cmd of bypassAttempts) {
@@ -995,6 +1023,12 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'grep -q "exotic energy source_rate must be >= 0" src-tauri/target/doc2-runs/err.txt',
       'node scripts/verify_esel1_artifacts.mjs --self-test',
       'node -e "const fs = require(\'fs\'); const p = \'src-tauri/target/doc2-gate-neg/smoke/per-seed-deltas.csv\'; const lines = fs.readFileSync(p, \'utf8\').split(\'\\n\'); lines[1] = lines[1].replace(/[^,]+$/, \'999999.0\'); fs.writeFileSync(p, lines.join(\'\\n\'));"',
+      'node -e "for (const f of [\'baseline.json\',\'mana.json\']) { const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/\' + f, \'utf8\')); console.log(f, { tool: r.tool, model: r.model, id: r.experiment_id, completed: r.completed_runs, failed: r.failed.length, metrics: r.metrics.map(m => [m.observable, Number(m.mean.toFixed(4))]) }); }"',
+      'node -e "const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/e2-live.json\',\'utf8\')); console.log({ model: r.model, registry: r.registry, completed: r.completed_runs, final_count: r.runs[0].final_observables.length, final_head: r.runs[0].final_observables.slice(0, 5) });"',
+      'node -e "const s = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/sweep.json\',\'utf8\')); console.log({ sweep_id: s.sweep_id, total_points: s.total_points, completed_points: s.completed_points, failed_runs: s.failed_runs, params: s.parameter_names, plants_corr: s.global_metrics.plants.parameter_correlations });"',
+      'node -e "const b = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/branch.json\',\'utf8\')); console.log({ tree_id: b.tree_id, root_id: b.root_id, nodes: Object.keys(b.nodes).map(k => ({ id: k, label: b.nodes[k].spec.label, status: b.nodes[k].status })), phase_space: b.divergences[0].phase_space, plants_div: b.divergences[0].observables.find(o => o.observable_id === \'plants\') });"',
+      'node -e "const r = JSON.parse(require(\'fs\').readFileSync(\'src-tauri/target/doc2-runs/custom-out.json\',\'utf8\')); console.log({ id: r.experiment_id, fingerprint: r.manifest_fingerprint, completed: r.completed_runs, metrics: r.metrics.map(m => [m.observable, Number(m.mean.toFixed(4))]) });"',
+      'node -e "require(\'node:fs\').writeFileSync(\'src-tauri/target/ran.txt\', \'1\')"',
     ];
 
     for (const cmd of safeForms) {
