@@ -76,7 +76,7 @@ function makeTempDir(prefix = 'anima-doc-commands-'): { dir: string; cleanup: ()
 }
 
 describe('check_doc_commands — extraction, ordering, safety, and fail-fast gate', () => {
-  it('extracts bash, sh, zsh, bare, and tilde fences preceded by <!-- doc-test --> and ignores unmarked/nested ones', () => {
+  it('extracts bash, sh, bare, and tilde fences preceded by <!-- doc-test --> and ignores unmarked/nested ones (while rejecting zsh)', () => {
     const md = [
       '# Sample Doc',
       '',
@@ -121,18 +121,20 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
     ].join('\n');
 
     const res = extractDocCommands(md, 'docs/tutorials/sample.md') as ExtractResult;
-    expect(res.errors).toEqual([]);
-    expect(res.blocks).toHaveLength(5);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]?.file).toBe('docs/tutorials/sample.md');
+    expect(res.errors[0]?.line).toBe(28);
+    expect(res.errors[0]?.message).toContain("unsupported fence language 'zsh'");
+    expect(res.blocks).toHaveLength(4);
     expect(res.blocks.map((b) => [b.lang, b.script, b.markerLine, b.fenceLine])).toEqual([
       ['bash', 'echo "first"', 16, 17],
       ['sh', 'echo "second"', 21, 23],
-      ['zsh', 'echo "third"', 27, 28],
       ['', 'echo "fourth"', 32, 33],
       ['bash', 'echo "fifth"', 37, 38],
     ]);
   });
 
-  it('rejects dangling, prose-followed, non-shell, unclosed, and empty <!-- doc-test --> blocks with exact doc:line', () => {
+  it('rejects dangling, prose-followed, non-shell, zsh, unclosed, and empty <!-- doc-test --> blocks with exact doc:line', () => {
     const md = [
       '<!-- doc-test -->',
       'Not a fence line',
@@ -148,6 +150,11 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       '```',
       '',
       '<!-- doc-test -->',
+      '```zsh',
+      'echo "zsh-disallowed"',
+      '```',
+      '',
+      '<!-- doc-test -->',
       '```bash',
       '   ',
       '```',
@@ -159,13 +166,14 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
 
     const res = extractDocCommands(md, 'docs/how-to/broken.md') as ExtractResult;
     expect(res.blocks).toEqual([]);
-    expect(res.errors).toHaveLength(5);
+    expect(res.errors).toHaveLength(6);
     expect(res.errors.map((e) => `${e.file}:${e.line}`)).toEqual([
       'docs/how-to/broken.md:1',
       'docs/how-to/broken.md:5',
       'docs/how-to/broken.md:10',
       'docs/how-to/broken.md:15',
       'docs/how-to/broken.md:20',
+      'docs/how-to/broken.md:25',
     ]);
 
     const eofDangling = extractDocCommands('<!-- doc-test -->\n', 'docs/how-to/eof.md') as ExtractResult;
@@ -244,7 +252,7 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
     const allowed = [
       'rm -rf src-tauri/target/doc2-gate-neg\nmkdir -p src-tauri/target/doc2-gate-neg',
       'rm -rf /tmp/anima-doc-test-clean',
-      "cat <<'EOF' > manifest.json\n{\n  \"note\": \"never run cargo run or npm run tauri:dev\"\n}\nEOF",
+      "cat <<'EOF' > src-tauri/target/manifest.json\n{\n  \"note\": \"never run cargo run or npm run tauri:dev\"\n}\nEOF",
       '# cargo run in a comment should not fail\nnode -e "console.log(\'cargo run\')"',
       '! node scripts/verify_e2_artifacts.mjs src-tauri/target/doc2-gate-neg',
     ];
@@ -778,6 +786,68 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'cargo build --manifest-path src-tauri/Cargo.toml --bin $(echo anima-engine)',
       'cargo build --manifest-path src-tauri/Cargo.toml --bin=$(echo anima-engine)',
       'cargo build --manifest-path src-tauri/Cargo.toml --bin {anima-engine,anima-lab}',
+      // 22. Iteration 10 regressions — ALL 4 R9 verifier bypass suites + node -e RCE smuggling:
+      // R9_1: arithmetic << / <<= & zsh -c
+      'echo $(( 1 << 2 ))\ncargo run',
+      '(( 1 << 2 ))\ncargo run',
+      'a=$(( 1 << 0 ))\ncargo run',
+      '(( x <<= 1 ))\ncargo run',
+      'for (( i=0; i<1; i++ )); do cargo run; done',
+      'bash -c "echo \\$(( 1 << 2 ))\ncargo run"',
+      'zsh -c \'cat <<OUTER\n$(cat <<"INNER"\n)\nINNER\ncargo run)\nOUTER\'',
+      // R9_2: unquoted heredoc backticks/nested heredoc/pendingRedirTarget/zsh compounds
+      'cat <<EOF\n`echo "; cargo run; echo "`\nEOF',
+      'bash -c \'cat <<EOF\n`echo "; cargo run; echo "`\nEOF\'',
+      "cat <<EOF\n$(cat <<'INNER'\n)\nINNER\ncargo run\n)\nEOF",
+      '< $(echo ok) case x in x) cargo run ;; esac',
+      '</dev/null</dev/null case x in x) cargo run ;; esac',
+      'case x { (x) cargo run }',
+      'repeat 1 cargo run',
+      '() cargo run',
+      'for x (x) cargo run',
+      'foreach x (x)\ncargo run\nend',
+      'foo bar() cargo run\nfoo',
+      // C9_1: npm --tmp / npx --tmp / zsh modifiers & anonymous funcs
+      'npm --tmp /tmp run tauri:dev',
+      'npm --tmp=/tmp run tauri:dev',
+      'npm run --tmp /tmp tauri:dev',
+      'npm run --tmp=/tmp tauri:dev',
+      'npm --tmp /tmp exec -- tauri dev',
+      'npm exec --tmp /tmp -- tauri dev',
+      'npm -c "cargo run" --tmp /tmp exec',
+      'npx --tmp /tmp tauri dev',
+      'npx --tmp=/tmp tauri dev',
+      'npx --tmp /tmp -c "cargo run"',
+      'find . -maxdepth 0 -exec npm --tmp /tmp run tauri:dev \\;',
+      'find . -maxdepth 0 -exec npx --tmp /tmp tauri dev \\;',
+      'noglob cargo run',
+      'nocorrect cargo run',
+      '- cargo run',
+      'noglob npm run tauri:dev',
+      'repeat 1 npm run tauri:dev',
+      'echo $(() case x in x) cargo run ;; esac)',
+      'echo $(foreach x (x) cargo run\nend)',
+      'echo $(repeat 1 case x in x) cargo run ;; esac)',
+      'echo $(noglob case x in x) cargo run ;; esac)',
+      // C9_2: EOF) inside $(...)
+      "(\necho $(cat <<'EOF'\nhello\nEOF)\ncargo run --bin anima-lab\n)",
+      "echo $(cat <<'EOF'\nhello\nEOF); cargo run --bin anima-lab",
+      // node -e RCE smuggling & path-escape payloads
+      'node -e "require(\'child_process\').execSync(\'cargo run\')"',
+      'node -e "require(\'node:child_process\').spawnSync(\'rm\', [\'-rf\', \'/\'])"',
+      'node -e "const r = require; r(\'child_process\').execSync(\'echo pwn\')"',
+      'node -e "require(\'fs\').rmSync(\'src-tauri/src\', { recursive: true })"',
+      'node -e "require(\'fs\').unlinkSync(\'package.json\')"',
+      'node -e "process[\'mainModule\'].require(\'child_process\')"',
+      'node -e "process.binding(\'spawn_sync\')"',
+      'node -e "process.dlopen({}, \'/tmp/x.node\')"',
+      'node -e "eval(\'1+1\')"',
+      'node -e "new Function(\'return process\')()"',
+      'node -e "import(\'node:fs\')"',
+      'node -e "require(\'fs\').writeFileSync(\'package.json\', \'{}\')"',
+      "cat <<'EOF' > manifest.json\n{\"note\": \"outside src-tauri/target\"}\nEOF",
+      'echo "escape" > package.json',
+      'car"go" run',
     ];
 
     for (const cmd of bypassAttempts) {
@@ -785,9 +855,8 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       expect(res.ok, `expected safety rejection for bypass: ${cmd}`).toBe(false);
     }
 
-    const safeForms = [
-      'cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab',
-      'cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+    // Denylist-era exotic bash/zsh/npm/vite/tauri forms migrated to fail-closed strict-allowlist rejections:
+    const strictAllowlistRejections = [
       'npm --silent run check:docs',
       'npm run -- check:e2',
       'npm exec -- eslint src',
@@ -807,7 +876,6 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'exec echo ok',
       'exec -a custom-name echo ok',
       'builtin echo ok',
-      'cargo build --manifest-path src-tauri/Cargo.toml \\\n  --release --bin anima-lab',
       "bash -c 'echo ok'",
       "bash -c - 'echo ok'",
       "bash -co errexit 'echo ok'",
@@ -818,7 +886,6 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'cat <<\\EOF > out3.txt\ncargo run\nEOF\necho ok',
       'cat <<EOF > out4.txt\n  EOF\ncargo run\nEOF',
       'echo "\ncargo run\n"',
-      "echo '$(cargo run)'",
       'echo "\\$(cargo run)"',
       'echo "$(echo ok)"',
       'echo "$(echo ok\necho done)"',
@@ -848,20 +915,17 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'trap - EXIT',
       "echo $'hello\\nworld'",
       'RUST_LOG=info echo "$VAR"',
-      'RUST_LOG=info cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
       'rm -rf /tmp/safe',
       'echo $(echo ok)',
       'echo $((1 + 2))',
       'npm --no-color run check:docs',
       'npm -s run check:docs',
-      "cat <<'EOF'\ncargo run\nEOF\necho ok",
       'vite build',
       'vite optimize',
       'vite --help',
       'tauri info',
       'tauri --help',
       'tauri -v info',
-      'rm -rf src-tauri/target/release/bundle',
       'rm -rf target/doc2',
       'echo "foo" | xargs -I{} find . -maxdepth 0 -exec echo {} \\;',
       'coproc MYPROC { echo ok; }',
@@ -880,7 +944,6 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'if [ -f package.json ]; then echo ok; fi',
       'echo a[0]',
       "echo $(\ncat <<'EOF'\nhello )\nEOF\n)",
-      "cat <<'EOF'\n$(cargo run)\nEOF",
       'cat <<"EOF"\n$(cargo run)\nEOF',
       'cat <<\\EOF\n$(cargo run)\nEOF',
       'cat <<EOF\n\\$(cargo run)\nEOF',
@@ -892,6 +955,46 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       'echo {fd}>/dev/null ok',
       'echo "src" | xargs npm exec -- eslint',
       'echo "--test e2_seam_tests" | xargs npm exec -- cargo test --manifest-path src-tauri/Cargo.toml',
+    ];
+
+    for (const cmd of strictAllowlistRejections) {
+      const res = validateCommand(cmd) as ValidateCommandResult;
+      expect(res.ok, `expected strict allowlist rejection for: ${cmd}`).toBe(false);
+    }
+
+    const safeForms = [
+      'npm ci',
+      'npm run check:docs',
+      'npm run check:text-hygiene',
+      'npm run check:root-hygiene',
+      'npm run check:e2',
+      'npm run check:e2 -- src-tauri/target/tutorial-e2-smoke',
+      'cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab',
+      'cargo build --manifest-path src-tauri/Cargo.toml \\\n  --release --bin anima-lab',
+      'cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment',
+      'cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+      'cargo test --manifest-path src-tauri/Cargo.toml --lib core::experiment::tests::observable',
+      'cargo test --manifest-path src-tauri/Cargo.toml -p anima-domain',
+      'RUST_LOG=info cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+      'CARGO_BUILD_JOBS=4 nice -n 10 cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+      './src-tauri/target/release/examples/run_e2_brain_experiment --smoke \\\n  --manifest-dir src-tauri/tests/fixtures/experiments_e2 \\\n  --out src-tauri/target/tutorial-e2-smoke',
+      './src-tauri/target/release/anima-lab --help',
+      './src-tauri/target/release/anima-lab \\\n  src-tauri/tests/fixtures/experiments/baseline-no-exotic.json \\\n  > src-tauri/target/doc2-runs/baseline.json',
+      './src-tauri/target/release/anima-lab ensemble --model reference \\\n  src-tauri/tests/fixtures/experiments/mana-patchy-renewable.json \\\n  > src-tauri/target/doc2-runs/mana.json',
+      './src-tauri/target/release/anima-lab sweep --format csv --threads 2 \\\n  src-tauri/target/doc2-runs/sweep-sobol.json \\\n  > src-tauri/target/doc2-runs/sweep.csv',
+      './src-tauri/target/release/anima-lab branch \\\n  src-tauri/target/doc2-runs/branch-tree.json \\\n  > src-tauri/target/doc2-runs/branch.json',
+      '! ./src-tauri/target/release/anima-lab \\\n  src-tauri/tests/fixtures/experiments/invalid-negative-source.json \\\n  > src-tauri/target/doc2-runs/err-out.txt \\\n  2> src-tauri/target/doc2-runs/err.txt',
+      'rm -rf /tmp/anima-safe',
+      'rm -rf src-tauri/target/release/bundle',
+      'cp -R artifacts/experiments/e2-evolved-brain-default/smoke src-tauri/target/doc2-gate-neg/smoke',
+      "cat <<'EOF'\ncargo run\nEOF\necho ok",
+      "cat <<'EOF'\n$(cargo run)\nEOF",
+      "echo '$(cargo run)'",
+      'cat src-tauri/target/tutorial-e2-smoke/smoke/summary.md',
+      'head -n 5 src-tauri/target/doc2-runs/sweep.csv',
+      'grep -q "exotic energy source_rate must be >= 0" src-tauri/target/doc2-runs/err.txt',
+      'node scripts/verify_esel1_artifacts.mjs --self-test',
+      'node -e "const fs = require(\'fs\'); const p = \'src-tauri/target/doc2-gate-neg/smoke/per-seed-deltas.csv\'; const lines = fs.readFileSync(p, \'utf8\').split(\'\\n\'); lines[1] = lines[1].replace(/[^,]+$/, \'999999.0\'); fs.writeFileSync(p, lines.join(\'\\n\'));"',
     ];
 
     for (const cmd of safeForms) {
@@ -907,15 +1010,15 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       const workDir = join(fixture.dir, 'work');
       mkdirSync(join(docsDir, 'tutorials'), { recursive: true });
       mkdirSync(join(docsDir, 'how-to'), { recursive: true });
-      mkdirSync(workDir, { recursive: true });
+      mkdirSync(join(workDir, 'src-tauri', 'target'), { recursive: true });
 
       writeFileSync(
         join(docsDir, 'tutorials', '01-first.md'),
         [
           '<!-- doc-test -->',
           '```bash',
-          'echo "step1" > trace.txt',
-          "cat <<'EOF' > payload.json",
+          'echo "step1" > src-tauri/target/trace.txt',
+          "cat <<'EOF' > src-tauri/target/payload.json",
           '{"cargo_run_note": "ok inside heredoc"}',
           'EOF',
           '! false',
@@ -930,13 +1033,13 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
           '',
           '<!-- doc-test -->',
           '```bash',
-          'echo "step2" >> trace.txt',
+          'echo "step2" >> src-tauri/target/trace.txt',
           'node -e "process.exit(3)"',
           '```',
           '',
           '<!-- doc-test -->',
           '```bash',
-          'touch must-not-run.flag',
+          'touch src-tauri/target/must-not-run.flag',
           '```',
         ].join('\n'),
         'utf8',
@@ -956,12 +1059,12 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       expect(run.ok).toBe(false);
       expect(run.exitStatus).toBe(3);
       expect(run.message).toContain('how-to/02-fail.md:4');
-      expect(readFileSync(join(workDir, 'trace.txt'), 'utf8').trim().split('\n')).toEqual([
+      expect(readFileSync(join(workDir, 'src-tauri', 'target', 'trace.txt'), 'utf8').trim().split('\n')).toEqual([
         'step1',
         'step2',
       ]);
-      expect(existsSync(join(workDir, 'payload.json'))).toBe(true);
-      expect(existsSync(join(workDir, 'must-not-run.flag'))).toBe(false);
+      expect(existsSync(join(workDir, 'src-tauri', 'target', 'payload.json'))).toBe(true);
+      expect(existsSync(join(workDir, 'src-tauri', 'target', 'must-not-run.flag'))).toBe(false);
     } finally {
       fixture.cleanup();
     }
@@ -974,7 +1077,7 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       const workDir = join(fixture.dir, 'work');
       const emptyDir = join(fixture.dir, 'empty');
       mkdirSync(join(docsDir, 'tutorials'), { recursive: true });
-      mkdirSync(workDir, { recursive: true });
+      mkdirSync(join(workDir, 'src-tauri', 'target'), { recursive: true });
       mkdirSync(emptyDir, { recursive: true });
 
       writeFileSync(
@@ -982,7 +1085,7 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
         [
           '<!-- doc-test -->',
           '```bash',
-          'node -e "require(\'node:fs\').writeFileSync(\'ran.txt\', \'1\')"',
+          'node -e "require(\'node:fs\').writeFileSync(\'src-tauri/target/ran.txt\', \'1\')"',
           '```',
           '<!-- doc-test -->',
           '```bash',
@@ -990,7 +1093,7 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
           '```',
           '<!-- doc-test -->',
           '```bash',
-          'node -e "require(\'node:fs\').writeFileSync(\'after-fail.txt\', \'1\')"',
+          'node -e "require(\'node:fs\').writeFileSync(\'src-tauri/target/after-fail.txt\', \'1\')"',
           '```',
         ].join('\n'),
         'utf8',
@@ -1011,7 +1114,7 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       );
       expect(dryRun.status).toBe(0);
       expect(dryRun.stdout).toContain('docs/tutorials/01-cli.md:2');
-      expect(existsSync(join(workDir, 'ran.txt'))).toBe(false);
+      expect(existsSync(join(workDir, 'src-tauri', 'target', 'ran.txt'))).toBe(false);
 
       const negRun = spawnSync(
         process.execPath,
@@ -1020,8 +1123,8 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
       );
       expect(negRun.status).toBe(1);
       expect(negRun.stderr).toContain('FAIL docs/tutorials/01-cli.md:6');
-      expect(existsSync(join(workDir, 'ran.txt'))).toBe(true);
-      expect(existsSync(join(workDir, 'after-fail.txt'))).toBe(false);
+      expect(existsSync(join(workDir, 'src-tauri', 'target', 'ran.txt'))).toBe(true);
+      expect(existsSync(join(workDir, 'src-tauri', 'target', 'after-fail.txt'))).toBe(false);
 
       const emptyDefault = spawnSync(process.execPath, [SCRIPT_PATH, '--dir', emptyDir], {
         cwd: REPO_ROOT,

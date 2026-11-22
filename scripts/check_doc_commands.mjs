@@ -23,234 +23,45 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_SUBDIRS = ['docs/tutorials', 'docs/how-to'];
-const ALLOWED_SHELL_LANGS = new Set(['', 'bash', 'sh', 'zsh']);
-const FORBIDDEN_NPM_SCRIPTS = new Set(['tauri:dev', 'tauri:build', 'tauri', 'dev', 'preview']);
-const WRAPPER_COMMANDS = new Set([
-  'env',
-  'command',
-  'exec',
-  'builtin',
-  'nohup',
-  'time',
-  'nice',
-  'timeout',
+
+// Layer 1: Fence language allowlist (runDocCommands executes with `bash -eo pipefail -s`,
+// so `zsh` is strictly rejected to eliminate bash-vs-zsh semantic mismatches).
+const ALLOWED_SHELL_LANGS = new Set(['', 'bash', 'sh']);
+
+// Layer 3: Strict environment variable prefix allowlist.
+const SAFE_ENV_ALLOWLIST = {
+  CARGO_BUILD_JOBS: /^[1-9][0-9]{0,2}$/,
+  RUST_LOG: /^[A-Za-z0-9_,=:-]+$/,
+  NO_COLOR: /^[01]$/,
+};
+
+// Layer 4: Closed allowlists.
+const SAFE_NPM_SCRIPTS = new Set([
+  'check:e2',
+  'check:docs',
+  'check:text-hygiene',
+  'check:root-hygiene',
 ]);
-const MAX_SHELL_RECURSION_DEPTH = 5;
-const ENV_VALUE_FLAGS = new Set(['-u', '--unset', '-C', '--chdir', '-P', '--argv0']);
-const NICE_VALUE_FLAGS = new Set(['-n', '--adjustment']);
-const TIMEOUT_VALUE_FLAGS = new Set(['-k', '--kill-after', '-s', '--signal']);
-const SHELL_COMPOUND_PREFIXES = new Set([
-  '{',
-  '}',
-  'then',
-  'else',
-  'elif',
-  'do',
-  'if',
-  'while',
-  'until',
-  'fi',
-  'done',
+const SAFE_CARGO_SUBCOMMANDS = new Set(['test', 'build', 'check']);
+const SAFE_CARGO_PACKAGES = new Set(['anima-engine', 'anima-domain', 'anima-worldgen']);
+const SAFE_ANIMA_LAB_SUBCOMMANDS = new Set(['ensemble', 'sweep', 'branch']);
+const SAFE_GREP_FLAGS = new Set(['-q', '-E', '-F', '-n', '-i']);
+const SAFE_RM_FLAGS = new Set(['-rf', '-fr', '-f', '-r']);
+const SAFE_NODE_SCRIPT_FLAGS = new Set(['--self-test', '--check', '--dry-run']);
+const ENV_ALLOWED_HEADS = new Set([
+  'cargo',
+  'node',
+  'npm',
+  './src-tauri/target/release/anima-lab',
+  './src-tauri/target/release/examples/run_e2_brain_experiment',
 ]);
-const FD_PREFIX_PATTERN = '(?:\\d+|\\{[A-Za-z_][A-Za-z0-9_]*\\})';
-const STANDALONE_REDIR_RE = new RegExp(
-  `^(?:${FD_PREFIX_PATTERN})?(?:>>|>\\||>|<>|<<<|<<-|<<|<|&>>|&>|>&|<&)$`,
-);
-const ATTACHED_REDIR_RE = new RegExp(
-  `^(?:(?:${FD_PREFIX_PATTERN})?(?:>>|>\\||>|<>|<<<|<<-|<<|<|>&|<&)|&>>|&>).+$`,
-);
-const INPUT_REDIR_OP_RE = new RegExp(`^(?:${FD_PREFIX_PATTERN})?(?:<<<|<<-|<<|<&|<>|<)$`);
-const INPUT_REDIR_ATTACHED_RE = new RegExp(`^(?:${FD_PREFIX_PATTERN})?(?:<<<|<<-|<<|<&|<>|<)`);
-const FD_SCRIPT_PATH_RE = /^(?:\/dev\/fd\/|\/proc\/(?:self|\d+)\/fd\/|\/dev\/stdin$|[<>]\()/;
-const IMPLICIT_FOR_LOOP_RE = /\bfor\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*;|\s*\n)\s*do\b/;
-const SAFE_CARGO_SUBCOMMANDS = new Set([
-  'build',
-  'b',
-  'test',
-  't',
-  'check',
-  'c',
-  'clippy',
-  'fmt',
-  'metadata',
-  'version',
-  'doc',
-  'bench',
-  'tree',
-  'verify-project',
-]);
-const XARGS_VALUE_FLAGS = new Set([
-  '-a',
-  '--arg-file',
-  '-d',
-  '--delimiter',
-  '-E',
-  '--eof',
-  '-I',
-  '-J',
-  '-L',
-  '--max-lines',
-  '-n',
-  '--max-args',
-  '-P',
-  '--max-procs',
-  '-R',
-  '-s',
-  '-S',
-  '--max-chars',
-  '--process-slot-var',
-]);
-const XARGS_SHORT_VALUE_CHARS = new Set(['a', 'd', 'E', 'I', 'J', 'L', 'n', 'P', 'R', 's', 'S']);
-const SHELL_POSITIONAL_OR_VAR_RE = /\$(?:[0-9@*?#!-]|[A-Za-z_][A-Za-z0-9_]*|\{)/;
-const SHELL_POSITIONAL_PARAM_RE = /\$(?:[0-9@*]|\{[0-9@*])/;
-const FORBIDDEN_STARTUP_ENV_ASSIGN_RE = /^(?:BASH_ENV|ENV)=.+$/;
-const NPM_RUN_SUBCOMMANDS = new Set(['run', 'run-script', 'rum', 'urn']);
-const NPM_VALUE_FLAGS = new Set([
-  '--prefix',
-  '-C',
-  '--loglevel',
-  '--workspace',
-  '-w',
-  '--userconfig',
-  '--globalconfig',
-  '--cache',
-  '--cache-max',
-  '--cache-min',
-  '--registry',
-  '--scope',
-  '--scopes',
-  '--tag',
-  '--tag-version-prefix',
-  '--script-shell',
-  '--shell',
-  '--fetch-retries',
-  '--fetch-retry-factor',
-  '--fetch-retry-maxtimeout',
-  '--fetch-retry-mintimeout',
-  '--fetch-timeout',
-  '--editor',
-  '--viewer',
-  '--tmp',
-  '--location',
-  '-L',
-  '--local-address',
-  '--ca',
-  '--cafile',
-  '--cert',
-  '--key',
-  '--proxy',
-  '--https-proxy',
-  '--noproxy',
-  '--otp',
-  '--access',
-  '--allow-directory',
-  '--allow-file',
-  '--allow-git',
-  '--allow-remote',
-  '--allow-scripts',
-  '--also',
-  '--audit-level',
-  '--auth-type',
-  '--before',
-  '--browser',
-  '--cidr',
-  '--cpu',
-  '--depth',
-  '--diff',
-  '--diff-dst-prefix',
-  '--diff-src-prefix',
-  '--diff-unified',
-  '--expect-result-count',
-  '--expires',
-  '--git',
-  '--heading',
-  '--include',
-  '--init-author-email',
-  '--init-author-name',
-  '--init-author-url',
-  '--init-license',
-  '--init-module',
-  '--init-type',
-  '--init-version',
-  '--init.author.email',
-  '--init.author.name',
-  '--init.author.url',
-  '--init.license',
-  '--init.module',
-  '--init.version',
-  '--install-strategy',
-  '--libc',
-  '--lockfile-version',
-  '--logs-dir',
-  '--logs-max',
-  '--maxsockets',
-  '--message',
-  '-m',
-  '--min-release-age',
-  '--min-release-age-exclude',
-  '--name',
-  '--node-gyp',
-  '--node-options',
-  '--omit',
-  '--only',
-  '--orgs',
-  '--orgs-permission',
-  '--os',
-  '--pack-destination',
-  '--package',
-  '--packages',
-  '--packages-and-scopes-permission',
-  '--preid',
-  '--provenance-file',
-  '--replace-registry-host',
-  '--save-prefix',
-  '--sbom-format',
-  '--sbom-type',
-  '--searchexclude',
-  '--searchlimit',
-  '--searchopts',
-  '--searchstaleness',
-  '--token-description',
-  '--umask',
-  '--user-agent',
-  '--which',
-  '--_auth',
-  '--password',
-]);
-const NPM_PRE_SUBCMD_VALUE_FLAGS = new Set([
-  ...NPM_VALUE_FLAGS,
-  '--package',
-  '-c',
-  '--call',
-  '--allow-scripts',
-]);
-const NPM_EXEC_VALUE_FLAGS = new Set([
-  ...NPM_VALUE_FLAGS,
-  '--package',
-  '-p',
-  '-c',
-  '--call',
-  '--allow-scripts',
-]);
-const NPX_VALUE_FLAGS = new Set([
-  ...NPM_VALUE_FLAGS,
-  '--package',
-  '-p',
-  '-c',
-  '--call',
-  '--allow-scripts',
-]);
-const CARGO_GLOBAL_VALUE_FLAGS = new Set([
-  '--manifest-path',
-  '-C',
-  '--config',
-  '--target-dir',
-  '--lockfile-path',
-  '--color',
-  '--message-format',
-  '-Z',
-  '--explain',
-]);
+
+const UNQUOTED_WORD_CHAR_RE = /^[A-Za-z0-9._/:=-]$/;
+const HEREDOC_IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ENV_ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
+
+const NODE_EVAL_FORBIDDEN_RE =
+  /(?:child_process|worker_threads|inspector|createRequire|mainModule|getBuiltinModule|__proto__|WebAssembly|XMLHttpRequest|execSync|execFileSync|execFile|spawnSync|spawn|fork|rmSync|unlinkSync|rmdirSync|renameSync|truncateSync|chmodSync|chownSync|symlinkSync|linkSync|cpSync|copyFileSync|appendFileSync|openSync|createWriteStream)\b|\b(?:vm|net|http|https|dgram|tls|cluster|repl|dns|os|module|eval|Function|import|Reflect|Proxy|globalThis|global|window|constructor|prototype|fetch|setTimeout|setInterval|setImmediate|promises|binding|dlopen|exec|rm|unlink|rmdir|rename|truncate|chmod|chown|symlink|link)\b/;
 
 function toPosixPath(p) {
   return p.replace(/\\/g, '/');
@@ -269,6 +80,10 @@ function isExistingDir(dirPath) {
   } catch {
     return false;
   }
+}
+
+function isDisallowedControlCode(code) {
+  return code === 0 || code === 13 || (code < 32 && code !== 9 && code !== 10) || code === 127;
 }
 
 export function parseArgs(argv) {
@@ -489,7 +304,7 @@ export function extractDocCommands(markdownText, filePath) {
         errors.push({
           file: filePath,
           line: fenceLine,
-          message: `${filePath}:${fenceLine}: unsupported fence language '${open.lang}' after <!-- doc-test --> (expected bash, sh, zsh, or untagged)`,
+          message: `${filePath}:${fenceLine}: unsupported fence language '${open.lang}' after <!-- doc-test --> (expected bash, sh, or untagged)`,
         });
         i = k;
         continue;
@@ -528,3537 +343,1139 @@ export function extractDocCommands(markdownText, filePath) {
   return { blocks, errors };
 }
 
-function parseHeredocSpec(rest) {
-  let idx = 0;
-  let stripTabs = false;
-  if (rest[idx] === '-') {
-    stripTabs = true;
-    idx += 1;
-  }
-  while (idx < rest.length && (rest[idx] === ' ' || rest[idx] === '\t')) {
-    idx += 1;
-  }
-  if (idx >= rest.length) return { spec: null, incomplete: false };
-
-  let delim = '';
-  let hasToken = false;
-  let quoted = false;
-  let q = null;
-
-  while (idx < rest.length) {
-    const c = rest[idx];
-    if (q === "'") {
-      if (c === "'") {
-        q = null;
-      } else {
-        delim += c;
-      }
-      hasToken = true;
-      idx += 1;
-      continue;
-    }
-    if (q === "$'") {
-      if (c === '\\' && idx + 1 < rest.length) {
-        const decoded = decodeAnsiCEscapeAt(rest, idx);
-        delim += decoded.value;
-        hasToken = true;
-        idx += decoded.advance + 1;
-        continue;
-      }
-      if (c === "'") {
-        q = null;
-      } else {
-        delim += c;
-      }
-      hasToken = true;
-      idx += 1;
-      continue;
-    }
-    if (q === '"') {
-      if (c === '\\') {
-        if (idx + 1 >= rest.length) {
-          return { spec: null, incomplete: true };
-        }
-        const next = rest[idx + 1];
-        if (next === '"' || next === '\\' || next === '$' || next === '`') {
-          delim += next;
-        } else {
-          delim += `\\${next}`;
-        }
-        hasToken = true;
-        idx += 2;
-        continue;
-      }
-      if (c === '"') {
-        q = null;
-      } else {
-        delim += c;
-      }
-      hasToken = true;
-      idx += 1;
-      continue;
-    }
-
-    if (/[\s;|&<>()]/.test(c)) {
-      break;
-    }
-    if (c === '$' && (rest[idx + 1] === "'" || rest[idx + 1] === '"')) {
-      q = rest[idx + 1] === "'" ? "$'" : '"';
-      quoted = true;
-      hasToken = true;
-      idx += 2;
-      continue;
-    }
-    if (c === "'" || c === '"') {
-      q = c;
-      quoted = true;
-      hasToken = true;
-      idx += 1;
-      continue;
-    }
-    if (c === '\\') {
-      if (idx + 1 >= rest.length) {
-        return { spec: null, incomplete: true };
-      }
-      delim += rest[idx + 1];
-      quoted = true;
-      hasToken = true;
-      idx += 2;
-      continue;
-    }
-    delim += c;
-    hasToken = true;
-    idx += 1;
-  }
-
-  if (!hasToken || q !== null) return { spec: null, incomplete: false };
-  return { spec: { delim, stripTabs, quoted, consumed: idx }, incomplete: false };
-}
-
-function extractUnquotedHeredocSubstitutions(bodyText, lineStartOffsets, baseLineIndex) {
-  const entries = [];
-  const resolveLineIndex = (offset) => {
-    let resolved = baseLineIndex;
-    for (const item of lineStartOffsets) {
-      if (item.offset <= offset) {
-        resolved = item.lineIndex;
-      } else {
-        break;
-      }
-    }
-    return resolved;
-  };
-
-  for (let i = 0; i < bodyText.length; i += 1) {
-    const ch = bodyText[i];
-    if (ch === '\\' && i + 1 < bodyText.length) {
-      i += 1;
-      continue;
-    }
-    if (ch === '$' && bodyText[i + 1] === '(') {
-      const lineIndex = resolveLineIndex(i);
-      const endIdx = findClosingCommandSubParen(bodyText, i + 2);
-      if (endIdx < 0) {
-        entries.push({ lineIndex, text: bodyText.slice(i + 2), unclosed: true });
-        break;
-      }
-      entries.push({
-        lineIndex,
-        text: bodyText.slice(i + 2, endIdx),
-        isHeredocSubScript: true,
-      });
-      i = endIdx;
-      continue;
-    }
-    if (ch === '`') {
-      const lineIndex = resolveLineIndex(i);
-      const bt = extractDoubleQuotedBacktick(bodyText, i + 1);
-      if (!bt) {
-        entries.push({ lineIndex, text: bodyText.slice(i + 1), unclosed: true });
-        break;
-      }
-      entries.push({
-        lineIndex,
-        text: bt.inner,
-        isHeredocSubScript: true,
-      });
-      i = bt.endIdx;
-    }
-  }
-
-  return entries;
-}
-
-const REDIR_FD_PREFIX_RE = /^(?:\d+|\{[A-Za-z_][A-Za-z0-9_]*\})$/;
-
-function createCmdSubFrame(savedQuote = null) {
-  return {
-    savedQuote,
-    parenDepth: 1,
-    caseStack: [],
-    atCommandStart: true,
-    word: '',
-    wordPureUnquoted: true,
-    afterTimeKeyword: false,
-    afterCoprocKeyword: false,
-    expectFuncName: false,
-    canOpenFuncParen: false,
-    pendingEmptyFuncParenDepth: -1,
-    pendingRedirTarget: false,
-  };
-}
-
-function flushCmdSubWord(frame) {
-  if (frame.pendingRedirTarget) {
-    if (!frame.word && frame.wordPureUnquoted) {
-      return;
-    }
-    frame.pendingRedirTarget = false;
-    frame.word = '';
-    frame.wordPureUnquoted = true;
-    frame.atCommandStart = true;
-    frame.afterTimeKeyword = false;
-    frame.afterCoprocKeyword = false;
-    frame.expectFuncName = false;
-    frame.canOpenFuncParen = false;
-    return;
-  }
-
-  if (!frame.word) {
-    frame.wordPureUnquoted = true;
-    return;
-  }
-
-  const top = frame.caseStack[frame.caseStack.length - 1];
-  const wasAfterTime = frame.afterTimeKeyword;
-  const wasAfterCoproc = frame.afterCoprocKeyword;
-  const wasExpectFuncName = frame.expectFuncName;
-  frame.afterTimeKeyword = false;
-  frame.afterCoprocKeyword = false;
-  frame.expectFuncName = false;
-  frame.canOpenFuncParen = false;
-
-  if (frame.wordPureUnquoted) {
-    if (frame.atCommandStart && frame.word === 'case') {
-      frame.caseStack.push({
-        state: 'WAIT_IN',
-        baseDepth: frame.parenDepth,
-        patternParen: false,
-        atPatternStart: false,
-      });
-      frame.atCommandStart = false;
-    } else if (
-      top &&
-      top.state === 'WAIT_IN' &&
-      frame.parenDepth === top.baseDepth &&
-      frame.word === 'in'
-    ) {
-      top.state = 'PATTERN';
-      top.patternParen = false;
-      top.atPatternStart = true;
-      frame.atCommandStart = false;
-    } else if (
-      top &&
-      frame.parenDepth === top.baseDepth &&
-      frame.word === 'esac' &&
-      (top.state === 'PATTERN' || (top.state === 'BODY' && frame.atCommandStart))
-    ) {
-      frame.caseStack.pop();
-      frame.atCommandStart = false;
-    } else if (wasExpectFuncName) {
-      frame.atCommandStart = true;
-      frame.canOpenFuncParen = true;
-    } else if (frame.atCommandStart && frame.word === 'function') {
-      frame.expectFuncName = true;
-      frame.atCommandStart = false;
-    } else if (frame.atCommandStart && frame.word === 'time') {
-      frame.afterTimeKeyword = true;
-      frame.atCommandStart = true;
-    } else if (wasAfterTime && frame.word === '-p') {
-      frame.atCommandStart = true;
-    } else if (frame.atCommandStart && frame.word === 'coproc') {
-      frame.afterCoprocKeyword = true;
-      frame.atCommandStart = true;
-    } else if (
-      wasAfterCoproc &&
-      frame.word !== 'if' &&
-      frame.word !== 'while' &&
-      frame.word !== 'until' &&
-      frame.word !== 'for' &&
-      frame.word !== 'select' &&
-      frame.word !== '{' &&
-      /^[A-Za-z_][A-Za-z0-9_]*$/.test(frame.word)
-    ) {
-      frame.atCommandStart = true;
-    } else if (
-      frame.atCommandStart &&
-      (frame.word === 'then' ||
-        frame.word === 'do' ||
-        frame.word === 'else' ||
-        frame.word === 'elif' ||
-        frame.word === 'if' ||
-        frame.word === 'while' ||
-        frame.word === 'until' ||
-        frame.word === '{' ||
-        frame.word === '!')
-    ) {
-      frame.atCommandStart = true;
-    } else {
-      if (frame.atCommandStart) {
-        frame.canOpenFuncParen = true;
-      }
-      frame.atCommandStart = false;
-    }
-  } else {
-    frame.atCommandStart = false;
-  }
-  frame.word = '';
-  frame.wordPureUnquoted = true;
-}
-
-function stepCmdSubChar(frame, str, idx) {
-  const ch = str[idx];
-
-  if (ch === '(') {
-    flushCmdSubWord(frame);
-    const canBeFuncParen = frame.canOpenFuncParen;
-    frame.canOpenFuncParen = false;
-    frame.pendingEmptyFuncParenDepth = -1;
-    frame.pendingRedirTarget = false;
-    const top = frame.caseStack[frame.caseStack.length - 1];
-    if (top && top.state === 'PATTERN' && frame.parenDepth === top.baseDepth && top.atPatternStart) {
-      top.patternParen = true;
-      top.atPatternStart = false;
-      frame.parenDepth += 1;
-    } else {
-      if (top && top.state === 'PATTERN') {
-        top.atPatternStart = false;
-      }
-      frame.parenDepth += 1;
-      if (canBeFuncParen) {
-        frame.pendingEmptyFuncParenDepth = frame.parenDepth;
-      }
-      frame.atCommandStart = true;
-    }
-    return { handled: true, closed: false, nextIdx: idx };
-  }
-
-  if (ch === ')') {
-    flushCmdSubWord(frame);
-    frame.canOpenFuncParen = false;
-    frame.pendingRedirTarget = false;
-    const top = frame.caseStack[frame.caseStack.length - 1];
-    if (top && top.state === 'PATTERN') {
-      if (top.patternParen && frame.parenDepth === top.baseDepth + 1) {
-        frame.parenDepth -= 1;
-        top.patternParen = false;
-        top.state = 'BODY';
-        frame.atCommandStart = true;
-        return { handled: true, closed: false, nextIdx: idx };
-      }
-      if (!top.patternParen && frame.parenDepth === top.baseDepth) {
-        top.state = 'BODY';
-        frame.atCommandStart = true;
-        return { handled: true, closed: false, nextIdx: idx };
-      }
-    }
-    const isEmptyFuncParen = frame.parenDepth === frame.pendingEmptyFuncParenDepth;
-    frame.pendingEmptyFuncParenDepth = -1;
-    frame.parenDepth -= 1;
-    if (frame.parenDepth === 0) {
-      return { handled: true, closed: true, nextIdx: idx };
-    }
-    frame.atCommandStart = isEmptyFuncParen;
-    return { handled: true, closed: false, nextIdx: idx };
-  }
-
-  if (ch === ';' || ch === '&' || ch === '|' || ch === '\n') {
-    if (ch === '&' && str[idx + 1] === '>') {
-      flushCmdSubWord(frame);
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      if (frame.atCommandStart) {
-        frame.pendingRedirTarget = true;
-      }
-      const nextIdx = str[idx + 2] === '>' ? idx + 2 : idx + 1;
-      return { handled: true, closed: false, nextIdx };
-    }
-    flushCmdSubWord(frame);
-    frame.canOpenFuncParen = false;
-    frame.pendingEmptyFuncParenDepth = -1;
-    frame.pendingRedirTarget = false;
-    frame.afterTimeKeyword = false;
-    frame.afterCoprocKeyword = false;
-    frame.expectFuncName = false;
-    const top = frame.caseStack[frame.caseStack.length - 1];
-    if (ch === ';' && (str[idx + 1] === ';' || str[idx + 1] === '&' || str[idx + 1] === '|')) {
-      const nextIdx = str[idx + 1] === ';' && str[idx + 2] === '&' ? idx + 2 : idx + 1;
-      if (top && top.state === 'BODY' && frame.parenDepth === top.baseDepth) {
-        top.state = 'PATTERN';
-        top.patternParen = false;
-        top.atPatternStart = true;
-      }
-      frame.atCommandStart = false;
-      return { handled: true, closed: false, nextIdx };
-    }
-    if (ch === '|' && top && top.state === 'PATTERN' && frame.parenDepth === top.baseDepth) {
-      top.atPatternStart = false;
-      return { handled: true, closed: false, nextIdx: idx };
-    }
-    let nextIdx = idx;
-    if (
-      (ch === '&' && str[idx + 1] === '&') ||
-      (ch === '|' && (str[idx + 1] === '|' || str[idx + 1] === '&'))
-    ) {
-      nextIdx = idx + 1;
-    }
-    frame.atCommandStart = true;
-    return { handled: true, closed: false, nextIdx };
-  }
-
-  if (/\s/.test(ch)) {
-    flushCmdSubWord(frame);
-    return { handled: true, closed: false, nextIdx: idx };
-  }
-
-  if (ch === '<' || ch === '>') {
-    frame.pendingEmptyFuncParenDepth = -1;
-    const isLeadingRedir =
-      frame.atCommandStart &&
-      (frame.word === '' || (frame.wordPureUnquoted && REDIR_FD_PREFIX_RE.test(frame.word)));
-    if (isLeadingRedir) {
-      frame.word = '';
-      frame.wordPureUnquoted = true;
-      frame.pendingRedirTarget = true;
-      frame.canOpenFuncParen = false;
-    } else {
-      flushCmdSubWord(frame);
-    }
-    let nextIdx = idx;
-    const next = str[idx + 1];
-    if (ch === '>') {
-      if (next === '>' || next === '|' || next === '&') {
-        nextIdx = idx + 1;
-      }
-    } else {
-      const three = str.slice(idx, idx + 3);
-      if (three === '<<<' || three === '<<-') {
-        nextIdx = idx + 2;
-      } else if (next === '<' || next === '>' || next === '&') {
-        nextIdx = idx + 1;
-      }
-    }
-    return { handled: true, closed: false, nextIdx };
-  }
-
-  frame.canOpenFuncParen = false;
-  frame.pendingEmptyFuncParenDepth = -1;
-  const top = frame.caseStack[frame.caseStack.length - 1];
-  if (top && top.state === 'PATTERN' && frame.parenDepth === top.baseDepth) {
-    top.atPatternStart = false;
-  }
-  frame.word += ch;
-  return { handled: true, closed: false, nextIdx: idx };
-}
-
-function scanShellLineForCommentAndHeredoc(
-  line,
-  state,
-  prevLineContinuedNoSpace = false,
-  skipHeredocs = false,
-) {
-  let commentStart = line.length;
-  const heredocSpecs = [];
-  let startIdx = 0;
-
-  if (!skipHeredocs && state.pendingHeredocText !== null) {
-    const prevLen = state.pendingHeredocText.length;
-    const combined = `${state.pendingHeredocText}${line}`;
-    const parsed = parseHeredocSpec(combined);
-    if (parsed.incomplete) {
-      state.pendingHeredocText = combined.slice(0, -1);
-      return {
-        cleaned: line,
-        hasComment: false,
-        heredocSpecs,
-      };
-    }
-    state.pendingHeredocText = null;
-    if (parsed.spec) {
-      heredocSpecs.push({
-        delim: parsed.spec.delim,
-        stripTabs: parsed.spec.stripTabs,
-        quoted: parsed.spec.quoted,
-      });
-      startIdx = Math.max(0, parsed.spec.consumed - prevLen);
-    }
-  }
-
-  for (let i = startIdx; i < line.length; i += 1) {
-    const ch = line[i];
-
-    if (state.inBacktick !== false) {
-      if (ch === '\\' && i + 1 < line.length) {
-        i += 1;
-        continue;
-      }
-      if (ch === '`') {
-        state.quote = state.inBacktick.savedQuote;
-        state.inBacktick = false;
-        const activeFrame = state.cmdSubStack[state.cmdSubStack.length - 1];
-        if (activeFrame) {
-          activeFrame.wordPureUnquoted = false;
-          activeFrame.canOpenFuncParen = false;
-          activeFrame.pendingEmptyFuncParenDepth = -1;
-          activeFrame.atCommandStart = false;
-        }
-      }
-      continue;
-    }
-
-    if (state.quote === "'") {
-      if (ch === "'") state.quote = null;
-      continue;
-    }
-
-    if (state.quote === "$'") {
-      if (ch === '\\') {
-        i += 1;
-        continue;
-      }
-      if (ch === "'") state.quote = null;
-      continue;
-    }
-
-    if (state.quote === '"') {
-      if (ch === '\\') {
-        i += 1;
-        continue;
-      }
-      if (ch === '$' && line[i + 1] === '(') {
-        state.cmdSubStack.push(createCmdSubFrame('"'));
-        state.quote = null;
-        i += 1;
-        continue;
-      }
-      if (ch === '`') {
-        state.inBacktick = { savedQuote: '"' };
-        state.quote = null;
-        continue;
-      }
-      if (ch === '"') state.quote = null;
-      continue;
-    }
-
-    const activeFrame = state.cmdSubStack[state.cmdSubStack.length - 1] ?? null;
-
-    if (ch === '\\') {
-      if (activeFrame) {
-        activeFrame.wordPureUnquoted = false;
-        activeFrame.canOpenFuncParen = false;
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-      }
-      i += 1;
-      continue;
-    }
-
-    if (ch === '$' && line[i + 1] === "'") {
-      if (activeFrame) {
-        activeFrame.wordPureUnquoted = false;
-        activeFrame.canOpenFuncParen = false;
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-      }
-      state.quote = "$'";
-      i += 1;
-      continue;
-    }
-
-    if (ch === '$' && line[i + 1] === '"') {
-      if (activeFrame) {
-        activeFrame.wordPureUnquoted = false;
-        activeFrame.canOpenFuncParen = false;
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-      }
-      state.quote = '"';
-      i += 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      if (activeFrame) {
-        activeFrame.wordPureUnquoted = false;
-        activeFrame.canOpenFuncParen = false;
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-      }
-      state.quote = ch;
-      continue;
-    }
-
-    if (
-      ch === '#' &&
-      ((i === 0 && !prevLineContinuedNoSpace) || (i > 0 && /\s|[;|&(]/.test(line[i - 1])))
-    ) {
-      if (activeFrame) flushCmdSubWord(activeFrame);
-      commentStart = i;
-      break;
-    }
-
-    if (
-      (ch === '$' || ch === '<' || ch === '>') &&
-      line[i + 1] === '('
-    ) {
-      if (activeFrame) {
-        flushCmdSubWord(activeFrame);
-        activeFrame.canOpenFuncParen = false;
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-        activeFrame.atCommandStart = false;
-      }
-      state.cmdSubStack.push(createCmdSubFrame(null));
-      i += 1;
-      continue;
-    }
-
-    if (ch === '`') {
-      if (activeFrame) {
-        flushCmdSubWord(activeFrame);
-        activeFrame.canOpenFuncParen = false;
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-        activeFrame.atCommandStart = false;
-      }
-      state.inBacktick = { savedQuote: null };
-      continue;
-    }
-
-    if (!skipHeredocs && ch === '<' && line[i + 1] === '<' && line[i + 2] !== '<') {
-      if (activeFrame) {
-        flushCmdSubWord(activeFrame);
-        activeFrame.pendingEmptyFuncParenDepth = -1;
-        activeFrame.canOpenFuncParen = false;
-      }
-      const rest = line.slice(i + 2);
-      const parsed = parseHeredocSpec(rest);
-      if (parsed.incomplete) {
-        state.pendingHeredocText = rest.slice(0, -1);
-        break;
-      }
-      if (parsed.spec) {
-        heredocSpecs.push({
-          delim: parsed.spec.delim,
-          stripTabs: parsed.spec.stripTabs,
-          quoted: parsed.spec.quoted,
-        });
-        i += 1 + parsed.spec.consumed;
-        continue;
-      }
-    }
-
-    if (activeFrame) {
-      const step = stepCmdSubChar(activeFrame, line, i);
-      i = step.nextIdx;
-      if (step.closed) {
-        const popped = state.cmdSubStack.pop();
-        state.quote = popped.savedQuote;
-        const parentFrame = state.cmdSubStack[state.cmdSubStack.length - 1];
-        if (parentFrame) {
-          parentFrame.atCommandStart = false;
-        }
-      }
-    }
-  }
-
-  return {
-    cleaned: line.slice(0, commentStart),
-    hasComment: commentStart < line.length,
-    heredocSpecs,
-  };
+function isTokenBoundaryChar(ch) {
+  return (
+    ch === undefined ||
+    ch === ' ' ||
+    ch === '\t' ||
+    ch === '\n' ||
+    ch === ';' ||
+    ch === '&' ||
+    ch === '|' ||
+    ch === '>' ||
+    ch === '<' ||
+    ch === '#'
+  );
 }
 
 /**
- * Strip heredoc bodies and `#` comments outside quotes, returning logical lines with start offsets.
+ * Layer 2: Strict byte and lexical allowlist tokenizer.
  */
-export function stripHeredocsAndComments(script, opts = {}) {
-  const skipHeredocs = Boolean(opts?.skipHeredocs);
-  const rawLines = script.replace(/\r\n/g, '\n').split('\n');
-  const heredocQueue = [];
-  const pendingHeredocs = [];
-  const state = {
-    quote: null,
-    cmdSubStack: [],
-    inBacktick: false,
-    pendingHeredocText: null,
-  };
+function tokenizeAllowedShell(script) {
+  const normalized = script.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const tokens = [];
 
-  const logical = [];
-  let current = '';
-  let startIdx = 0;
-  let continuing = false;
-  let continueWithNewline = false;
-  let prevLineContinuedNoSpace = false;
+  const fail = (reason, lineIndex) => ({
+    ok: false,
+    reason,
+    lineIndex,
+    lineText: (lines[lineIndex] ?? '').trim(),
+  });
 
-  const flushUnquotedHeredoc = (active) => {
-    if (active.quoted || !active.bodyText) return;
-    const subEntries = extractUnquotedHeredocSubstitutions(
-      active.bodyText,
-      active.lineStartOffsets,
-      active.bodyStartLine,
-    );
-    logical.push(...subEntries);
-  };
+  let i = 0;
+  let lineIndex = 0;
+  let currentWord = null;
+  let hadSpaceBefore = true;
+  let pendingHeredoc = null;
 
-  for (let i = 0; i < rawLines.length; i += 1) {
-    const line = rawLines[i];
-    if (heredocQueue.length > 0) {
-      const active = heredocQueue[0];
-      const candidate = active.stripTabs ? line.replace(/^\t+/, '') : line;
-      if (!active.bodyContinued && candidate === active.delim) {
-        heredocQueue.shift();
-        flushUnquotedHeredoc(active);
-      } else if (!active.quoted) {
-        if (active.bodyStartLine < 0) {
-          active.bodyStartLine = i;
-        }
-        if (!active.bodyContinued) {
-          active.lineStartOffsets.push({ offset: active.bodyText.length, lineIndex: i });
-        }
-        let trailingBs = 0;
-        for (let k = candidate.length - 1; k >= 0 && candidate[k] === '\\'; k -= 1) {
-          trailingBs += 1;
-        }
-        const continued = trailingBs % 2 === 1;
-        if (continued) {
-          active.bodyText += candidate.slice(0, -1);
-          active.bodyContinued = true;
-        } else {
-          active.bodyText += `${candidate}\n`;
-          active.bodyContinued = false;
-        }
-      }
-      if (continuing && continueWithNewline) {
-        current += '\n';
-      }
-      prevLineContinuedNoSpace = false;
-      continue;
-    }
-
-    const { cleaned, hasComment, heredocSpecs } = scanShellLineForCommentAndHeredoc(
-      line,
-      state,
-      prevLineContinuedNoSpace,
-      skipHeredocs,
-    );
-    if (heredocSpecs.length > 0) {
-      pendingHeredocs.push(
-        ...heredocSpecs.map((spec) => ({
-          ...spec,
-          bodyText: '',
-          bodyStartLine: -1,
-          lineStartOffsets: [],
-          bodyContinued: false,
-        })),
-      );
-    }
-
-    let trailingBackslashes = 0;
-    if (!hasComment && state.quote !== "'" && state.quote !== "$'") {
-      for (let k = cleaned.length - 1; k >= 0 && cleaned[k] === '\\'; k -= 1) {
-        trailingBackslashes += 1;
-      }
-    }
-    const continuedByBackslash = trailingBackslashes % 2 === 1;
-    const part = continuedByBackslash ? cleaned.slice(0, -1) : cleaned;
-
-    if (!continuing) {
-      startIdx = i;
-      current = part;
-    } else if (continueWithNewline) {
-      current += `\n${part}`;
-    } else {
-      current += part;
-    }
-
-    if (continuedByBackslash) {
-      continuing = true;
-      continueWithNewline = false;
-      prevLineContinuedNoSpace = part.length > 0 && !/\s$/.test(part);
-      continue;
-    }
-
-    prevLineContinuedNoSpace = false;
-    const topFrame = state.cmdSubStack[state.cmdSubStack.length - 1];
-    if (topFrame && state.quote === null && !state.inBacktick) {
-      flushCmdSubWord(topFrame);
-      topFrame.atCommandStart = true;
-    }
-
-    if (state.quote === null && !state.inBacktick && pendingHeredocs.length > 0) {
-      heredocQueue.push(...pendingHeredocs);
-      pendingHeredocs.length = 0;
-    }
-
-    if (state.quote === null && !state.inBacktick && state.cmdSubStack.length === 0) {
-      logical.push({ lineIndex: startIdx, text: current });
-      current = '';
-      continuing = false;
-      continueWithNewline = false;
-    } else {
-      continuing = true;
-      continueWithNewline = true;
-    }
-  }
-
-  for (const active of heredocQueue) {
-    flushUnquotedHeredoc(active);
-  }
-
-  const isUnclosed = state.quote !== null || state.inBacktick !== false || state.cmdSubStack.length > 0;
-  if (continuing && (current.trim().length > 0 || isUnclosed)) {
-    logical.push({ lineIndex: startIdx, text: current, ...(isUnclosed ? { unclosed: true } : {}) });
-  } else if (isUnclosed) {
-    logical.push({
-      lineIndex: Math.max(0, rawLines.length - 1),
-      text: '',
-      unclosed: true,
-    });
-  }
-
-  return logical;
-}
-
-function findClosingCommandSubParen(str, startIdx) {
-  const frame = createCmdSubFrame(null);
-  let q = null;
-  for (let i = startIdx; i < str.length; i += 1) {
-    const ch = str[i];
-    if (q === "'") {
-      if (ch === "'") q = null;
-      continue;
-    }
-    if (q === "$'") {
-      if (ch === '\\' && i + 1 < str.length) {
-        i += 1;
-        continue;
-      }
-      if (ch === "'") q = null;
-      continue;
-    }
-    if (q === '"') {
-      if (ch === '\\' && i + 1 < str.length) {
-        i += 1;
-        continue;
-      }
-      if (ch === '$' && str[i + 1] === '(') {
-        const innerEnd = findClosingCommandSubParen(str, i + 2);
-        if (innerEnd < 0) return -1;
-        i = innerEnd;
-        continue;
-      }
-      if (ch === '`') {
-        const bt = extractDoubleQuotedBacktick(str, i + 1);
-        if (!bt) return -1;
-        i = bt.endIdx;
-        continue;
-      }
-      if (ch === '"') q = null;
-      continue;
-    }
-    if (ch === '\\' && i + 1 < str.length) {
-      frame.wordPureUnquoted = false;
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      i += 1;
-      continue;
-    }
-    if (ch === '$' && str[i + 1] === "'") {
-      frame.wordPureUnquoted = false;
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      q = "$'";
-      i += 1;
-      continue;
-    }
-    if (ch === '$' && str[i + 1] === '"') {
-      frame.wordPureUnquoted = false;
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      q = '"';
-      i += 1;
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      frame.wordPureUnquoted = false;
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      q = ch;
-      continue;
-    }
-    if (ch === '#' && (i === startIdx || /\s|[;|&(]/.test(str[i - 1]))) {
-      flushCmdSubWord(frame);
-      const nl = str.indexOf('\n', i + 1);
-      if (nl < 0) return -1;
-      frame.atCommandStart = true;
-      i = nl;
-      continue;
-    }
-    if ((ch === '$' || ch === '<' || ch === '>') && str[i + 1] === '(') {
-      flushCmdSubWord(frame);
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      frame.atCommandStart = false;
-      const innerEnd = findClosingCommandSubParen(str, i + 2);
-      if (innerEnd < 0) return -1;
-      i = innerEnd;
-      continue;
-    }
-    if (ch === '`') {
-      flushCmdSubWord(frame);
-      frame.canOpenFuncParen = false;
-      frame.pendingEmptyFuncParenDepth = -1;
-      frame.atCommandStart = false;
-      const bt = extractUnquotedBacktick(str, i + 1);
-      if (!bt) return -1;
-      i = bt.endIdx;
-      continue;
-    }
-    const step = stepCmdSubChar(frame, str, i);
-    i = step.nextIdx;
-    if (step.closed) return i;
-  }
-  return -1;
-}
-
-function extractDoubleQuotedBacktick(str, startIdx) {
-  let inner = '';
-  for (let i = startIdx; i < str.length; i += 1) {
-    const ch = str[i];
-    if (ch === '\\' && i + 1 < str.length) {
-      const next = str[i + 1];
-      if (next === '`' || next === '\\' || next === '$' || next === '"') {
-        inner += next;
-      } else {
-        inner += ch + next;
-      }
-      i += 1;
-      continue;
-    }
-    if (ch === '`') {
-      return { inner, endIdx: i };
-    }
-    inner += ch;
-  }
-  return null;
-}
-
-function extractUnquotedBacktick(str, startIdx) {
-  let inner = '';
-  for (let i = startIdx; i < str.length; i += 1) {
-    const ch = str[i];
-    if (ch === '\\' && i + 1 < str.length) {
-      const next = str[i + 1];
-      if (next === '`' || next === '\\' || next === '$') {
-        inner += next;
-      } else {
-        inner += ch + next;
-      }
-      i += 1;
-      continue;
-    }
-    if (ch === '`') {
-      return { inner, endIdx: i };
-    }
-    inner += ch;
-  }
-  return null;
-}
-
-function extractNestedCommandSubSegments(inner, opts = {}) {
-  const nested = [];
-  const logicalLines = stripHeredocsAndComments(inner, opts);
-  for (const entry of logicalLines) {
-    if (entry.unclosed) {
-      nested.push({ text: entry.text || '', pipedIn: false, endedAtSub: true, unclosedSub: true });
-      continue;
-    }
-    if (!entry.text.trim()) continue;
-    if (entry.isHeredocSubScript) {
-      nested.push(...extractNestedCommandSubSegments(entry.text, { skipHeredocs: false }));
-    } else {
-      nested.push(...splitShellSegmentsWithMeta(entry.text));
-    }
-  }
-  return nested;
-}
-
-function splitShellSegmentsWithMeta(commandLine) {
-  const segments = [];
-  let quote = null;
-  let current = '';
-  let nextPipedIn = false;
-  let hasUnclosedSubInCurrent = false;
-
-  const flush = (setNextPipedIn = false, endedAtSub = false, unclosedSub = false) => {
-    const isUnclosed = unclosedSub || hasUnclosedSubInCurrent;
-    const trimmed = current.trim();
-    if (trimmed || isUnclosed) {
-      segments.push({
-        text: trimmed,
-        pipedIn: nextPipedIn,
-        endedAtSub: endedAtSub || isUnclosed,
-        unclosedSub: isUnclosed,
+  const flushWord = () => {
+    if (currentWord !== null) {
+      tokens.push({
+        kind: 'WORD',
+        value: currentWord.value,
+        quoted: null,
+        lineIndex: currentWord.lineIndex,
       });
-      nextPipedIn = setNextPipedIn;
-    } else if (setNextPipedIn) {
-      nextPipedIn = true;
-    } else if (endedAtSub) {
-      nextPipedIn = false;
+      currentWord = null;
+      hadSpaceBefore = false;
     }
-    current = '';
-    hasUnclosedSubInCurrent = false;
   };
 
-  for (let i = 0; i < commandLine.length; i += 1) {
-    const ch = commandLine[i];
-
-    if (quote === "'") {
-      current += ch;
-      if (ch === "'") quote = null;
+  while (i < normalized.length) {
+    if (pendingHeredoc !== null && lineIndex > pendingHeredoc.bodyStartLine - 1) {
+      // Read HEREDOC_BODY line-by-line until exact line === pendingHeredoc.delim.
+      const bodyLines = [];
+      let closed = false;
+      while (i <= normalized.length) {
+        const nlIdx = normalized.indexOf('\n', i);
+        const rawLine = nlIdx === -1 ? normalized.slice(i) : normalized.slice(i, nlIdx);
+        for (let k = 0; k < rawLine.length; k += 1) {
+          if (isDisallowedControlCode(rawLine.charCodeAt(k))) {
+            return fail('disallowed control byte inside heredoc body', lineIndex);
+          }
+        }
+        if (rawLine === pendingHeredoc.delim) {
+          closed = true;
+          pendingHeredoc.token.content = bodyLines.join('\n');
+          pendingHeredoc = null;
+          if (nlIdx === -1) {
+            i = normalized.length;
+          } else {
+            i = nlIdx + 1;
+            lineIndex += 1;
+          }
+          hadSpaceBefore = true;
+          break;
+        }
+        bodyLines.push(rawLine);
+        if (nlIdx === -1) {
+          break;
+        }
+        i = nlIdx + 1;
+        lineIndex += 1;
+      }
+      if (!closed) {
+        return fail(`unterminated heredoc '${pendingHeredoc.delim}'`, pendingHeredoc.lineIndex);
+      }
       continue;
     }
 
-    if (quote === "$'") {
-      if (ch === '\\' && i + 1 < commandLine.length) {
-        current += ch + commandLine[i + 1];
-        i += 1;
-        continue;
-      }
-      current += ch;
-      if (ch === "'") quote = null;
+    const ch = normalized[i];
+    const code = ch.charCodeAt(0);
+
+    if (isDisallowedControlCode(code)) {
+      return fail('disallowed control byte', lineIndex);
+    }
+    if (code > 0x7e) {
+      return fail('disallowed non-ASCII byte', lineIndex);
+    }
+
+    if (ch === ' ' || ch === '\t') {
+      flushWord();
+      hadSpaceBefore = true;
+      i += 1;
       continue;
     }
 
-    if (quote === '"') {
-      if (ch === '\\' && i + 1 < commandLine.length) {
-        current += ch + commandLine[i + 1];
+    if (ch === '\n') {
+      flushWord();
+      tokens.push({ kind: 'NEWLINE', lineIndex });
+      if (pendingHeredoc !== null) {
+        pendingHeredoc.bodyStartLine = lineIndex + 1;
+      }
+      lineIndex += 1;
+      hadSpaceBefore = true;
+      i += 1;
+      continue;
+    }
+
+    if (ch === '#') {
+      if (currentWord !== null) {
+        return fail("unexpected '#' inside word", lineIndex);
+      }
+      while (i < normalized.length && normalized[i] !== '\n') {
+        const cCode = normalized.charCodeAt(i);
+        if (isDisallowedControlCode(cCode)) {
+          return fail('disallowed control byte inside comment', lineIndex);
+        }
         i += 1;
+      }
+      continue;
+    }
+
+    if (ch === '\\') {
+      if (
+        currentWord === null &&
+        hadSpaceBefore &&
+        normalized[i + 1] === '\n' &&
+        pendingHeredoc === null
+      ) {
+        i += 2;
+        lineIndex += 1;
+        hadSpaceBefore = true;
         continue;
       }
-      if (ch === '$' && commandLine[i + 1] === '(') {
-        const endIdx = findClosingCommandSubParen(commandLine, i + 2);
-        if (endIdx >= 0) {
-          const inner = commandLine.slice(i + 2, endIdx);
-          segments.push(...extractNestedCommandSubSegments(inner, { skipHeredocs: true }));
-          current += commandLine.slice(i, endIdx + 1);
-          i = endIdx;
+      return fail('disallowed backslash or line continuation', lineIndex);
+    }
+
+    if (ch === "'") {
+      if (currentWord !== null) {
+        return fail('mid-word single quote splicing is disallowed', lineIndex);
+      }
+      const startLine = lineIndex;
+      i += 1;
+      let val = '';
+      let closed = false;
+      while (i < normalized.length) {
+        const sc = normalized[i];
+        const sCode = sc.charCodeAt(0);
+        if (isDisallowedControlCode(sCode)) {
+          return fail('disallowed control byte inside single-quoted string', startLine);
+        }
+        if (sc === '\n') {
+          return fail('multi-line single-quoted string is disallowed', startLine);
+        }
+        if (sc === "'") {
+          closed = true;
+          i += 1;
+          break;
+        }
+        val += sc;
+        i += 1;
+      }
+      if (!closed) {
+        return fail('unclosed single-quoted string', startLine);
+      }
+      if (!isTokenBoundaryChar(normalized[i])) {
+        return fail('single-quoted string must be followed by token boundary', startLine);
+      }
+      tokens.push({ kind: 'WORD', value: val, quoted: 'single', lineIndex: startLine });
+      hadSpaceBefore = false;
+      continue;
+    }
+
+    if (ch === '"') {
+      if (currentWord !== null) {
+        return fail('mid-word double quote splicing is disallowed', lineIndex);
+      }
+      const startLine = lineIndex;
+      i += 1;
+      let val = '';
+      let closed = false;
+      while (i < normalized.length) {
+        const dc = normalized[i];
+        const dCode = dc.charCodeAt(0);
+        if (isDisallowedControlCode(dCode)) {
+          return fail('disallowed control byte inside double-quoted string', startLine);
+        }
+        if (dc === '\n') {
+          return fail('multi-line double-quoted string is disallowed', startLine);
+        }
+        if (dc === '`') {
+          return fail('backtick command substitution inside double quotes is disallowed', startLine);
+        }
+        if (dc === '\\') {
+          const next = normalized[i + 1];
+          if (
+            next === undefined ||
+            next === '\n' ||
+            next === '"' ||
+            next === '\\' ||
+            next === '$' ||
+            next === '`'
+          ) {
+            return fail('disallowed escape inside double-quoted string', startLine);
+          }
+          val += `\\${next}`;
+          i += 2;
           continue;
         }
-        hasUnclosedSubInCurrent = true;
-        segments.push(
-          ...extractNestedCommandSubSegments(commandLine.slice(i + 2), { skipHeredocs: true }),
-        );
-      }
-      if (ch === '`') {
-        const bt = extractDoubleQuotedBacktick(commandLine, i + 1);
-        if (bt) {
-          segments.push(...extractNestedCommandSubSegments(bt.inner, { skipHeredocs: false }));
-          current += commandLine.slice(i, bt.endIdx + 1);
-          i = bt.endIdx;
-          continue;
+        if (dc === '$') {
+          if (normalized[i + 1] === '/') {
+            val += '$/';
+            i += 2;
+            continue;
+          }
+          return fail("disallowed '$' expansion inside double-quoted string", startLine);
         }
-        hasUnclosedSubInCurrent = true;
-        segments.push(
-          ...extractNestedCommandSubSegments(commandLine.slice(i + 1), { skipHeredocs: false }),
-        );
+        if (dc === '"') {
+          closed = true;
+          i += 1;
+          break;
+        }
+        val += dc;
+        i += 1;
       }
-      current += ch;
-      if (ch === '"') quote = null;
-      continue;
-    }
-
-    if (ch === '\\' && i + 1 < commandLine.length) {
-      current += ch + commandLine[i + 1];
-      i += 1;
-      continue;
-    }
-
-    if (ch === '$' && commandLine[i + 1] === "'") {
-      quote = "$'";
-      current += "$'";
-      i += 1;
-      continue;
-    }
-
-    if (ch === '$' && commandLine[i + 1] === '"') {
-      quote = '"';
-      current += '$"';
-      i += 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      current += ch;
-      continue;
-    }
-
-    if (ch === '$' && commandLine[i + 1] === '(') {
-      const endIdx = findClosingCommandSubParen(commandLine, i + 2);
-      if (endIdx >= 0) {
-        const inner = commandLine.slice(i + 2, endIdx);
-        segments.push(...extractNestedCommandSubSegments(inner, { skipHeredocs: true }));
-        current += commandLine.slice(i, endIdx + 1);
-        i = endIdx;
-        continue;
+      if (!closed) {
+        return fail('unclosed double-quoted string', startLine);
       }
-      segments.push(
-        ...extractNestedCommandSubSegments(commandLine.slice(i + 2), { skipHeredocs: true }),
-      );
-      flush(false, true, true);
-      i += 1;
-      continue;
-    }
-
-    if ((ch === '<' || ch === '>') && commandLine[i + 1] === '(') {
-      const endIdx = findClosingCommandSubParen(commandLine, i + 2);
-      if (endIdx >= 0) {
-        const inner = commandLine.slice(i + 2, endIdx);
-        segments.push(...extractNestedCommandSubSegments(inner, { skipHeredocs: true }));
-        current += commandLine.slice(i, endIdx + 1);
-        i = endIdx;
-        continue;
+      if (!isTokenBoundaryChar(normalized[i])) {
+        return fail('double-quoted string must be followed by token boundary', startLine);
       }
-      segments.push(
-        ...extractNestedCommandSubSegments(commandLine.slice(i + 2), { skipHeredocs: true }),
-      );
-      flush(false, true, true);
-      i += 1;
+      tokens.push({ kind: 'WORD', value: val, quoted: 'double', lineIndex: startLine });
+      hadSpaceBefore = false;
       continue;
     }
 
-    if (ch === '`') {
-      const bt = extractUnquotedBacktick(commandLine, i + 1);
-      if (bt) {
-        segments.push(...extractNestedCommandSubSegments(bt.inner, { skipHeredocs: false }));
-        current += commandLine.slice(i, bt.endIdx + 1);
-        i = bt.endIdx;
-        continue;
+    if (ch === ';') {
+      if (pendingHeredoc !== null) {
+        return fail("disallowed ';' on heredoc-opening line", lineIndex);
       }
-      segments.push(
-        ...extractNestedCommandSubSegments(commandLine.slice(i + 1), { skipHeredocs: false }),
-      );
-      flush(false, true, true);
-      continue;
-    }
-
-    if (ch === '\n' || ch === ';' || ch === '(' || ch === ')') {
-      flush(false, false);
-      continue;
-    }
-
-    if ((ch === '&' && commandLine[i + 1] === '&') || (ch === '|' && commandLine[i + 1] === '|')) {
-      flush(false, false);
-      i += 1;
-      continue;
-    }
-
-    if (ch === '|' && commandLine[i + 1] === '&') {
-      flush(true, false);
-      i += 1;
-      continue;
-    }
-
-    if (ch === '|') {
-      if (i > 0 && commandLine[i - 1] === '>') {
-        current += ch;
-        continue;
+      const next = normalized[i + 1];
+      if (next === ';' || next === '&' || next === '|') {
+        return fail(`disallowed shell operator ';${next}'`, lineIndex);
       }
-      flush(true, false);
+      flushWord();
+      tokens.push({ kind: 'OP', value: ';', lineIndex });
+      hadSpaceBefore = true;
+      i += 1;
       continue;
     }
 
     if (ch === '&') {
-      const isRedirAmp =
-        commandLine[i + 1] === '>' ||
-        (i > 0 && (commandLine[i - 1] === '>' || commandLine[i - 1] === '<'));
-      if (isRedirAmp) {
-        current += ch;
+      if (pendingHeredoc !== null) {
+        return fail("disallowed '&' on heredoc-opening line", lineIndex);
+      }
+      if (normalized[i + 1] === '&' && normalized[i + 2] !== '&') {
+        flushWord();
+        tokens.push({ kind: 'OP', value: '&&', lineIndex });
+        hadSpaceBefore = true;
+        i += 2;
         continue;
       }
-      flush(false, false);
-      continue;
+      return fail("disallowed '&' or '&>' operator", lineIndex);
     }
 
-    current += ch;
-  }
-
-  flush(false, false, quote !== null);
-  return segments;
-}
-
-function decodeAnsiCEscapeAt(str, backslashIdx) {
-  const next = str[backslashIdx + 1];
-  switch (next) {
-    case 'a':
-      return { value: '\x07', advance: 1 };
-    case 'b':
-      return { value: '\b', advance: 1 };
-    case 'e':
-    case 'E':
-      return { value: '\x1b', advance: 1 };
-    case 'f':
-      return { value: '\f', advance: 1 };
-    case 'n':
-      return { value: '\n', advance: 1 };
-    case 'r':
-      return { value: '\r', advance: 1 };
-    case 't':
-      return { value: '\t', advance: 1 };
-    case 'v':
-      return { value: '\v', advance: 1 };
-    case '\\':
-      return { value: '\\', advance: 1 };
-    case "'":
-      return { value: "'", advance: 1 };
-    case '"':
-      return { value: '"', advance: 1 };
-    case '?':
-      return { value: '?', advance: 1 };
-    case 'x': {
-      const m = /^[0-9a-fA-F]{1,2}/.exec(str.slice(backslashIdx + 2));
-      if (m) {
-        return {
-          value: String.fromCharCode(parseInt(m[0], 16)),
-          advance: 1 + m[0].length,
-        };
+    if (ch === '|') {
+      if (pendingHeredoc !== null) {
+        return fail("disallowed '|' on heredoc-opening line", lineIndex);
       }
-      return { value: '\\x', advance: 1 };
-    }
-    case 'u': {
-      const m = /^[0-9a-fA-F]{1,4}/.exec(str.slice(backslashIdx + 2));
-      if (m) {
-        return {
-          value: String.fromCodePoint(parseInt(m[0], 16)),
-          advance: 1 + m[0].length,
-        };
+      const next = normalized[i + 1];
+      if (next === '&') {
+        return fail("disallowed '|&' operator", lineIndex);
       }
-      return { value: '\\u', advance: 1 };
-    }
-    case 'U': {
-      const m = /^[0-9a-fA-F]{1,8}/.exec(str.slice(backslashIdx + 2));
-      if (m) {
-        const cp = parseInt(m[0], 16);
-        if (cp <= 0x10ffff) {
-          return {
-            value: String.fromCodePoint(cp),
-            advance: 1 + m[0].length,
-          };
+      if (next === '|') {
+        if (normalized[i + 2] === '|') {
+          return fail("disallowed '|||' operator", lineIndex);
         }
-        return { value: `\\U${m[0]}`, advance: 1 + m[0].length };
+        flushWord();
+        tokens.push({ kind: 'OP', value: '||', lineIndex });
+        hadSpaceBefore = true;
+        i += 2;
+        continue;
       }
-      return { value: '\\U', advance: 1 };
-    }
-    case 'c': {
-      if (backslashIdx + 2 < str.length) {
-        const ctrlCode = str.charCodeAt(backslashIdx + 2) & 0x1f;
-        return { value: String.fromCharCode(ctrlCode), advance: 2 };
-      }
-      return { value: '\\c', advance: 1 };
-    }
-    default: {
-      if (next >= '0' && next <= '7') {
-        const m = /^[0-7]{1,3}/.exec(str.slice(backslashIdx + 1));
-        if (m) {
-          return {
-            value: String.fromCharCode(parseInt(m[0], 8) & 0xff),
-            advance: m[0].length,
-          };
-        }
-      }
-      return { value: `\\${next}`, advance: 1 };
-    }
-  }
-}
-
-function tokenizeSegmentMeta(segment) {
-  const tokens = [];
-  let current = '';
-  let quote = null;
-  let hadToken = false;
-  let currentHasQuoteOrEscape = false;
-  let currentHasUnquotedBrace = false;
-  let currentHasUnquotedGlob = false;
-  let braceStack = [];
-  let inBracketClass = false;
-  let bracketContentLen = 0;
-  let justSawUnquotedDollar = false;
-
-  const pushCurrent = () => {
-    if (hadToken || current.length > 0) {
-      tokens.push({
-        text: current,
-        isRedirOp: false,
-        hasUnquotedBrace: currentHasUnquotedBrace,
-        hasUnquotedGlob: currentHasUnquotedGlob,
-      });
-    }
-    current = '';
-    hadToken = false;
-    currentHasQuoteOrEscape = false;
-    currentHasUnquotedBrace = false;
-    currentHasUnquotedGlob = false;
-    braceStack = [];
-    inBracketClass = false;
-    bracketContentLen = 0;
-    justSawUnquotedDollar = false;
-  };
-
-  for (let i = 0; i < segment.length; i += 1) {
-    const ch = segment[i];
-    if (quote === "'") {
-      if (ch === "'") {
-        quote = null;
-      } else {
-        current += ch;
-      }
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
+      flushWord();
+      tokens.push({ kind: 'OP', value: '|', lineIndex });
+      hadSpaceBefore = true;
+      i += 1;
       continue;
     }
 
-    if (quote === "$'") {
-      if (ch === '\\' && i + 1 < segment.length) {
-        const decoded = decodeAnsiCEscapeAt(segment, i);
-        current += decoded.value;
-        i += decoded.advance;
-      } else if (ch === "'") {
-        quote = null;
-      } else {
-        current += ch;
+    if (ch === '!') {
+      if (currentWord !== null || !hadSpaceBefore || (normalized[i + 1] !== ' ' && normalized[i + 1] !== '\t')) {
+        return fail("disallowed '!' outside leading pipeline negation", lineIndex);
       }
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
+      tokens.push({ kind: 'BANG', lineIndex });
+      hadSpaceBefore = false;
+      i += 1;
       continue;
     }
 
-    if (quote === '"') {
-      if (ch === '\\' && i + 1 < segment.length) {
-        current += segment[i + 1];
-        i += 1;
-      } else if (ch === '$' && segment[i + 1] === '(') {
-        const endIdx = findClosingCommandSubParen(segment, i + 2);
-        if (endIdx >= 0) {
-          current += segment.slice(i, endIdx + 1);
-          i = endIdx;
+    if (ch === '>') {
+      let fd = 1;
+      if (currentWord !== null) {
+        if (currentWord.value === '1' || currentWord.value === '2') {
+          fd = Number(currentWord.value);
+          currentWord = null;
         } else {
-          current += ch;
-        }
-      } else if (ch === '`') {
-        const bt = extractDoubleQuotedBacktick(segment, i + 1);
-        if (bt) {
-          current += segment.slice(i, bt.endIdx + 1);
-          i = bt.endIdx;
-        } else {
-          current += ch;
-        }
-      } else if (ch === '"') {
-        quote = null;
-      } else {
-        current += ch;
-      }
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
-      continue;
-    }
-
-    if (ch === '\\' && i + 1 < segment.length) {
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-      current += segment[i + 1];
-      i += 1;
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
-      continue;
-    }
-
-    if (ch === '$' && segment[i + 1] === "'") {
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-      quote = "$'";
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
-      i += 1;
-      continue;
-    }
-
-    if (ch === '$' && segment[i + 1] === '"') {
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-      quote = '"';
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
-      i += 1;
-      continue;
-    }
-
-    if (ch === "'" || ch === '"') {
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-      quote = ch;
-      hadToken = true;
-      currentHasQuoteOrEscape = true;
-      continue;
-    }
-
-    if (ch === '&' && segment[i + 1] === '>') {
-      if (hadToken || current.length > 0) {
-        pushCurrent();
-      }
-      const op = segment[i + 2] === '>' ? '&>>' : '&>';
-      tokens.push({ text: op, isRedirOp: true, hasUnquotedBrace: false, hasUnquotedGlob: false });
-      i += op.length - 1;
-      continue;
-    }
-
-    if ((ch === '>' || ch === '<' || ch === '$') && segment[i + 1] === '(') {
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-      const endIdx = findClosingCommandSubParen(segment, i + 2);
-      if (endIdx >= 0) {
-        current += segment.slice(i, endIdx + 1);
-        hadToken = true;
-        currentHasQuoteOrEscape = true;
-        i = endIdx;
-        continue;
-      }
-    }
-
-    if (ch === '`') {
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-      const bt = extractUnquotedBacktick(segment, i + 1);
-      if (bt) {
-        current += segment.slice(i, bt.endIdx + 1);
-        hadToken = true;
-        currentHasQuoteOrEscape = true;
-        i = bt.endIdx;
-        continue;
-      }
-    }
-
-    if ((ch === '>' || ch === '<') && segment[i + 1] !== '(') {
-      let fdPrefix = '';
-      if (!currentHasQuoteOrEscape && current.length > 0 && REDIR_FD_PREFIX_RE.test(current)) {
-        fdPrefix = current;
-        current = '';
-        hadToken = false;
-        currentHasUnquotedBrace = false;
-        braceStack = [];
-      } else if (hadToken || current.length > 0) {
-        pushCurrent();
-      }
-
-      let op = ch;
-      if (ch === '>') {
-        const next = segment[i + 1];
-        if (next === '>' || next === '|' || next === '&') {
-          op = `>${next}`;
-        }
-      } else {
-        const three = segment.slice(i, i + 3);
-        const next = segment[i + 1];
-        if (three === '<<<' || three === '<<-') {
-          op = three;
-        } else if (next === '<' || next === '>' || next === '&') {
-          op = `<${next}`;
+          return fail('redirection must be separated from preceding word by whitespace', lineIndex);
         }
       }
-      tokens.push({
-        text: `${fdPrefix}${op}`,
-        isRedirOp: true,
-        hasUnquotedBrace: false,
-        hasUnquotedGlob: false,
-      });
-      i += op.length - 1;
+      const next = normalized[i + 1];
+      if (next === '|' || next === '&') {
+        return fail(`disallowed redirection '>${next}'`, lineIndex);
+      }
+      let op = '>';
+      let advance = 1;
+      if (next === '>') {
+        if (normalized[i + 2] === '>' || normalized[i + 2] === '&' || normalized[i + 2] === '|') {
+          return fail('disallowed redirection operator', lineIndex);
+        }
+        op = '>>';
+        advance = 2;
+      }
+      const after = normalized[i + advance];
+      if (after !== ' ' && after !== '\t') {
+        return fail('output redirection must be followed by whitespace and target path', lineIndex);
+      }
+      tokens.push({ kind: 'REDIR', op, fd, lineIndex });
+      hadSpaceBefore = true;
+      i += advance;
       continue;
     }
 
-    if (/\s/.test(ch)) {
-      pushCurrent();
+    if (ch === '<') {
+      if (currentWord !== null) {
+        return fail('input redirection attached to word is disallowed', lineIndex);
+      }
+      if (normalized[i + 1] !== '<') {
+        return fail("disallowed '<' input redirection", lineIndex);
+      }
+      const afterOp = normalized[i + 2];
+      if (afterOp === '-' || afterOp === '<') {
+        return fail("disallowed '<<-' or '<<<' redirection", lineIndex);
+      }
+      if (pendingHeredoc !== null) {
+        return fail('multiple heredocs on the same line are disallowed', lineIndex);
+      }
+      let scan = i + 2;
+      while (scan < normalized.length && (normalized[scan] === ' ' || normalized[scan] === '\t')) {
+        scan += 1;
+      }
+      if (normalized[scan] !== "'") {
+        return fail("only single-quoted <<'IDENT' heredocs are allowed", lineIndex);
+      }
+      scan += 1;
+      const closeQ = normalized.indexOf("'", scan);
+      if (closeQ === -1 || normalized.slice(scan, closeQ).includes('\n')) {
+        return fail('unclosed heredoc delimiter quote', lineIndex);
+      }
+      const delim = normalized.slice(scan, closeQ);
+      if (!HEREDOC_IDENT_RE.test(delim)) {
+        return fail(`invalid heredoc delimiter '${delim}'`, lineIndex);
+      }
+      const postChar = normalized[closeQ + 1];
+      if (
+        postChar !== undefined &&
+        postChar !== ' ' &&
+        postChar !== '\t' &&
+        postChar !== '\n' &&
+        postChar !== '#'
+      ) {
+        return fail('heredoc delimiter must be followed by whitespace or newline', lineIndex);
+      }
+      const hdTok = { kind: 'HEREDOC', delim, content: '', lineIndex };
+      tokens.push(hdTok);
+      pendingHeredoc = { delim, lineIndex, bodyStartLine: lineIndex + 1, token: hdTok };
+      hadSpaceBefore = false;
+      i = closeQ + 1;
       continue;
     }
 
-    if (ch === '{') {
-      if (!justSawUnquotedDollar) {
-        braceStack.push({ hasSep: false });
-      }
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-    } else if (ch === ',' && braceStack.length > 0) {
-      braceStack[braceStack.length - 1].hasSep = true;
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-    } else if (ch === '.' && segment[i + 1] === '.' && braceStack.length > 0) {
-      braceStack[braceStack.length - 1].hasSep = true;
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
-    } else if (ch === '}' && braceStack.length > 0) {
-      const frame = braceStack.pop();
-      if (frame.hasSep) {
-        currentHasUnquotedBrace = true;
-      }
-      justSawUnquotedDollar = false;
-      if (inBracketClass) bracketContentLen += 1;
+    if (!UNQUOTED_WORD_CHAR_RE.test(ch)) {
+      return fail(`disallowed shell metacharacter '${ch}'`, lineIndex);
+    }
+
+    if (currentWord === null) {
+      currentWord = { value: ch, lineIndex };
     } else {
-      justSawUnquotedDollar = ch === '$';
-      if (ch === '*' || ch === '?') {
-        currentHasUnquotedGlob = true;
-      }
-      if (ch === '[' && !inBracketClass) {
-        inBracketClass = true;
-        bracketContentLen = 0;
-      } else if (inBracketClass) {
-        if (ch === ']') {
-          if (bracketContentLen > 0) {
-            currentHasUnquotedGlob = true;
-            inBracketClass = false;
-            bracketContentLen = 0;
-          } else {
-            bracketContentLen += 1;
-          }
-        } else {
-          bracketContentLen += 1;
-        }
-      }
+      currentWord.value += ch;
     }
-
-    current += ch;
-    hadToken = true;
+    i += 1;
   }
 
-  pushCurrent();
-  return tokens;
+  flushWord();
+  if (pendingHeredoc !== null) {
+    return fail(`unterminated heredoc '${pendingHeredoc.delim}'`, pendingHeredoc.lineIndex);
+  }
+
+  return { ok: true, tokens, lines };
 }
 
-function stripRedirections(metaTokens) {
-  const tokens = [];
-  const metas = [];
-  const redirs = [];
-  for (let i = 0; i < metaTokens.length; i += 1) {
-    const item = metaTokens[i];
-    if (item.isRedirOp) {
-      const next = metaTokens[i + 1];
-      if (next && !next.isRedirOp) {
-        redirs.push({ op: item.text, target: next.text });
-        i += 1;
-      } else {
-        redirs.push({ op: item.text, target: '' });
-      }
-      continue;
-    }
-    tokens.push(item.text);
-    metas.push({
-      hasUnquotedBrace: Boolean(item.hasUnquotedBrace),
-      hasUnquotedGlob: Boolean(item.hasUnquotedGlob),
-    });
-  }
-  return { tokens, metas, redirs };
+function hasTraversalOrWeirdSegments(p) {
+  if (typeof p !== 'string' || p.length === 0) return true;
+  if (p.includes('\\') || p.includes('//') || p.endsWith('/')) return true;
+  const segs = p.split('/');
+  return segs.some((s) => s === '.' || s === '..' || s.length === 0);
 }
 
-function validateEnvSplitStringPayload(payload, depth, hasRemaining = false) {
-  if (payload.trim().length === 0) return null;
-  if (hasRemaining) {
-    const logicalLines = stripHeredocsAndComments(payload);
-    const segments = [];
-    for (const entry of logicalLines) {
-      if (entry.unclosed) {
-        return `forbidden nested 'env -S' command: unclosed quote or command substitution`;
-      }
-      if (!entry.text.trim()) continue;
-      if (entry.isHeredocSubScript) {
-        segments.push(...extractNestedCommandSubSegments(entry.text, { skipHeredocs: false }));
-      } else {
-        segments.push(...splitShellSegmentsWithMeta(entry.text));
-      }
-    }
-    if (segments.length <= 1 && !segments.some((s) => s.unclosedSub)) {
-      return null;
-    }
-  }
-  const subRes = validateCommand(payload, depth + 1);
-  if (!subRes.ok) {
-    return `forbidden nested 'env -S' command: ${subRes.reason}`;
-  }
-  if (payload.trimStart().startsWith('-')) {
-    const envPrefixedRes = validateCommand(`env ${payload}`, depth + 1);
-    if (!envPrefixedRes.ok) {
-      return `forbidden nested 'env -S' command: ${envPrefixedRes.reason}`;
-    }
-  }
-  return null;
+function isSafeTargetPath(p) {
+  return (
+    !hasTraversalOrWeirdSegments(p) &&
+    /^src-tauri\/target\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(p)
+  );
 }
 
-function hasDynamicShellExpansion(str) {
-  return Boolean(str) && (SHELL_POSITIONAL_OR_VAR_RE.test(str) || /\$\(|`/.test(str));
+function isSafeOutputPath(p) {
+  return p === '/dev/null' || isSafeTargetPath(p);
 }
 
-function hasBraceOrGlobMeta(metas, idx) {
-  const m = metas?.[idx];
-  return Boolean(m && (m.hasUnquotedBrace || m.hasUnquotedGlob));
+function isSafeRepoReadPath(p) {
+  return (
+    !hasTraversalOrWeirdSegments(p) &&
+    /^(?:src-tauri\/target|src-tauri\/tests\/fixtures|artifacts|docs)\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(
+      p,
+    )
+  );
 }
 
-function hasDynamicExpansionAt(tokens, metas, idx) {
-  if (idx < 0 || idx >= tokens.length) return false;
-  return hasDynamicShellExpansion(tokens[idx]) || hasBraceOrGlobMeta(metas, idx);
-}
-
-function stripCommandPrefixes(rawTokens, depth = 0, redirs = [], rawMetas = null) {
-  if (depth > MAX_SHELL_RECURSION_DEPTH) {
-    return {
-      tokens: [],
-      metas: [],
-      error: `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`,
-    };
-  }
-
-  const tokens = [...rawTokens];
-  const metas = rawMetas
-    ? [...rawMetas]
-    : tokens.map(() => ({ hasUnquotedBrace: false, hasUnquotedGlob: false }));
-  let idx = 0;
-  while (idx < tokens.length) {
-    const tok = tokens[idx];
-    if (FORBIDDEN_STARTUP_ENV_ASSIGN_RE.test(tok)) {
-      return {
-        tokens: [],
-        metas: [],
-        error: `forbidden shell startup file variable assignment '${tok}'`,
-      };
-    }
-    if (tok === 'function' && idx + 1 < tokens.length) {
-      idx += 2;
-      continue;
-    }
-    if (tok === 'coproc') {
-      if (
-        idx + 2 < tokens.length &&
-        /^[A-Za-z_][A-Za-z0-9_]*$/.test(tokens[idx + 1]) &&
-        (tokens[idx + 2] === '{' || tokens[idx + 2] === '(')
-      ) {
-        idx += 2;
-      } else {
-        idx += 1;
-      }
-      continue;
-    }
-    if (SHELL_COMPOUND_PREFIXES.has(tok) || tok === '!' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) {
-      idx += 1;
-      continue;
-    }
-    if (STANDALONE_REDIR_RE.test(tok)) {
-      idx += 2;
-      continue;
-    }
-    if (ATTACHED_REDIR_RE.test(tok)) {
-      idx += 1;
-      continue;
-    }
-    const base = tok.split('/').pop() ?? tok;
-    if (WRAPPER_COMMANDS.has(base)) {
-      if (
-        base === 'exec' &&
-        redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op) && !(r.op === '<' && r.target === '/dev/null'))
-      ) {
-        return {
-          tokens: [],
-          metas: [],
-          error: "forbidden 'exec' with input redirection",
-        };
-      }
-      idx += 1;
-      const envSplitItems = [];
-      while (idx < tokens.length) {
-        if (
-          base === 'env' &&
-          envSplitItems.some((item) => !item.text.startsWith('-') && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(item.text))
-        ) {
-          break;
-        }
-        const flag = tokens[idx];
-        if (flag === '--') {
-          idx += 1;
-          break;
-        }
-        if (!flag.startsWith('-') || flag === '-') {
-          break;
-        }
-        if (base === 'env') {
-          if (flag === '-S' || flag === '--split-string') {
-            const payload = tokens[idx + 1] ?? '';
-            const err = validateEnvSplitStringPayload(payload, depth, idx + 2 < tokens.length);
-            if (err) return { tokens: [], metas: [], error: err };
-            envSplitItems.push(...tokenizeSegmentMeta(payload).filter((m) => !m.isRedirOp));
-            idx += 2;
-            continue;
-          }
-          if (flag.startsWith('--split-string=')) {
-            const payload = flag.slice('--split-string='.length);
-            const err = validateEnvSplitStringPayload(payload, depth, idx + 1 < tokens.length);
-            if (err) return { tokens: [], metas: [], error: err };
-            envSplitItems.push(...tokenizeSegmentMeta(payload).filter((m) => !m.isRedirOp));
-            idx += 1;
-            continue;
-          }
-          if (ENV_VALUE_FLAGS.has(flag)) {
-            idx += 2;
-            continue;
-          }
-          if (!flag.startsWith('--') && !flag.includes('=') && flag.length > 1) {
-            let consumedNext = false;
-            for (let j = 1; j < flag.length; j += 1) {
-              const ch = flag[j];
-              if (ch === 'S') {
-                let payload;
-                if (j + 1 < flag.length) {
-                  payload = flag.slice(j + 1);
-                } else {
-                  payload = tokens[idx + 1] ?? '';
-                  consumedNext = true;
-                }
-                const err = validateEnvSplitStringPayload(
-                  payload,
-                  depth,
-                  idx + (consumedNext ? 2 : 1) < tokens.length,
-                );
-                if (err) return { tokens: [], metas: [], error: err };
-                envSplitItems.push(...tokenizeSegmentMeta(payload).filter((m) => !m.isRedirOp));
-                break;
-              }
-              if (ch === 'u' || ch === 'C' || ch === 'P') {
-                if (j + 1 >= flag.length) {
-                  consumedNext = true;
-                }
-                break;
-              }
-            }
-            idx += consumedNext ? 2 : 1;
-            continue;
-          }
-          idx += 1;
-          continue;
-        }
-        if (base === 'exec') {
-          if (flag === '-a') {
-            idx += 2;
-          } else if (!flag.startsWith('--') && flag.includes('a')) {
-            idx += flag.endsWith('a') ? 2 : 1;
-          } else {
-            idx += 1;
-          }
-          continue;
-        }
-        if (
-          (base === 'nice' && NICE_VALUE_FLAGS.has(flag)) ||
-          (base === 'timeout' && TIMEOUT_VALUE_FLAGS.has(flag))
-        ) {
-          idx += 2;
-        } else {
-          idx += 1;
-        }
-      }
-      if (base === 'timeout' && idx < tokens.length) {
-        idx += 1;
-      }
-      if (base === 'env' && envSplitItems.length > 0) {
-        const remainingTokens = tokens.slice(idx);
-        const remainingMetas = metas.slice(idx);
-        const firstNonAssign = envSplitItems.find((item) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(item.text));
-        const prefixEnv = firstNonAssign && firstNonAssign.text.startsWith('-');
-        const splicedTokens = [
-          ...(prefixEnv ? ['env'] : []),
-          ...envSplitItems.map((m) => m.text),
-          ...remainingTokens,
-        ];
-        const splicedMetas = [
-          ...(prefixEnv ? [{ hasUnquotedBrace: false, hasUnquotedGlob: false }] : []),
-          ...envSplitItems.map((m) => ({
-            hasUnquotedBrace: Boolean(m.hasUnquotedBrace),
-            hasUnquotedGlob: Boolean(m.hasUnquotedGlob),
-          })),
-          ...remainingMetas,
-        ];
-        return stripCommandPrefixes(splicedTokens, depth + 1, redirs, splicedMetas);
-      }
-      continue;
-    }
-    break;
-  }
-  return { tokens: tokens.slice(idx), metas: metas.slice(idx), error: null };
-}
-
-function isDangerousRmTarget(rawTarget) {
-  if (!rawTarget) return true;
-  const trimmed = rawTarget.trim();
-  if (hasDynamicShellExpansion(trimmed)) return true;
-  if (trimmed === '/' || /^\/+\*?$/.test(trimmed)) return true;
-  if (/^~[^/]*(?:\/|$)/.test(trimmed)) return true;
-  if (/^\$\{?HOME\}?(?:\/|$)/.test(trimmed)) return true;
-
-  const withoutLeadingDotSlash = trimmed.replace(/^(?:\.\/)+/, '');
-  const normalized = (withoutLeadingDotSlash || '.').replace(/\/+$/, '') || '/';
-
-  if (normalized === '.' || normalized === '..' || normalized === '*') return true;
-  const parts = normalized.split('/');
-  if (parts.includes('..')) return true;
-
-  if (normalized.startsWith('/')) {
-    const isSafeTmp =
-      (normalized.startsWith('/tmp/') && normalized.length > '/tmp/'.length && normalized !== '/tmp/*') ||
-      (normalized.startsWith('/private/tmp/') &&
-        normalized.length > '/private/tmp/'.length &&
-        normalized !== '/private/tmp/*');
-    return !isSafeTmp;
-  }
-
-  return false;
-}
-
-function hasExplicitSafeCargoSubcommand(cargoTokens) {
-  let cargoSub = '';
-  let hasInfoFlag = false;
-  for (let i = 1; i < cargoTokens.length; i += 1) {
-    const ct = cargoTokens[i];
-    if (CARGO_GLOBAL_VALUE_FLAGS.has(ct)) {
-      i += 1;
-      continue;
-    }
-    if (ct === '-V' || ct === '--version' || ct === '-h' || ct === '--help' || ct === '--list') {
-      hasInfoFlag = true;
-    }
-    if (ct.startsWith('-') || ct.startsWith('+')) {
-      continue;
-    }
-    cargoSub = ct;
-    break;
-  }
-  return hasInfoFlag || SAFE_CARGO_SUBCOMMANDS.has(cargoSub);
-}
-
-const NPM_BOOLEAN_CONFIG_FLAGS = new Set([
-  '-g',
-  '--global',
-  '-p',
-  '--parseable',
-  '-l',
-  '--long',
-  '-j',
-  '--json',
-  '-y',
-  '--yes',
-  '-f',
-  '--force',
-  '-a',
-  '--all',
-  '--verbose',
-  '--ignore-scripts',
-  '--offline',
-  '--prefer-offline',
-  '--prefer-online',
-  '--workspaces',
-  '--ws',
-  '--include-workspace-root',
-  '--if-present',
-  '--dry-run',
-  '--allow-same-version',
-  '--allow-scripts-pending',
-  '--allow-scripts-pin',
-  '--audit',
-  '--bin-links',
-  '--bypass-2fa',
-  '--commit-hooks',
-  '--dangerously-allow-all-scripts',
-  '--description',
-  '--dev',
-  '--diff-ignore-all-space',
-  '--diff-name-only',
-  '--diff-no-prefix',
-  '--diff-text',
-  '--engine-strict',
-  '--expect-results',
-  '--foreground-scripts',
-  '--format-package-lock',
-  '--fund',
-  '--git-tag-version',
-  '--global-style',
-  '--include-attestations',
-  '--include-staged',
-  '--init-private',
-  '--install-links',
-  '--legacy-bundling',
-  '--legacy-peer-deps',
-  '--link',
-  '--omit-lockfile-registry-resolved',
-  '--optional',
-  '--package-lock',
-  '--package-lock-only',
-  '--packages-all',
-  '--prefer-dedupe',
-  '--production',
-  '--progress',
-  '--provenance',
-  '--read-only',
-  '--rebuild-bundle',
-  '--save',
-  '--save-bundle',
-  '--save-dev',
-  '--save-exact',
-  '--save-optional',
-  '--save-peer',
-  '--save-prod',
-  '--shrinkwrap',
-  '--sign-git-commit',
-  '--sign-git-tag',
-  '--strict-allow-scripts',
-  '--strict-peer-deps',
-  '--strict-ssl',
-  '--timing',
-  '--unicode',
-  '--update-notifier',
-  '--workspaces-update',
-]);
-
-const NPM_KNOWN_BOOLEAN_FLAGS = new Set([
-  '-s',
-  '--silent',
-  '-q',
-  '--quiet',
-  '-d',
-  '-dd',
-  '-ddd',
-  '-v',
-  '--version',
-  '-h',
-  '--help',
-  '--usage',
-  '--versions',
-  '--no-audit',
-  '--no-fund',
-  '--no-save',
-  '--no-package-lock',
-  '--color',
-  '--no-color',
-  ...NPM_BOOLEAN_CONFIG_FLAGS,
-]);
-
-const NPM_SHORT_BOOL_CHARS = new Set(['s', 'q', 'd', 'g', 'p', 'l', 'j', 'y', 'f', 'v', 'h', 'a']);
-const NPM_INFO_BOOL_FLAGS = new Set([
-  '-v',
-  '--version',
-  '-h',
-  '--help',
-  '--usage',
-  '--versions',
-]);
-const NPM_INFO_BOOL_SHORT_CHARS = new Set(['v', 'h']);
-const SAFE_VITE_SUBCOMMANDS = new Set(['build', 'optimize']);
-const VITE_VALUE_FLAGS = new Set([
-  '--host',
-  '--port',
-  '--open',
-  '-c',
-  '--config',
-  '--base',
-  '-l',
-  '--logLevel',
-  '--configLoader',
-  '--profile',
-  '-d',
-  '--debug',
-  '-f',
-  '--filter',
-  '-m',
-  '--mode',
-]);
-
-function resolveTauriSubcommand(tauriTokens) {
-  let hasInfoFlag = false;
-  let sub = '';
-  let subIdx = -1;
-  let secondarySub = '';
-  let secondarySubIdx = -1;
-  let afterDashDash = false;
-  for (let i = 1; i < tauriTokens.length; i += 1) {
-    const tok = tauriTokens[i];
-    if (!afterDashDash && tok === '--') {
-      afterDashDash = true;
-      continue;
-    }
-    if (!afterDashDash && (tok === '-h' || tok === '--help' || tok === '-V' || tok === '--version')) {
-      hasInfoFlag = true;
-      continue;
-    }
-    if (!afterDashDash && tok.startsWith('-')) {
-      continue;
-    }
-    if (subIdx < 0) {
-      sub = tok;
-      subIdx = i;
-      if (sub !== 'android' && sub !== 'ios') {
-        break;
-      }
-      continue;
-    }
-    secondarySub = tok;
-    secondarySubIdx = i;
-    break;
-  }
-  return { sub, subIdx, secondarySub, secondarySubIdx, hasInfoFlag };
-}
-
-function isForbiddenTauriSubcommand(tauriInfo, tokens, metas = null, placeholders = null) {
-  if (
-    tauriInfo.sub === 'dev' ||
-    tauriInfo.sub === 'build' ||
-    hasDynamicExpansionAt(tokens, metas, tauriInfo.subIdx) ||
-    containsAnyPlaceholder(tauriInfo.sub, placeholders)
-  ) {
-    return true;
-  }
-  if (tauriInfo.sub === 'android' || tauriInfo.sub === 'ios') {
-    if (
-      tauriInfo.secondarySub === 'dev' ||
-      tauriInfo.secondarySub === 'build' ||
-      tauriInfo.secondarySub === 'run' ||
-      hasDynamicExpansionAt(tokens, metas, tauriInfo.secondarySubIdx) ||
-      containsAnyPlaceholder(tauriInfo.secondarySub, placeholders)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function isSafeViteCommand(viteTokens, viteMetas = null) {
-  let hasInfoFlag = false;
-  let sub = '';
-  for (let i = 1; i < viteTokens.length; i += 1) {
-    const tok = viteTokens[i];
-    if (hasDynamicExpansionAt(viteTokens, viteMetas, i)) {
-      return false;
-    }
-    if (tok === '--') {
-      if (i + 1 < viteTokens.length) {
-        const after = viteTokens[i + 1];
-        if (hasDynamicExpansionAt(viteTokens, viteMetas, i + 1)) return false;
-        if (!sub) sub = after;
-      }
-      break;
-    }
-    if (tok === '-h' || tok === '--help' || tok === '-v' || tok === '--version') {
-      hasInfoFlag = true;
-      continue;
-    }
-    if (VITE_VALUE_FLAGS.has(tok)) {
-      if (i + 1 < viteTokens.length && hasDynamicExpansionAt(viteTokens, viteMetas, i + 1)) {
-        return false;
-      }
-      i += 1;
-      continue;
-    }
-    if (tok.startsWith('-')) {
-      continue;
-    }
-    if (!sub) {
-      sub = tok;
-    }
-  }
-  if (hasInfoFlag) return true;
-  return SAFE_VITE_SUBCOMMANDS.has(sub);
-}
-
-function isKnownNpmBooleanOrShortFlag(tok, valueFlags = NPM_VALUE_FLAGS) {
-  if (NPM_KNOWN_BOOLEAN_FLAGS.has(tok)) return true;
-  if (tok.startsWith('--no-')) {
-    const positive = `--${tok.slice('--no-'.length)}`;
-    return NPM_BOOLEAN_CONFIG_FLAGS.has(positive);
-  }
-  if (/^-[A-Za-z]+$/.test(tok)) {
-    return [...tok.slice(1)].every(
-      (ch) => NPM_SHORT_BOOL_CHARS.has(ch) && !valueFlags.has(`-${ch}`),
-    );
-  }
-  return false;
-}
-
-function parseNpmCallFlag(tokens, idx) {
-  const tok = tokens[idx];
-  if (tok === '-c' || tok === '--call' || /^-[A-Za-z]*c$/.test(tok)) {
-    return { matched: true, payload: tokens[idx + 1] ?? '', step: 2 };
-  }
-  if (tok.startsWith('--call=') || /^-[A-Za-z]*c=.*$/.test(tok)) {
-    return { matched: true, payload: tok.slice(tok.indexOf('=') + 1), step: 1 };
-  }
-  return { matched: false, payload: '', step: 1 };
-}
-
-function consumesNpmFlagValue(tokens, idx, valueFlags) {
-  const tok = tokens[idx];
-  const next = tokens[idx + 1];
-  if (valueFlags.has(tok)) {
-    return true;
-  }
-  if (tok === '--color' || tok === '--no-color') {
-    return next === 'always' || next === 'true' || next === 'false';
-  }
-  if (tok.startsWith('--no-')) {
-    return next === 'true' || next === 'false';
-  }
-  if (NPM_BOOLEAN_CONFIG_FLAGS.has(tok) || NPM_INFO_BOOL_FLAGS.has(tok)) {
-    return next === 'true' || next === 'false';
-  }
-  if (/^-[A-Za-z]{2,}$/.test(tok)) {
-    const chars = [...tok.slice(1)];
-    const prefix = chars.slice(0, -1);
-    const last = chars[chars.length - 1];
-    const allPrefixBool = prefix.every(
-      (ch) => NPM_SHORT_BOOL_CHARS.has(ch) && !valueFlags.has(`-${ch}`),
-    );
-    if (allPrefixBool && valueFlags.has(`-${last}`)) {
-      return true;
-    }
-    if (
-      (next === 'true' || next === 'false') &&
-      chars.some(
-        (ch) =>
-          !valueFlags.has(`-${ch}`) &&
-          (NPM_BOOLEAN_CONFIG_FLAGS.has(`-${ch}`) || NPM_INFO_BOOL_SHORT_CHARS.has(ch)),
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function containsAnyPlaceholder(str, placeholders) {
-  if (!placeholders || placeholders.size === 0 || !str) return false;
-  for (const ph of placeholders) {
-    if (ph.length > 0 && str.includes(ph)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function parseShellInvocationFlags(tokens) {
-  let hasCFlag = false;
-  let hasSFlag = false;
-  let hasInfoFlag = false;
-  let hasStdinRedir = false;
-  let hasExpandAliasesOpt = false;
-  let argIdx = 1;
-
-  while (argIdx < tokens.length) {
-    const tok = tokens[argIdx];
-    if (tok === '--' || tok === '-') {
-      argIdx += 1;
-      break;
-    }
-    if (STANDALONE_REDIR_RE.test(tok)) {
-      if (INPUT_REDIR_OP_RE.test(tok)) {
-        hasStdinRedir = true;
-      }
-      argIdx += 2;
-      continue;
-    }
-    if (ATTACHED_REDIR_RE.test(tok)) {
-      if (INPUT_REDIR_ATTACHED_RE.test(tok)) {
-        hasStdinRedir = true;
-      }
-      argIdx += 1;
-      continue;
-    }
-    if (tok === '--rcfile' || tok === '--init-file') {
-      argIdx += 2;
-      continue;
-    }
-    if (tok === '--version' || tok === '--help') {
-      hasInfoFlag = true;
-      argIdx += 1;
-      continue;
-    }
-    if (tok.startsWith('--')) {
-      argIdx += 1;
-      continue;
-    }
-    if (tok.startsWith('+') && tok.length > 1) {
-      let consumeArgs = 0;
-      for (const ch of tok.slice(1)) {
-        if (ch === 'o' || ch === 'O') {
-          consumeArgs += 1;
-        }
-      }
-      argIdx += 1 + consumeArgs;
-      continue;
-    }
-    if (tok.startsWith('-') && tok.length > 1) {
-      let consumeArgs = 0;
-      let hasBigO = false;
-      for (const ch of tok.slice(1)) {
-        if (ch === 'c') {
-          hasCFlag = true;
-        } else if (ch === 's') {
-          hasSFlag = true;
-        } else if (ch === 'o' || ch === 'O') {
-          consumeArgs += 1;
-          if (ch === 'O') hasBigO = true;
-        }
-      }
-      if (hasBigO) {
-        for (let k = 1; k <= consumeArgs; k += 1) {
-          if (tokens[argIdx + k] === 'expand_aliases') {
-            hasExpandAliasesOpt = true;
-          }
-        }
-      }
-      argIdx += 1 + consumeArgs;
-      continue;
-    }
-    break;
-  }
-
-  return { hasCFlag, hasSFlag, hasInfoFlag, hasStdinRedir, hasExpandAliasesOpt, argIdx };
-}
-
-function checkDynamicSubcommand(
-  subToks,
-  placeholders,
-  contextLabel,
-  isFindContext = false,
-  subMetas = null,
-) {
-  if (subToks.length === 0) return null;
-  const subBase = subToks[0].split('/').pop() ?? subToks[0];
-
-  if (!isFindContext && containsAnyPlaceholder(subToks[0], placeholders)) {
-    return `forbidden '${contextLabel}' invocation with placeholder command '${subToks[0]}'`;
-  }
-
-  if (subBase === 'cargo') {
-    if (!hasExplicitSafeCargoSubcommand(subToks)) {
-      return `forbidden '${contextLabel} cargo' invocation without an explicit safe subcommand`;
-    }
-    if (!isFindContext) {
-      for (let i = 1; i < subToks.length; i += 1) {
-        const ct = subToks[i];
-        if (ct === '--') break;
-        if (ct.startsWith('--bin=')) {
-          const binVal = ct.slice('--bin='.length);
-          if (
-            !binVal ||
-            binVal === 'anima-engine' ||
-            binVal === 'anima-engine.exe' ||
-            containsAnyPlaceholder(binVal, placeholders) ||
-            hasDynamicExpansionAt(subToks, subMetas, i)
-          ) {
-            return `forbidden '${contextLabel} cargo' invocation with dynamic or disallowed '--bin' target`;
-          }
-        }
-        if (ct === '--bin') {
-          const binVal = subToks[i + 1] ?? '';
-          if (
-            !binVal ||
-            binVal === 'anima-engine' ||
-            binVal === 'anima-engine.exe' ||
-            containsAnyPlaceholder(binVal, placeholders) ||
-            hasDynamicExpansionAt(subToks, subMetas, i + 1)
-          ) {
-            return `forbidden '${contextLabel} cargo' invocation with dynamic or disallowed '--bin' target`;
-          }
-        }
-      }
-    }
-  }
-
-  if (subBase === 'bash' || subBase === 'sh' || subBase === 'zsh') {
-    const parsed = parseShellInvocationFlags(subToks);
-    if (parsed.hasCFlag) {
-      if (parsed.argIdx >= subToks.length) {
-        return `forbidden '${contextLabel} ${subBase} -c' without an explicit inline script`;
-      }
-      const subScript = subToks[parsed.argIdx];
-      if (containsAnyPlaceholder(subScript, placeholders)) {
-        return `forbidden '${contextLabel} ${subBase} -c' with dynamic placeholder in inline script`;
-      }
-      if (SHELL_POSITIONAL_PARAM_RE.test(subScript)) {
-        return `forbidden '${contextLabel} ${subBase} -c' with positional parameter expansion in inline script`;
-      }
-      if (IMPLICIT_FOR_LOOP_RE.test(subScript)) {
-        return `forbidden '${contextLabel} ${subBase} -c' with implicit positional 'for' loop in inline script`;
-      }
-    } else if (!isFindContext && placeholders.size > 0) {
-      const rest = subToks.slice(parsed.argIdx);
-      if (rest.some((arg) => containsAnyPlaceholder(arg, placeholders))) {
-        return `forbidden '${contextLabel} ${subBase}' with dynamic placeholder script argument`;
-      }
-    }
-  }
-
-  if (subBase === 'eval') {
-    let idx = 1;
-    if (subToks[idx] === '--') idx += 1;
-    if (idx >= subToks.length) {
-      return `forbidden '${contextLabel} eval' without an explicit static script`;
-    }
-    if (subToks.slice(idx).some((t) => containsAnyPlaceholder(t, placeholders))) {
-      return `forbidden '${contextLabel} eval' with dynamic placeholder`;
-    }
-  }
-
-  if (isFindContext) {
-    return null;
-  }
-
-  if (subBase === 'find' && placeholders.size > 0) {
-    for (let i = 1; i < subToks.length; i += 1) {
-      const ft = subToks[i];
-      if (ft === '-exec' || ft === '-execdir' || ft === '-ok' || ft === '-okdir') {
-        let j = i + 1;
-        while (j < subToks.length && subToks[j] !== ';' && subToks[j] !== '+') {
-          j += 1;
-        }
-        const execSubTokens = subToks.slice(i + 1, j);
-        const execSubMetas = subMetas ? subMetas.slice(i + 1, j) : null;
-        if (execSubTokens.length > 0) {
-          const strippedExec = stripCommandPrefixes(execSubTokens, 0, [], execSubMetas);
-          if (strippedExec.error) {
-            return `forbidden '${contextLabel} find ${ft}' command: ${strippedExec.error}`;
-          }
-          if (strippedExec.tokens.length > 0) {
-            const dynamicReason = checkDynamicSubcommand(
-              strippedExec.tokens,
-              placeholders,
-              `${contextLabel} find ${ft}`,
-              false,
-              strippedExec.metas,
-            );
-            if (dynamicReason) {
-              return dynamicReason;
-            }
-          }
-        }
-        i = j;
-      }
-    }
-  }
-
-  if (subBase === 'tauri') {
-    const tauriInfo = resolveTauriSubcommand(subToks);
-    if (
-      (!tauriInfo.hasInfoFlag && !tauriInfo.sub) ||
-      ((tauriInfo.sub === 'android' || tauriInfo.sub === 'ios') &&
-        !tauriInfo.hasInfoFlag &&
-        !tauriInfo.secondarySub) ||
-      isForbiddenTauriSubcommand(tauriInfo, subToks, subMetas, placeholders)
-    ) {
-      return `forbidden '${contextLabel} tauri' without safe subcommand`;
-    }
-  }
-
-  if (subBase === 'vite') {
-    if (!isSafeViteCommand(subToks, subMetas) || subToks.some((t) => containsAnyPlaceholder(t, placeholders))) {
-      return `forbidden '${contextLabel} vite' dev server command`;
-    }
-  }
-
-  if (subBase === 'npm') {
-    let subIdx = -1;
-    let sawUnrecognizedPreFlag = false;
-    for (let i = 1; i < subToks.length; i += 1) {
-      const st = subToks[i];
-      if (st === '--') {
-        if (i + 1 < subToks.length) {
-          subIdx = i + 1;
-        }
-        break;
-      }
-      const callFlag = parseNpmCallFlag(subToks, i);
-      if (callFlag.matched) {
-        if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
-          return `forbidden '${contextLabel} npm' with placeholder '-c' script`;
-        }
-        i += callFlag.step - 1;
-        continue;
-      }
-      if (consumesNpmFlagValue(subToks, i, NPM_PRE_SUBCMD_VALUE_FLAGS)) {
-        i += 1;
-        continue;
-      }
-      if (st.startsWith('-')) {
-        if (!st.includes('=') && !isKnownNpmBooleanOrShortFlag(st, NPM_PRE_SUBCMD_VALUE_FLAGS)) {
-          sawUnrecognizedPreFlag = true;
-        }
-        continue;
-      }
-      subIdx = i;
-      break;
-    }
-    const npmSub = subIdx >= 0 ? subToks[subIdx] : '';
-    if (
-      !npmSub ||
-      containsAnyPlaceholder(npmSub, placeholders) ||
-      hasDynamicExpansionAt(subToks, subMetas, subIdx)
-    ) {
-      return `forbidden '${contextLabel} npm' without an explicit subcommand`;
-    }
-    if (NPM_RUN_SUBCOMMANDS.has(npmSub)) {
-      let scriptName = '';
-      let scriptIdx = -1;
-      for (let j = subIdx + 1; j < subToks.length; j += 1) {
-        const st = subToks[j];
-        if (st === '--') {
-          scriptIdx = j + 1;
-          scriptName = subToks[j + 1] ?? '';
-          break;
-        }
-        if (consumesNpmFlagValue(subToks, j, NPM_VALUE_FLAGS)) {
-          j += 1;
-          continue;
-        }
-        if (st.startsWith('-')) continue;
-        scriptIdx = j;
-        scriptName = st;
-        break;
-      }
-      if (
-        !scriptName ||
-        containsAnyPlaceholder(scriptName, placeholders) ||
-        hasDynamicExpansionAt(subToks, subMetas, scriptIdx)
-      ) {
-        return `forbidden '${contextLabel} npm ${npmSub}' without an explicit script name`;
-      }
-    } else if (npmSub === 'exec' || npmSub === 'x') {
-      let execCmd = '';
-      let execIdx = -1;
-      let hasCallPayload = false;
-      let sawUnrecognizedExecFlag = false;
-      for (let j = subIdx + 1; j < subToks.length; j += 1) {
-        const st = subToks[j];
-        if (st === '--') {
-          execIdx = j + 1;
-          execCmd = subToks[j + 1] ?? '';
-          break;
-        }
-        const callFlag = parseNpmCallFlag(subToks, j);
-        if (callFlag.matched) {
-          hasCallPayload = true;
-          if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
-            return `forbidden '${contextLabel} npm ${npmSub}' with placeholder '-c' script`;
-          }
-          j += callFlag.step - 1;
-          continue;
-        }
-        if (consumesNpmFlagValue(subToks, j, NPM_EXEC_VALUE_FLAGS)) {
-          j += 1;
-          continue;
-        }
-        if (st.startsWith('-')) {
-          if (!st.includes('=') && !isKnownNpmBooleanOrShortFlag(st, NPM_EXEC_VALUE_FLAGS)) {
-            sawUnrecognizedExecFlag = true;
-          }
-          continue;
-        }
-        execIdx = j;
-        execCmd = st;
-        break;
-      }
-      if (
-        (!execCmd && !hasCallPayload) ||
-        containsAnyPlaceholder(execCmd, placeholders) ||
-        hasDynamicExpansionAt(subToks, subMetas, execIdx)
-      ) {
-        return `forbidden '${contextLabel} npm ${npmSub}' without an explicit command`;
-      }
-      if (execIdx >= 0 && execIdx < subToks.length) {
-        const execTail = subToks.slice(execIdx);
-        const execTailMetas = subMetas ? subMetas.slice(execIdx) : null;
-        const strippedExec = stripCommandPrefixes(execTail, 0, [], execTailMetas);
-        if (strippedExec.error) {
-          return `forbidden '${contextLabel} npm ${npmSub}' command: ${strippedExec.error}`;
-        }
-        if (strippedExec.tokens.length === 0) {
-          return `forbidden '${contextLabel} npm ${npmSub}' without an explicit command`;
-        }
-        const dynamicReason = checkDynamicSubcommand(
-          strippedExec.tokens,
-          placeholders,
-          `${contextLabel} npm ${npmSub}`,
-          false,
-          strippedExec.metas,
-        );
-        if (dynamicReason) {
-          return dynamicReason;
-        }
-      }
-      if (sawUnrecognizedExecFlag) {
-        for (let k = subIdx + 1; k < subToks.length; k += 1) {
-          const st = subToks[k];
-          if (st === '--') {
-            if (k + 1 < subToks.length) {
-              const tail = subToks.slice(k + 1);
-              const tailMetas = subMetas ? subMetas.slice(k + 1) : null;
-              const strippedExec = stripCommandPrefixes(tail, 0, [], tailMetas);
-              if (strippedExec.error) {
-                return `forbidden '${contextLabel} npm ${npmSub}' command: ${strippedExec.error}`;
-              }
-              if (strippedExec.tokens.length > 0) {
-                const dynamicReason = checkDynamicSubcommand(
-                  strippedExec.tokens,
-                  placeholders,
-                  `${contextLabel} npm ${npmSub}`,
-                  false,
-                  strippedExec.metas,
-                );
-                if (dynamicReason) return dynamicReason;
-              }
-            }
-            break;
-          }
-          const callFlag = parseNpmCallFlag(subToks, k);
-          if (callFlag.matched) {
-            if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
-              return `forbidden '${contextLabel} npm ${npmSub}' with placeholder '-c' script`;
-            }
-            k += callFlag.step - 1;
-            continue;
-          }
-          if (!st.startsWith('-')) {
-            const tail = subToks.slice(k);
-            const tailMetas = subMetas ? subMetas.slice(k) : null;
-            const strippedExec = stripCommandPrefixes(tail, 0, [], tailMetas);
-            if (strippedExec.error) {
-              return `forbidden '${contextLabel} npm ${npmSub}' command: ${strippedExec.error}`;
-            }
-            if (strippedExec.tokens.length > 0) {
-              const dynamicReason = checkDynamicSubcommand(
-                strippedExec.tokens,
-                placeholders,
-                `${contextLabel} npm ${npmSub}`,
-                false,
-                strippedExec.metas,
-              );
-              if (dynamicReason) return dynamicReason;
-            }
-          }
-        }
-      }
-    } else if (sawUnrecognizedPreFlag) {
-      for (let k = 1; k < subToks.length; k += 1) {
-        const st = subToks[k];
-        if (st === '--') {
-          if (k + 1 < subToks.length) {
-            const fallbackReason = checkDynamicSubcommand(
-              ['npm', ...subToks.slice(k + 1)],
-              placeholders,
-              contextLabel,
-              false,
-              subMetas ? [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...subMetas.slice(k + 1)] : null,
-            );
-            if (fallbackReason) return fallbackReason;
-          }
-          break;
-        }
-        const callFlag = parseNpmCallFlag(subToks, k);
-        if (callFlag.matched) {
-          if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
-            return `forbidden '${contextLabel} npm' with placeholder '-c' script`;
-          }
-          k += callFlag.step - 1;
-          continue;
-        }
-        if (NPM_RUN_SUBCOMMANDS.has(st) || st === 'exec' || st === 'x') {
-          const fallbackReason = checkDynamicSubcommand(
-            ['npm', ...subToks.slice(k)],
-            placeholders,
-            contextLabel,
-            false,
-            subMetas ? [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...subMetas.slice(k)] : null,
-          );
-          if (fallbackReason) return fallbackReason;
-        }
-      }
-    }
-  }
-
-  if (subBase === 'npx') {
-    let idx = 1;
-    let hasCallPayload = false;
-    let sawUnrecognizedNpxFlag = false;
-    while (idx < subToks.length) {
-      const st = subToks[idx];
-      if (st === '--') {
-        idx += 1;
-        break;
-      }
-      const callFlag = parseNpmCallFlag(subToks, idx);
-      if (callFlag.matched) {
-        hasCallPayload = true;
-        if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
-          return `forbidden '${contextLabel} npx' with placeholder '-c' script`;
-        }
-        idx += callFlag.step;
-        continue;
-      }
-      if (consumesNpmFlagValue(subToks, idx, NPX_VALUE_FLAGS)) {
-        idx += 2;
-        continue;
-      }
-      if (st.startsWith('-')) {
-        if (!st.includes('=') && !isKnownNpmBooleanOrShortFlag(st, NPX_VALUE_FLAGS)) {
-          sawUnrecognizedNpxFlag = true;
-        }
-        idx += 1;
-        continue;
-      }
-      break;
-    }
-    const npxTarget = subToks[idx] ?? '';
-    const npxTail = subToks.slice(idx);
-    const npxTailMetas = subMetas ? subMetas.slice(idx) : null;
-    const tauriCheck =
-      npxTarget === 'tauri' ? resolveTauriSubcommand(npxTail) : null;
-    if (
-      (!npxTarget && !hasCallPayload) ||
-      containsAnyPlaceholder(npxTarget, placeholders) ||
-      hasDynamicExpansionAt(subToks, subMetas, idx) ||
-      (tauriCheck &&
-        ((!tauriCheck.hasInfoFlag && !tauriCheck.sub) ||
-          ((tauriCheck.sub === 'android' || tauriCheck.sub === 'ios') &&
-            !tauriCheck.hasInfoFlag &&
-            !tauriCheck.secondarySub) ||
-          isForbiddenTauriSubcommand(tauriCheck, npxTail, npxTailMetas, placeholders))) ||
-      (npxTarget === 'vite' &&
-        (!isSafeViteCommand(npxTail, npxTailMetas) ||
-          npxTail.some((t) => containsAnyPlaceholder(t, placeholders))))
-    ) {
-      return `forbidden '${contextLabel} npx' without an explicit safe command`;
-    }
-    if (idx < subToks.length) {
-      const strippedNpx = stripCommandPrefixes(npxTail, 0, [], npxTailMetas);
-      if (strippedNpx.error) {
-        return `forbidden '${contextLabel} npx' command: ${strippedNpx.error}`;
-      }
-      if (strippedNpx.tokens.length > 0) {
-        const dynamicReason = checkDynamicSubcommand(
-          strippedNpx.tokens,
-          placeholders,
-          `${contextLabel} npx`,
-          false,
-          strippedNpx.metas,
-        );
-        if (dynamicReason) return dynamicReason;
-      }
-    }
-    if (sawUnrecognizedNpxFlag) {
-      for (let k = 1; k < subToks.length; k += 1) {
-        const st = subToks[k];
-        if (st === '--') {
-          if (k + 1 < subToks.length) {
-            const tail = subToks.slice(k + 1);
-            const tailMetas = subMetas ? subMetas.slice(k + 1) : null;
-            const strippedNpx = stripCommandPrefixes(tail, 0, [], tailMetas);
-            if (strippedNpx.error) {
-              return `forbidden '${contextLabel} npx' command: ${strippedNpx.error}`;
-            }
-            if (strippedNpx.tokens.length > 0) {
-              const dynamicReason = checkDynamicSubcommand(
-                strippedNpx.tokens,
-                placeholders,
-                `${contextLabel} npx`,
-                false,
-                strippedNpx.metas,
-              );
-              if (dynamicReason) return dynamicReason;
-            }
-          }
-          break;
-        }
-        const callFlag = parseNpmCallFlag(subToks, k);
-        if (callFlag.matched) {
-          if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
-            return `forbidden '${contextLabel} npx' with placeholder '-c' script`;
-          }
-          k += callFlag.step - 1;
-          continue;
-        }
-        if (!st.startsWith('-')) {
-          const tail = subToks.slice(k);
-          const tailMetas = subMetas ? subMetas.slice(k) : null;
-          const strippedNpx = stripCommandPrefixes(tail, 0, [], tailMetas);
-          if (strippedNpx.error) {
-            return `forbidden '${contextLabel} npx' command: ${strippedNpx.error}`;
-          }
-          if (strippedNpx.tokens.length > 0) {
-            const dynamicReason = checkDynamicSubcommand(
-              strippedNpx.tokens,
-              placeholders,
-              `${contextLabel} npx`,
-              false,
-              strippedNpx.metas,
-            );
-            if (dynamicReason) return dynamicReason;
-          }
-        }
-      }
-    }
-  }
-
-  if (subBase === 'rm') {
-    let hasRecursive = false;
-    let endOfFlags = false;
-    const targets = [];
-    for (let i = 1; i < subToks.length; i += 1) {
-      const st = subToks[i];
-      if (!endOfFlags && st === '--') {
-        endOfFlags = true;
-        continue;
-      }
-      if (!endOfFlags && st.startsWith('-') && st.length > 1) {
-        if (hasDynamicExpansionAt(subToks, subMetas, i) || containsAnyPlaceholder(st, placeholders)) {
-          return `forbidden '${contextLabel} rm' with dynamic flag '${st}'`;
-        }
-        if (st === '--recursive' || (!st.startsWith('--') && /[rR]/.test(st.slice(1)))) {
-          hasRecursive = true;
-        }
-        continue;
-      }
-      if (
-        containsAnyPlaceholder(st, placeholders) ||
-        hasDynamicShellExpansion(st) ||
-        subMetas?.[i]?.hasUnquotedBrace
-      ) {
-        return `forbidden '${contextLabel} rm' with dynamic target '${st}'`;
-      }
-      targets.push(st);
-    }
-    if (targets.length === 0 || (hasRecursive && targets.some((t) => isDangerousRmTarget(t)))) {
-      return `forbidden '${contextLabel} rm' without explicit safe target paths`;
-    }
-  }
-
-  return null;
-}
-
-function checkTokensSafety(
-  rawTokens,
-  depth = 0,
-  pipedIn = false,
-  endedAtSub = false,
-  redirs = [],
-  rawMetas = null,
-) {
-  if (depth > MAX_SHELL_RECURSION_DEPTH) {
-    return `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`;
-  }
-  const stripped = stripCommandPrefixes(rawTokens, depth, redirs, rawMetas);
-  if (stripped.error) return stripped.error;
-  const tokens = stripped.tokens;
-  const metas = stripped.metas;
-  if (tokens.length === 0) return null;
-
-  const cmd = tokens[0];
-  if (hasDynamicExpansionAt(tokens, metas, 0)) {
-    return `forbidden dynamic command word '${cmd}'`;
-  }
-
-  const baseCmd = cmd.split('/').pop() ?? cmd;
-
-  if (baseCmd === 'export' || baseCmd === 'declare' || baseCmd === 'local' || baseCmd === 'typeset') {
-    for (const arg of tokens.slice(1)) {
-      if (FORBIDDEN_STARTUP_ENV_ASSIGN_RE.test(arg)) {
-        return `forbidden shell startup file variable assignment '${arg}'`;
-      }
-    }
-  }
-
-  if (baseCmd === 'shopt') {
-    const rest = tokens.slice(1);
-    const hasEnableFlag = rest.some((t) => t === '-s' || /^-[A-Za-z]*s[A-Za-z]*$/.test(t));
-    if (hasEnableFlag && rest.includes('expand_aliases')) {
-      return "forbidden 'shopt -s expand_aliases' (aliases can obscure executed commands)";
-    }
-  }
-
-  if (baseCmd === 'alias') {
-    for (const arg of tokens.slice(1)) {
-      if (arg === '-p' || arg === '--') continue;
-      const eqIdx = arg.indexOf('=');
-      if (eqIdx > 0) {
-        const aliasPayload = arg.slice(eqIdx + 1);
-        if (aliasPayload.trim().length > 0) {
-          const subRes = validateCommand(aliasPayload, depth + 1);
-          if (!subRes.ok) {
-            return `forbidden 'alias' command: ${subRes.reason}`;
-          }
-        }
-      }
-    }
-  }
-
-  if (baseCmd === 'trap') {
-    let isPrintOrList = false;
-    let idx = 1;
-    while (idx < tokens.length) {
-      const tok = tokens[idx];
-      if (tok === '--') {
-        idx += 1;
-        break;
-      }
-      if (tok === '-l' || tok === '-p' || /^-[lp]+$/.test(tok)) {
-        isPrintOrList = true;
-        idx += 1;
-        continue;
-      }
-      if (tok.startsWith('-') && tok.length > 1) {
-        idx += 1;
-        continue;
-      }
-      break;
-    }
-    const trapArgs = tokens.slice(idx);
-    if (!isPrintOrList && trapArgs.length > 0) {
-      const action = trapArgs[0];
-      const isSignalResetOnly =
-        trapArgs.length === 1 && /^(?:[0-9]+|(?:SIG)?[A-Z0-9_+]+)$/.test(action);
-      if (action !== '-' && action.trim().length > 0 && !isSignalResetOnly) {
-        const subRes = validateCommand(action, depth + 1);
-        if (!subRes.ok) {
-          return `forbidden 'trap' handler command: ${subRes.reason}`;
-        }
-      }
-    }
-  }
-
-  if (baseCmd === 'bash' || baseCmd === 'sh' || baseCmd === 'zsh') {
-    const parsed = parseShellInvocationFlags(tokens);
-    const { hasCFlag, hasSFlag, hasInfoFlag, hasExpandAliasesOpt, argIdx } = parsed;
-    let { hasStdinRedir } = parsed;
-
-    if (hasExpandAliasesOpt) {
-      return `forbidden '${baseCmd} -O expand_aliases' option`;
-    }
-
-    if (hasCFlag) {
-      if (
-        redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op) && !(r.op === '<' && r.target === '/dev/null'))
-      ) {
-        return `forbidden un-inspected '${baseCmd} -c' input redirection`;
-      }
-      if (argIdx < tokens.length || tokens.length > 2) {
-        const subScript = argIdx < tokens.length ? tokens[argIdx] : tokens[tokens.length - 1];
-        if (endedAtSub && !subScript.trim()) {
-          return `forbidden un-inspected '${baseCmd} -c' with dynamic command substitution`;
-        }
-        if (IMPLICIT_FOR_LOOP_RE.test(subScript)) {
-          return `forbidden '${baseCmd} -c' with implicit positional 'for' loop in inline script`;
-        }
-        if (subScript.trim().length > 0) {
-          const subRes = validateCommand(subScript, depth + 1);
-          if (!subRes.ok) {
-            return `forbidden nested '${baseCmd} -c' command: ${subRes.reason}`;
-          }
-        }
-      } else if (endedAtSub) {
-        return `forbidden un-inspected '${baseCmd} -c' with dynamic command substitution`;
-      }
-    } else if (!hasInfoFlag) {
-      if (redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op))) {
-        hasStdinRedir = true;
-      }
-      const rest = tokens.slice(argIdx);
-      const positionalArgs = [];
-      for (let i = 0; i < rest.length; i += 1) {
-        const t = rest[i];
-        if (STANDALONE_REDIR_RE.test(t)) {
-          if (INPUT_REDIR_OP_RE.test(t)) {
-            hasStdinRedir = true;
-          }
-          i += 1;
-          continue;
-        }
-        if (ATTACHED_REDIR_RE.test(t)) {
-          if (INPUT_REDIR_ATTACHED_RE.test(t)) {
-            hasStdinRedir = true;
-          }
-          continue;
-        }
-        positionalArgs.push(t);
-      }
-
-      if (
-        pipedIn ||
-        hasSFlag ||
-        hasStdinRedir ||
-        positionalArgs.length === 0 ||
-        positionalArgs.some((arg) => FD_SCRIPT_PATH_RE.test(arg))
-      ) {
-        return `forbidden un-inspected '${baseCmd}' stdin/pipe/fd/process-substitution execution`;
-      }
-    }
-  }
-
-  if (baseCmd === 'source' || baseCmd === '.') {
-    const hasInputRedir =
-      redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op)) ||
-      tokens
-        .slice(1)
-        .some((t) => INPUT_REDIR_OP_RE.test(t) || INPUT_REDIR_ATTACHED_RE.test(t));
-    const hasFdPath = tokens.slice(1).some((t) => FD_SCRIPT_PATH_RE.test(t));
-    if (pipedIn || hasInputRedir || hasFdPath || tokens.length <= 1) {
-      return `forbidden un-inspected '${baseCmd}' input`;
-    }
-  }
-
-  if (baseCmd === 'eval') {
-    let argIdx = 1;
-    if (tokens[argIdx] === '--') {
-      argIdx += 1;
-    }
-    const evalScript = tokens.slice(argIdx).join(' ');
-    if (endedAtSub || /\$\(|`/.test(evalScript)) {
-      return "forbidden dynamic 'eval' with command substitution";
-    }
-    if (SHELL_POSITIONAL_OR_VAR_RE.test(evalScript)) {
-      return "forbidden dynamic 'eval' with variable or positional-parameter expansion";
-    }
-    if (evalScript.trim().length > 0) {
-      const subRes = validateCommand(evalScript, depth + 1);
-      if (!subRes.ok) {
-        return `forbidden nested 'eval' command: ${subRes.reason}`;
-      }
-    }
-  }
-
-  if (baseCmd === 'xargs') {
-    const xargsPlaceholders = new Set();
-    let cmdIdx = 1;
-    while (cmdIdx < tokens.length) {
-      const tok = tokens[cmdIdx];
-      if (tok === '--') {
-        cmdIdx += 1;
-        break;
-      }
-      if (STANDALONE_REDIR_RE.test(tok)) {
-        cmdIdx += 2;
-        continue;
-      }
-      if (ATTACHED_REDIR_RE.test(tok)) {
-        cmdIdx += 1;
-        continue;
-      }
-      if (tok === '-I' || tok === '-J') {
-        const repl = tokens[cmdIdx + 1] ?? '';
-        if (repl) xargsPlaceholders.add(repl);
-        cmdIdx += 2;
-        continue;
-      }
-      if (tok === '--replace' || tok === '-i') {
-        xargsPlaceholders.add('{}');
-        cmdIdx += 1;
-        continue;
-      }
-      if (tok.startsWith('--replace=')) {
-        const repl = tok.slice('--replace='.length) || '{}';
-        xargsPlaceholders.add(repl);
-        cmdIdx += 1;
-        continue;
-      }
-      if (XARGS_VALUE_FLAGS.has(tok)) {
-        cmdIdx += 2;
-        continue;
-      }
-      if (tok.startsWith('--')) {
-        cmdIdx += 1;
-        continue;
-      }
-      if (tok.startsWith('-') && tok.length > 1) {
-        let consumedNext = false;
-        for (let j = 1; j < tok.length; j += 1) {
-          const ch = tok[j];
-          if (ch === 'I' || ch === 'J') {
-            if (j + 1 < tok.length) {
-              const repl = tok.slice(j + 1);
-              if (repl) xargsPlaceholders.add(repl);
-            } else {
-              const repl = tokens[cmdIdx + 1] ?? '';
-              if (repl) xargsPlaceholders.add(repl);
-              consumedNext = true;
-            }
-            break;
-          }
-          if (ch === 'i') {
-            const repl = j + 1 < tok.length ? tok.slice(j + 1) : '{}';
-            if (repl) xargsPlaceholders.add(repl);
-            break;
-          }
-          if (XARGS_SHORT_VALUE_CHARS.has(ch)) {
-            if (j + 1 >= tok.length) {
-              consumedNext = true;
-            }
-            break;
-          }
-        }
-        cmdIdx += consumedNext ? 2 : 1;
-        continue;
-      }
-      break;
-    }
-
-    if (cmdIdx < tokens.length) {
-      const subTokens = tokens.slice(cmdIdx);
-      const subMetas = metas.slice(cmdIdx);
-      const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false, [], subMetas);
-      if (nestedReason) {
-        return `forbidden nested 'xargs' command: ${nestedReason}`;
-      }
-      const strippedSub = stripCommandPrefixes(subTokens, depth + 1, [], subMetas);
-      if (strippedSub.error) {
-        return `forbidden nested 'xargs' command: ${strippedSub.error}`;
-      }
-      if (strippedSub.tokens.length === 0) {
-        return "forbidden 'xargs' wrapper invocation with no explicit target command";
-      }
-      const dynamicReason = checkDynamicSubcommand(
-        strippedSub.tokens,
-        xargsPlaceholders,
-        'xargs',
-        false,
-        strippedSub.metas,
-      );
-      if (dynamicReason) {
-        return dynamicReason;
-      }
-    }
-  }
-
-  if (baseCmd === 'find') {
-    for (let i = 1; i < tokens.length; i += 1) {
-      const tok = tokens[i];
-      if (tok === '-exec' || tok === '-execdir' || tok === '-ok' || tok === '-okdir') {
-        let j = i + 1;
-        while (j < tokens.length && tokens[j] !== ';' && tokens[j] !== '+') {
-          j += 1;
-        }
-        const subTokens = tokens.slice(i + 1, j);
-        const subMetas = metas.slice(i + 1, j);
-        if (subTokens.length > 0) {
-          const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false, [], subMetas);
-          if (nestedReason) {
-            return `forbidden nested 'find ${tok}' command: ${nestedReason}`;
-          }
-          const strippedSub = stripCommandPrefixes(subTokens, depth + 1, [], subMetas);
-          if (!strippedSub.error && strippedSub.tokens.length > 0) {
-            const dynamicReason = checkDynamicSubcommand(
-              strippedSub.tokens,
-              new Set(['{}']),
-              `find ${tok}`,
-              true,
-              strippedSub.metas,
-            );
-            if (dynamicReason) {
-              return dynamicReason;
-            }
-          }
-        }
-        i = j;
-      }
-    }
-  }
-
-  if (baseCmd === 'npm') {
-    let subIdx = -1;
-    let sawUnrecognizedPreFlag = false;
-    const preCallPayloads = [];
-    for (let i = 1; i < tokens.length; i += 1) {
-      const tok = tokens[i];
-      if (tok === '--') {
-        if (i + 1 < tokens.length) {
-          subIdx = i + 1;
-        }
-        break;
-      }
-      const callFlag = parseNpmCallFlag(tokens, i);
-      if (callFlag.matched) {
-        preCallPayloads.push(callFlag.payload);
-        i += callFlag.step - 1;
-        continue;
-      }
-      if (consumesNpmFlagValue(tokens, i, NPM_PRE_SUBCMD_VALUE_FLAGS)) {
-        i += 1;
-        continue;
-      }
-      if (tok.startsWith('-')) {
-        if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok, NPM_PRE_SUBCMD_VALUE_FLAGS)) {
-          sawUnrecognizedPreFlag = true;
-        }
-        continue;
-      }
-      subIdx = i;
-      break;
-    }
-
-    for (const callPayload of preCallPayloads) {
-      if (callPayload.trim().length > 0) {
-        const subRes = validateCommand(callPayload, depth + 1);
-        if (!subRes.ok) {
-          return `forbidden nested 'npm -c' command: ${subRes.reason}`;
-        }
-      }
-    }
-
-    const subCmd = subIdx >= 0 ? tokens[subIdx] : '';
-    if (hasDynamicExpansionAt(tokens, metas, subIdx)) {
-      return `forbidden dynamic 'npm' subcommand '${subCmd}'`;
-    }
-
-    if (NPM_RUN_SUBCOMMANDS.has(subCmd)) {
-      let scriptName = '';
-      let scriptIdx = -1;
-      let sawUnrecognizedRunFlag = false;
-      for (let j = subIdx + 1; j < tokens.length; j += 1) {
-        const tok = tokens[j];
-        if (tok === '--') {
-          scriptIdx = j + 1;
-          scriptName = tokens[j + 1] ?? '';
-          break;
-        }
-        if (consumesNpmFlagValue(tokens, j, NPM_VALUE_FLAGS)) {
-          j += 1;
-          continue;
-        }
-        if (tok.startsWith('-')) {
-          if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok, NPM_VALUE_FLAGS)) {
-            sawUnrecognizedRunFlag = true;
-          }
-          continue;
-        }
-        scriptIdx = j;
-        scriptName = tok;
-        break;
-      }
-      if (FORBIDDEN_NPM_SCRIPTS.has(scriptName)) {
-        return `forbidden desktop/dev script 'npm ${subCmd} ${scriptName}'`;
-      }
-      if (hasDynamicExpansionAt(tokens, metas, scriptIdx)) {
-        return `forbidden dynamic script name '${scriptName}' in 'npm ${subCmd}'`;
-      }
-      if (sawUnrecognizedRunFlag && scriptIdx >= 0) {
-        for (let k = scriptIdx + 1; k < tokens.length; k += 1) {
-          const tok = tokens[k];
-          if (tok === '--') {
-            const afterDash = tokens[k + 1] ?? '';
-            if (FORBIDDEN_NPM_SCRIPTS.has(afterDash)) {
-              return `forbidden desktop/dev script 'npm ${subCmd} ${afterDash}'`;
-            }
-            if (hasDynamicExpansionAt(tokens, metas, k + 1)) {
-              return `forbidden dynamic script name '${afterDash}' in 'npm ${subCmd}'`;
-            }
-            break;
-          }
-          if (tok.startsWith('-')) continue;
-          if (FORBIDDEN_NPM_SCRIPTS.has(tok)) {
-            return `forbidden desktop/dev script 'npm ${subCmd} ${tok}'`;
-          }
-          if (hasDynamicExpansionAt(tokens, metas, k)) {
-            return `forbidden dynamic script name '${tok}' in 'npm ${subCmd}'`;
-          }
-        }
-      }
-    } else if (subCmd === 'exec' || subCmd === 'x') {
-      let cmdIdx = -1;
-      let sawUnrecognizedExecFlag = false;
-      for (let j = subIdx + 1; j < tokens.length; j += 1) {
-        const tok = tokens[j];
-        if (tok === '--') {
-          cmdIdx = j + 1;
-          break;
-        }
-        const callFlag = parseNpmCallFlag(tokens, j);
-        if (callFlag.matched) {
-          if (callFlag.payload.trim().length > 0) {
-            const subRes = validateCommand(callFlag.payload, depth + 1);
-            if (!subRes.ok) {
-              return `forbidden nested 'npm ${subCmd} -c' command: ${subRes.reason}`;
-            }
-          }
-          j += callFlag.step - 1;
-          continue;
-        }
-        if (consumesNpmFlagValue(tokens, j, NPM_EXEC_VALUE_FLAGS)) {
-          j += 1;
-          continue;
-        }
-        if (tok.startsWith('-')) {
-          if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok, NPM_EXEC_VALUE_FLAGS)) {
-            sawUnrecognizedExecFlag = true;
-          }
-          continue;
-        }
-        cmdIdx = j;
-        break;
-      }
-
-      if (cmdIdx >= 0 && cmdIdx < tokens.length) {
-        const resolved = tokens.slice(cmdIdx);
-        const resolvedMetas = metas.slice(cmdIdx);
-        const nestedReason = checkTokensSafety(resolved, depth + 1, false, false, [], resolvedMetas);
-        if (nestedReason) {
-          return nestedReason;
-        }
-      }
-      if (sawUnrecognizedExecFlag) {
-        for (let k = subIdx + 1; k < tokens.length; k += 1) {
-          const tok = tokens[k];
-          if (tok === '--') {
-            if (k + 1 < tokens.length) {
-              const nestedReason = checkTokensSafety(
-                tokens.slice(k + 1),
-                depth + 1,
-                false,
-                false,
-                [],
-                metas.slice(k + 1),
-              );
-              if (nestedReason) return nestedReason;
-            }
-            break;
-          }
-          const callFlag = parseNpmCallFlag(tokens, k);
-          if (callFlag.matched) {
-            if (callFlag.payload.trim().length > 0) {
-              const subRes = validateCommand(callFlag.payload, depth + 1);
-              if (!subRes.ok) {
-                return `forbidden nested 'npm ${subCmd} -c' command: ${subRes.reason}`;
-              }
-            }
-            k += callFlag.step - 1;
-            continue;
-          }
-          if (!tok.startsWith('-')) {
-            const nestedReason = checkTokensSafety(
-              tokens.slice(k),
-              depth + 1,
-              false,
-              false,
-              [],
-              metas.slice(k),
-            );
-            if (nestedReason) return nestedReason;
-          }
-        }
-      }
-    } else if (sawUnrecognizedPreFlag) {
-      for (let k = 1; k < tokens.length; k += 1) {
-        const tok = tokens[k];
-        if (tok === '--') {
-          if (k + 1 < tokens.length) {
-            const fallbackReason = checkTokensSafety(
-              ['npm', ...tokens.slice(k + 1)],
-              depth + 1,
-              false,
-              false,
-              [],
-              [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...metas.slice(k + 1)],
-            );
-            if (fallbackReason) {
-              return fallbackReason;
-            }
-          }
-          break;
-        }
-        const callFlag = parseNpmCallFlag(tokens, k);
-        if (callFlag.matched) {
-          if (callFlag.payload.trim().length > 0) {
-            const subRes = validateCommand(callFlag.payload, depth + 1);
-            if (!subRes.ok) {
-              return `forbidden nested 'npm -c' command: ${subRes.reason}`;
-            }
-          }
-          k += callFlag.step - 1;
-          continue;
-        }
-        if (NPM_RUN_SUBCOMMANDS.has(tok) || tok === 'exec' || tok === 'x') {
-          const fallbackReason = checkTokensSafety(
-            ['npm', ...tokens.slice(k)],
-            depth + 1,
-            false,
-            false,
-            [],
-            [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...metas.slice(k)],
-          );
-          if (fallbackReason) {
-            return fallbackReason;
-          }
-        }
-      }
-    }
-  }
-
-  if (baseCmd === 'npx') {
-    let cmdIdx = 1;
-    let sawUnrecognizedNpxFlag = false;
-    while (cmdIdx < tokens.length) {
-      const tok = tokens[cmdIdx];
-      if (tok === '--') {
-        cmdIdx += 1;
-        break;
-      }
-      const callFlag = parseNpmCallFlag(tokens, cmdIdx);
-      if (callFlag.matched) {
-        if (callFlag.payload.trim().length > 0) {
-          const subRes = validateCommand(callFlag.payload, depth + 1);
-          if (!subRes.ok) {
-            return `forbidden nested 'npx -c' command: ${subRes.reason}`;
-          }
-        }
-        cmdIdx += callFlag.step;
-        continue;
-      }
-      if (consumesNpmFlagValue(tokens, cmdIdx, NPX_VALUE_FLAGS)) {
-        cmdIdx += 2;
-        continue;
-      }
-      if (tok.startsWith('-')) {
-        if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok, NPX_VALUE_FLAGS)) {
-          sawUnrecognizedNpxFlag = true;
-        }
-        cmdIdx += 1;
-        continue;
-      }
-      break;
-    }
-    const npxCmd = tokens[cmdIdx] ?? '';
-    const npxTail = tokens.slice(cmdIdx);
-    const npxTailMetas = metas.slice(cmdIdx);
-    if (npxCmd === 'tauri') {
-      const tauriInfo = resolveTauriSubcommand(npxTail);
-      if (isForbiddenTauriSubcommand(tauriInfo, npxTail, npxTailMetas)) {
-        const shown = tauriInfo.secondarySub ? `${tauriInfo.sub} ${tauriInfo.secondarySub}` : tauriInfo.sub;
-        return `forbidden desktop command 'npx tauri ${shown}'`;
-      }
-    }
-    if (npxCmd === 'vite' && !isSafeViteCommand(npxTail, npxTailMetas)) {
-      const npxArg = tokens[cmdIdx + 1] ?? '';
-      return `forbidden dev server command 'npx vite${npxArg ? ` ${npxArg}` : ''}'`;
-    }
-    if (cmdIdx < tokens.length) {
-      const nestedReason = checkTokensSafety(npxTail, depth + 1, false, false, [], npxTailMetas);
-      if (nestedReason) {
-        return nestedReason;
-      }
-    }
-    if (sawUnrecognizedNpxFlag) {
-      for (let k = 1; k < tokens.length; k += 1) {
-        const tok = tokens[k];
-        if (tok === '--') {
-          if (k + 1 < tokens.length) {
-            const nestedReason = checkTokensSafety(
-              ['npx', ...tokens.slice(k)],
-              depth + 1,
-              false,
-              false,
-              [],
-              [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...metas.slice(k)],
-            );
-            if (nestedReason) return nestedReason;
-          }
-          break;
-        }
-        const callFlag = parseNpmCallFlag(tokens, k);
-        if (callFlag.matched) {
-          if (callFlag.payload.trim().length > 0) {
-            const subRes = validateCommand(callFlag.payload, depth + 1);
-            if (!subRes.ok) {
-              return `forbidden nested 'npx -c' command: ${subRes.reason}`;
-            }
-          }
-          k += callFlag.step - 1;
-          continue;
-        }
-        if (!tok.startsWith('-')) {
-          const nestedReason = checkTokensSafety(
-            tokens.slice(k),
-            depth + 1,
-            false,
-            false,
-            [],
-            metas.slice(k),
-          );
-          if (nestedReason) return nestedReason;
-        }
-      }
-    }
-  }
-
-  if (baseCmd === 'tauri') {
-    const tauriInfo = resolveTauriSubcommand(tokens);
-    if (isForbiddenTauriSubcommand(tauriInfo, tokens, metas)) {
-      const shown = tauriInfo.secondarySub ? `${tauriInfo.sub} ${tauriInfo.secondarySub}` : tauriInfo.sub;
-      return `forbidden desktop command 'tauri ${shown}'`;
-    }
-  }
-
-  if (baseCmd === 'vite' && !isSafeViteCommand(tokens, metas)) {
-    return `forbidden dev server command 'vite${tokens[1] ? ` ${tokens[1]}` : ''}'`;
-  }
-
-  if (baseCmd === 'anima-engine' || baseCmd === 'anima-engine.exe') {
-    return `forbidden direct desktop binary invocation '${cmd}'`;
-  }
-
-  if (baseCmd === 'cargo') {
-    let sub = '';
-    let subIdx = -1;
-    for (let i = 1; i < tokens.length; i += 1) {
-      const tok = tokens[i];
-      if (CARGO_GLOBAL_VALUE_FLAGS.has(tok)) {
-        i += 1;
-        continue;
-      }
-      if (tok.startsWith('-') || tok.startsWith('+')) {
-        continue;
-      }
-      sub = tok;
-      subIdx = i;
-      break;
-    }
-
-    if (sub === 'run' || sub === 'r' || hasDynamicExpansionAt(tokens, metas, subIdx)) {
-      return "forbidden 'cargo run' invocation (build the release binary first and invoke it directly)";
-    }
-
-    for (let i = 1; i < tokens.length; i += 1) {
-      const tok = tokens[i];
-      if (tok === '--') break;
-      if (tok.startsWith('--bin=')) {
-        const binVal = tok.slice('--bin='.length);
-        if (
-          binVal === 'anima-engine' ||
-          binVal === 'anima-engine.exe' ||
-          hasDynamicExpansionAt(tokens, metas, i)
-        ) {
-          return "forbidden '--bin anima-engine' or dynamic '--bin' desktop target";
-        }
-      }
-      if (tok === '--bin') {
-        const binVal = tokens[i + 1] ?? '';
-        if (
-          binVal === 'anima-engine' ||
-          binVal === 'anima-engine.exe' ||
-          hasDynamicExpansionAt(tokens, metas, i + 1)
-        ) {
-          return "forbidden '--bin anima-engine' or dynamic '--bin' desktop target";
-        }
-      }
-    }
-  }
-
-  if (baseCmd === 'rm') {
-    let hasRecursive = false;
-    let endOfFlags = false;
-    const targets = [];
-
-    for (let i = 1; i < tokens.length; i += 1) {
-      const tok = tokens[i];
-      if (!endOfFlags && tok === '--') {
-        endOfFlags = true;
-        continue;
-      }
-      if (!endOfFlags && tok.startsWith('-') && tok.length > 1) {
-        if (hasDynamicExpansionAt(tokens, metas, i)) {
-          return `dangerous 'rm' dynamic flag '${tok}'`;
-        }
-        if (tok === '--recursive' || (!tok.startsWith('--') && /[rR]/.test(tok.slice(1)))) {
-          hasRecursive = true;
-        }
-        continue;
-      }
-      if (STANDALONE_REDIR_RE.test(tok)) {
-        i += 1;
-        continue;
-      }
-      if (ATTACHED_REDIR_RE.test(tok)) {
-        continue;
-      }
-      if (hasDynamicShellExpansion(tok) || metas[i]?.hasUnquotedBrace) {
-        return `dangerous 'rm' dynamic argument '${tok}'`;
-      }
-      targets.push(tok);
-    }
-
-    if (hasRecursive) {
-      for (const target of targets) {
-        if (isDangerousRmTarget(target)) {
-          return `dangerous 'rm' target '${target}' (only explicit subpaths like src-tauri/target/... or /tmp/... are allowed)`;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function checkSegmentSafety(segment, depth = 0, pipedIn = false, endedAtSub = false) {
-  const metaTokens = tokenizeSegmentMeta(segment);
-  const { tokens, metas, redirs } = stripRedirections(metaTokens);
-  return checkTokensSafety(tokens, depth, pipedIn, endedAtSub, redirs, metas);
+function isSafeTempRmTarget(p) {
+  return (
+    !hasTraversalOrWeirdSegments(p.slice(1)) &&
+    /^\/tmp\/anima-[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(p)
+  );
 }
 
 /**
- * Validate a single doc-test block's script against safety rules.
+ * Layer 3: Structural parser (simple pipelines + allowlisted env prefixes + safe redir targets).
  */
-export function validateCommand(script, depth = 0) {
-  if (depth > MAX_SHELL_RECURSION_DEPTH) {
+function parseAllowedPipelines(tokens, lines) {
+  const commands = [];
+  const fail = (reason, lineIndex) => ({
+    ok: false,
+    reason,
+    lineIndex,
+    lineText: (lines[lineIndex] ?? '').trim(),
+  });
+
+  let idx = 0;
+
+  const isSep = (tok) =>
+    tok.kind === 'NEWLINE' ||
+    (tok.kind === 'OP' && (tok.value === ';' || tok.value === '&&' || tok.value === '||'));
+
+  const skipNewlines = () => {
+    while (idx < tokens.length && tokens[idx].kind === 'NEWLINE') {
+      idx += 1;
+    }
+  };
+
+  const parseSimpleCmd = () => {
+    const envAssigns = [];
+    while (
+      idx < tokens.length &&
+      tokens[idx].kind === 'WORD' &&
+      tokens[idx].quoted === null &&
+      ENV_ASSIGN_RE.test(tokens[idx].value)
+    ) {
+      const tok = tokens[idx];
+      const eq = tok.value.indexOf('=');
+      const name = tok.value.slice(0, eq);
+      const val = tok.value.slice(eq + 1);
+      const pattern = SAFE_ENV_ALLOWLIST[name];
+      if (!pattern || !pattern.test(val)) {
+        return fail(`disallowed environment assignment '${tok.value}'`, tok.lineIndex);
+      }
+      envAssigns.push({ name, value: val, lineIndex: tok.lineIndex });
+      idx += 1;
+    }
+
+    if (idx >= tokens.length || isSep(tokens[idx]) || (tokens[idx].kind === 'OP' && tokens[idx].value === '|')) {
+      const errLine =
+        idx < tokens.length ? tokens[idx].lineIndex : envAssigns[0]?.lineIndex ?? 0;
+      return fail('missing command after prefix or operator', errLine);
+    }
+
+    const headTok = tokens[idx];
+    if (headTok.kind !== 'WORD' || headTok.quoted !== null || headTok.value.includes('=')) {
+      return fail('expected unquoted command name', headTok.lineIndex);
+    }
+    idx += 1;
+
+    const args = [];
+    const redirs = [];
+    const heredocs = [];
+
+    while (idx < tokens.length && !isSep(tokens[idx]) && !(tokens[idx].kind === 'OP' && tokens[idx].value === '|')) {
+      const tok = tokens[idx];
+      if (tok.kind === 'BANG') {
+        return fail("'!' is only allowed at the start of a pipeline", tok.lineIndex);
+      }
+      if (tok.kind === 'REDIR') {
+        const targetTok = tokens[idx + 1];
+        if (!targetTok || targetTok.kind !== 'WORD' || targetTok.quoted !== null) {
+          return fail('redirection target must be an unquoted safe path', tok.lineIndex);
+        }
+        if (!isSafeOutputPath(targetTok.value)) {
+          return fail(`disallowed redirection target '${targetTok.value}'`, targetTok.lineIndex);
+        }
+        redirs.push({
+          fd: tok.fd,
+          op: tok.op,
+          target: targetTok.value,
+          lineIndex: tok.lineIndex,
+        });
+        idx += 2;
+        continue;
+      }
+      if (tok.kind === 'HEREDOC') {
+        heredocs.push({ delim: tok.delim, content: tok.content, lineIndex: tok.lineIndex });
+        idx += 1;
+        continue;
+      }
+      if (tok.kind === 'WORD') {
+        args.push(tok);
+        idx += 1;
+        continue;
+      }
+      return fail('unexpected token in command', tok.lineIndex);
+    }
+
     return {
-      ok: false,
-      reason: `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`,
-      lineIndex: 0,
-      lineText: typeof script === 'string' ? script : '',
+      ok: true,
+      cmd: {
+        head: headTok.value,
+        headLineIndex: headTok.lineIndex,
+        envAssigns,
+        args,
+        redirs,
+        heredocs,
+      },
+    };
+  };
+
+  skipNewlines();
+  while (idx < tokens.length) {
+    const cur = tokens[idx];
+    if (cur.kind === 'OP') {
+      return fail(`unexpected leading or consecutive operator '${cur.value}'`, cur.lineIndex);
+    }
+
+    if (cur.kind === 'BANG') {
+      idx += 1;
+    }
+
+    const firstRes = parseSimpleCmd();
+    if (!firstRes.ok) return firstRes;
+    commands.push(firstRes.cmd);
+
+    while (idx < tokens.length && tokens[idx].kind === 'OP' && tokens[idx].value === '|') {
+      const pipeTok = tokens[idx];
+      idx += 1;
+      skipNewlines();
+      if (idx >= tokens.length || isSep(tokens[idx]) || (tokens[idx].kind === 'OP' && tokens[idx].value === '|')) {
+        return fail("expected command after '|'", pipeTok.lineIndex);
+      }
+      const pipedRes = parseSimpleCmd();
+      if (!pipedRes.ok) return pipedRes;
+      commands.push(pipedRes.cmd);
+    }
+
+    if (idx < tokens.length) {
+      const sep = tokens[idx];
+      if (!isSep(sep)) {
+        return fail('expected command separator', sep.lineIndex);
+      }
+      if (sep.kind === 'OP') {
+        idx += 1;
+        skipNewlines();
+        if (idx >= tokens.length) {
+          return fail(`trailing '${sep.value}' operator without following command`, sep.lineIndex);
+        }
+        if (tokens[idx].kind === 'OP') {
+          return fail(`consecutive operators '${sep.value}' and '${tokens[idx].value}'`, tokens[idx].lineIndex);
+        }
+      } else {
+        skipNewlines();
+      }
+    }
+  }
+
+  if (commands.length === 0) {
+    return fail('command block contains no executable statements', 0);
+  }
+
+  return { ok: true, commands };
+}
+
+function validateSafeNodeEval(payload) {
+  if (typeof payload !== 'string' || payload.trim().length === 0) {
+    return 'empty node -e payload';
+  }
+  if (payload.includes('..')) {
+    return "node -e payload may not contain '..'";
+  }
+  if (/\\(?:x|u|[0-7])/i.test(payload)) {
+    return 'node -e payload may not contain hex, unicode, or octal escapes';
+  }
+  if (payload.includes('${')) {
+    return "node -e payload may not contain '${'";
+  }
+  if (NODE_EVAL_FORBIDDEN_RE.test(payload)) {
+    return 'node -e payload uses disallowed module, eval, process, or destructive fs API';
+  }
+  if (/(?:require|fs|process|global|globalThis)\s*\[/.test(payload)) {
+    return 'node -e payload uses disallowed computed property access';
+  }
+
+  for (const match of payload.matchAll(/\brequire\b/g)) {
+    const rest = payload.slice(match.index);
+    if (!/^require\s*\(\s*(?:'(?:fs|node:fs)'|"(?:fs|node:fs)")\s*\)/.test(rest)) {
+      return "node -e require() is strictly limited to 'fs' or 'node:fs'";
+    }
+  }
+
+  for (const match of payload.matchAll(/\bprocess\b/g)) {
+    const rest = payload.slice(match.index);
+    if (!/^process\.exit\(\s*[0-9]+\s*\)/.test(rest)) {
+      return 'node -e process access is strictly limited to process.exit(<int>)';
+    }
+  }
+
+  if (/\bwriteFileSync\b/.test(payload)) {
+    const hasSafeTarget =
+      payload.includes("'src-tauri/target/") || payload.includes('"src-tauri/target/');
+    const hasUnsafeAbs = /['"]\/(?:etc|tmp|var|usr|bin|sbin|Users|home)/.test(payload);
+    if (!hasSafeTarget || hasUnsafeAbs) {
+      return 'node -e writeFileSync must target src-tauri/target/...';
+    }
+  }
+
+  return null;
+}
+
+function validateCargoCommand(args) {
+  if (args.length === 0) return 'cargo requires a subcommand (test, build, or check)';
+  for (const a of args) {
+    if (a.quoted !== null) return 'cargo arguments must be unquoted';
+  }
+  const sub = args[0].value;
+  if (!SAFE_CARGO_SUBCOMMANDS.has(sub)) {
+    return `disallowed cargo subcommand '${sub}' (only test, build, check allowed)`;
+  }
+
+  let hasManifestPath = false;
+  let sawDashDash = false;
+  let positionalCount = 0;
+
+  for (let i = 1; i < args.length; i += 1) {
+    const tok = args[i].value;
+    if (sawDashDash) {
+      if (!/^[A-Za-z0-9_:.-]+$/.test(tok) || tok.startsWith('-')) {
+        return `disallowed cargo test filter '${tok}'`;
+      }
+      continue;
+    }
+
+    if (tok === '--') {
+      if (sub !== 'test') return "'--' filter separator is only allowed for cargo test";
+      sawDashDash = true;
+      continue;
+    }
+
+    if (tok === '--manifest-path') {
+      const val = args[i + 1]?.value;
+      if (
+        !val ||
+        hasTraversalOrWeirdSegments(val) ||
+        (val !== 'src-tauri/Cargo.toml' && !/^crates\/[A-Za-z0-9_-]+\/Cargo\.toml$/.test(val))
+      ) {
+        return `disallowed cargo --manifest-path '${val ?? ''}'`;
+      }
+      hasManifestPath = true;
+      i += 1;
+      continue;
+    }
+
+    if (tok === '--release' || tok === '--locked' || tok === '--offline') {
+      continue;
+    }
+
+    if (tok === '--lib') {
+      if (sub !== 'test' && sub !== 'check') return "'--lib' is only allowed with cargo test or check";
+      continue;
+    }
+
+    if (tok === '--features') {
+      const val = args[i + 1]?.value;
+      if (val !== 'desktop') {
+        return `disallowed cargo --features '${val ?? ''}' (only 'desktop' allowed)`;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (tok === '-p' || tok === '--package') {
+      const val = args[i + 1]?.value;
+      if (!val || !SAFE_CARGO_PACKAGES.has(val)) {
+        return `disallowed cargo package '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (tok === '--test') {
+      if (sub !== 'test') return "'--test' is only allowed with cargo test";
+      const val = args[i + 1]?.value;
+      if (!val || !/^[A-Za-z0-9_-]+$/.test(val)) {
+        return `invalid cargo --test target '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (tok === '--example') {
+      if (sub !== 'build' && sub !== 'check') return "'--example' is only allowed with cargo build or check";
+      const val = args[i + 1]?.value;
+      if (val !== 'run_e2_brain_experiment') {
+        return `disallowed cargo --example '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (tok === '--bin') {
+      if (sub !== 'build' && sub !== 'check') return "'--bin' is only allowed with cargo build or check";
+      const val = args[i + 1]?.value;
+      if (val !== 'anima-lab') {
+        return `disallowed cargo --bin '${val ?? ''}' (only 'anima-lab' allowed)`;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (!tok.startsWith('-')) {
+      if (sub !== 'test' || positionalCount >= 1 || !/^[A-Za-z0-9_:.-]+$/.test(tok)) {
+        return `disallowed cargo positional argument '${tok}'`;
+      }
+      positionalCount += 1;
+      continue;
+    }
+
+    return `disallowed cargo flag '${tok}'`;
+  }
+
+  if (!hasManifestPath) {
+    return 'cargo command must specify --manifest-path';
+  }
+  return null;
+}
+
+function validateNpmCommand(args) {
+  if (args.length === 0) return 'npm requires a subcommand';
+  for (const a of args) {
+    if (a.quoted !== null) return 'npm arguments must be unquoted';
+  }
+  const sub = args[0].value;
+  if (sub === 'ci' || sub === 'install') {
+    return args.length === 1 ? null : `npm ${sub} accepts no additional flags or arguments`;
+  }
+  if (sub === 'run') {
+    if (args.length < 2) return 'npm run requires an allowlisted script name';
+    const scriptName = args[1].value;
+    if (!SAFE_NPM_SCRIPTS.has(scriptName)) {
+      return `disallowed npm script '${scriptName}'`;
+    }
+    if (args.length === 2) return null;
+    if (args[2].value !== '--' || args.length < 4) {
+      return "extra npm run arguments must follow '-- <src-tauri/target/...>'";
+    }
+    for (const extra of args.slice(3)) {
+      if (!isSafeTargetPath(extra.value)) {
+        return `disallowed npm run argument path '${extra.value}'`;
+      }
+    }
+    return null;
+  }
+  return `disallowed npm subcommand or flag '${sub}'`;
+}
+
+function validateRunE2ExampleCommand(args) {
+  for (const a of args) {
+    if (a.quoted !== null) return 'run_e2_brain_experiment arguments must be unquoted';
+  }
+  if (args.length === 0) return 'run_e2_brain_experiment requires explicit flags';
+  for (let i = 0; i < args.length; i += 1) {
+    const tok = args[i].value;
+    if (tok === '--help' || tok === '-h' || tok === '--smoke' || tok === '--ensemble' || tok === '--replay') {
+      continue;
+    }
+    if (tok === '--manifest-dir') {
+      const val = args[i + 1]?.value;
+      if (!val || !isSafeRepoReadPath(val)) {
+        return `disallowed --manifest-dir '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+    if (tok === '--out') {
+      const val = args[i + 1]?.value;
+      if (!val || !isSafeTargetPath(val)) {
+        return `disallowed --out '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+    if (tok === '--duration-rung') {
+      const val = args[i + 1]?.value;
+      if (val !== '6000' && val !== '12000' && val !== '18000') {
+        return `disallowed --duration-rung '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+    if (tok === '--replay-seed') {
+      const val = args[i + 1]?.value;
+      if (!val || !/^[0-9]+$/.test(val)) {
+        return `invalid --replay-seed '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+    if (tok === '--replay-arm') {
+      const val = args[i + 1]?.value;
+      if (val !== 'control' && val !== 'treatment') {
+        return `disallowed --replay-arm '${val ?? ''}'`;
+      }
+      i += 1;
+      continue;
+    }
+    return `disallowed run_e2_brain_experiment flag or argument '${tok}'`;
+  }
+  return null;
+}
+
+function validateAnimaLabCommand(args) {
+  for (const a of args) {
+    if (a.quoted !== null) return 'anima-lab arguments must be unquoted';
+  }
+  if (args.length === 0) return 'anima-lab requires --help or a manifest path';
+  if (args.length === 1 && (args[0].value === '--help' || args[0].value === '-h')) {
+    return null;
+  }
+
+  let idx = 0;
+  let sub = null;
+  if (SAFE_ANIMA_LAB_SUBCOMMANDS.has(args[0].value)) {
+    sub = args[0].value;
+    idx = 1;
+  }
+
+  let manifestCount = 0;
+  let sawHelp = false;
+  for (; idx < args.length; idx += 1) {
+    const tok = args[idx].value;
+    if (tok === '--help' || tok === '-h') {
+      sawHelp = true;
+      continue;
+    }
+    if (tok === '--model') {
+      const val = args[idx + 1]?.value;
+      if (val !== 'reference' && val !== 'live') {
+        return `disallowed anima-lab --model '${val ?? ''}'`;
+      }
+      idx += 1;
+      continue;
+    }
+    if (tok === '--format') {
+      if (sub !== 'sweep') return "'--format' is only allowed with anima-lab sweep";
+      const val = args[idx + 1]?.value;
+      if (val !== 'json' && val !== 'csv') {
+        return `disallowed anima-lab --format '${val ?? ''}'`;
+      }
+      idx += 1;
+      continue;
+    }
+    if (tok === '--threads') {
+      if (sub !== 'sweep') return "'--threads' is only allowed with anima-lab sweep";
+      const val = args[idx + 1]?.value;
+      if (!val || !/^[1-9][0-9]*$/.test(val)) {
+        return `invalid anima-lab --threads '${val ?? ''}'`;
+      }
+      idx += 1;
+      continue;
+    }
+    if (!tok.startsWith('-')) {
+      if (manifestCount >= 1 || !isSafeRepoReadPath(tok) || !tok.endsWith('.json')) {
+        return `disallowed anima-lab manifest path '${tok}'`;
+      }
+      manifestCount += 1;
+      continue;
+    }
+    return `disallowed anima-lab flag '${tok}'`;
+  }
+
+  if (!sawHelp && manifestCount !== 1) {
+    return 'anima-lab requires exactly 1 safe .json manifest path';
+  }
+  return null;
+}
+
+/**
+ * Layer 4: Closed command/subcommand/flag/path allowlist validator.
+ */
+function validateSimpleCommand(rawCmd) {
+  let cmd = rawCmd;
+  if (cmd.head === 'nice') {
+    if (cmd.heredocs.length > 0) return 'nice does not accept heredocs';
+    if (
+      cmd.args.length < 3 ||
+      cmd.args[0].quoted !== null ||
+      cmd.args[0].value !== '-n' ||
+      cmd.args[1].quoted !== null ||
+      !/^(?:[1-9]|1[0-9]|20)$/.test(cmd.args[1].value) ||
+      cmd.args[2].quoted !== null ||
+      cmd.args[2].value !== 'cargo'
+    ) {
+      return "nice is only allowed as 'nice -n <1..20> cargo ...'";
+    }
+    cmd = {
+      head: 'cargo',
+      headLineIndex: cmd.args[2].lineIndex,
+      envAssigns: cmd.envAssigns,
+      args: cmd.args.slice(3),
+      redirs: cmd.redirs,
+      heredocs: cmd.heredocs,
     };
   }
+
+  if (cmd.envAssigns.length > 0 && !ENV_ALLOWED_HEADS.has(cmd.head)) {
+    return `environment prefixes are not allowed on '${cmd.head}'`;
+  }
+
+  if (cmd.head !== 'cat' && cmd.heredocs.length > 0) {
+    return `heredocs are not allowed on '${cmd.head}'`;
+  }
+
+  switch (cmd.head) {
+    case 'npm':
+      return validateNpmCommand(cmd.args);
+    case 'cargo':
+      return validateCargoCommand(cmd.args);
+    case './src-tauri/target/release/examples/run_e2_brain_experiment':
+      return validateRunE2ExampleCommand(cmd.args);
+    case './src-tauri/target/release/anima-lab':
+      return validateAnimaLabCommand(cmd.args);
+    case 'node': {
+      if (cmd.args.length === 2 && cmd.args[0].quoted === null && cmd.args[0].value === '-e') {
+        return validateSafeNodeEval(cmd.args[1].value);
+      }
+      if (
+        cmd.args.length >= 1 &&
+        cmd.args[0].quoted === null &&
+        /^scripts\/(?:verify|check)_[A-Za-z0-9_]+\.mjs$/.test(cmd.args[0].value) &&
+        cmd.args[0].value !== 'scripts/check_doc_commands.mjs'
+      ) {
+        for (const extra of cmd.args.slice(1)) {
+          if (
+            extra.quoted !== null ||
+            (!SAFE_NODE_SCRIPT_FLAGS.has(extra.value) && !isSafeTargetPath(extra.value))
+          ) {
+            return `disallowed node script argument '${extra.value}'`;
+          }
+        }
+        return null;
+      }
+      return 'node is only allowed with -e <safe_js> or scripts/(verify|check)_*.mjs';
+    }
+    case 'mkdir': {
+      if (cmd.args.length < 2 || cmd.args[0].quoted !== null || cmd.args[0].value !== '-p') {
+        return "mkdir must be 'mkdir -p <src-tauri/target/...>'";
+      }
+      for (const target of cmd.args.slice(1)) {
+        if (target.quoted !== null || !isSafeTargetPath(target.value)) {
+          return `disallowed mkdir target '${target.value}'`;
+        }
+      }
+      return null;
+    }
+    case 'cp': {
+      if (
+        cmd.args.length !== 3 ||
+        cmd.args[0].quoted !== null ||
+        cmd.args[0].value !== '-R' ||
+        cmd.args[1].quoted !== null ||
+        cmd.args[2].quoted !== null ||
+        !isSafeRepoReadPath(cmd.args[1].value) ||
+        !isSafeTargetPath(cmd.args[2].value)
+      ) {
+        return "cp must be 'cp -R <safe_repo_read_path> <src-tauri/target/...>'";
+      }
+      return null;
+    }
+    case 'rm': {
+      if (
+        cmd.args.length !== 2 ||
+        cmd.args[0].quoted !== null ||
+        !SAFE_RM_FLAGS.has(cmd.args[0].value) ||
+        cmd.args[1].quoted !== null
+      ) {
+        return "rm must be 'rm (-rf|-fr|-f|-r) <safe_target>'";
+      }
+      const target = cmd.args[1].value;
+      if (!isSafeTargetPath(target) && !isSafeTempRmTarget(target)) {
+        return `disallowed rm target '${target}'`;
+      }
+      return null;
+    }
+    case 'cat': {
+      if (cmd.heredocs.length === 1 && cmd.args.length === 0) {
+        if (cmd.redirs.length === 0) return null;
+        if (
+          cmd.redirs.length === 1 &&
+          cmd.redirs[0].fd === 1 &&
+          cmd.redirs[0].op === '>' &&
+          isSafeTargetPath(cmd.redirs[0].target)
+        ) {
+          return null;
+        }
+        return "cat <<'IDENT' may only redirect stdout '>' to src-tauri/target/...";
+      }
+      if (
+        cmd.heredocs.length === 0 &&
+        cmd.args.length === 1 &&
+        cmd.args[0].quoted === null &&
+        isSafeRepoReadPath(cmd.args[0].value)
+      ) {
+        return null;
+      }
+      return "cat must read a safe repo path or write via <<'IDENT' > src-tauri/target/...";
+    }
+    case 'head': {
+      if (
+        cmd.args.length !== 3 ||
+        cmd.args[0].quoted !== null ||
+        cmd.args[0].value !== '-n' ||
+        cmd.args[1].quoted !== null ||
+        !/^[1-9][0-9]*$/.test(cmd.args[1].value) ||
+        cmd.args[2].quoted !== null ||
+        !isSafeRepoReadPath(cmd.args[2].value)
+      ) {
+        return "head must be 'head -n <positive_int> <safe_repo_read_path>'";
+      }
+      return null;
+    }
+    case 'grep': {
+      let i = 0;
+      while (i < cmd.args.length && cmd.args[i].quoted === null && cmd.args[i].value.startsWith('-')) {
+        if (!SAFE_GREP_FLAGS.has(cmd.args[i].value)) {
+          return `disallowed grep flag '${cmd.args[i].value}'`;
+        }
+        i += 1;
+      }
+      if (cmd.args.length - i !== 2) {
+        return 'grep must specify 1 pattern and 1 safe repo read path';
+      }
+      const fileTok = cmd.args[i + 1];
+      if (fileTok.quoted !== null || !isSafeRepoReadPath(fileTok.value)) {
+        return `disallowed grep file path '${fileTok.value}'`;
+      }
+      return null;
+    }
+    case 'touch': {
+      if (cmd.args.length !== 1 || cmd.args[0].quoted !== null || !isSafeTargetPath(cmd.args[0].value)) {
+        return "touch must target 'src-tauri/target/...'";
+      }
+      return null;
+    }
+    case 'echo':
+      return null;
+    case 'true':
+    case 'false':
+      return cmd.args.length === 0 ? null : `${cmd.head} takes no arguments`;
+    default:
+      return `command '${cmd.head}' is not in the strict doc-test allowlist`;
+  }
+}
+
+/**
+ * Validate a single doc-test block's script against the 4-layer strict fail-closed allowlist.
+ */
+export function validateCommand(script) {
   if (typeof script !== 'string' || script.trim().length === 0) {
     return { ok: false, reason: 'empty command block', lineIndex: 0, lineText: '' };
   }
 
-  const logicalLines = stripHeredocsAndComments(script);
-  for (const entry of logicalLines) {
-    if (entry.unclosed) {
+  const lexed = tokenizeAllowedShell(script);
+  if (!lexed.ok) {
+    return {
+      ok: false,
+      reason: lexed.reason,
+      lineIndex: lexed.lineIndex,
+      lineText: lexed.lineText,
+    };
+  }
+
+  const parsed = parseAllowedPipelines(lexed.tokens, lexed.lines);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      reason: parsed.reason,
+      lineIndex: parsed.lineIndex,
+      lineText: parsed.lineText,
+    };
+  }
+
+  for (const cmd of parsed.commands) {
+    const errReason = validateSimpleCommand(cmd);
+    if (errReason) {
       return {
         ok: false,
-        reason: 'unclosed quote or command substitution',
-        lineIndex: entry.lineIndex,
-        lineText: entry.text,
+        reason: errReason,
+        lineIndex: cmd.headLineIndex,
+        lineText: (lexed.lines[cmd.headLineIndex] ?? '').trim(),
       };
-    }
-    if (!entry.text.trim()) continue;
-    const segments = entry.isHeredocSubScript
-      ? extractNestedCommandSubSegments(entry.text, { skipHeredocs: false })
-      : splitShellSegmentsWithMeta(entry.text);
-    for (const seg of segments) {
-      if (seg.unclosedSub || seg.endedAtSub) {
-        return {
-          ok: false,
-          reason: 'unclosed command substitution',
-          lineIndex: entry.lineIndex,
-          lineText: seg.text,
-        };
-      }
-      const reason = checkSegmentSafety(seg.text, depth, seg.pipedIn, seg.endedAtSub);
-      if (reason) {
-        return {
-          ok: false,
-          reason,
-          lineIndex: entry.lineIndex,
-          lineText: seg.text,
-        };
-      }
     }
   }
 
@@ -4163,7 +1580,7 @@ export function scanDocDirectories(dirs, cwd) {
 }
 
 /**
- * Fast in-process parser + safety self-checks run unconditionally on startup (exits 2 if broken)
+ * Fast in-process parser + strict allowlist self-checks run unconditionally on startup (exits 2 if broken)
  * so the gate cannot pass vacuously.
  */
 export function runStartupSelfChecks() {
@@ -4197,6 +1614,10 @@ export function runStartupSelfChecks() {
     '{"a":1}',
     '```',
     '<!-- doc-test -->',
+    '```zsh',
+    'echo zsh-rejected',
+    '```',
+    '<!-- doc-test -->',
     '```bash',
     '   ',
     '```',
@@ -4206,8 +1627,8 @@ export function runStartupSelfChecks() {
   ].join('\n');
 
   const badParsed = extractDocCommands(malformed, 'bad.md');
-  if (badParsed.errors.length !== 4 || badParsed.blocks.length !== 0) {
-    failures.push(`parser expected 4 malformed errors, got ${badParsed.errors.length}`);
+  if (badParsed.errors.length !== 5 || badParsed.blocks.length !== 0) {
+    failures.push(`parser expected 5 malformed errors, got ${badParsed.errors.length}`);
   }
 
   const unsafeCmds = [
@@ -4215,6 +1636,9 @@ export function runStartupSelfChecks() {
     'npm --silent run tauri:dev',
     'npm --prefix . run tauri:dev',
     'npm run -- tauri:dev',
+    'npm --tmp /tmp run tauri:dev',
+    'npm --tmp=/tmp run tauri:dev',
+    'npm run --tmp /tmp tauri:dev',
     'npm exec -- tauri dev',
     'npm x -- tauri build',
     'npm exec -p @tauri-apps/cli -- tauri dev',
@@ -4222,275 +1646,86 @@ export function runStartupSelfChecks() {
     'npm -p exec -- tauri dev',
     'npm -p x -- tauri build',
     "npm exec -c 'cargo run'",
+    'npm rum check:docs',
+    'npm urn check:docs',
+    'npm --silent run check:docs',
+    'npm --workspaces run check:docs',
     'npx --yes tauri dev',
+    'npx --tmp /tmp tauri dev',
     'cargo run --bin anima-lab',
     'cargo --manifest-path src-tauri/Cargo.toml run --bin anima-lab',
     'cargo -C src-tauri run',
     'cargo build --manifest-path src-tauri/Cargo.toml --bin=anima-engine',
+    'cargo build --manifest-path src-tauri/Cargo.toml --bin anima-engine',
     "bash -c 'cargo run'",
-    "bash -co errexit 'cargo run'",
-    "bash -O extglob -c 'cargo run'",
-    "bash --rcfile /dev/null -c 'cargo run'",
-    "bash --init-file /dev/null -c 'cargo run'",
+    "bash -c 'echo ok'",
+    "sh -c 'echo $1' _ ok",
+    "zsh -c 'echo ok'",
     'eval "cargo run"',
-    'eval "$(echo \'cargo run\')"',
+    'eval "echo ok"',
     'env -u RUST_LOG cargo run',
-    'env -P /Users/Shared/bin cargo run',
-    'env -P/Users/Shared/bin cargo run',
-    'env -S "cargo run"',
-    'env -S "bash" -c "cargo run"',
-    'env --split-string="cargo run"',
-    'exec cargo run',
-    'exec -a foo cargo run',
-    'builtin exec cargo run',
-    'builtin eval "cargo run"',
-    '{ cargo run; }',
-    'if true; then cargo run; fi',
-    'if false; then echo ok; else cargo run; fi',
-    'for i in 1; do cargo run; done',
-    '>/dev/null cargo run',
-    '2>&1 cargo run',
-    '< /dev/null cargo run',
-    'echo "$(\n# step 1)\ncargo run\n)"',
-    'echo \'cargo run\' | bash',
-    'bash <<< \'cargo run\'',
-    'bash <(echo \'cargo run\')',
-    'echo run | xargs cargo',
-    'find . -maxdepth 0 -exec cargo run \\;',
-    'car\\\ngo run --bin anima-lab',
-    'echo "hello\n<<EOF"\ncargo run',
-    'cat <<EOF-1\nhi\nEOF-1\ncargo run',
-    'echo "$(cargo run)"',
-    'echo "$(\necho ok\ncargo run\n)"',
-    'echo "`\necho ok\ncargo run\n`"',
-    'npx tauri dev',
-    'vite preview',
+    'env -S "echo ok"',
+    'exec echo ok',
+    'builtin echo ok',
+    'noglob cargo run',
+    'nocorrect cargo run',
+    '- cargo run',
+    'repeat 1 npm run tauri:dev',
+    '() cargo run',
+    'for x (x) cargo run',
+    'foreach x (x)\ncargo run\nend',
+    'foo bar() cargo run\nfoo',
+    'case x { (x) cargo run }',
+    '{ echo ok; echo done; }',
+    'if true; then echo ok; fi',
+    'function safe_fn { echo ok; }; safe_fn',
+    'for f in docs/*.md; do echo "$f"; done',
+    'coproc MYPROC { echo ok; }',
+    'echo $(( 1 << 2 ))\ncargo run',
+    '(( 1 << 2 ))\ncargo run',
+    'a=$(( 1 << 0 ))\ncargo run',
+    '(( x <<= 1 ))\ncargo run',
+    'for (( i=0; i<1; i++ )); do cargo run; done',
+    '< $(echo ok) case x in x) cargo run ;; esac',
+    '</dev/null</dev/null case x in x) cargo run ;; esac',
+    "(\necho $(cat <<'EOF'\nhello\nEOF)\ncargo run --bin anima-lab\n)",
+    "echo $(cat <<'EOF'\nhello\nEOF); cargo run --bin anima-lab",
+    'cat <<EOF\n`echo "; cargo run; echo "`\nEOF',
+    "cat <<EOF\n$(cat <<'INNER'\n)\nINNER\ncargo run\n)\nEOF",
+    'cat <<EOF-1 > src-tauri/target/n.txt\ncargo run\nEOF-1\necho ok',
+    'cat <<-EOF > src-tauri/target/n2.txt\n\tcargo run\n\tEOF\necho ok',
+    'cat <<"EOF"\n$(cargo run)\nEOF',
+    'cat <<\\EOF\n$(cargo run)\nEOF',
+    'echo "$(echo ok)"',
+    'echo $(echo ok)',
+    'echo "${HOME:-/tmp}"',
+    'ls file.{a,b}',
+    '> /dev/null',
+    'cat < in.txt',
+    'echo ok >| src-tauri/target/x.txt',
+    'echo ok 2>&1',
+    'echo hi | xargs echo',
+    "find . -name '*.md' -exec echo {} \\;",
+    "trap 'rm -f /tmp/safe.lock' EXIT",
+    "echo $'hello\\nworld'",
+    'RUST_LOG=info echo "$VAR"',
+    'vite build',
+    'tauri info',
     './src-tauri/target/release/anima-engine',
     'rm -rf /',
     'rm -rf $HOME',
     'rm -rf .',
-    '>|out.txt cargo run',
-    '>| out.txt cargo run',
-    '1>| out.txt cargo run',
-    '>| out.txt npm run tauri:dev',
-    "bash -c - 'cargo run'",
-    "sh -c - 'cargo run'",
-    "zsh -c - 'cargo run'",
-    'bash -ec - "cargo run"',
-    'bash -o pipefail -c - "cargo run"',
-    'env -S "bash" -c - "cargo run"',
-    'npm exec -c="cargo run"',
-    'npm x -c="cargo run"',
-    'npm -c="cargo run" exec',
-    'npx -c="cargo run"',
-    'npm rum tauri:dev',
-    'npm urn tauri:dev',
-    'npm --color always run tauri:dev',
-    'npm --color run tauri:dev',
-    'npm --globalconfig /dev/null run tauri:dev',
-    'npm --shell /bin/sh run tauri:dev',
-    'npm --fetch-retries 1 run tauri:dev',
-    'function f { cargo run; }; f',
-    'function f { npm run tauri:dev; }; f',
-    'echo run | xargs -I {} -S 255 cargo {}',
-    'echo "cargo run" | xargs -I{} sh -c "{}"',
-    'echo "cargo run" | xargs -I CMD sh -c "CMD"',
-    'echo "tauri:dev" | xargs -I{} npm run {}',
-    'echo "/" | xargs -I{} rm -rf {}',
-    'printf \'"cargo run"\\n\' | xargs -n1 sh -c \'eval "$1"\' _',
-    'find . -maxdepth 0 -exec sh -c \'eval "$1"\' _ "cargo run" \\;',
-    'find . -maxdepth 0 -exec sh -c \'eval "$0"\' "cargo run" \\;',
-    'CMD="cargo run"; eval "$CMD"',
-    "BASH_ENV=<(echo 'cargo run') bash -c 'echo ok'",
-    'cargo</dev/null run',
-    'cargo 2>err.txt run',
-    'npm</dev/null run tauri:dev',
-    'npm run 2>err.txt tauri:dev',
-    'rm>rm_out.txt -rf /',
-    'echo "cargo run" | xargs env',
-    'echo "cargo run" | xargs -I { env -S "{"',
-    'npm -- run tauri:dev',
-    'npm --workspaces false run tauri:dev',
-    'npm run --workspaces false tauri:dev',
-    'npx -yc "cargo run"',
-    'npm exec -yc "cargo run"',
-    'npm --init-author-name foo -c="cargo run" exec',
-    'npm run --init-version 1.0.0 tauri:dev',
-    'bash -c \'"$@"\' _ cargo run',
-    "bash -c '$0 $1' cargo run",
-    'find . -maxdepth 0 -exec sh -c \'for a; do $a; done\' _ "cargo run" \\;',
-    "bash /dev/fd/3 3<<< 'cargo run'",
-    "exec 3<<< 'cargo run'; bash /dev/fd/3",
-    "trap 'cargo run' EXIT",
-    "$'cargo' run",
-    "bash -c $'cargo\\x20run'",
-    "npm run $'tauri\\x3adev'",
-    'CMD="cargo run"; $CMD',
-    'T=/; rm -rf "$T"',
-    "shopt -s expand_aliases\nalias x='cargo run'\nx",
-    '$(echo cargo) run',
-    '`echo cargo` run',
-    'cargo $(echo run)',
-    'cargo `echo run`',
-    'npm $(echo run) tauri:dev',
-    'npm "$(echo run)" tauri:dev',
-    'npm "`echo run`" tauri:dev',
-    'npm run $(echo tauri:dev)',
-    'npm exec -- $(echo tauri) dev',
-    'npx $(echo tauri) dev',
-    'tauri $(echo dev)',
-    'rm -rf $(echo /)',
-    'rm $(echo -rf) /',
-    "IFS=; bash -c $(printf 'cargo\\x20run')",
-    'bash -c $(echo tauri)',
-    'S=run; npm $S tauri:dev',
-    "bash -c 'npm $1 tauri:dev' _ run",
-    'X=exec; npm $X -c "cargo run"',
-    'X=x; npm $X -- tauri dev',
-    'npm --no-color false run tauri:dev',
-    'npm --no-color true run tauri:dev',
-    'npm --no-color always run tauri:dev',
-    'npm --no-if-present false run tauri:dev',
-    'npm --no-audit false run tauri:dev',
-    'npm --no-fund false run tauri:dev',
-    'npm run --no-color false tauri:dev',
-    "npm exec --no-color false -c 'cargo run'",
-    "npx --no-color false -c 'cargo run'",
-    'npx --no-color false tauri dev',
-    'npm -sy false run tauri:dev',
-    'npm -sf false run tauri:dev',
-    'npm run -sy false tauri:dev',
-    'npm exec -sy false -- tauri dev',
-    'npx -sy false tauri dev',
-    'npm exec -py pkg -c "cargo run"',
-    'npx -py pkg -c "cargo run"',
-    "cat <<$'EOF' > /dev/null\nhello\nEOF\ncargo run",
-    "cat <<E$'O'F > /dev/null\nhi\nEOF\ncargo run",
-    'echo "cargo" | xargs -I{} find . -maxdepth 0 -exec {} run \\;',
-    'echo "cargo" | xargs -I{} find . -maxdepth 0 -execdir {} run \\;',
-    'echo "tauri:dev" | xargs -I{} find . -maxdepth 0 -exec npm run {} \\;',
-    'echo "rm" | xargs -I{} find . -maxdepth 0 -exec {} -rf / \\;',
-    'tauri -v dev',
-    'tauri --verbose dev',
-    'npx tauri -v dev',
-    'npm exec -- tauri -v dev',
-    'vite --port 3000',
-    'vite --port 4173 preview',
-    'npx vite --port 3000',
-    'npm exec -- vite --port 3000',
-    'rm -rf ~root',
-    'rm -rf ~+',
-    'rm -rf ~-',
-    'coproc cargo run',
-    'coproc MYPROC { cargo run; }',
-    '$(\necho cargo\n) run',
-    '`\necho cargo\n` run',
-    'cargo $(\necho run\n)',
-    'npm run $(\necho tauri:dev\n)',
-    '$(cat <<\'EOF\'\ncargo run\nEOF\n)',
-    'cargo $(cat <<\'EOF\'\nrun\nEOF\n)',
-    'npm run $(cat <<\'EOF\'\ntauri:dev\nEOF\n)',
-    'rm -rf $(cat <<\'EOF\'\n/\nEOF\n)',
-    'tauri $(\necho dev\n)',
-    'echo $(cargo run',
-    'cat <<EOF \\\n&& cargo run\nhello\nEOF',
-    'cat <<EOF \\\n&& npm run tauri:dev\nhello\nEOF',
-    "cat <<'EOF' \\\n&& rm -rf /\nhello\nEOF",
-    'cat <<EOF \\\n\\\n&& cargo run\nhi\nEOF',
-    'cat <<$"EOF" > /dev/null\nhi\nEOF\ncargo run',
-    'cat <<-$"EOF" > /dev/null\n\thi\n\tEOF\ncargo run',
-    'cat <<E$"O"F > /dev/null\nhi\nEOF\ncargo run',
-    'cat <<$"" > /dev/null\nhi\n\ncargo run',
-    'npm --prefix $(echo `case x in x) echo . ;; esac` >/dev/null; echo .) run tauri:dev',
-    'cargo -C $(echo `case x in x) echo . ;; esac` >/dev/null; echo .) run',
-    'echo $(case x in x) cargo run ;; esac)',
-    'echo "$(case a in a) cargo run;; esac)"',
-    '{cargo,} run',
-    'cargo {run,}',
-    'cargo {run,check}',
-    '{npm,} run tauri:dev',
-    'npm {run,} tauri:dev',
-    'npm run {tauri:dev,check:docs}',
-    'rm -rf {/,/tmp/safe}',
-    'rm {-rf,} /',
-    "bash -c '{cargo,} run'",
-    'eval {cargo,run}',
-    'env {cargo,} run',
-    'echo run | xargs {cargo,}',
-    'tauri {dev,info}',
-    "/bin/ba[s]h -c 'cargo run'",
-    '/usr/bin/e[n]v cargo run',
-    './node_modules/.bin/tau[r]i dev',
-    './node_modules/.bin/vi[t]e --port 3000',
-    '$PROBE/bin/car[g]o run',
-    'find . -maxdepth 0 -exec $PROBE/bin/car[g]o run \\;',
-    'echo run | xargs $PROBE/bin/car[g]o',
-    'F="-rf /"; rm $F',
-    "bash -c 'rm $1' _ '-rf /'",
-    'set -- -rf /; rm "$@"',
-    "bash -c 'rm $@' _ -rf /",
-    'npm -v false run tauri:dev',
-    'npm --help false run tauri:dev',
-    'npm -sv false run tauri:dev',
-    'npm exec -v false -- tauri dev',
-    'npx --no-unknown false tauri dev',
-    'npx --no-silent false tauri dev',
-    'npm exec --no-unknown false tauri dev',
-    'tauri android dev',
-    'tauri ios dev',
-    'tauri android build',
-    'tauri ios run',
-    // Iteration 9 regressions:
-    // 1. Heredoc inside $(...) / "$(...)" double-stripping
-    "echo $(\ncat <<'EOF'\nhello\nEOF\ncargo run\n)",
-    "echo \"$(\ncat <<'EOF'\nhello\nEOF\nrm -rf /\n)\"",
-    "echo $(\ncat <<'EOF'\nhello\nEOF\nnpm run tauri:dev\n)",
-    "echo $(\ncat <<'EOF'\nhello\nEOF\ntauri dev\n)",
-    // 2. Unquoted heredoc expansion & backslash-newline continuation delimiters
-    'cat <<EOF\n$(cargo run)\nEOF',
-    "cat <<EOF\n'$(cargo run)'\nEOF",
-    'cat <<EOF\n`cargo run`\nEOF',
-    'cat <<EOF\n$(npm run tauri:dev)\nEOF',
-    'cat <<EOF\n$(rm -rf /)\nEOF',
-    'cat <<-EOF\n\t`rm -rf /`\n\tEOF',
-    'echo $(cat <<EOF\n$(cargo run)\nEOF\n)',
-    'cat <<\\\nEOF\nhi\nEOF\ncargo run',
-    'cat <<E\\\nOF\nhi\nEOF\ncargo run',
-    'cat <<-\\\nEOF\n\thi\n\tEOF\ncargo run',
-    // 3. case inside $(...) prefixes & zsh ;|
-    'echo $(if case x in x) cargo run ;; esac; then echo ok; fi)',
-    'echo $(while case x in x) cargo run ;; esac; do break; done)',
-    'echo $(until case x in x) cargo run ;; esac; do break; done)',
-    'echo $(time case x in x) cargo run ;; esac)',
-    'echo $(time -p case x in x) cargo run ;; esac)',
-    'echo $(coproc case x in x) cargo run ;; esac; wait)',
-    'echo $(foo() case x in x) cargo run ;; esac\nfoo)',
-    'echo $(>/dev/null case x in x) cargo run;; esac)',
-    'echo $(case a in a) echo 1 ;| a) cargo run ;; esac)',
-    // 4. $"..." in tokenizeSegmentMeta & named FD redirection {fd}>...
-    'rm -rf $"/"',
-    'rm -rf $"."',
-    'rm -rf /tmp/$".."',
-    'npm run tauri$":dev"',
-    'npm --prefix $"." run tauri$":dev"',
-    'cargo build --manifest-path src-tauri/Cargo.toml --bin $"anima-engine"',
-    'cargo build --manifest-path src-tauri/Cargo.toml --bin=$"anima-engine"',
-    'cargo {fd}>/dev/null run',
-    'npm {fd}>/dev/null run tauri:dev',
-    'tauri {fd}>/dev/null dev',
-    "bash {fd}>/dev/null -c 'cargo run'",
-    // 5. xargs / xargs ... find -exec + npm exec / npm x tail validation
-    'echo "dev" | xargs npm exec -- tauri',
-    'echo "dev" | xargs -I{} npm exec -- tauri {}',
-    'echo "dev" | xargs -I{} npm x -- tauri {}',
-    'echo "dev" | xargs -I{} npm exec -- tauri android {}',
-    'echo "run" | xargs -I{} npm exec -- cargo {}',
-    'echo "-rf /" | xargs -I{} npm exec -- rm {}',
-    'echo "-rf /" | xargs npm exec -- rm',
-    'echo "run" | xargs -I{} find . -maxdepth 0 -exec npm exec -- cargo {} \\;',
-    // 6. cargo --bin dynamic & brace expansion
-    'cargo --bin={anima-engine,anima-lab} build',
-    'cargo build --manifest-path src-tauri/Cargo.toml --bin $(echo anima-engine)',
+    'rm -rf /tmp/safe',
+    'rm -rf /tmp/safe*',
+    'car\\\ngo run --bin anima-lab',
+    'car"go" run',
+    'echo "\ncargo run\n"',
+    'cat <<\'EOF\' > package.json\n{}\nEOF',
+    'node -e "require(\'child_process\').execSync(\'cargo run\')"',
+    'node -e "require(\'fs\').rmSync(\'src-tauri/src\', { recursive: true })"',
+    'node -e "process[\'mainModule\'].require(\'child_process\')"',
+    'node -e "require(\'fs\').writeFileSync(\'package.json\', \'{}\')"',
+    'node -e "eval(\'1+1\')"',
   ];
   for (const cmd of unsafeCmds) {
     if (validateCommand(cmd).ok) {
@@ -4499,69 +1734,38 @@ export function runStartupSelfChecks() {
   }
 
   const safeCmds = [
-    'rm -rf src-tauri/target/doc2-gate-neg\nmkdir -p src-tauri/target/doc2-gate-neg',
-    'rm -rf /tmp/doc-commands-safe-dir',
-    "cat <<'EOF' > m.json\n{\"note\": \"do not cargo run or npm run tauri:dev\"}\nEOF\n# cargo run in comment",
-    'cat <<EOF-1 > n.txt\ncargo run\nEOF-1\necho ok',
-    'cat <<-EOF > n2.txt\n\tcargo run\n\tEOF\necho ok',
+    'npm ci',
+    'npm run check:docs',
+    'npm run check:e2 -- src-tauri/target/tutorial-e2-smoke',
+    'cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+    'cargo test --manifest-path src-tauri/Cargo.toml --lib core::experiment::tests::observable',
+    'cargo test --manifest-path src-tauri/Cargo.toml -p anima-domain',
     'cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab',
-    '! node scripts/verify_e2_artifacts.mjs src-tauri/target/doc2-gate-neg',
-    'echo "$(echo ok\necho done)"',
-    'echo "$(\n# step 1)\necho ok\n)"',
-    'env -S "echo ok"',
-    'env -S "bash" -c "echo ok"',
-    'npm exec -- eslint src',
-    'npm -p run check:docs',
-    'npm rum check:docs',
-    'npm --color always run check:docs',
-    'npm --workspaces run check:docs',
-    '{ echo ok; echo done; }',
-    'if true; then echo ok; fi',
-    '> /dev/null',
-    'cat < in.txt',
-    'echo ok >| bash',
-    '>|/tmp/safe_noclobber echo ok',
-    'echo ok 2>&1 | tee log',
-    'rm -rf src-tauri/target/doc2-gate-neg >| /tmp/rm.log',
-    "bash -c - 'echo ok'",
-    "sh -c 'echo $1' _ ok",
-    'function safe_fn { echo ok; }; safe_fn',
-    'echo hi | xargs -I{} echo {}',
-    'echo "--test e2_seam_tests" | xargs cargo test --manifest-path src-tauri/Cargo.toml',
-    "find . -name '*.md' -exec echo {} \\;",
-    "trap 'rm -f /tmp/safe.lock' EXIT",
-    'trap - EXIT',
-    "echo $'hello\\nworld'",
-    'RUST_LOG=info echo "$VAR"',
-    'echo $(echo ok)',
-    'npm --no-color run check:docs',
-    'npm -s run check:docs',
+    'cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment',
+    'CARGO_BUILD_JOBS=4 nice -n 10 cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+    'RUST_LOG=info cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+    './src-tauri/target/release/examples/run_e2_brain_experiment --smoke \\\n  --manifest-dir src-tauri/tests/fixtures/experiments_e2 \\\n  --out src-tauri/target/tutorial-e2-smoke',
+    './src-tauri/target/release/anima-lab --help',
+    './src-tauri/target/release/anima-lab ensemble --model reference \\\n  src-tauri/tests/fixtures/experiments/mana-patchy-renewable.json \\\n  > src-tauri/target/doc2-runs/mana.json',
+    './src-tauri/target/release/anima-lab sweep --format csv --threads 2 \\\n  src-tauri/target/doc2-runs/sweep-sobol.json \\\n  > src-tauri/target/doc2-runs/sweep.csv',
+    '! ./src-tauri/target/release/anima-lab \\\n  src-tauri/tests/fixtures/experiments/invalid-negative-source.json \\\n  > src-tauri/target/doc2-runs/err-out.txt \\\n  2> src-tauri/target/doc2-runs/err.txt',
+    'rm -rf src-tauri/target/doc2-gate-neg\nmkdir -p src-tauri/target/doc2-gate-neg',
+    'rm -rf /tmp/anima-doc-commands-safe-dir',
+    'cp -R artifacts/experiments/e2-evolved-brain-default/smoke src-tauri/target/doc2-gate-neg/smoke',
+    "cat <<'EOF' > src-tauri/target/m.json\n{\"note\": \"do not cargo run or npm run tauri:dev\"}\nEOF\n# cargo run in comment",
     "cat <<'EOF'\ncargo run\nEOF\necho ok",
-    'vite build',
-    'vite --help',
-    'tauri info',
-    'tauri --help',
-    'tauri -v info',
-    'echo $(\necho ok\n)',
-    "echo $(cat <<'EOF'\ncargo run\nEOF\n)",
-    "echo $(\ncat <<'EOF'\nhello )\nEOF\n)",
     "cat <<'EOF'\n$(cargo run)\nEOF",
-    'cat <<"EOF"\n$(cargo run)\nEOF',
-    'cat <<\\EOF\n$(cargo run)\nEOF',
-    'echo $(case x in x) echo ok ;; esac)',
-    'echo $(case a in a) echo 1 ;| a) echo 2 ;; esac)',
-    'echo {fd}>/dev/null ok',
-    'echo "src" | xargs npm exec -- eslint',
-    'ls file.{a,b}',
-    'echo "${HOME:-/tmp}"',
-    'for f in docs/*.md; do echo "$f"; done',
-    'tauri android --help',
-    'tauri ios --help',
+    'cat src-tauri/target/tutorial-e2-smoke/smoke/summary.md',
+    'head -n 5 src-tauri/target/doc2-runs/sweep.csv',
+    'grep -q "exotic energy source_rate must be >= 0" src-tauri/target/doc2-runs/err.txt',
+    '! node scripts/verify_e2_artifacts.mjs src-tauri/target/doc2-gate-neg',
+    'node scripts/verify_esel1_artifacts.mjs --self-test',
+    'node -e "const fs = require(\'fs\'); const p = \'src-tauri/target/doc2-gate-neg/smoke/per-seed-deltas.csv\'; const lines = fs.readFileSync(p, \'utf8\').split(\'\\n\'); lines[1] = lines[1].replace(/[^,]+$/, \'999999.0\'); fs.writeFileSync(p, lines.join(\'\\n\'));"',
   ];
   for (const cmd of safeCmds) {
     const res = validateCommand(cmd);
     if (!res.ok) {
-      failures.push(`safety check falsely rejected safe command: ${res.reason}`);
+      failures.push(`safety check falsely rejected safe command (${cmd}): ${res.reason}`);
     }
   }
 
@@ -4588,7 +1792,7 @@ export function selfTest(opts = {}) {
     const workDir = join(tempRoot, 'work');
     mkdirSync(tutDir, { recursive: true });
     mkdirSync(howToDir, { recursive: true });
-    mkdirSync(workDir, { recursive: true });
+    mkdirSync(join(workDir, 'src-tauri', 'target'), { recursive: true });
 
     writeFileSync(
       join(tutDir, '01-start.md'),
@@ -4596,18 +1800,18 @@ export function selfTest(opts = {}) {
         '# Tutorial',
         '',
         '```bash',
-        'echo unmarked-ignored >> order.log',
+        'echo unmarked-ignored >> src-tauri/target/order.log',
         '```',
         '',
         '<!-- doc-test -->',
         '```bash',
-        'echo "tut-1" > order.log',
+        'echo "tut-1" > src-tauri/target/order.log',
         '```',
         '',
         '<!-- doc-test -->',
         '',
         '```sh',
-        'echo "tut-2" >> order.log',
+        'echo "tut-2" >> src-tauri/target/order.log',
         '```',
       ].join('\n'),
       'utf8',
@@ -4618,8 +1822,8 @@ export function selfTest(opts = {}) {
       [
         '# How-to A',
         '<!-- doc-test -->',
-        '```zsh',
-        'echo "howto-a" >> order.log',
+        '```bash',
+        'echo "howto-a" >> src-tauri/target/order.log',
         '```',
       ].join('\n'),
       'utf8',
@@ -4631,11 +1835,11 @@ export function selfTest(opts = {}) {
         '# How-to B',
         '<!-- doc-test -->',
         '```',
-        "cat <<'EOF' > payload.json",
+        "cat <<'EOF' > src-tauri/target/payload.json",
         '{"forbidden_text": "cargo run && npm run tauri:dev"}',
         'EOF',
         'rm -rf /tmp/anima-selftest-nonexistent-subdir',
-        'echo "howto-b" >> order.log',
+        'echo "howto-b" >> src-tauri/target/order.log',
         '```',
       ].join('\n'),
       'utf8',
@@ -4654,7 +1858,7 @@ export function selfTest(opts = {}) {
         dryRun: true,
         log: () => {},
       });
-      if (!dryRes.ok || existsSync(join(workDir, 'order.log'))) {
+      if (!dryRes.ok || existsSync(join(workDir, 'src-tauri', 'target', 'order.log'))) {
         failures.push('dry-run executed commands or failed');
       }
 
@@ -4666,7 +1870,9 @@ export function selfTest(opts = {}) {
       if (!runRes.ok) {
         failures.push(`positive execution control failed: ${runRes.message}`);
       } else {
-        const orderLines = readFileSync(join(workDir, 'order.log'), 'utf8').trim().split('\n');
+        const orderLines = readFileSync(join(workDir, 'src-tauri', 'target', 'order.log'), 'utf8')
+          .trim()
+          .split('\n');
         const expected = ['tut-1', 'tut-2', 'howto-a', 'howto-b'];
         if (JSON.stringify(orderLines) !== JSON.stringify(expected)) {
           failures.push(`ordering mismatch: expected ${JSON.stringify(expected)}, got ${JSON.stringify(orderLines)}`);
@@ -4678,7 +1884,7 @@ export function selfTest(opts = {}) {
     const negDir = join(tempRoot, 'neg-exec');
     const negWork = join(tempRoot, 'neg-work');
     mkdirSync(negDir, { recursive: true });
-    mkdirSync(negWork, { recursive: true });
+    mkdirSync(join(negWork, 'src-tauri', 'target'), { recursive: true });
 
     writeFileSync(
       join(negDir, 'fail.md'),
@@ -4686,16 +1892,15 @@ export function selfTest(opts = {}) {
         '# Fail fast test',
         '<!-- doc-test -->',
         '```bash',
-        'touch step1.ok',
+        'touch src-tauri/target/step1.ok',
         '```',
         '<!-- doc-test -->',
         '```bash',
-        'echo "boom" >&2',
-        'exit 7',
+        'node -e "process.exit(7)"',
         '```',
         '<!-- doc-test -->',
         '```bash',
-        'touch step3.should_not_exist',
+        'touch src-tauri/target/step3.should_not_exist',
         '```',
       ].join('\n'),
       'utf8',
@@ -4704,6 +1909,8 @@ export function selfTest(opts = {}) {
     const negScan = scanDocDirectories([negDir], negWork);
     if (negScan.blocks.length !== 3) {
       failures.push(`negative control expected 3 blocks, got ${negScan.blocks.length}`);
+    } else if (negScan.safetyErrors.length !== 0) {
+      failures.push(`negative control unexpected safety error: ${negScan.safetyErrors.map((e) => e.message).join('; ')}`);
     } else {
       const negRes = runDocCommands(negScan.blocks, {
         cwd: negWork,
@@ -4716,27 +1923,28 @@ export function selfTest(opts = {}) {
         if (!negRes.message.includes('fail.md:7')) {
           failures.push(`fail-fast message missing 'fail.md:7': ${negRes.message}`);
         }
-        if (!existsSync(join(negWork, 'step1.ok'))) {
+        if (!existsSync(join(negWork, 'src-tauri', 'target', 'step1.ok'))) {
           failures.push('fail-fast control did not run block 1');
         }
-        if (existsSync(join(negWork, 'step3.should_not_exist'))) {
+        if (existsSync(join(negWork, 'src-tauri', 'target', 'step3.should_not_exist'))) {
           failures.push('fail-fast control executed block 3 after block 2 failed');
         }
       }
     }
 
-    // Negative control: dangling/unclosed/non-shell/empty markers
+    // Negative control: dangling/unclosed/non-shell/zsh/empty markers
     const badDir = join(tempRoot, 'neg-parse');
     mkdirSync(badDir, { recursive: true });
     writeFileSync(join(badDir, 'dangling.md'), '<!-- doc-test -->\n', 'utf8');
     writeFileSync(join(badDir, 'nonshell.md'), '<!-- doc-test -->\n```text\nhi\n```\n', 'utf8');
+    writeFileSync(join(badDir, 'zsh.md'), '<!-- doc-test -->\n```zsh\necho hi\n```\n', 'utf8');
     writeFileSync(join(badDir, 'empty.md'), '<!-- doc-test -->\n```bash\n\n```\n', 'utf8');
     writeFileSync(join(badDir, 'unclosed.md'), '<!-- doc-test -->\n```bash\necho hi\n', 'utf8');
     writeFileSync(join(badDir, 'unsafe.md'), '<!-- doc-test -->\n```bash\ncargo run\n```\n', 'utf8');
 
     const badScan = scanDocDirectories([badDir], negWork);
-    if (badScan.parseErrors.length !== 4) {
-      failures.push(`parse negative control expected 4 errors, got ${badScan.parseErrors.length}`);
+    if (badScan.parseErrors.length !== 5) {
+      failures.push(`parse negative control expected 5 errors, got ${badScan.parseErrors.length}`);
     }
     if (badScan.safetyErrors.length !== 1 || !badScan.safetyErrors[0].message.includes('unsafe.md:2')) {
       failures.push(`safety negative control expected unsafe.md:2 error, got ${badScan.safetyErrors.length}`);
