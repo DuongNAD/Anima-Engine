@@ -35,7 +35,7 @@
 //! count of dropped edges is the one piece of crossover information that would otherwise be lost.
 
 use super::lineage::{LineageNode, LineageRelation};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, VecDeque};
 
 /// A lineage exported as Newick.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,12 +197,9 @@ where
         }
     }
 
-    // ---- choose one parent per node ---------------------------------------------------------
-    // Smallest id wins, so the result does not depend on the order relations arrived in. Every
-    // further candidate is counted, not discarded quietly.
-    let mut parent_of: Vec<Option<usize>> = vec![None; nodes.len()];
-    let mut dropped_parent_edges = 0usize;
-
+    // ---- validate endpoints and deduplicate edges ---------------------------------------------
+    let n = nodes.len();
+    let mut unique_edges: Vec<(usize, usize)> = Vec::new();
     for (source_id, target_id) in edges {
         let &parent = index
             .get(source_id)
@@ -216,7 +213,71 @@ where
                 source: source_id.to_string(),
                 target: target_id.to_string(),
             })?;
+        unique_edges.push((parent, child));
+    }
+    unique_edges.sort_unstable();
+    unique_edges.dedup();
 
+    // ---- cycle check across the FULL deduplicated edge graph, BEFORE single-parent selection -
+    //
+    // Iterative sink-peeling (`O(V + E)`): any node with `out_deg == 0` cannot be on or feed into
+    // a cycle and is peeled away. Whatever remains has out-degree >= 1 inside the unpeeled subgraph
+    // (no tails hanging off a cycle survive), so walking smallest-id `children_of` until a node
+    // repeats guarantees reporting a node actually on the loop without recursion.
+    let mut out_deg = vec![0usize; n];
+    let mut parents_of: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut children_of: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for &(parent, child) in &unique_edges {
+        out_deg[parent] += 1;
+        parents_of[child].push(parent);
+        children_of[parent].push(child);
+    }
+
+    let mut alive = vec![true; n];
+    let mut peel_queue: VecDeque<usize> = (0..n).filter(|&i| out_deg[i] == 0).collect();
+    while let Some(u) = peel_queue.pop_front() {
+        if !alive[u] {
+            continue;
+        }
+        alive[u] = false;
+        for &p in &parents_of[u] {
+            if alive[p] {
+                out_deg[p] -= 1;
+                if out_deg[p] == 0 {
+                    peel_queue.push_back(p);
+                }
+            }
+        }
+    }
+
+    if let Some(start) = (0..n)
+        .filter(|&i| alive[i])
+        .min_by(|&a, &b| nodes[a].id.cmp(&nodes[b].id))
+    {
+        for kids in &mut children_of {
+            kids.sort_by(|&a, &b| nodes[a].id.cmp(&nodes[b].id));
+        }
+        let mut seen = vec![false; n];
+        let mut cur = start;
+        while !seen[cur] {
+            seen[cur] = true;
+            cur = *children_of[cur]
+                .iter()
+                .find(|&&c| alive[c])
+                .expect("every unpeeled node has at least one unpeeled child");
+        }
+        return Err(NewickError::Cycle {
+            node: nodes[cur].id.clone(),
+        });
+    }
+
+    // ---- choose one parent per node ---------------------------------------------------------
+    // Smallest id wins, so the result does not depend on the order relations arrived in. Every
+    // further distinct parent candidate is counted, not discarded quietly.
+    let mut parent_of: Vec<Option<usize>> = vec![None; n];
+    let mut dropped_parent_edges = 0usize;
+
+    for &(parent, child) in &unique_edges {
         match parent_of[child] {
             None => parent_of[child] = Some(parent),
             Some(existing) => {
@@ -229,7 +290,7 @@ where
     }
 
     // ---- children lists, sorted by id so output is deterministic ----------------------------
-    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (child, slot) in parent_of.iter().enumerate() {
         if let Some(parent) = *slot {
             children[parent].push(child);
@@ -240,35 +301,14 @@ where
     }
 
     // ---- roots, in id order ------------------------------------------------------------------
-    let mut roots: Vec<usize> = (0..nodes.len())
-        .filter(|&i| parent_of[i].is_none())
-        .collect();
+    let mut roots: Vec<usize> = (0..n).filter(|&i| parent_of[i].is_none()).collect();
     roots.sort_by(|&a, &b| nodes[a].id.cmp(&nodes[b].id));
 
     // ---- emit ---------------------------------------------------------------------------------
-    let mut visited = vec![false; nodes.len()];
+    let mut visited = vec![false; n];
     let mut trees = Vec::with_capacity(roots.len());
     for &root in &roots {
         trees.push(emit_tree(root, &children, &parent_of, nodes, &mut visited));
-    }
-
-    // ---- cycle check, BEFORE the generation check ------------------------------------------
-    //
-    // Every node has at most one parent now, so a node the roots cannot reach is a node whose
-    // ancestor chain loops. Reachability IS cycle detection here, which is why there is no separate
-    // colouring pass.
-    //
-    // The ordering is not cosmetic. Generations cannot increase monotonically all the way around a
-    // loop, so **every cycle also contains a generation inversion** — and checking generations first
-    // reports the symptom instead of the cause, sending whoever reads the error to a node whose own
-    // record is fine. `a_cycle_is_refused` and `a_cycle_beside_a_healthy_tree_is_still_refused`
-    // caught exactly that; both failed with a GenerationInversion until this moved.
-    if let Some(unreached) = visited.iter().position(|&v| !v) {
-        return Err(NewickError::Cycle {
-            node: nodes[first_node_on_cycle_from(unreached, &parent_of)]
-                .id
-                .clone(),
-        });
     }
 
     // ---- generation sanity, on the edges that survived --------------------------------------
@@ -296,25 +336,6 @@ where
         dropped_parent_edges,
         roots: roots.len(),
     })
-}
-
-/// Walk parents from `start` until an id repeats, and return that repeated node — the one actually
-/// on the loop, rather than whichever unreached node happened to be found first. Reporting a node
-/// that merely *hangs off* a cycle sends the reader to the wrong place.
-fn first_node_on_cycle_from(start: usize, parent_of: &[Option<usize>]) -> usize {
-    let mut seen = HashSet::new();
-    let mut cur = start;
-    loop {
-        if !seen.insert(cur) {
-            return cur;
-        }
-        match parent_of[cur] {
-            Some(p) => cur = p,
-            // Unreachable in practice: a chain that ends at a parentless node would have been
-            // walked from that root. Returning `cur` keeps this total rather than panicking.
-            None => return cur,
-        }
-    }
 }
 
 /// Emit one tree, iteratively.
