@@ -233,11 +233,11 @@ Proposed:
 
 ### `R9` — Update `Repository layout` for 3 Vite entries, `anima-worldgen`, `anima-lab`, `licensing/`, `map-views/`
 
-- **Target:** `README.md:146-161`
+- **Target:** `README.md:147-160`
 - **Source commits:** `fceb027`, `f523e3c`, `25cf7f6`, `95b1338`, `920c369`, `84e77c3`
 - **Reason:** `vite.config.ts:246-250` has three HTML entries (`index.html`, `landscape.html`, `map2.html`) plus `src/components/Map2/`; `src-tauri/` includes `crates/anima-worldgen/` and `src/bin/anima-lab.rs`; root includes `licensing/` and `map-views/` (`scripts/root_allowlist.json:47-48`).
 
-Current (`README.md:146-161`):
+Current (`README.md:147-160`):
 ```text
 src/                      React + TypeScript (Vite, two entries: index.html, landscape.html)
   components/Landscape/   3D map, world generator, world cache, materials, creatures
@@ -280,11 +280,11 @@ map-views/                canonical 1280x720 Map 1 PNG renders referenced by map
 ### `R10` — Align `Verification` Frontend gates with `package.json` and `.github/workflows/ci.yml`
 
 - **Target:** `README.md:195-204`
-- **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6` (PR `#197` `03b9d3d`)
-- **Reason:** CI's Frontend job enforces additional gates beyond the 6 listed (`eslint_ratchet`, `typecheck:tests`, `check:audit`, `check:text-hygiene`, `check:root-hygiene`, `check:ipc`, `check:e2`, `check:e3`, `check:csp`, `check:bundle`, `check:bundle-closure`, `check_e2e_specs.mjs`, `check:compliance`, `check:flora-footprint`). Note `package.json:46` script is `check:audit` (not `check:npm-audit`). Link `.github/workflows/ci.yml` and `CONTRIBUTING.md` per Rule 4.
+- **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6` (PR `#197` `03b9d3d`), `6adf6e3`
+- **Reason:** CI's Frontend job enforces additional gates beyond the 6 listed (`eslint_ratchet`, `typecheck:tests`, `check:audit`, `check:text-hygiene`, `check:root-hygiene`, `check:ipc`, `check:e2`, `check:e3`, `check:csp`, `check:bundle`, `check:bundle-closure`, `check_e2e_specs.mjs`), and the Rust job additionally runs `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:flora-footprint` after `npm ci`. Note `package.json:46` defines `check:audit` (not `check:npm-audit`), and `package.json:51` `check:compliance` wraps `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:text-hygiene` (so `check:text-hygiene` does not need a duplicate invocation). Link `.github/workflows/ci.yml` and `CONTRIBUTING.md` per Rule 4.
 
 Current (`README.md:195-204`):
-```markdown
+````markdown
 Frontend:
 
 ```bash
@@ -295,10 +295,10 @@ npm run test:e2e
 npm run build
 npm run check:docs
 ```
-```
+````
 
 Proposed:
-```markdown
+````markdown
 Frontend:
 
 ```bash
@@ -309,21 +309,21 @@ node scripts/check_e2e_specs.mjs && npm run test:e2e
 npm run build
 npm run check:bundle-closure && npm run check:csp && npm run check:bundle
 npm run check:docs && npm run check:ipc
-npm run check:audit && npm run check:text-hygiene && npm run check:root-hygiene
+npm run check:audit && npm run check:root-hygiene
 npm run check:e2 && npm run check:e3 && npm run check:compliance && npm run check:flora-footprint
 ```
 
-See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the exact CI order.
-```
+See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the exact CI order (`check:compliance` runs `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:text-hygiene`).
+````
 
 ### `R11` — Align `Verification` Backend gates with `.github/workflows/ci.yml`
 
 - **Target:** `README.md:206-212`
-- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `427a0e6` (PR `#197` `03b9d3d`), `3c06491`
+- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `427a0e6` (PR `#197` `03b9d3d`), `3c06491`, `043930c`, `9a31a99`, `f402447`
 - **Reason:** The Rust CI job also gates on `cargo fmt --check`, `cargo deny check`, `--no-default-features` clippy + `cargo tree` boundary checks, `anima-worldgen` clippy and tests (`--features reader,generate,bake`), `cargo test --lib export_bindings`, and `cargo modules` + `verify_dataflow.py`.
 
 Current (`README.md:206-212`):
-```markdown
+````markdown
 Backend (run in `src-tauri/`):
 
 ```bash
@@ -331,10 +331,10 @@ cargo test --features desktop
 cargo clippy --all-targets --features desktop -- -D warnings
 cargo audit
 ```
-```
+````
 
 Proposed:
-```markdown
+````markdown
 Backend (run in `src-tauri/`):
 
 ```bash
@@ -349,7 +349,7 @@ cargo test -p anima-worldgen --features "reader,generate,bake"
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) also runs `cargo tree` feature-isolation checks and the module dependency graph check (`dataflow.json`).
-```
+````
 
 ### `R12` — Document `--profile worldgen-cpu` alongside `--profile desktop`
 
@@ -389,9 +389,10 @@ Proposed:
 ```markdown
 Additional operational and diagnostic flags (`ANIMA_FRESH_START`, `ANIMA_AUTOSTART`, `ANIMA_STARVE_TICKS`,
 `ANIMA_DEHYDRATION_TICKS`, `ANIMA_W_SURPLUS`, `ANIMA_TICK_CAPTURE*`, `ANIMA_AGGREGATE_LOD`) live in
-`src-tauri/src/core/resources.rs`, `src-tauri/src/core/tick_capture.rs`, and `src-tauri/src/evolution/fitness.rs`. In
-experiments the manifest declares the matching values, such as `live.mortality` or `live.land_mask`. A manifest never
-reads environment variables.
+`src-tauri/src/lib.rs`, `src-tauri/src/core/resources.rs`, `src-tauri/src/core/tick_capture.rs`,
+`src-tauri/src/core/aggregate_population.rs`, and `src-tauri/src/evolution/fitness.rs`. In experiments the manifest
+declares the matching values, such as `live.mortality` or `live.land_mask`. A manifest never reads environment
+variables.
 ```
 
 ### `R14` — Note `npm run check:ipc` alongside `npm run check:docs` in `IPC contract`
@@ -402,12 +403,14 @@ reads environment variables.
 
 Current (`README.md:255-257`):
 ```markdown
+`load_simulation_state`, and the `simulation-tick` event. The full list with payloads is in
 [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Update it in the same change whenever you change
 the IPC surface: `npm run check:docs` fails when the list and the code disagree.
 ```
 
-Proposed:
+Proposed (`README.md:255-257`):
 ```markdown
+`load_simulation_state`, and the `simulation-tick` event. The full list with payloads is in
 [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Update it in the same change whenever you change
 the IPC surface: `npm run check:docs` fails when the list and the code disagree, and `npm run check:ipc` checks
 camelCase argument keys at every frontend `invoke(...)` call site.
@@ -598,13 +601,13 @@ Proposed:
 | Toàn bộ tài liệu | [Trung tâm tài liệu](docs/README.md) |
 ```
 
-### `V9` — Update `Bố cục kho mã` (`README.vi.md:144-158`)
+### `V9` — Update `Bố cục kho mã` (`README.vi.md:144-157`)
 
-- **Target:** `README.vi.md:144-158`
+- **Target:** `README.vi.md:144-157`
 - **Source commits:** `fceb027`, `f523e3c`, `25cf7f6`, `95b1338`, `920c369`, `84e77c3`
 - **Reason:** Matches `R9`.
 
-Current (`README.vi.md:144-158`):
+Current (`README.vi.md:144-157`):
 ```text
 src/                      React + TypeScript (Vite, hai entry: index.html, landscape.html)
   components/Landscape/   bản đồ 3D, bộ sinh thế giới, cache thế giới, vật liệu, sinh vật
@@ -647,11 +650,11 @@ map-views/                tám ảnh PNG chuẩn 1280x720 của Map 1 ghi trong 
 ### `V10` — Align `Kiểm chứng` Frontend gates (`README.vi.md:192-201`)
 
 - **Target:** `README.vi.md:192-201`
-- **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6`
-- **Reason:** Matches `R10`.
+- **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6`, `6adf6e3`
+- **Reason:** Matches `R10` (`check:compliance` wraps `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:text-hygiene`).
 
 Current (`README.vi.md:192-201`):
-```markdown
+````markdown
 Frontend:
 
 ```bash
@@ -662,10 +665,10 @@ npm run test:e2e
 npm run build
 npm run check:docs
 ```
-```
+````
 
 Proposed:
-```markdown
+````markdown
 Frontend:
 
 ```bash
@@ -676,21 +679,21 @@ node scripts/check_e2e_specs.mjs && npm run test:e2e
 npm run build
 npm run check:bundle-closure && npm run check:csp && npm run check:bundle
 npm run check:docs && npm run check:ipc
-npm run check:audit && npm run check:text-hygiene && npm run check:root-hygiene
+npm run check:audit && npm run check:root-hygiene
 npm run check:e2 && npm run check:e3 && npm run check:compliance && npm run check:flora-footprint
 ```
 
-Xem [`.github/workflows/ci.yml`](.github/workflows/ci.yml) và [`CONTRIBUTING.md`](CONTRIBUTING.md) để biết thứ tự đầy đủ trên CI.
-```
+Xem [`.github/workflows/ci.yml`](.github/workflows/ci.yml) và [`CONTRIBUTING.md`](CONTRIBUTING.md) để biết thứ tự đầy đủ trên CI (`check:compliance` bao gồm `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice` và `check:text-hygiene`).
+````
 
 ### `V11` — Align `Kiểm chứng` Backend gates (`README.vi.md:203-209`)
 
 - **Target:** `README.vi.md:203-209`
-- **Source commits:** `f523e3c`, `25cf7f6`, `427a0e6`, `3c06491`
+- **Source commits:** `f523e3c`, `25cf7f6`, `427a0e6`, `3c06491`, `043930c`, `9a31a99`, `f402447`
 - **Reason:** Matches `R11`.
 
 Current (`README.vi.md:203-209`):
-```markdown
+````markdown
 Backend (chạy trong `src-tauri/`):
 
 ```bash
@@ -698,10 +701,10 @@ cargo test --features desktop
 cargo clippy --all-targets --features desktop -- -D warnings
 cargo audit
 ```
-```
+````
 
 Proposed:
-```markdown
+````markdown
 Backend (chạy trong `src-tauri/`):
 
 ```bash
@@ -716,7 +719,7 @@ cargo test -p anima-worldgen --features "reader,generate,bake"
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) cũng chạy các bước `cargo tree` cô lập feature và kiểm tra đồ thị phụ thuộc mô-đun (`dataflow.json`).
-```
+````
 
 ### `V12` — Document `--profile worldgen-cpu` (`README.vi.md:213-216`)
 
@@ -756,9 +759,9 @@ Proposed:
 ```markdown
 Các cờ vận hành và chẩn đoán bổ sung (`ANIMA_FRESH_START`, `ANIMA_AUTOSTART`, `ANIMA_STARVE_TICKS`,
 `ANIMA_DEHYDRATION_TICKS`, `ANIMA_W_SURPLUS`, `ANIMA_TICK_CAPTURE*`, `ANIMA_AGGREGATE_LOD`) nằm ở
-`src-tauri/src/core/resources.rs`, `src-tauri/src/core/tick_capture.rs` và `src-tauri/src/evolution/fitness.rs`.
-Trong thí nghiệm, manifest khai báo các giá trị tương ứng, chẳng hạn `live.mortality` hay `live.land_mask`.
-Manifest không đọc biến môi trường.
+`src-tauri/src/lib.rs`, `src-tauri/src/core/resources.rs`, `src-tauri/src/core/tick_capture.rs`,
+`src-tauri/src/core/aggregate_population.rs` và `src-tauri/src/evolution/fitness.rs`. Trong thí nghiệm, manifest
+khai báo các giá trị tương ứng, chẳng hạn `live.mortality` hay `live.land_mask`. Manifest không đọc biến môi trường.
 ```
 
 ### `V14` — Note `npm run check:ipc` (`README.vi.md:252-254`)
@@ -769,12 +772,14 @@ Manifest không đọc biến môi trường.
 
 Current (`README.vi.md:252-254`):
 ```markdown
+`simulation-tick`. Danh sách đầy đủ kèm payload nằm ở
 [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Hãy cập nhật nó trong cùng thay đổi khi sửa
 bề mặt IPC: `npm run check:docs` đỏ khi danh sách lệch với mã.
 ```
 
-Proposed:
+Proposed (`README.vi.md:252-254`):
 ```markdown
+`simulation-tick`. Danh sách đầy đủ kèm payload nằm ở
 [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Hãy cập nhật nó trong cùng thay đổi khi sửa
 bề mặt IPC: `npm run check:docs` đỏ khi danh sách lệch với mã, và `npm run check:ipc` kiểm tra tên tham số
 camelCase ở mọi điểm gọi `invoke(...)` phía giao diện.
@@ -806,7 +811,7 @@ Per `CARD DOC7`, proposals for `CLAUDE.md` (193 lines at `6495c5c`) are strictly
 
 - **Target:** `CLAUDE.md:13`
 - **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `95b1338` (PR `#195` `45238ff`)
-- **Reason:** `src-tauri/Cargo.toml:90` (`members = ["crates/*"]`) now holds three workspace packages: `anima-engine`, `crates/anima-domain`, and `crates/anima-worldgen`.
+- **Reason:** `src-tauri/Cargo.toml:85` (`members = ["crates/*"]`) now holds three workspace packages: `anima-engine`, `crates/anima-domain`, and `crates/anima-worldgen`.
 
 Current (`CLAUDE.md:13`):
 ```markdown
@@ -836,19 +841,21 @@ Proposed:
 
 ### `C3` — Add missing Frontend CI gates to `## Commands`
 
-- **Target:** `CLAUDE.md:20-28`
+- **Target:** `CLAUDE.md:24-27`
 - **Source commits:** `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `19e67fa`, `18ae1e6`, `b507bb4`, `427a0e6` (PR `#197` `03b9d3d`), `6adf6e3`
-- **Reason:** `.github/workflows/ci.yml:229-261,299-440` and `package.json:25-51` run these mandatory gates in CI, yet they are omitted from the Frontend commands list.
+- **Reason:** `.github/workflows/ci.yml:229-261,299-440` and `package.json:25-51` run these mandatory gates in CI, yet they are omitted from the Frontend commands list. Keeping `- node scripts/gen_notice.mjs [--check]` intact preserves the regeneration command while cross-referencing `check:notice` inside `check:compliance`.
 
-Current (`CLAUDE.md:25-27`):
+Current (`CLAUDE.md:24-27`):
 ```markdown
+- `npm run check:bundle` — per-chunk and total JS budgets. Raising a budget is a decision: change the number in the same commit that causes the growth, and say why.
 - `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.
 - `npm run check:docs` — docs link check plus `scripts/check_docs_metadata.mjs`: required front matter, allowed `status`/`review_cycle` values, a README index in every `docs/` directory, and every document linked from an index — except that a note under `docs/ai/` may arrive **without** a row in `docs/ai/README.md`: it is *pending* when its front matter has `title`, `status` and `description`, and `npm run gen:docs-index` (run by the lead in a docs PR) appends its row. Agents do not edit that README. Both scripts also read untracked files, so a new document is checked before it is staged. The metadata checker runs its own negative controls first and exits 2 if one of them passes. The rules it enforces are in `docs/governance/DOCUMENTATION_POLICY.md` ("Metadata tối thiểu", and "Chỉ mục sinh" for the generated index, whose logic lives in `scripts/lib/docs_index.mjs`); change them together. `--report` lists overdue reviews, which are reported but never fail the run.
 - `npm run gen:world-manifest` — regenerates `map_manifest.json` **and** `artifacts/world_256.anmw` together, with a real SHA-256. Never hand-edit that manifest; `tests/frontend/mapManifestEvidence.test.ts` hashes the bytes it names.
 ```
 
-Proposed (insert after `npm run check:bundle`, keeping `check:docs` and `gen:world-manifest` intact):
+Proposed (`CLAUDE.md:24-27`):
 ```markdown
+- `npm run check:bundle` — per-chunk and total JS budgets. Raising a budget is a decision: change the number in the same commit that causes the growth, and say why.
 - `npm run typecheck:tests` — `tsc -p tests/tsconfig.json --noEmit`; CI runs this before Vitest so test mocks cannot silently drift from generated types.
 - `npm run check:audit` — npm advisory gate across root and `tests/` (`scripts/check_npm_audit.mjs`, policy in `scripts/npm_audit_policy.mjs`).
 - `npm run check:text-hygiene` — fails on raw ASCII control bytes in tracked/non-ignored text files (`scripts/check_text_hygiene.mjs`).
@@ -857,16 +864,17 @@ Proposed (insert after `npm run check:bundle`, keeping `check:docs` and `gen:wor
 - `npm run check:ipc` — verifies camelCase argument keys at every frontend `invoke(...)` call site (`scripts/check_ipc_arg_case.mjs`).
 - `npm run check:bundle-closure` — verifies `licensing/bundle-closure.json` matches a fresh `dist/` build.
 - `node scripts/check_e2e_specs.mjs && npm run test:e2e` — verifies Playwright schedules the committed spec policy (`scripts/e2e_spec_policy.mjs`) and runs browser-scope E2E against `tests/e2e/tauri-mock.ts`.
-- `npm run check:compliance` (and `npm run check:flora-footprint`) — checks `check:licenses`, `check:sbom`, `check:sbom-schema` (CycloneDX 1.5), `check:notice` (`node scripts/gen_notice.mjs --check`), `check:text-hygiene`, and flora footprints.
+- `npm run check:compliance` (and `npm run check:flora-footprint`) — checks `check:licenses`, `check:sbom`, `check:sbom-schema` (CycloneDX 1.5), `check:notice` (which runs `node scripts/gen_notice.mjs --check` below), `check:text-hygiene`, and flora footprints.
+- `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.
+- `npm run check:docs` — docs link check plus `scripts/check_docs_metadata.mjs`: required front matter, allowed `status`/`review_cycle` values, a README index in every `docs/` directory, and every document linked from an index — except that a note under `docs/ai/` may arrive **without** a row in `docs/ai/README.md`: it is *pending* when its front matter has `title`, `status` and `description`, and `npm run gen:docs-index` (run by the lead in a docs PR) appends its row. Agents do not edit that README. Both scripts also read untracked files, so a new document is checked before it is staged. The metadata checker runs its own negative controls first and exits 2 if one of them passes. The rules it enforces are in `docs/governance/DOCUMENTATION_POLICY.md` ("Metadata tối thiểu", and "Chỉ mục sinh" for the generated index, whose logic lives in `scripts/lib/docs_index.mjs`); change them together. `--report` lists overdue reviews, which are reported but never fail the run.
+- `npm run gen:world-manifest` — regenerates `map_manifest.json` **and** `artifacts/world_256.anmw` together, with a real SHA-256. Never hand-edit that manifest; `tests/frontend/mapManifestEvidence.test.ts` hashes the bytes it names.
 ```
-
-*(Note: replace the standalone `- node scripts/gen_notice.mjs [--check]` line or keep `--check` cross-referenced so there is no duplication.)*
 
 ### `C4` — Update Backend `cargo test` description for 3 crates & 10 feature-gated targets
 
 - **Target:** `CLAUDE.md:34`
 - **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `95b1338` (PR `#195` `45238ff`)
-- **Reason:** Workspace now has 3 packages (`src-tauri/Cargo.toml:90,101`); `scripts/test_target_policy.mjs:113-124` and `src-tauri/tests/feature_gated_targets_tests.rs:25-32` now track **10** feature-gated targets across 2 crates (8 in `src-tauri/tests/` for `networking`/`ml-wgpu` + 2 in `crates/anima-worldgen/tests/` for `generate`), and CI runs `cargo test -p anima-worldgen --features "reader,generate,bake"` separately (`.github/workflows/ci.yml:199`).
+- **Reason:** Workspace now has 3 packages (`src-tauri/Cargo.toml:85,96`, `members` and `default-members`); `scripts/test_target_policy.mjs:113-124` and `src-tauri/tests/feature_gated_targets_tests.rs:25-32` now track **10** feature-gated targets across 2 crates (8 in `src-tauri/tests/` for `networking`/`ml-wgpu` + 2 in `crates/anima-worldgen/tests/` for `generate`), and CI runs `cargo test -p anima-worldgen --features "reader,generate,bake"` separately (`.github/workflows/ci.yml:199`).
 
 Current (`CLAUDE.md:34`):
 ```markdown
@@ -886,12 +894,12 @@ Proposed:
 
 Current (`CLAUDE.md:35`):
 ```markdown
-- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate.
+- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture into one file with both streams in write order:** on macOS/Linux a plain `cargo test ... > out.txt 2>&1` in bash/zsh does that; on Windows use `cmd /c "cargo test ... > out.txt 2>&1"`, **not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
 ```
 
-Proposed:
+Proposed (`CLAUDE.md:35`):
 ```markdown
-- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop|worldgen-cpu}` — the test-target **policy** gate.
+- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop|worldgen-cpu}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture into one file with both streams in write order:** on macOS/Linux a plain `cargo test ... > out.txt 2>&1` in bash/zsh does that; on Windows use `cmd /c "cargo test ... > out.txt 2>&1"`, **not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
 ```
 
 ### `C6` — Document exact CI `cargo clippy` invocations
@@ -928,19 +936,18 @@ Proposed:
 
 ### `C8` — Add `cargo fmt --check`, `cargo deny check`, `export_bindings`, and `dataflow` gate to Backend commands
 
-- **Target:** `CLAUDE.md:38` (end of Backend commands list, before line 39)
-- **Source commits:** `f523e3c`, `427a0e6` (PR `#197` `03b9d3d`), `3c06491`, `0dc00fb`
+- **Target:** after `CLAUDE.md:37` (inserted at the end of the Backend commands list, before blank line `38` and `Dependency advisories` at line `39`)
+- **Source commits:** `f523e3c`, `427a0e6` (PR `#197` `03b9d3d`), `3c06491`, `043930c`, `9a31a99`, `f402447`
 - **Reason:** `.github/workflows/ci.yml:92,122,157-158,263-264` runs all four as mandatory Rust CI gates (`src-tauri/deny.toml`, `src/types/generated/`, `dataflow.json`).
 
-Current (`CLAUDE.md:37-39`):
+Current (`CLAUDE.md:37`):
 ```markdown
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
-
-Dependency advisories are gated:
 ```
 
-Proposed (appended to Backend list after `C7`):
+Proposed (after `CLAUDE.md:37`; retain `C7`'s updated line 37 text when applying both `C7` and `C8`):
 ```markdown
+- `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
 - `cargo fmt --check` — formatting gate (first step of Rust CI).
 - `cargo deny check` — Rust license allow-list gate (`src-tauri/deny.toml`).
 - `cargo test --lib export_bindings && git diff --exit-code -- ../src/types/generated` — verifies `ts-rs` TypeScript IPC bindings match Rust structs.
@@ -967,7 +974,7 @@ CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-
 
 - **Target:** `CLAUDE.md:47`
 - **Source commits:** `67db7c6`, `b576309`
-- **Reason:** `three` is **not** mocked or present in `tests/mocks/`. `vite.config.ts:200-202` explicitly states `Only the R3F reconciler is mocked under jsdom; real three runs headless`; `tsconfig.json:26` aliases only `@react-three/fiber`; `tests/vitest.config.ts:52-53` pins `'three'` to `../node_modules/three` and aliases only `@react-three/fiber` to `./mocks/react-three-fiber-mock.ts`.
+- **Reason:** `three` is **not** mocked or present in `tests/mocks/`. `vite.config.ts:200-202` explicitly states `Only the R3F reconciler is mocked under jsdom; real three runs headless`; `tsconfig.json:25-28` aliases `"@/*": ["src/*"]` on line `26` and `"@react-three/fiber": ["tests/mocks/react-three-fiber-mock.ts"]` on line `27` (and does **not** alias `three`); `tests/vitest.config.ts:52-53` pins `'three'` to `../node_modules/three` and aliases only `@react-three/fiber` to `./mocks/react-three-fiber-mock.ts`.
 
 Current (`CLAUDE.md:47`):
 ```markdown
@@ -982,17 +989,17 @@ Proposed:
 ### `C11` — Fix `npm run tauri dev` typo (`npm run tauri:dev`)
 
 - **Target:** `CLAUDE.md:52`
-- **Source commit:** `6495c5c` (`package.json:15-16`)
+- **Source commit:** `6495c5c` (`package.json:15-16`; also preserves the historical `fddbdee` deletion note verbatim)
 - **Reason:** `package.json:16` defines `tauri:dev` (`tauri dev --features desktop`), whereas `npm run tauri dev` invokes bare `tauri` without `--features desktop`. Matches `CLAUDE.md:31`.
 
 Current (`CLAUDE.md:52`):
 ```markdown
-- **Running the full Bevy/Tauri backend (`npm run tauri dev` / `cargo run`) is heavy and has crashed the dev machine.**
+- **Running the full Bevy/Tauri backend (`npm run tauri dev` / `cargo run`) is heavy and has crashed the dev machine.** Prefer the headless paths — `cargo test`, the Vitest suites — and launch the app only when a human has to see it. (`rabbit-standalone/`, the static page older notes suggest serving for 3D/rabbit work, was deleted at `fddbdee`; the only rabbit visualizer left is `playground/RabbitVisualizer.tsx`, and `playground/` was declared scratch by QĐ-D on 2026-10-31.)
 ```
 
-Proposed:
+Proposed (`CLAUDE.md:52`):
 ```markdown
-- **Running the full Bevy/Tauri backend (`npm run tauri:dev` / `cargo run`) is heavy and has crashed the dev machine.**
+- **Running the full Bevy/Tauri backend (`npm run tauri:dev` / `cargo run`) is heavy and has crashed the dev machine.** Prefer the headless paths — `cargo test`, the Vitest suites — and launch the app only when a human has to see it. (`rabbit-standalone/`, the static page older notes suggest serving for 3D/rabbit work, was deleted at `fddbdee`; the only rabbit visualizer left is `playground/RabbitVisualizer.tsx`, and `playground/` was declared scratch by QĐ-D on 2026-10-31.)
 ```
 
 ---
@@ -1059,6 +1066,8 @@ Every SHA cited in this proposal was verified on `6495c5c` via `git cat-file -t 
 | `3c06491` | `3c064915ef76c4ce539764476d2a3b28c7e8f8e5` | `2026-10-31T14:47:16+07:00` | `feat(ci): declare the module dependency graph and gate it (S0.2, closes F-005)` |
 | `b576309` | `b576309fa63ba41bd511b735d7ab59fe8c76eb18` | `2026-10-22T00:32:10+07:00` | `test(frontend): add Research Dashboard unit/stress suites and update Vitest/Tauri mocks` |
 | `fceb027` | `fceb027d1f2b1683c744f09f26bbc2d8efe7aaf7` | `2026-10-22T00:31:08+07:00` | `feat(map2): add Map 2 3D scene components, HUD, camera rig, and Vite entry point` |
+| `fddbdee` | `fddbdee8e9a1bc5fdefeb2c2961859cc321e6f3f` | `2026-08-10T22:46:53+07:00` | `chore: commit toàn bộ công việc dở dang trước khi hardening` |
+| `043930c` | `043930c1076b444a3ac337914f33a83fdce69b97` | `2026-08-08T12:51:45+07:00` | `chore(license): proprietary -> MIT OR Apache-2.0, and GPL stays blocked for a new reason` |
 | `ce558b2` | `ce558b22b35ae2f81a0ea26ece9d42a1eee662ff` | `2026-07-28T22:59:31+07:00` | `fix(e2): verify artifacts against committed manifest bytes` |
 | `19e67fa` | `19e67fa838b674c43d3002dc4ef400a5639cab41` | `2026-07-27T20:00:19+07:00` | `fix(ipc): send camelCase argument keys, which is what tauri::command expects` |
 | `920c369` | `920c36913730446545716839c48609956792b4ed` | `2026-07-27T13:37:06+07:00` | `feat(licensing): package the licence texts, and measure what actually ships` |
@@ -1066,3 +1075,5 @@ Every SHA cited in this proposal was verified on `6495c5c` via `git cat-file -t 
 | `2d7543e` | `2d7543e732ed946f0d63a9f2b5868db1474d6186` | `2026-07-27T11:37:13+07:00` | `chore(lint): finish the test suites, and lock the ratchet at zero` |
 | `9230e1d` | `9230e1d704dd7a9a5039f24fb3d2d04b7205878b` | `2026-07-27T05:20:11+07:00` | `test(e2e): stop skipping, and stop shouting` |
 | `6adf6e3` | `6adf6e3e59d473ce32b9e56c58dd60a2569a84f9` | `2026-07-27T04:11:54+07:00` | `fix(map): one clearance policy, and a manifest for the world we actually ship` |
+| `9a31a99` | `9a31a99616bce7ac78400cb214b85b10b8ea462e` | `2026-07-25T16:29:02+07:00` | `feat(ipc): generate the TypeScript contract types from the Rust structs` |
+| `f402447` | `f4024477b3b1901dad1f6d94827352c70bff769c` | `2026-07-25T11:07:58+07:00` | `chore(ci): add a GitHub Actions pipeline with a lint ratchet and docs-link check` |
