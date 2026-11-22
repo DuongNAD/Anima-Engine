@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // @ts-expect-error -- check_conflict_markers.mjs has no .d.mts declaration
-import { isBinaryBuffer, runSelfTests, scanBuffer, scanDirectory, scanRepo, scanText } from '../../scripts/check_conflict_markers.mjs';
-import { readFileSync } from 'node:fs';
+import { isBinaryBuffer, isCliEntrypoint, runSelfTests, scanBuffer, scanDirectory, scanRepo, scanText } from '../../scripts/check_conflict_markers.mjs';
 
 interface Violation {
   file: string;
@@ -51,8 +58,8 @@ const CODE_EXTENSIONS = [
   { ext: 'md', rel: 'docs/guide.md' },
 ] as const;
 
-function runCli(args: string[], cwd = REPO_ROOT): CliOutput {
-  const res = spawnSync(process.execPath, [SCRIPT_PATH, ...args], {
+function runCli(args: string[], cwd = REPO_ROOT, scriptPath = SCRIPT_PATH): CliOutput {
+  const res = spawnSync(process.execPath, [scriptPath, ...args], {
     cwd,
     encoding: 'utf8',
   });
@@ -84,7 +91,8 @@ describe('check_conflict_markers gate', () => {
     const unit = runSelfTests() as SelfTestResult;
     expect(unit.ok).toBe(true);
     expect(unit.failures).toEqual([]);
-    expect(unit.passed).toBeGreaterThanOrEqual(6);
+    expect(unit.passed).toBe(unit.total);
+    expect(unit.passed).toBeGreaterThanOrEqual(11);
 
     const cli = runCli(['--self-test']);
     expect(cli.status).toBe(0);
@@ -330,6 +338,291 @@ describe('check_conflict_markers gate', () => {
     expect(isBinaryBuffer(Buffer.from([0x00, 0x01]))).toBe(true);
     expect(isBinaryBuffer(Buffer.from('plain text', 'utf8'))).toBe(false);
     expect(scanBuffer(Buffer.alloc(0), 'empty.rs')).toEqual([]);
+  });
+
+  it('executes CLI normally when invoked through a symlinked script path and validates isCliEntrypoint', () => {
+    expect(isCliEntrypoint(undefined)).toBe(false);
+    expect(isCliEntrypoint('/nonexistent/other.mjs', pathToFileURL(SCRIPT_PATH).href)).toBe(false);
+    expect(isCliEntrypoint(SCRIPT_PATH, 'not-a-valid-url')).toBe(false);
+    expect(isCliEntrypoint(SCRIPT_PATH, pathToFileURL(SCRIPT_PATH).href)).toBe(true);
+
+    withTempDir((dir) => {
+      const fixtureDir = join(dir, 'fixture');
+      writeFixture(
+        fixtureDir,
+        'src/conflict.ts',
+        `${LT7} HEAD\nconst x = 1;\n${EQ7}\nconst x = 2;\n${GT7} feat/branch\n`,
+      );
+
+      let symlinkScript: string;
+      let linkToCleanup: string;
+      if (process.platform === 'win32') {
+        // Directory junctions work on Windows without Developer Mode or elevation.
+        const scriptsLink = join(dir, 'scripts-link');
+        symlinkSync(dirname(SCRIPT_PATH), scriptsLink, 'junction');
+        linkToCleanup = scriptsLink;
+        symlinkScript = join(scriptsLink, 'check_conflict_markers.mjs');
+      } else {
+        const fileLink = join(dir, 'check-conflict-markers-link.mjs');
+        symlinkSync(SCRIPT_PATH, fileLink);
+        linkToCleanup = fileLink;
+        symlinkScript = fileLink;
+      }
+
+      try {
+        expect(isCliEntrypoint(symlinkScript, pathToFileURL(SCRIPT_PATH).href)).toBe(true);
+
+        const conflictRun = runCli(['--dir', fixtureDir], REPO_ROOT, symlinkScript);
+        expect(conflictRun.status).toBe(1);
+        expect(conflictRun.stderr).toContain('src/conflict.ts:1:');
+        expect(conflictRun.stderr).toContain('src/conflict.ts:3:');
+        expect(conflictRun.stderr).toContain('src/conflict.ts:5:');
+
+        const selfTestRun = runCli(['--self-test'], REPO_ROOT, symlinkScript);
+        expect(selfTestRun.status).toBe(0);
+        expect(selfTestRun.stdout.trim().length).toBeGreaterThan(0);
+        expect(selfTestRun.stdout).toContain('self-test:');
+        expect(selfTestRun.stderr).toBe('');
+
+        const bogusRun = runCli(['--bogus'], REPO_ROOT, symlinkScript);
+        expect(bogusRun.status).toBe(2);
+        expect(bogusRun.stderr).toContain('Error:');
+
+        if (SCRIPT_PATH.startsWith('/private/tmp/')) {
+          const tmpSymlinkScript = SCRIPT_PATH.replace(/^\/private/, '');
+          if (existsSync(tmpSymlinkScript)) {
+            const tmpConflictRun = runCli(['--dir', fixtureDir], REPO_ROOT, tmpSymlinkScript);
+            expect(tmpConflictRun.status).toBe(1);
+            expect(tmpConflictRun.stderr).toContain('src/conflict.ts:1:');
+          }
+        }
+      } finally {
+        rmSync(linkToCleanup, { recursive: true, force: true });
+      }
+    });
+  });
+
+  it('scans directory entries in deterministic UTF-16 code-unit order', () => {
+    withTempDir((dir) => {
+      // Distinct base names avoid macOS case-insensitive APFS collisions while testing
+      // code-unit ordering: '-' (45) < 'Z' (90) < '_' (95) < 'a' (97).
+      for (const name of ['a.ts', 'Z.ts', '_b.ts', '-c.ts']) {
+        writeFixture(dir, name, `${LT7} HEAD\n`);
+      }
+
+      const unit = scanDirectory(dir) as ScanResult;
+      expect(unit.scannedFiles).toBe(4);
+      expect(unit.violations.map((v) => v.file)).toEqual(['-c.ts', 'Z.ts', '_b.ts', 'a.ts']);
+    });
+  });
+
+  it('catches line-1 conflict markers after a UTF-8 BOM in .ts and .md without false-positives on BOM Setext headings', () => {
+    const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+
+    withTempDir((dir) => {
+      writeFixture(
+        dir,
+        'src/bom-stray.ts',
+        Buffer.concat([UTF8_BOM, Buffer.from(`${LT7} HEAD\nexport const x = 1;\n`, 'utf8')]),
+      );
+      writeFixture(
+        dir,
+        'docs/bom-stray.md',
+        Buffer.concat([UTF8_BOM, Buffer.from(`${LT7} HEAD\nParagraph.\n`, 'utf8')]),
+      );
+      writeFixture(
+        dir,
+        'src/bom-hunk.ts',
+        Buffer.concat([
+          UTF8_BOM,
+          Buffer.from(`${LT7} HEAD\nconst a = 1;\n${EQ7}\nconst a = 2;\n${GT7} branch\n`, 'utf8'),
+        ]),
+      );
+      writeFixture(
+        dir,
+        'docs/bom-hunk.md',
+        Buffer.concat([
+          UTF8_BOM,
+          Buffer.from(`${LT7} HEAD\nours\n${EQ7}\ntheirs\n${GT7} branch\n`, 'utf8'),
+        ]),
+      );
+
+      const cli = runCli(['--dir', dir]);
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toContain('src/bom-stray.ts:1:');
+      expect(cli.stderr).toContain('docs/bom-stray.md:1:');
+      expect(cli.stderr).toContain('src/bom-hunk.ts:1:');
+      expect(cli.stderr).toContain('src/bom-hunk.ts:3:');
+      expect(cli.stderr).toContain('src/bom-hunk.ts:5:');
+      expect(cli.stderr).toContain('docs/bom-hunk.md:1:');
+      expect(cli.stderr).toContain('docs/bom-hunk.md:3:');
+      expect(cli.stderr).toContain('docs/bom-hunk.md:5:');
+      expect(cli.stderr).toContain('8 marker(s) found across 4 file(s)');
+    });
+
+    withTempDir((dir) => {
+      writeFixture(
+        dir,
+        'src/bom-clean.ts',
+        Buffer.concat([UTF8_BOM, Buffer.from('export const clean = true;\n', 'utf8')]),
+      );
+      writeFixture(
+        dir,
+        'docs/bom-setext.md',
+        Buffer.concat([UTF8_BOM, Buffer.from(`BOM Heading\n${EQ7}\n\nBody text.\n`, 'utf8')]),
+      );
+
+      const cli = runCli(['--dir', dir]);
+      expect(cli.status).toBe(0);
+      expect(cli.stderr).toBe('');
+      expect(cli.stdout).toContain('2 file(s) scanned, 0 markers found');
+    });
+  });
+
+  it('catches conflict markers and reports accurate 1-based line numbers for CR-only (\\r) line endings', () => {
+    withTempDir((dir) => {
+      writeFixture(
+        dir,
+        'src/classic-mac.ts',
+        `first\r${LT7} HEAD\rours\r${EQ7}\rtheirs\r${GT7} branch\r`,
+      );
+      writeFixture(
+        dir,
+        'docs/classic-mac.md',
+        `intro\r${LT7} HEAD\rleft\r${EQ7}\rright\r${GT7} main\r`,
+      );
+
+      const cli = runCli(['--dir', dir]);
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toContain('src/classic-mac.ts:2:');
+      expect(cli.stderr).toContain('src/classic-mac.ts:4:');
+      expect(cli.stderr).toContain('src/classic-mac.ts:6:');
+      expect(cli.stderr).toContain('docs/classic-mac.md:2:');
+      expect(cli.stderr).toContain('docs/classic-mac.md:4:');
+      expect(cli.stderr).toContain('docs/classic-mac.md:6:');
+      expect(cli.stderr).toContain('6 marker(s) found across 2 file(s)');
+    });
+
+    expect(scanText(`Title\r${EQ7}\r\rBody\r`, 'docs/cr-clean.md')).toEqual([]);
+  });
+
+  it('catches ======= and >>>>>>> in a Markdown conflict hunk containing an unclosed fenced block', () => {
+    const mdUnclosedFence = [
+      'Intro paragraph.',
+      `${LT7} HEAD`,
+      '```ts',
+      'const ours = 1;',
+      EQ7,
+      'const theirs = 2;',
+      `${GT7} feat/branch`,
+      '',
+      '```diff',
+      `${LT7} HEAD`,
+      EQ7,
+      `${GT7} example-only`,
+      '```',
+    ].join('\n');
+
+    const violations = scanText(mdUnclosedFence, 'docs/unclosed-fence.md') as Violation[];
+    expect(violations.map((v) => ({ line: v.line, kind: v.kind }))).toEqual([
+      { line: 2, kind: 'conflict-start' },
+      { line: 5, kind: 'conflict-divider' },
+      { line: 7, kind: 'conflict-end' },
+    ]);
+
+    withTempDir((dir) => {
+      const mdDiff3Unclosed = [
+        `${LT7} ours`,
+        '~~~rust',
+        'fn ours() {}',
+        `${BAR7} base`,
+        'fn base() {}',
+        EQ7,
+        'fn theirs() {}',
+        '~~~',
+        `${GT7} theirs`,
+      ].join('\n');
+      writeFixture(dir, 'docs/diff3-unclosed.md', mdDiff3Unclosed);
+
+      const cli = runCli(['--dir', dir]);
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toContain('docs/diff3-unclosed.md:1:');
+      expect(cli.stderr).toContain('docs/diff3-unclosed.md:4:');
+      expect(cli.stderr).toContain('docs/diff3-unclosed.md:6:');
+      expect(cli.stderr).toContain('docs/diff3-unclosed.md:9:');
+      expect(cli.stderr).toContain('4 marker(s) found across 1 file(s)');
+    });
+  });
+
+  it('deduplicates unmerged Git index entries (stages 1-3) in scanRepo and default CLI mode', () => {
+    withTempDir((dir) => {
+      const gitEnv = {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+      };
+      const gitCommitArgs = [
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.com',
+        '-c',
+        'commit.gpgsign=false',
+      ];
+
+      execFileSync('git', ['init'], { cwd: dir, env: gitEnv });
+      writeFixture(dir, 'src/merged.ts', 'export const v = 0;\n');
+      execFileSync('git', ['add', 'src/merged.ts'], { cwd: dir, env: gitEnv });
+      execFileSync('git', [...gitCommitArgs, 'commit', '-m', 'base'], {
+        cwd: dir,
+        env: gitEnv,
+      });
+
+      execFileSync('git', ['checkout', '-b', 'branch-ours'], { cwd: dir, env: gitEnv });
+      writeFixture(dir, 'src/merged.ts', 'export const v = 1;\n');
+      execFileSync('git', [...gitCommitArgs, 'commit', '-am', 'ours'], {
+        cwd: dir,
+        env: gitEnv,
+      });
+
+      execFileSync('git', ['checkout', '-b', 'branch-theirs', 'HEAD~1'], {
+        cwd: dir,
+        env: gitEnv,
+      });
+      writeFixture(dir, 'src/merged.ts', 'export const v = 2;\n');
+      execFileSync('git', [...gitCommitArgs, 'commit', '-am', 'theirs'], {
+        cwd: dir,
+        env: gitEnv,
+      });
+
+      const mergeRes = spawnSync(
+        'git',
+        ['-c', 'merge.conflictstyle=merge', 'merge', 'branch-ours'],
+        { cwd: dir, env: gitEnv, encoding: 'utf8' },
+      );
+      expect(mergeRes.status).toBe(1);
+
+      const rawLsFiles = execFileSync(
+        'git',
+        ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+        { cwd: dir, env: gitEnv, encoding: 'utf8' },
+      )
+        .split('\0')
+        .filter(Boolean);
+      expect(rawLsFiles.length).toBeGreaterThan(1);
+
+      const unit = scanRepo(dir) as ScanResult;
+      expect(unit.scannedFiles).toBe(1);
+      expect(unit.violations.map((v) => v.kind)).toEqual([
+        'conflict-start',
+        'conflict-divider',
+        'conflict-end',
+      ]);
+      expect(unit.violations.every((v) => v.file === 'src/merged.ts')).toBe(true);
+
+      const cli = runCli([], dir);
+      expect(cli.status).toBe(1);
+      expect(cli.stderr).toContain('3 marker(s) found across 1 file(s)');
+    });
   });
 
   it('is wired into package.json and .github/workflows/ci.yml frontend job', () => {

@@ -13,10 +13,10 @@
 //   node scripts/check_conflict_markers.mjs --self-test
 
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const BINARY_PROBE_BYTES = 8192;
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdx']);
@@ -56,10 +56,12 @@ export function isBinaryBuffer(buf) {
  */
 export function scanText(text, relPath) {
   if (!text || text.length === 0) return [];
+  const normalized = text.startsWith('\uFEFF') ? text.slice(1) : text;
+  if (normalized.length === 0) return [];
 
   const file = toPosixPath(relPath);
   const isMarkdown = MARKDOWN_EXTENSIONS.has(extname(file).toLowerCase());
-  const rawLines = text.split('\n');
+  const lines = normalized.split(/\r\n|\r|\n/);
   const violations = [];
 
   let inConflict = false;
@@ -67,12 +69,11 @@ export function scanText(text, relPath) {
   /** @type {{ char: string, length: number } | null} */
   let fence = null;
 
-  for (let i = 0; i < rawLines.length; i += 1) {
-    const raw = rawLines[i];
-    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     const lineNumber = i + 1;
 
-    if (isMarkdown) {
+    if (isMarkdown && !inConflict) {
       if (fence !== null) {
         const closeRe = new RegExp(`^ {0,3}${fence.char}{${fence.length},}[ \\t]*$`);
         if (closeRe.test(line)) {
@@ -179,7 +180,7 @@ export function scanDirectory(dirPath) {
    */
   function walk(currentDir) {
     const entries = readdirSync(currentDir, { withFileTypes: true });
-    entries.sort((a, b) => a.name.localeCompare(b.name));
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
     for (const entry of entries) {
       if (entry.isSymbolicLink()) continue;
@@ -211,7 +212,8 @@ export function scanDirectory(dirPath) {
 }
 
 /**
- * Scan all git-tracked and untracked non-ignored files in a repository.
+ * Scan all git-tracked and untracked non-ignored files under `rootDir` (intentionally scoped to
+ * `rootDir`/`cwd` via `git ls-files`, matching `check_text_hygiene.mjs`).
  * @param {string} [rootDir]
  * @returns {{ root: string, scannedFiles: number, violations: Array<{ file: string, line: number, kind: string, message: string }> }}
  */
@@ -223,7 +225,8 @@ export function scanRepo(rootDir = process.cwd()) {
     { cwd: resolvedRoot, encoding: 'utf8', maxBuffer: 1 << 28 },
   );
 
-  const files = output.split('\0').filter(Boolean);
+  // Deduplicate because unmerged index conflicts emit stages 1/2/3 for the same path.
+  const files = [...new Set(output.split('\0').filter(Boolean))];
   const violations = [];
   let scannedFiles = 0;
 
@@ -395,6 +398,59 @@ export function runSelfTests() {
         }
       },
     },
+    {
+      name: 'UTF-8 BOM at line 1 does not hide conflict markers in .ts or .md',
+      run: () => {
+        const tsStray = scanText(`\uFEFF${LT7} HEAD\nexport const x = 1;\n`, 'src/bom.ts');
+        if (tsStray.map((v) => v.line).join(',') !== '1') {
+          throw new Error(`expected line 1 for BOM .ts stray, got ${JSON.stringify(tsStray)}`);
+        }
+        const mdHunk = scanText(
+          `\uFEFF${LT7} HEAD\nours\n${EQ7}\ntheirs\n${GT7} main\n`,
+          'docs/bom.md',
+        );
+        if (mdHunk.map((v) => v.line).join(',') !== '1,3,5') {
+          throw new Error(`expected lines 1,3,5 for BOM .md hunk, got ${JSON.stringify(mdHunk)}`);
+        }
+        const bomSetext = scanText(`\uFEFFHeading\n${EQ7}\n`, 'docs/bom-clean.md');
+        if (bomSetext.length !== 0) {
+          throw new Error(`expected 0 violations for BOM Setext H1, got ${JSON.stringify(bomSetext)}`);
+        }
+      },
+    },
+    {
+      name: 'CR-only line endings report accurate 1-based line numbers',
+      run: () => {
+        const crOnly = `line1\r${LT7} HEAD\rours\r${EQ7}\rtheirs\r${GT7} main\r`;
+        const lines = scanText(crOnly, 'src/cr-only.ts').map((v) => v.line);
+        if (lines.join(',') !== '2,4,6') {
+          throw new Error(`expected CR-only lines 2,4,6, got ${lines.join(',')}`);
+        }
+      },
+    },
+    {
+      name: 'Markdown conflict hunk with unclosed fenced block still catches divider and end markers',
+      run: () => {
+        const md = [
+          `${LT7} HEAD`,
+          '```ts',
+          'const ours = 1;',
+          EQ7,
+          'const theirs = 2;',
+          `${GT7} branch`,
+          '',
+          '```diff',
+          `${LT7} HEAD`,
+          EQ7,
+          `${GT7} example`,
+          '```',
+        ].join('\n');
+        const lines = scanText(md, 'docs/unclosed-fence.md').map((v) => v.line);
+        if (lines.join(',') !== '1,4,6') {
+          throw new Error(`expected lines 1,4,6, got ${lines.join(',')}`);
+        }
+      },
+    },
   ];
 
   const failures = [];
@@ -520,6 +576,41 @@ function main() {
   process.exit(0);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+/**
+ * Determine whether this module is executed directly as the CLI entrypoint, resolving symlinks
+ * on both `import.meta.url` and `process.argv[1]` (e.g. macOS `/tmp` -> `/private/tmp` or
+ * symlinked script aliases).
+ * @param {string | undefined} [entryArg]
+ * @param {string} [moduleUrl]
+ * @returns {boolean}
+ */
+export function isCliEntrypoint(entryArg = process.argv[1], moduleUrl = import.meta.url) {
+  if (!entryArg || !moduleUrl) return false;
+
+  let modulePath;
+  try {
+    modulePath = fileURLToPath(moduleUrl);
+  } catch {
+    return false;
+  }
+
+  let resolvedModule;
+  try {
+    resolvedModule = realpathSync(modulePath);
+  } catch {
+    resolvedModule = resolve(modulePath);
+  }
+
+  let resolvedEntry;
+  try {
+    resolvedEntry = realpathSync(resolve(entryArg));
+  } catch {
+    resolvedEntry = resolve(entryArg);
+  }
+
+  return resolvedModule === resolvedEntry;
+}
+
+if (isCliEntrypoint()) {
   main();
 }
