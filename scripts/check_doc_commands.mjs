@@ -54,6 +54,9 @@ const SHELL_COMPOUND_PREFIXES = new Set([
 ]);
 const STANDALONE_REDIR_RE = /^(?:\d*)(?:>>|>\||>|<>|<<<|<<-|<<|<|&>>|&>|>&|<&)$/;
 const ATTACHED_REDIR_RE = /^(?:\d*(?:>>|>\||>|<>|<<<|<<-|<<|<|>&|<&)|&>>|&>).+$/;
+const INPUT_REDIR_OP_RE = /^(?:\d*)(?:<<<|<<-|<<|<&|<>|<)$/;
+const FD_SCRIPT_PATH_RE = /^(?:\/dev\/fd\/|\/proc\/(?:self|\d+)\/fd\/|\/dev\/stdin$|[<>]\()/;
+const IMPLICIT_FOR_LOOP_RE = /\bfor\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*;|\s*\n)\s*do\b/;
 const SAFE_CARGO_SUBCOMMANDS = new Set([
   'build',
   'b',
@@ -134,6 +137,11 @@ const NPM_VALUE_FLAGS = new Set([
   '--noproxy',
   '--otp',
   '--access',
+  '--allow-directory',
+  '--allow-file',
+  '--allow-git',
+  '--allow-remote',
+  '--allow-scripts',
   '--also',
   '--audit-level',
   '--auth-type',
@@ -151,6 +159,19 @@ const NPM_VALUE_FLAGS = new Set([
   '--git',
   '--heading',
   '--include',
+  '--init-author-email',
+  '--init-author-name',
+  '--init-author-url',
+  '--init-license',
+  '--init-module',
+  '--init-type',
+  '--init-version',
+  '--init.author.email',
+  '--init.author.name',
+  '--init.author.url',
+  '--init.license',
+  '--init.module',
+  '--init.version',
   '--install-strategy',
   '--libc',
   '--lockfile-version',
@@ -167,9 +188,12 @@ const NPM_VALUE_FLAGS = new Set([
   '--omit',
   '--only',
   '--orgs',
+  '--orgs-permission',
   '--os',
   '--pack-destination',
+  '--package',
   '--packages',
+  '--packages-and-scopes-permission',
   '--preid',
   '--provenance-file',
   '--replace-registry-host',
@@ -180,6 +204,7 @@ const NPM_VALUE_FLAGS = new Set([
   '--searchlimit',
   '--searchopts',
   '--searchstaleness',
+  '--token-description',
   '--umask',
   '--user-agent',
   '--which',
@@ -584,6 +609,15 @@ function scanShellLineForCommentAndHeredoc(line, initialQuote = null) {
       continue;
     }
 
+    if (quote === "$'") {
+      if (ch === '\\') {
+        i += 1;
+        continue;
+      }
+      if (ch === "'") quote = null;
+      continue;
+    }
+
     if (quote === '"') {
       if (ch === '\\') {
         i += 1;
@@ -594,6 +628,12 @@ function scanShellLineForCommentAndHeredoc(line, initialQuote = null) {
     }
 
     if (ch === '\\') {
+      i += 1;
+      continue;
+    }
+
+    if (ch === '$' && line[i + 1] === "'") {
+      quote = "$'";
       i += 1;
       continue;
     }
@@ -676,7 +716,7 @@ export function stripHeredocsAndComments(script) {
       trailingBackslashes += 1;
     }
 
-    if (endQuote !== "'" && trailingBackslashes % 2 === 1) {
+    if (endQuote !== "'" && endQuote !== "$'" && trailingBackslashes % 2 === 1) {
       current = trimmedEnd.slice(0, -1);
       continuing = true;
       continueWithNewline = false;
@@ -707,6 +747,14 @@ function findClosingCommandSubParen(str, startIdx) {
       if (ch === "'") q = null;
       continue;
     }
+    if (q === "$'") {
+      if (ch === '\\' && i + 1 < str.length) {
+        i += 1;
+        continue;
+      }
+      if (ch === "'") q = null;
+      continue;
+    }
     if (q === '"') {
       if (ch === '\\' && i + 1 < str.length) {
         i += 1;
@@ -722,6 +770,11 @@ function findClosingCommandSubParen(str, startIdx) {
       continue;
     }
     if (ch === '\\' && i + 1 < str.length) {
+      i += 1;
+      continue;
+    }
+    if (ch === '$' && str[i + 1] === "'") {
+      q = "$'";
       i += 1;
       continue;
     }
@@ -813,6 +866,17 @@ function splitShellSegmentsWithMeta(commandLine) {
       continue;
     }
 
+    if (quote === "$'") {
+      if (ch === '\\' && i + 1 < commandLine.length) {
+        current += ch + commandLine[i + 1];
+        i += 1;
+        continue;
+      }
+      current += ch;
+      if (ch === "'") quote = null;
+      continue;
+    }
+
     if (quote === '"') {
       if (ch === '\\' && i + 1 < commandLine.length) {
         current += ch + commandLine[i + 1];
@@ -851,6 +915,13 @@ function splitShellSegmentsWithMeta(commandLine) {
       continue;
     }
 
+    if (ch === '$' && commandLine[i + 1] === "'") {
+      quote = "$'";
+      current += "$'";
+      i += 1;
+      continue;
+    }
+
     if (ch === "'" || ch === '"') {
       quote = ch;
       current += ch;
@@ -861,6 +932,18 @@ function splitShellSegmentsWithMeta(commandLine) {
       flush(false, true);
       i += 1;
       continue;
+    }
+
+    if ((ch === '<' || ch === '>') && commandLine[i + 1] === '(') {
+      const endIdx = findClosingCommandSubParen(commandLine, i + 2);
+      if (endIdx >= 0) {
+        const inner = commandLine.slice(i + 2, endIdx);
+        segments.push(...extractNestedCommandSubSegments(inner));
+        current += commandLine.slice(i, endIdx + 1);
+        i = endIdx;
+        continue;
+      }
+      segments.push(...extractNestedCommandSubSegments(commandLine.slice(i + 2)));
     }
 
     if (ch === '`') {
@@ -913,18 +996,104 @@ function splitShellSegmentsWithMeta(commandLine) {
   return segments;
 }
 
-function tokenizeSegment(segment) {
+function decodeAnsiCEscapeAt(str, backslashIdx) {
+  const next = str[backslashIdx + 1];
+  switch (next) {
+    case 'a':
+      return { value: '\x07', advance: 1 };
+    case 'b':
+      return { value: '\b', advance: 1 };
+    case 'e':
+    case 'E':
+      return { value: '\x1b', advance: 1 };
+    case 'f':
+      return { value: '\f', advance: 1 };
+    case 'n':
+      return { value: '\n', advance: 1 };
+    case 'r':
+      return { value: '\r', advance: 1 };
+    case 't':
+      return { value: '\t', advance: 1 };
+    case 'v':
+      return { value: '\v', advance: 1 };
+    case '\\':
+      return { value: '\\', advance: 1 };
+    case "'":
+      return { value: "'", advance: 1 };
+    case '"':
+      return { value: '"', advance: 1 };
+    case '?':
+      return { value: '?', advance: 1 };
+    case 'x': {
+      const m = /^[0-9a-fA-F]{1,2}/.exec(str.slice(backslashIdx + 2));
+      if (m) {
+        return {
+          value: String.fromCharCode(parseInt(m[0], 16)),
+          advance: 1 + m[0].length,
+        };
+      }
+      return { value: '\\x', advance: 1 };
+    }
+    case 'u': {
+      const m = /^[0-9a-fA-F]{1,4}/.exec(str.slice(backslashIdx + 2));
+      if (m) {
+        return {
+          value: String.fromCodePoint(parseInt(m[0], 16)),
+          advance: 1 + m[0].length,
+        };
+      }
+      return { value: '\\u', advance: 1 };
+    }
+    case 'U': {
+      const m = /^[0-9a-fA-F]{1,8}/.exec(str.slice(backslashIdx + 2));
+      if (m) {
+        const cp = parseInt(m[0], 16);
+        if (cp <= 0x10ffff) {
+          return {
+            value: String.fromCodePoint(cp),
+            advance: 1 + m[0].length,
+          };
+        }
+        return { value: `\\U${m[0]}`, advance: 1 + m[0].length };
+      }
+      return { value: '\\U', advance: 1 };
+    }
+    case 'c': {
+      if (backslashIdx + 2 < str.length) {
+        const ctrlCode = str.charCodeAt(backslashIdx + 2) & 0x1f;
+        return { value: String.fromCharCode(ctrlCode), advance: 2 };
+      }
+      return { value: '\\c', advance: 1 };
+    }
+    default: {
+      if (next >= '0' && next <= '7') {
+        const m = /^[0-7]{1,3}/.exec(str.slice(backslashIdx + 1));
+        if (m) {
+          return {
+            value: String.fromCharCode(parseInt(m[0], 8) & 0xff),
+            advance: m[0].length,
+          };
+        }
+      }
+      return { value: `\\${next}`, advance: 1 };
+    }
+  }
+}
+
+function tokenizeSegmentMeta(segment) {
   const tokens = [];
   let current = '';
   let quote = null;
   let hadToken = false;
+  let currentHasQuoteOrEscape = false;
 
   const pushCurrent = () => {
     if (hadToken || current.length > 0) {
-      tokens.push(current);
+      tokens.push({ text: current, isRedirOp: false });
     }
     current = '';
     hadToken = false;
+    currentHasQuoteOrEscape = false;
   };
 
   for (let i = 0; i < segment.length; i += 1) {
@@ -936,6 +1105,22 @@ function tokenizeSegment(segment) {
         current += ch;
       }
       hadToken = true;
+      currentHasQuoteOrEscape = true;
+      continue;
+    }
+
+    if (quote === "$'") {
+      if (ch === '\\' && i + 1 < segment.length) {
+        const decoded = decodeAnsiCEscapeAt(segment, i);
+        current += decoded.value;
+        i += decoded.advance;
+      } else if (ch === "'") {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      hadToken = true;
+      currentHasQuoteOrEscape = true;
       continue;
     }
 
@@ -949,6 +1134,7 @@ function tokenizeSegment(segment) {
         current += ch;
       }
       hadToken = true;
+      currentHasQuoteOrEscape = true;
       continue;
     }
 
@@ -956,12 +1142,73 @@ function tokenizeSegment(segment) {
       current += segment[i + 1];
       i += 1;
       hadToken = true;
+      currentHasQuoteOrEscape = true;
+      continue;
+    }
+
+    if (ch === '$' && segment[i + 1] === "'") {
+      quote = "$'";
+      hadToken = true;
+      currentHasQuoteOrEscape = true;
+      i += 1;
       continue;
     }
 
     if (ch === "'" || ch === '"') {
       quote = ch;
       hadToken = true;
+      currentHasQuoteOrEscape = true;
+      continue;
+    }
+
+    if (ch === '&' && segment[i + 1] === '>') {
+      if (hadToken || current.length > 0) {
+        pushCurrent();
+      }
+      const op = segment[i + 2] === '>' ? '&>>' : '&>';
+      tokens.push({ text: op, isRedirOp: true });
+      i += op.length - 1;
+      continue;
+    }
+
+    if ((ch === '>' || ch === '<') && segment[i + 1] === '(') {
+      const endIdx = findClosingCommandSubParen(segment, i + 2);
+      if (endIdx >= 0) {
+        current += segment.slice(i, endIdx + 1);
+        hadToken = true;
+        currentHasQuoteOrEscape = true;
+        i = endIdx;
+        continue;
+      }
+    }
+
+    if ((ch === '>' || ch === '<') && segment[i + 1] !== '(') {
+      let fdPrefix = '';
+      if (!currentHasQuoteOrEscape && current.length > 0 && /^\d+$/.test(current)) {
+        fdPrefix = current;
+        current = '';
+        hadToken = false;
+      } else if (hadToken || current.length > 0) {
+        pushCurrent();
+      }
+
+      let op = ch;
+      if (ch === '>') {
+        const next = segment[i + 1];
+        if (next === '>' || next === '|' || next === '&') {
+          op = `>${next}`;
+        }
+      } else {
+        const three = segment.slice(i, i + 3);
+        const next = segment[i + 1];
+        if (three === '<<<' || three === '<<-') {
+          op = three;
+        } else if (next === '<' || next === '>' || next === '&') {
+          op = `<${next}`;
+        }
+      }
+      tokens.push({ text: `${fdPrefix}${op}`, isRedirOp: true });
+      i += op.length - 1;
       continue;
     }
 
@@ -976,6 +1223,30 @@ function tokenizeSegment(segment) {
 
   pushCurrent();
   return tokens;
+}
+
+function tokenizeSegment(segment) {
+  return tokenizeSegmentMeta(segment).map((t) => t.text);
+}
+
+function stripRedirections(metaTokens) {
+  const tokens = [];
+  const redirs = [];
+  for (let i = 0; i < metaTokens.length; i += 1) {
+    const item = metaTokens[i];
+    if (item.isRedirOp) {
+      const next = metaTokens[i + 1];
+      if (next && !next.isRedirOp) {
+        redirs.push({ op: item.text, target: next.text });
+        i += 1;
+      } else {
+        redirs.push({ op: item.text, target: '' });
+      }
+      continue;
+    }
+    tokens.push(item.text);
+  }
+  return { tokens, redirs };
 }
 
 function validateEnvSplitStringPayload(payload, depth, hasRemaining = false) {
@@ -1004,7 +1275,11 @@ function validateEnvSplitStringPayload(payload, depth, hasRemaining = false) {
   return null;
 }
 
-function stripCommandPrefixes(rawTokens, depth = 0) {
+function hasDynamicShellExpansion(str) {
+  return Boolean(str) && (SHELL_POSITIONAL_OR_VAR_RE.test(str) || /\$\(|`/.test(str));
+}
+
+function stripCommandPrefixes(rawTokens, depth = 0, redirs = []) {
   if (depth > MAX_SHELL_RECURSION_DEPTH) {
     return {
       tokens: [],
@@ -1040,6 +1315,15 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
     }
     const base = tok.split('/').pop() ?? tok;
     if (WRAPPER_COMMANDS.has(base)) {
+      if (
+        base === 'exec' &&
+        redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op) && !(r.op === '<' && r.target === '/dev/null'))
+      ) {
+        return {
+          tokens: [],
+          error: "forbidden 'exec' with input redirection",
+        };
+      }
       idx += 1;
       const envSplitTokens = [];
       while (idx < tokens.length) {
@@ -1141,7 +1425,7 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
           firstNonAssign && firstNonAssign.startsWith('-')
             ? ['env', ...envSplitTokens, ...remaining]
             : [...envSplitTokens, ...remaining];
-        return stripCommandPrefixes(spliced, depth + 1);
+        return stripCommandPrefixes(spliced, depth + 1, redirs);
       }
       continue;
     }
@@ -1153,6 +1437,7 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
 function isDangerousRmTarget(rawTarget) {
   if (!rawTarget) return true;
   const trimmed = rawTarget.trim();
+  if (hasDynamicShellExpansion(trimmed)) return true;
   if (trimmed === '/' || /^\/+\*?$/.test(trimmed)) return true;
   if (trimmed === '~' || trimmed.startsWith('~/')) return true;
   if (/^\$\{?HOME\}?(?:\/|$)/.test(trimmed)) return true;
@@ -1197,15 +1482,7 @@ function hasExplicitSafeCargoSubcommand(cargoTokens) {
   return hasInfoFlag || SAFE_CARGO_SUBCOMMANDS.has(cargoSub);
 }
 
-const NPM_KNOWN_BOOLEAN_FLAGS = new Set([
-  '-s',
-  '--silent',
-  '-q',
-  '--quiet',
-  '-d',
-  '-dd',
-  '-ddd',
-  '--verbose',
+const NPM_BOOLEAN_CONFIG_FLAGS = new Set([
   '-g',
   '--global',
   '-p',
@@ -1218,10 +1495,9 @@ const NPM_KNOWN_BOOLEAN_FLAGS = new Set([
   '--yes',
   '-f',
   '--force',
-  '-v',
-  '--version',
-  '-h',
-  '--help',
+  '-a',
+  '--all',
+  '--verbose',
   '--ignore-scripts',
   '--offline',
   '--prefer-offline',
@@ -1231,21 +1507,131 @@ const NPM_KNOWN_BOOLEAN_FLAGS = new Set([
   '--include-workspace-root',
   '--if-present',
   '--dry-run',
+  '--allow-same-version',
+  '--allow-scripts-pending',
+  '--allow-scripts-pin',
+  '--audit',
+  '--bin-links',
+  '--bypass-2fa',
+  '--commit-hooks',
+  '--dangerously-allow-all-scripts',
+  '--description',
+  '--dev',
+  '--diff-ignore-all-space',
+  '--diff-name-only',
+  '--diff-no-prefix',
+  '--diff-text',
+  '--engine-strict',
+  '--expect-results',
+  '--foreground-scripts',
+  '--format-package-lock',
+  '--fund',
+  '--git-tag-version',
+  '--global-style',
+  '--include-attestations',
+  '--include-staged',
+  '--init-private',
+  '--install-links',
+  '--legacy-bundling',
+  '--legacy-peer-deps',
+  '--link',
+  '--omit-lockfile-registry-resolved',
+  '--optional',
+  '--package-lock',
+  '--package-lock-only',
+  '--packages-all',
+  '--prefer-dedupe',
+  '--production',
+  '--progress',
+  '--provenance',
+  '--read-only',
+  '--rebuild-bundle',
+  '--save',
+  '--save-bundle',
+  '--save-dev',
+  '--save-exact',
+  '--save-optional',
+  '--save-peer',
+  '--save-prod',
+  '--shrinkwrap',
+  '--sign-git-commit',
+  '--sign-git-tag',
+  '--strict-allow-scripts',
+  '--strict-peer-deps',
+  '--strict-ssl',
+  '--timing',
+  '--unicode',
+  '--update-notifier',
+  '--workspaces-update',
+]);
+
+const NPM_KNOWN_BOOLEAN_FLAGS = new Set([
+  '-s',
+  '--silent',
+  '-q',
+  '--quiet',
+  '-d',
+  '-dd',
+  '-ddd',
+  '-v',
+  '--version',
+  '-h',
+  '--help',
+  '--usage',
+  '--versions',
   '--no-audit',
   '--no-fund',
   '--no-save',
   '--no-package-lock',
   '--color',
   '--no-color',
+  ...NPM_BOOLEAN_CONFIG_FLAGS,
 ]);
+
+const NPM_SHORT_BOOL_CHARS = new Set(['s', 'q', 'd', 'g', 'p', 'l', 'j', 'y', 'f', 'v', 'h', 'a']);
+
+function isKnownNpmBooleanOrShortFlag(tok) {
+  if (NPM_KNOWN_BOOLEAN_FLAGS.has(tok)) return true;
+  if (/^-[A-Za-z]+$/.test(tok)) {
+    return [...tok.slice(1)].every((ch) => NPM_SHORT_BOOL_CHARS.has(ch));
+  }
+  return false;
+}
+
+function parseNpmCallFlag(tokens, idx) {
+  const tok = tokens[idx];
+  if (tok === '-c' || tok === '--call' || /^-[A-Za-z]*c$/.test(tok)) {
+    return { matched: true, payload: tokens[idx + 1] ?? '', step: 2 };
+  }
+  if (tok.startsWith('--call=') || /^-[A-Za-z]*c=.*$/.test(tok)) {
+    return { matched: true, payload: tok.slice(tok.indexOf('=') + 1), step: 1 };
+  }
+  return { matched: false, payload: '', step: 1 };
+}
 
 function consumesNpmFlagValue(tokens, idx, valueFlags) {
   const tok = tokens[idx];
+  const next = tokens[idx + 1];
+  if (valueFlags.has(tok)) {
+    return true;
+  }
   if (tok === '--color') {
-    const next = tokens[idx + 1];
     return next === 'always' || next === 'true' || next === 'false';
   }
-  return valueFlags.has(tok);
+  if (NPM_BOOLEAN_CONFIG_FLAGS.has(tok)) {
+    return next === 'true' || next === 'false';
+  }
+  if (/^-[A-Za-z]{2,}$/.test(tok)) {
+    const prefix = tok.slice(1, -1);
+    const last = tok[tok.length - 1];
+    const allPrefixBool = [...prefix].every(
+      (ch) => NPM_SHORT_BOOL_CHARS.has(ch) && !valueFlags.has(`-${ch}`),
+    );
+    if (allPrefixBool && valueFlags.has(`-${last}`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function containsAnyPlaceholder(str, placeholders) {
@@ -1263,6 +1649,7 @@ function parseShellInvocationFlags(tokens) {
   let hasSFlag = false;
   let hasInfoFlag = false;
   let hasStdinRedir = false;
+  let hasExpandAliasesOpt = false;
   let argIdx = 1;
 
   while (argIdx < tokens.length) {
@@ -1272,14 +1659,14 @@ function parseShellInvocationFlags(tokens) {
       break;
     }
     if (STANDALONE_REDIR_RE.test(tok)) {
-      if (/^(?:0?<<<|0?<<-?|0?<)$/.test(tok)) {
+      if (INPUT_REDIR_OP_RE.test(tok)) {
         hasStdinRedir = true;
       }
       argIdx += 2;
       continue;
     }
     if (ATTACHED_REDIR_RE.test(tok)) {
-      if (/^(?:0?<<<|0?<<-?|0?<)/.test(tok)) {
+      if (/^(?:\d*)(?:<<<|<<-|<<|<&|<>|<)/.test(tok)) {
         hasStdinRedir = true;
       }
       argIdx += 1;
@@ -1310,6 +1697,7 @@ function parseShellInvocationFlags(tokens) {
     }
     if (tok.startsWith('-') && tok.length > 1) {
       let consumeArgs = 0;
+      let hasBigO = false;
       for (const ch of tok.slice(1)) {
         if (ch === 'c') {
           hasCFlag = true;
@@ -1317,6 +1705,14 @@ function parseShellInvocationFlags(tokens) {
           hasSFlag = true;
         } else if (ch === 'o' || ch === 'O') {
           consumeArgs += 1;
+          if (ch === 'O') hasBigO = true;
+        }
+      }
+      if (hasBigO) {
+        for (let k = 1; k <= consumeArgs; k += 1) {
+          if (tokens[argIdx + k] === 'expand_aliases') {
+            hasExpandAliasesOpt = true;
+          }
         }
       }
       argIdx += 1 + consumeArgs;
@@ -1325,7 +1721,7 @@ function parseShellInvocationFlags(tokens) {
     break;
   }
 
-  return { hasCFlag, hasSFlag, hasInfoFlag, hasStdinRedir, argIdx };
+  return { hasCFlag, hasSFlag, hasInfoFlag, hasStdinRedir, hasExpandAliasesOpt, argIdx };
 }
 
 function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindContext = false) {
@@ -1366,6 +1762,9 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
       if (SHELL_POSITIONAL_PARAM_RE.test(subScript)) {
         return `forbidden '${contextLabel} ${subBase} -c' with positional parameter expansion in inline script`;
       }
+      if (IMPLICIT_FOR_LOOP_RE.test(subScript)) {
+        return `forbidden '${contextLabel} ${subBase} -c' with implicit positional 'for' loop in inline script`;
+      }
     } else if (!isFindContext && placeholders.size > 0) {
       const rest = subToks.slice(parsed.argIdx);
       if (rest.some((arg) => containsAnyPlaceholder(arg, placeholders))) {
@@ -1397,19 +1796,18 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
     let subIdx = -1;
     for (let i = 1; i < subToks.length; i += 1) {
       const st = subToks[i];
-      if (st === '--') break;
-      if (st === '-c' || st === '--call') {
-        if (containsAnyPlaceholder(subToks[i + 1] ?? '', placeholders)) {
-          return `forbidden '${contextLabel} npm' with placeholder '-c' script`;
+      if (st === '--') {
+        if (i + 1 < subToks.length) {
+          subIdx = i + 1;
         }
-        i += 1;
-        continue;
+        break;
       }
-      if (st.startsWith('-c=') || st.startsWith('--call=')) {
-        const payload = st.slice(st.indexOf('=') + 1);
-        if (containsAnyPlaceholder(payload, placeholders)) {
+      const callFlag = parseNpmCallFlag(subToks, i);
+      if (callFlag.matched) {
+        if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
           return `forbidden '${contextLabel} npm' with placeholder '-c' script`;
         }
+        i += callFlag.step - 1;
         continue;
       }
       if (consumesNpmFlagValue(subToks, i, NPM_PRE_SUBCMD_VALUE_FLAGS)) {
@@ -1452,20 +1850,13 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
           execCmd = subToks[j + 1] ?? '';
           break;
         }
-        if (st === '-c' || st === '--call') {
+        const callFlag = parseNpmCallFlag(subToks, j);
+        if (callFlag.matched) {
           hasCallPayload = true;
-          if (containsAnyPlaceholder(subToks[j + 1] ?? '', placeholders)) {
+          if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
             return `forbidden '${contextLabel} npm ${npmSub}' with placeholder '-c' script`;
           }
-          j += 1;
-          continue;
-        }
-        if (st.startsWith('-c=') || st.startsWith('--call=')) {
-          hasCallPayload = true;
-          const payload = st.slice(st.indexOf('=') + 1);
-          if (containsAnyPlaceholder(payload, placeholders)) {
-            return `forbidden '${contextLabel} npm ${npmSub}' with placeholder '-c' script`;
-          }
+          j += callFlag.step - 1;
           continue;
         }
         if (consumesNpmFlagValue(subToks, j, NPM_EXEC_VALUE_FLAGS)) {
@@ -1491,21 +1882,13 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
         idx += 1;
         break;
       }
-      if (st === '-c' || st === '--call') {
+      const callFlag = parseNpmCallFlag(subToks, idx);
+      if (callFlag.matched) {
         hasCallPayload = true;
-        if (containsAnyPlaceholder(subToks[idx + 1] ?? '', placeholders)) {
+        if (containsAnyPlaceholder(callFlag.payload, placeholders)) {
           return `forbidden '${contextLabel} npx' with placeholder '-c' script`;
         }
-        idx += 2;
-        continue;
-      }
-      if (st.startsWith('-c=') || st.startsWith('--call=')) {
-        hasCallPayload = true;
-        const payload = st.slice(st.indexOf('=') + 1);
-        if (containsAnyPlaceholder(payload, placeholders)) {
-          return `forbidden '${contextLabel} npx' with placeholder '-c' script`;
-        }
-        idx += 1;
+        idx += callFlag.step;
         continue;
       }
       if (consumesNpmFlagValue(subToks, idx, NPX_VALUE_FLAGS)) {
@@ -1555,16 +1938,20 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
   return null;
 }
 
-function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = false) {
+function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = false, redirs = []) {
   if (depth > MAX_SHELL_RECURSION_DEPTH) {
     return `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`;
   }
-  const stripped = stripCommandPrefixes(rawTokens, depth);
+  const stripped = stripCommandPrefixes(rawTokens, depth, redirs);
   if (stripped.error) return stripped.error;
   const tokens = stripped.tokens;
   if (tokens.length === 0) return null;
 
   const cmd = tokens[0];
+  if (hasDynamicShellExpansion(cmd)) {
+    return `forbidden dynamic command word '${cmd}'`;
+  }
+
   const baseCmd = cmd.split('/').pop() ?? cmd;
 
   if (baseCmd === 'export' || baseCmd === 'declare' || baseCmd === 'local' || baseCmd === 'typeset') {
@@ -1575,14 +1962,84 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
     }
   }
 
+  if (baseCmd === 'shopt') {
+    const rest = tokens.slice(1);
+    const hasEnableFlag = rest.some((t) => t === '-s' || /^-[A-Za-z]*s[A-Za-z]*$/.test(t));
+    if (hasEnableFlag && rest.includes('expand_aliases')) {
+      return "forbidden 'shopt -s expand_aliases' (aliases can obscure executed commands)";
+    }
+  }
+
+  if (baseCmd === 'alias') {
+    for (const arg of tokens.slice(1)) {
+      if (arg === '-p' || arg === '--') continue;
+      const eqIdx = arg.indexOf('=');
+      if (eqIdx > 0) {
+        const aliasPayload = arg.slice(eqIdx + 1);
+        if (aliasPayload.trim().length > 0) {
+          const subRes = validateCommand(aliasPayload, depth + 1);
+          if (!subRes.ok) {
+            return `forbidden 'alias' command: ${subRes.reason}`;
+          }
+        }
+      }
+    }
+  }
+
+  if (baseCmd === 'trap') {
+    let isPrintOrList = false;
+    let idx = 1;
+    while (idx < tokens.length) {
+      const tok = tokens[idx];
+      if (tok === '--') {
+        idx += 1;
+        break;
+      }
+      if (tok === '-l' || tok === '-p' || /^-[lp]+$/.test(tok)) {
+        isPrintOrList = true;
+        idx += 1;
+        continue;
+      }
+      if (tok.startsWith('-') && tok.length > 1) {
+        idx += 1;
+        continue;
+      }
+      break;
+    }
+    const trapArgs = tokens.slice(idx);
+    if (!isPrintOrList && trapArgs.length > 0) {
+      const action = trapArgs[0];
+      const isSignalResetOnly =
+        trapArgs.length === 1 && /^(?:[0-9]+|(?:SIG)?[A-Z0-9_+]+)$/.test(action);
+      if (action !== '-' && action.trim().length > 0 && !isSignalResetOnly) {
+        const subRes = validateCommand(action, depth + 1);
+        if (!subRes.ok) {
+          return `forbidden 'trap' handler command: ${subRes.reason}`;
+        }
+      }
+    }
+  }
+
   if (baseCmd === 'bash' || baseCmd === 'sh' || baseCmd === 'zsh') {
     const parsed = parseShellInvocationFlags(tokens);
-    const { hasCFlag, hasSFlag, hasInfoFlag, argIdx } = parsed;
+    const { hasCFlag, hasSFlag, hasInfoFlag, hasExpandAliasesOpt, argIdx } = parsed;
     let { hasStdinRedir } = parsed;
 
+    if (hasExpandAliasesOpt) {
+      return `forbidden '${baseCmd} -O expand_aliases' option`;
+    }
+
     if (hasCFlag) {
+      if (
+        redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op) && !(r.op === '<' && r.target === '/dev/null'))
+      ) {
+        return `forbidden un-inspected '${baseCmd} -c' input redirection`;
+      }
       if (argIdx < tokens.length || tokens.length > 2) {
         const subScript = argIdx < tokens.length ? tokens[argIdx] : tokens[tokens.length - 1];
+        if (IMPLICIT_FOR_LOOP_RE.test(subScript)) {
+          return `forbidden '${baseCmd} -c' with implicit positional 'for' loop in inline script`;
+        }
         if (subScript.trim().length > 0) {
           const subRes = validateCommand(subScript, depth + 1);
           if (!subRes.ok) {
@@ -1591,19 +2048,22 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         }
       }
     } else if (!hasInfoFlag) {
+      if (redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op))) {
+        hasStdinRedir = true;
+      }
       const rest = tokens.slice(argIdx);
       const positionalArgs = [];
       for (let i = 0; i < rest.length; i += 1) {
         const t = rest[i];
         if (STANDALONE_REDIR_RE.test(t)) {
-          if (/^(?:0?<<<|0?<<-?|0?<)$/.test(t)) {
+          if (INPUT_REDIR_OP_RE.test(t)) {
             hasStdinRedir = true;
           }
           i += 1;
           continue;
         }
         if (ATTACHED_REDIR_RE.test(t)) {
-          if (/^(?:0?<<<|0?<<-?|0?<)/.test(t)) {
+          if (/^(?:\d*)(?:<<<|<<-|<<|<&|<>|<)/.test(t)) {
             hasStdinRedir = true;
           }
           continue;
@@ -1611,17 +2071,26 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         positionalArgs.push(t);
       }
 
-      if (pipedIn || hasSFlag || hasStdinRedir || positionalArgs.length === 0) {
-        return `forbidden un-inspected '${baseCmd}' stdin/pipe/process-substitution execution`;
+      if (
+        pipedIn ||
+        hasSFlag ||
+        hasStdinRedir ||
+        positionalArgs.length === 0 ||
+        positionalArgs.some((arg) => FD_SCRIPT_PATH_RE.test(arg))
+      ) {
+        return `forbidden un-inspected '${baseCmd}' stdin/pipe/fd/process-substitution execution`;
       }
     }
   }
 
   if (baseCmd === 'source' || baseCmd === '.') {
-    const hasStdin = tokens
-      .slice(1)
-      .some((t) => /^(?:0?<<<|0?<<-?|0?<)$/.test(t) || /^(?:0?<<<|0?<<-?|0?<).+/.test(t));
-    if (pipedIn || hasStdin || tokens.length <= 1) {
+    const hasInputRedir =
+      redirs.some((r) => INPUT_REDIR_OP_RE.test(r.op)) ||
+      tokens
+        .slice(1)
+        .some((t) => INPUT_REDIR_OP_RE.test(t) || /^(?:\d*)(?:<<<|<<-|<<|<&|<>|<).+/.test(t));
+    const hasFdPath = tokens.slice(1).some((t) => FD_SCRIPT_PATH_RE.test(t));
+    if (pipedIn || hasInputRedir || hasFdPath || tokens.length <= 1) {
       return `forbidden un-inspected '${baseCmd}' input`;
     }
   }
@@ -1731,6 +2200,9 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
       if (strippedSub.error) {
         return `forbidden nested 'xargs' command: ${strippedSub.error}`;
       }
+      if (strippedSub.tokens.length === 0) {
+        return "forbidden 'xargs' wrapper invocation with no explicit target command";
+      }
       const dynamicReason = checkDynamicSubcommand(strippedSub.tokens, xargsPlaceholders, 'xargs', false);
       if (dynamicReason) {
         return dynamicReason;
@@ -1776,14 +2248,16 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
     const preCallPayloads = [];
     for (let i = 1; i < tokens.length; i += 1) {
       const tok = tokens[i];
-      if (tok === '--') break;
-      if (tok === '-c' || tok === '--call') {
-        preCallPayloads.push(tokens[i + 1] ?? '');
-        i += 1;
-        continue;
+      if (tok === '--') {
+        if (i + 1 < tokens.length) {
+          subIdx = i + 1;
+        }
+        break;
       }
-      if (tok.startsWith('-c=') || tok.startsWith('--call=')) {
-        preCallPayloads.push(tok.slice(tok.indexOf('=') + 1));
+      const callFlag = parseNpmCallFlag(tokens, i);
+      if (callFlag.matched) {
+        preCallPayloads.push(callFlag.payload);
+        i += callFlag.step - 1;
         continue;
       }
       if (consumesNpmFlagValue(tokens, i, NPM_PRE_SUBCMD_VALUE_FLAGS)) {
@@ -1791,7 +2265,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         continue;
       }
       if (tok.startsWith('-')) {
-        if (!tok.includes('=') && !NPM_KNOWN_BOOLEAN_FLAGS.has(tok) && !tok.startsWith('--no-')) {
+        if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok) && !tok.startsWith('--no-')) {
           sawUnrecognizedPreFlag = true;
         }
         continue;
@@ -1813,9 +2287,12 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
     if (NPM_RUN_SUBCOMMANDS.has(subCmd)) {
       let scriptName = '';
+      let scriptIdx = -1;
+      let sawUnrecognizedRunFlag = false;
       for (let j = subIdx + 1; j < tokens.length; j += 1) {
         const tok = tokens[j];
         if (tok === '--') {
+          scriptIdx = j + 1;
           scriptName = tokens[j + 1] ?? '';
           break;
         }
@@ -1824,41 +2301,61 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           continue;
         }
         if (tok.startsWith('-')) {
+          if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok) && !tok.startsWith('--no-')) {
+            sawUnrecognizedRunFlag = true;
+          }
           continue;
         }
+        scriptIdx = j;
         scriptName = tok;
         break;
       }
       if (FORBIDDEN_NPM_SCRIPTS.has(scriptName)) {
         return `forbidden desktop/dev script 'npm ${subCmd} ${scriptName}'`;
       }
+      if (hasDynamicShellExpansion(scriptName)) {
+        return `forbidden dynamic script name '${scriptName}' in 'npm ${subCmd}'`;
+      }
+      if (sawUnrecognizedRunFlag && scriptIdx >= 0) {
+        for (let k = scriptIdx + 1; k < tokens.length; k += 1) {
+          const tok = tokens[k];
+          if (tok === '--') {
+            const afterDash = tokens[k + 1] ?? '';
+            if (FORBIDDEN_NPM_SCRIPTS.has(afterDash)) {
+              return `forbidden desktop/dev script 'npm ${subCmd} ${afterDash}'`;
+            }
+            if (hasDynamicShellExpansion(afterDash)) {
+              return `forbidden dynamic script name '${afterDash}' in 'npm ${subCmd}'`;
+            }
+            break;
+          }
+          if (tok.startsWith('-')) continue;
+          if (FORBIDDEN_NPM_SCRIPTS.has(tok)) {
+            return `forbidden desktop/dev script 'npm ${subCmd} ${tok}'`;
+          }
+          if (hasDynamicShellExpansion(tok)) {
+            return `forbidden dynamic script name '${tok}' in 'npm ${subCmd}'`;
+          }
+        }
+      }
     } else if (subCmd === 'exec' || subCmd === 'x') {
       let cmdIdx = -1;
+      let sawUnrecognizedExecFlag = false;
       for (let j = subIdx + 1; j < tokens.length; j += 1) {
         const tok = tokens[j];
         if (tok === '--') {
           cmdIdx = j + 1;
           break;
         }
-        if (tok === '-c' || tok === '--call') {
-          const callPayload = tokens[j + 1] ?? '';
-          if (callPayload.trim().length > 0) {
-            const subRes = validateCommand(callPayload, depth + 1);
+        const callFlag = parseNpmCallFlag(tokens, j);
+        if (callFlag.matched) {
+          if (callFlag.payload.trim().length > 0) {
+            const subRes = validateCommand(callFlag.payload, depth + 1);
             if (!subRes.ok) {
               return `forbidden nested 'npm ${subCmd} -c' command: ${subRes.reason}`;
             }
           }
-          j += 1;
-          continue;
-        }
-        if (tok.startsWith('-c=') || tok.startsWith('--call=')) {
-          const callPayload = tok.slice(tok.indexOf('=') + 1);
-          if (callPayload.trim().length > 0) {
-            const subRes = validateCommand(callPayload, depth + 1);
-            if (!subRes.ok) {
-              return `forbidden nested 'npm ${subCmd} -c' command: ${subRes.reason}`;
-            }
-          }
+          j += callFlag.step - 1;
           continue;
         }
         if (consumesNpmFlagValue(tokens, j, NPM_EXEC_VALUE_FLAGS)) {
@@ -1866,6 +2363,9 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           continue;
         }
         if (tok.startsWith('-')) {
+          if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok) && !tok.startsWith('--no-')) {
+            sawUnrecognizedExecFlag = true;
+          }
           continue;
         }
         cmdIdx = j;
@@ -1879,10 +2379,51 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           return nestedReason;
         }
       }
-    } else if (sawUnrecognizedPreFlag && subIdx >= 0) {
-      for (let k = subIdx + 1; k < tokens.length; k += 1) {
+      if (sawUnrecognizedExecFlag) {
+        for (let k = subIdx + 1; k < tokens.length; k += 1) {
+          const tok = tokens[k];
+          if (tok === '--') {
+            if (k + 1 < tokens.length) {
+              const nestedReason = checkTokensSafety(tokens.slice(k + 1), depth + 1);
+              if (nestedReason) return nestedReason;
+            }
+            break;
+          }
+          const callFlag = parseNpmCallFlag(tokens, k);
+          if (callFlag.matched) {
+            if (callFlag.payload.trim().length > 0) {
+              const subRes = validateCommand(callFlag.payload, depth + 1);
+              if (!subRes.ok) {
+                return `forbidden nested 'npm ${subCmd} -c' command: ${subRes.reason}`;
+              }
+            }
+            k += callFlag.step - 1;
+          }
+        }
+      }
+    } else if (sawUnrecognizedPreFlag) {
+      for (let k = 1; k < tokens.length; k += 1) {
         const tok = tokens[k];
-        if (tok === '--') break;
+        if (tok === '--') {
+          if (k + 1 < tokens.length) {
+            const fallbackReason = checkTokensSafety(['npm', ...tokens.slice(k + 1)], depth + 1);
+            if (fallbackReason) {
+              return fallbackReason;
+            }
+          }
+          break;
+        }
+        const callFlag = parseNpmCallFlag(tokens, k);
+        if (callFlag.matched) {
+          if (callFlag.payload.trim().length > 0) {
+            const subRes = validateCommand(callFlag.payload, depth + 1);
+            if (!subRes.ok) {
+              return `forbidden nested 'npm -c' command: ${subRes.reason}`;
+            }
+          }
+          k += callFlag.step - 1;
+          continue;
+        }
         if (NPM_RUN_SUBCOMMANDS.has(tok) || tok === 'exec' || tok === 'x') {
           const fallbackReason = checkTokensSafety(['npm', ...tokens.slice(k)], depth + 1);
           if (fallbackReason) {
@@ -1895,32 +2436,22 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
   if (baseCmd === 'npx') {
     let cmdIdx = 1;
+    let sawUnrecognizedNpxFlag = false;
     while (cmdIdx < tokens.length) {
       const tok = tokens[cmdIdx];
       if (tok === '--') {
         cmdIdx += 1;
         break;
       }
-      if (tok === '-c' || tok === '--call') {
-        const callPayload = tokens[cmdIdx + 1] ?? '';
-        if (callPayload.trim().length > 0) {
-          const subRes = validateCommand(callPayload, depth + 1);
+      const callFlag = parseNpmCallFlag(tokens, cmdIdx);
+      if (callFlag.matched) {
+        if (callFlag.payload.trim().length > 0) {
+          const subRes = validateCommand(callFlag.payload, depth + 1);
           if (!subRes.ok) {
             return `forbidden nested 'npx -c' command: ${subRes.reason}`;
           }
         }
-        cmdIdx += 2;
-        continue;
-      }
-      if (tok.startsWith('-c=') || tok.startsWith('--call=')) {
-        const callPayload = tok.slice(tok.indexOf('=') + 1);
-        if (callPayload.trim().length > 0) {
-          const subRes = validateCommand(callPayload, depth + 1);
-          if (!subRes.ok) {
-            return `forbidden nested 'npx -c' command: ${subRes.reason}`;
-          }
-        }
-        cmdIdx += 1;
+        cmdIdx += callFlag.step;
         continue;
       }
       if (consumesNpmFlagValue(tokens, cmdIdx, NPX_VALUE_FLAGS)) {
@@ -1928,6 +2459,9 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         continue;
       }
       if (tok.startsWith('-')) {
+        if (!tok.includes('=') && !isKnownNpmBooleanOrShortFlag(tok) && !tok.startsWith('--no-')) {
+          sawUnrecognizedNpxFlag = true;
+        }
         cmdIdx += 1;
         continue;
       }
@@ -1935,10 +2469,13 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
     }
     const npxCmd = tokens[cmdIdx] ?? '';
     const npxArg = tokens[cmdIdx + 1] ?? '';
-    if (npxCmd === 'tauri' && (npxArg === 'dev' || npxArg === 'build')) {
+    if (npxCmd === 'tauri' && (npxArg === 'dev' || npxArg === 'build' || hasDynamicShellExpansion(npxArg))) {
       return `forbidden desktop command 'npx tauri ${npxArg}'`;
     }
-    if (npxCmd === 'vite' && (cmdIdx + 1 >= tokens.length || npxArg === 'preview')) {
+    if (
+      npxCmd === 'vite' &&
+      (cmdIdx + 1 >= tokens.length || npxArg === 'preview' || hasDynamicShellExpansion(npxArg))
+    ) {
       return `forbidden dev server command 'npx vite${npxArg ? ` ${npxArg}` : ''}'`;
     }
     if (cmdIdx < tokens.length) {
@@ -1947,13 +2484,41 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         return nestedReason;
       }
     }
+    if (sawUnrecognizedNpxFlag) {
+      for (let k = 1; k < tokens.length; k += 1) {
+        const tok = tokens[k];
+        if (tok === '--') {
+          if (k + 1 < tokens.length) {
+            const nestedReason = checkTokensSafety(['npx', ...tokens.slice(k)], depth + 1);
+            if (nestedReason) return nestedReason;
+          }
+          break;
+        }
+        const callFlag = parseNpmCallFlag(tokens, k);
+        if (callFlag.matched) {
+          if (callFlag.payload.trim().length > 0) {
+            const subRes = validateCommand(callFlag.payload, depth + 1);
+            if (!subRes.ok) {
+              return `forbidden nested 'npx -c' command: ${subRes.reason}`;
+            }
+          }
+          k += callFlag.step - 1;
+        }
+      }
+    }
   }
 
-  if (baseCmd === 'tauri' && (tokens[1] === 'dev' || tokens[1] === 'build')) {
+  if (
+    baseCmd === 'tauri' &&
+    (tokens[1] === 'dev' || tokens[1] === 'build' || hasDynamicShellExpansion(tokens[1] ?? ''))
+  ) {
     return `forbidden desktop command 'tauri ${tokens[1]}'`;
   }
 
-  if (baseCmd === 'vite' && (tokens.length === 1 || tokens[1] === 'preview')) {
+  if (
+    baseCmd === 'vite' &&
+    (tokens.length === 1 || tokens[1] === 'preview' || hasDynamicShellExpansion(tokens[1] ?? ''))
+  ) {
     return `forbidden dev server command 'vite${tokens[1] ? ` ${tokens[1]}` : ''}'`;
   }
 
@@ -1976,7 +2541,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
       break;
     }
 
-    if (sub === 'run' || sub === 'r') {
+    if (sub === 'run' || sub === 'r' || hasDynamicShellExpansion(sub)) {
       return "forbidden 'cargo run' invocation (build the release binary first and invoke it directly)";
     }
 
@@ -2031,8 +2596,9 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 }
 
 function checkSegmentSafety(segment, depth = 0, pipedIn = false, endedAtSub = false) {
-  const rawTokens = tokenizeSegment(segment);
-  return checkTokensSafety(rawTokens, depth, pipedIn, endedAtSub);
+  const metaTokens = tokenizeSegmentMeta(segment);
+  const { tokens, redirs } = stripRedirections(metaTokens);
+  return checkTokensSafety(tokens, depth, pipedIn, endedAtSub, redirs);
 }
 
 /**
@@ -2308,6 +2874,32 @@ export function runStartupSelfChecks() {
     'find . -maxdepth 0 -exec sh -c \'eval "$0"\' "cargo run" \\;',
     'CMD="cargo run"; eval "$CMD"',
     "BASH_ENV=<(echo 'cargo run') bash -c 'echo ok'",
+    'cargo</dev/null run',
+    'cargo 2>err.txt run',
+    'npm</dev/null run tauri:dev',
+    'npm run 2>err.txt tauri:dev',
+    'rm>rm_out.txt -rf /',
+    'echo "cargo run" | xargs env',
+    'echo "cargo run" | xargs -I { env -S "{"',
+    'npm -- run tauri:dev',
+    'npm --workspaces false run tauri:dev',
+    'npm run --workspaces false tauri:dev',
+    'npx -yc "cargo run"',
+    'npm exec -yc "cargo run"',
+    'npm --init-author-name foo -c="cargo run" exec',
+    'npm run --init-version 1.0.0 tauri:dev',
+    'bash -c \'"$@"\' _ cargo run',
+    "bash -c '$0 $1' cargo run",
+    'find . -maxdepth 0 -exec sh -c \'for a; do $a; done\' _ "cargo run" \\;',
+    "bash /dev/fd/3 3<<< 'cargo run'",
+    "exec 3<<< 'cargo run'; bash /dev/fd/3",
+    "trap 'cargo run' EXIT",
+    "$'cargo' run",
+    "bash -c $'cargo\\x20run'",
+    "npm run $'tauri\\x3adev'",
+    'CMD="cargo run"; $CMD',
+    'T=/; rm -rf "$T"',
+    "shopt -s expand_aliases\nalias x='cargo run'\nx",
   ];
   for (const cmd of unsafeCmds) {
     if (validateCommand(cmd).ok) {
@@ -2331,17 +2923,25 @@ export function runStartupSelfChecks() {
     'npm -p run check:docs',
     'npm rum check:docs',
     'npm --color always run check:docs',
+    'npm --workspaces run check:docs',
     '{ echo ok; echo done; }',
     'if true; then echo ok; fi',
     '> /dev/null',
     'cat < in.txt',
     'echo ok >| bash',
     '>|/tmp/safe_noclobber echo ok',
+    'echo ok 2>&1 | tee log',
+    'rm -rf src-tauri/target/doc2-gate-neg >| /tmp/rm.log',
     "bash -c - 'echo ok'",
+    "sh -c 'echo $1' _ ok",
     'function safe_fn { echo ok; }; safe_fn',
     'echo hi | xargs -I{} echo {}',
     'echo "--test e2_seam_tests" | xargs cargo test --manifest-path src-tauri/Cargo.toml',
     "find . -name '*.md' -exec echo {} \\;",
+    "trap 'rm -f /tmp/safe.lock' EXIT",
+    'trap - EXIT',
+    "echo $'hello\\nworld'",
+    'RUST_LOG=info echo "$VAR"',
   ];
   for (const cmd of safeCmds) {
     const res = validateCommand(cmd);
