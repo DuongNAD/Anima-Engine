@@ -25,11 +25,73 @@ import { pathToFileURL } from 'node:url';
 const DEFAULT_SUBDIRS = ['docs/tutorials', 'docs/how-to'];
 const ALLOWED_SHELL_LANGS = new Set(['', 'bash', 'sh', 'zsh']);
 const FORBIDDEN_NPM_SCRIPTS = new Set(['tauri:dev', 'tauri:build', 'tauri', 'dev', 'preview']);
-const WRAPPER_COMMANDS = new Set(['env', 'command', 'exec', 'nohup', 'time', 'nice', 'timeout']);
+const WRAPPER_COMMANDS = new Set([
+  'env',
+  'command',
+  'exec',
+  'builtin',
+  'nohup',
+  'time',
+  'nice',
+  'timeout',
+]);
 const MAX_SHELL_RECURSION_DEPTH = 5;
-const ENV_VALUE_FLAGS = new Set(['-u', '--unset', '-C', '--chdir', '--argv0']);
+const ENV_VALUE_FLAGS = new Set(['-u', '--unset', '-C', '--chdir', '-P', '--argv0']);
 const NICE_VALUE_FLAGS = new Set(['-n', '--adjustment']);
 const TIMEOUT_VALUE_FLAGS = new Set(['-k', '--kill-after', '-s', '--signal']);
+const SHELL_COMPOUND_PREFIXES = new Set([
+  '{',
+  '}',
+  'then',
+  'else',
+  'elif',
+  'do',
+  'if',
+  'while',
+  'until',
+  'fi',
+  'done',
+]);
+const STANDALONE_REDIR_RE = /^(?:\d*)(?:>>|>\||>|<>|<<<|<<-|<<|<|&>>|&>|>&|<&)$/;
+const ATTACHED_REDIR_RE = /^(?:\d*(?:>>|>\||>|<>|<<<|<<-|<<|<|>&|<&)|&>>|&>).+$/;
+const SAFE_CARGO_SUBCOMMANDS = new Set([
+  'build',
+  'b',
+  'test',
+  't',
+  'check',
+  'c',
+  'clippy',
+  'fmt',
+  'metadata',
+  'version',
+  'doc',
+  'bench',
+  'tree',
+  'verify-project',
+]);
+const XARGS_VALUE_FLAGS = new Set([
+  '-a',
+  '--arg-file',
+  '-d',
+  '--delimiter',
+  '-E',
+  '--eof',
+  '-I',
+  '--replace',
+  '-J',
+  '-L',
+  '--max-lines',
+  '-n',
+  '--max-args',
+  '-P',
+  '--max-procs',
+  '-R',
+  '-s',
+  '--max-chars',
+  '--process-slot-var',
+]);
+const XARGS_SHORT_VALUE_CHARS = new Set(['a', 'd', 'E', 'I', 'J', 'L', 'n', 'P', 'R', 's']);
 const NPM_VALUE_FLAGS = new Set([
   '--prefix',
   '-C',
@@ -42,6 +104,13 @@ const NPM_VALUE_FLAGS = new Set([
   '--scope',
   '--tag',
   '--script-shell',
+]);
+const NPM_PRE_SUBCMD_VALUE_FLAGS = new Set([
+  ...NPM_VALUE_FLAGS,
+  '--package',
+  '-c',
+  '--call',
+  '--allow-scripts',
 ]);
 const NPM_EXEC_VALUE_FLAGS = new Set([
   ...NPM_VALUE_FLAGS,
@@ -586,6 +655,12 @@ function findClosingCommandSubParen(str, startIdx) {
       q = ch;
       continue;
     }
+    if (ch === '#' && (i === startIdx || /\s|[;|&(]/.test(str[i - 1]))) {
+      const nl = str.indexOf('\n', i + 1);
+      if (nl < 0) return -1;
+      i = nl;
+      continue;
+    }
     if (ch === '$' && str[i + 1] === '(') {
       const innerEnd = findClosingCommandSubParen(str, i + 2);
       if (innerEnd < 0) return -1;
@@ -631,19 +706,27 @@ function extractNestedCommandSubSegments(inner) {
   const logicalLines = stripHeredocsAndComments(inner);
   for (const entry of logicalLines) {
     if (!entry.text.trim()) continue;
-    nested.push(...splitShellSegments(entry.text));
+    nested.push(...splitShellSegmentsWithMeta(entry.text));
   }
   return nested;
 }
 
-function splitShellSegments(commandLine) {
+function splitShellSegmentsWithMeta(commandLine) {
   const segments = [];
   let quote = null;
   let current = '';
+  let nextPipedIn = false;
 
-  const flush = () => {
+  const flush = (setNextPipedIn = false, endedAtSub = false) => {
     const trimmed = current.trim();
-    if (trimmed) segments.push(trimmed);
+    if (trimmed) {
+      segments.push({ text: trimmed, pipedIn: nextPipedIn, endedAtSub });
+      nextPipedIn = setNextPipedIn;
+    } else if (setNextPipedIn) {
+      nextPipedIn = true;
+    } else if (endedAtSub) {
+      nextPipedIn = false;
+    }
     current = '';
   };
 
@@ -701,31 +784,54 @@ function splitShellSegments(commandLine) {
     }
 
     if (ch === '$' && commandLine[i + 1] === '(') {
-      flush();
+      flush(false, true);
       i += 1;
       continue;
     }
 
-    if (ch === '\n' || ch === '`' || ch === ';' || ch === '(' || ch === ')') {
-      flush();
+    if (ch === '`') {
+      flush(false, true);
+      continue;
+    }
+
+    if (ch === '\n' || ch === ';' || ch === '(' || ch === ')') {
+      flush(false, false);
       continue;
     }
 
     if ((ch === '&' && commandLine[i + 1] === '&') || (ch === '|' && commandLine[i + 1] === '|')) {
-      flush();
+      flush(false, false);
       i += 1;
       continue;
     }
 
-    if (ch === '&' || ch === '|') {
-      flush();
+    if (ch === '|' && commandLine[i + 1] === '&') {
+      flush(true, false);
+      i += 1;
+      continue;
+    }
+
+    if (ch === '|') {
+      flush(true, false);
+      continue;
+    }
+
+    if (ch === '&') {
+      const isRedirAmp =
+        commandLine[i + 1] === '>' ||
+        (i > 0 && (commandLine[i - 1] === '>' || commandLine[i - 1] === '<'));
+      if (isRedirAmp) {
+        current += ch;
+        continue;
+      }
+      flush(false, false);
       continue;
     }
 
     current += ch;
   }
 
-  flush();
+  flush(false, false);
   return segments;
 }
 
@@ -794,8 +900,19 @@ function tokenizeSegment(segment) {
   return tokens;
 }
 
-function validateEnvSplitStringPayload(payload, depth) {
+function validateEnvSplitStringPayload(payload, depth, hasRemaining = false) {
   if (payload.trim().length === 0) return null;
+  if (hasRemaining) {
+    const logicalLines = stripHeredocsAndComments(payload);
+    const segments = [];
+    for (const entry of logicalLines) {
+      if (!entry.text.trim()) continue;
+      segments.push(...splitShellSegmentsWithMeta(entry.text));
+    }
+    if (segments.length <= 1) {
+      return null;
+    }
+  }
   const subRes = validateCommand(payload, depth + 1);
   if (!subRes.ok) {
     return `forbidden nested 'env -S' command: ${subRes.reason}`;
@@ -821,7 +938,15 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
   let idx = 0;
   while (idx < tokens.length) {
     const tok = tokens[idx];
-    if (tok === '!' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) {
+    if (SHELL_COMPOUND_PREFIXES.has(tok) || tok === '!' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tok)) {
+      idx += 1;
+      continue;
+    }
+    if (STANDALONE_REDIR_RE.test(tok)) {
+      idx += 2;
+      continue;
+    }
+    if (ATTACHED_REDIR_RE.test(tok)) {
       idx += 1;
       continue;
     }
@@ -830,6 +955,12 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
       idx += 1;
       const envSplitTokens = [];
       while (idx < tokens.length) {
+        if (
+          base === 'env' &&
+          envSplitTokens.some((t) => !t.startsWith('-') && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t))
+        ) {
+          break;
+        }
         const flag = tokens[idx];
         if (flag === '--') {
           idx += 1;
@@ -841,7 +972,7 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
         if (base === 'env') {
           if (flag === '-S' || flag === '--split-string') {
             const payload = tokens[idx + 1] ?? '';
-            const err = validateEnvSplitStringPayload(payload, depth);
+            const err = validateEnvSplitStringPayload(payload, depth, idx + 2 < tokens.length);
             if (err) return { tokens: [], error: err };
             envSplitTokens.push(...tokenizeSegment(payload));
             idx += 2;
@@ -849,7 +980,7 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
           }
           if (flag.startsWith('--split-string=')) {
             const payload = flag.slice('--split-string='.length);
-            const err = validateEnvSplitStringPayload(payload, depth);
+            const err = validateEnvSplitStringPayload(payload, depth, idx + 1 < tokens.length);
             if (err) return { tokens: [], error: err };
             envSplitTokens.push(...tokenizeSegment(payload));
             idx += 1;
@@ -871,12 +1002,16 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
                   payload = tokens[idx + 1] ?? '';
                   consumedNext = true;
                 }
-                const err = validateEnvSplitStringPayload(payload, depth);
+                const err = validateEnvSplitStringPayload(
+                  payload,
+                  depth,
+                  idx + (consumedNext ? 2 : 1) < tokens.length,
+                );
                 if (err) return { tokens: [], error: err };
                 envSplitTokens.push(...tokenizeSegment(payload));
                 break;
               }
-              if (ch === 'u' || ch === 'C') {
+              if (ch === 'u' || ch === 'C' || ch === 'P') {
                 if (j + 1 >= flag.length) {
                   consumedNext = true;
                 }
@@ -911,11 +1046,13 @@ function stripCommandPrefixes(rawTokens, depth = 0) {
       if (base === 'timeout' && idx < tokens.length) {
         idx += 1;
       }
-      if (base === 'env' && envSplitTokens.length > 0 && idx < tokens.length) {
+      if (base === 'env' && envSplitTokens.length > 0) {
         const remaining = tokens.slice(idx);
-        const spliced = envSplitTokens[0].startsWith('-')
-          ? ['env', ...envSplitTokens, ...remaining]
-          : [...envSplitTokens, ...remaining];
+        const firstNonAssign = envSplitTokens.find((t) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t));
+        const spliced =
+          firstNonAssign && firstNonAssign.startsWith('-')
+            ? ['env', ...envSplitTokens, ...remaining]
+            : [...envSplitTokens, ...remaining];
         return stripCommandPrefixes(spliced, depth + 1);
       }
       continue;
@@ -951,7 +1088,28 @@ function isDangerousRmTarget(rawTarget) {
   return false;
 }
 
-function checkTokensSafety(rawTokens, depth = 0) {
+function hasExplicitSafeCargoSubcommand(cargoTokens) {
+  let cargoSub = '';
+  let hasInfoFlag = false;
+  for (let i = 1; i < cargoTokens.length; i += 1) {
+    const ct = cargoTokens[i];
+    if (CARGO_GLOBAL_VALUE_FLAGS.has(ct)) {
+      i += 1;
+      continue;
+    }
+    if (ct === '-V' || ct === '--version' || ct === '-h' || ct === '--help' || ct === '--list') {
+      hasInfoFlag = true;
+    }
+    if (ct.startsWith('-') || ct.startsWith('+')) {
+      continue;
+    }
+    cargoSub = ct;
+    break;
+  }
+  return hasInfoFlag || SAFE_CARGO_SUBCOMMANDS.has(cargoSub);
+}
+
+function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = false) {
   if (depth > MAX_SHELL_RECURSION_DEPTH) {
     return `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`;
   }
@@ -965,6 +1123,9 @@ function checkTokensSafety(rawTokens, depth = 0) {
 
   if (baseCmd === 'bash' || baseCmd === 'sh' || baseCmd === 'zsh') {
     let hasCFlag = false;
+    let hasSFlag = false;
+    let hasInfoFlag = false;
+    let hasStdinRedir = false;
     let argIdx = 1;
     while (argIdx < tokens.length) {
       const tok = tokens[argIdx];
@@ -972,8 +1133,27 @@ function checkTokensSafety(rawTokens, depth = 0) {
         argIdx += 1;
         break;
       }
+      if (STANDALONE_REDIR_RE.test(tok)) {
+        if (/^(?:0?<<<|0?<<-?|0?<)$/.test(tok)) {
+          hasStdinRedir = true;
+        }
+        argIdx += 2;
+        continue;
+      }
+      if (ATTACHED_REDIR_RE.test(tok)) {
+        if (/^(?:0?<<<|0?<<-?|0?<)/.test(tok)) {
+          hasStdinRedir = true;
+        }
+        argIdx += 1;
+        continue;
+      }
       if (tok === '--rcfile' || tok === '--init-file') {
         argIdx += 2;
+        continue;
+      }
+      if (tok === '--version' || tok === '--help') {
+        hasInfoFlag = true;
+        argIdx += 1;
         continue;
       }
       if (tok.startsWith('--')) {
@@ -995,6 +1175,8 @@ function checkTokensSafety(rawTokens, depth = 0) {
         for (const ch of tok.slice(1)) {
           if (ch === 'c') {
             hasCFlag = true;
+          } else if (ch === 's') {
+            hasSFlag = true;
           } else if (ch === 'o' || ch === 'O') {
             consumeArgs += 1;
           }
@@ -1005,14 +1187,49 @@ function checkTokensSafety(rawTokens, depth = 0) {
       break;
     }
 
-    if (hasCFlag && tokens.length > 2) {
-      const subScript = argIdx < tokens.length ? tokens[argIdx] : tokens[tokens.length - 1];
-      if (subScript.trim().length > 0) {
-        const subRes = validateCommand(subScript, depth + 1);
-        if (!subRes.ok) {
-          return `forbidden nested '${baseCmd} -c' command: ${subRes.reason}`;
+    if (hasCFlag) {
+      if (argIdx < tokens.length || tokens.length > 2) {
+        const subScript = argIdx < tokens.length ? tokens[argIdx] : tokens[tokens.length - 1];
+        if (subScript.trim().length > 0) {
+          const subRes = validateCommand(subScript, depth + 1);
+          if (!subRes.ok) {
+            return `forbidden nested '${baseCmd} -c' command: ${subRes.reason}`;
+          }
         }
       }
+    } else if (!hasInfoFlag) {
+      const rest = tokens.slice(argIdx);
+      const positionalArgs = [];
+      for (let i = 0; i < rest.length; i += 1) {
+        const t = rest[i];
+        if (STANDALONE_REDIR_RE.test(t)) {
+          if (/^(?:0?<<<|0?<<-?|0?<)$/.test(t)) {
+            hasStdinRedir = true;
+          }
+          i += 1;
+          continue;
+        }
+        if (ATTACHED_REDIR_RE.test(t)) {
+          if (/^(?:0?<<<|0?<<-?|0?<)/.test(t)) {
+            hasStdinRedir = true;
+          }
+          continue;
+        }
+        positionalArgs.push(t);
+      }
+
+      if (pipedIn || hasSFlag || hasStdinRedir || positionalArgs.length === 0) {
+        return `forbidden un-inspected '${baseCmd}' stdin/pipe/process-substitution execution`;
+      }
+    }
+  }
+
+  if (baseCmd === 'source' || baseCmd === '.') {
+    const hasStdin = tokens
+      .slice(1)
+      .some((t) => /^(?:0?<<<|0?<<-?|0?<)$/.test(t) || /^(?:0?<<<|0?<<-?|0?<).+/.test(t));
+    if (pipedIn || hasStdin || tokens.length <= 1) {
+      return `forbidden un-inspected '${baseCmd}' input`;
     }
   }
 
@@ -1022,10 +1239,251 @@ function checkTokensSafety(rawTokens, depth = 0) {
       argIdx += 1;
     }
     const evalScript = tokens.slice(argIdx).join(' ');
+    if (endedAtSub || /\$\(|`/.test(evalScript)) {
+      return "forbidden dynamic 'eval' with command substitution";
+    }
     if (evalScript.trim().length > 0) {
       const subRes = validateCommand(evalScript, depth + 1);
       if (!subRes.ok) {
         return `forbidden nested 'eval' command: ${subRes.reason}`;
+      }
+    }
+  }
+
+  if (baseCmd === 'xargs') {
+    let cmdIdx = 1;
+    while (cmdIdx < tokens.length) {
+      const tok = tokens[cmdIdx];
+      if (tok === '--') {
+        cmdIdx += 1;
+        break;
+      }
+      if (STANDALONE_REDIR_RE.test(tok)) {
+        cmdIdx += 2;
+        continue;
+      }
+      if (ATTACHED_REDIR_RE.test(tok)) {
+        cmdIdx += 1;
+        continue;
+      }
+      if (XARGS_VALUE_FLAGS.has(tok)) {
+        cmdIdx += 2;
+        continue;
+      }
+      if (tok.startsWith('--')) {
+        cmdIdx += 1;
+        continue;
+      }
+      if (tok.startsWith('-') && tok.length > 1) {
+        let consumedNext = false;
+        for (let j = 1; j < tok.length; j += 1) {
+          if (XARGS_SHORT_VALUE_CHARS.has(tok[j])) {
+            if (j + 1 >= tok.length) {
+              consumedNext = true;
+            }
+            break;
+          }
+        }
+        cmdIdx += consumedNext ? 2 : 1;
+        continue;
+      }
+      break;
+    }
+
+    if (cmdIdx < tokens.length) {
+      const subTokens = tokens.slice(cmdIdx);
+      const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false);
+      if (nestedReason) {
+        return `forbidden nested 'xargs' command: ${nestedReason}`;
+      }
+      const strippedSub = stripCommandPrefixes(subTokens, depth + 1);
+      if (strippedSub.error) {
+        return `forbidden nested 'xargs' command: ${strippedSub.error}`;
+      }
+      const subToks = strippedSub.tokens;
+      if (subToks.length > 0) {
+        const subBase = subToks[0].split('/').pop() ?? subToks[0];
+        if (subBase === 'cargo' && !hasExplicitSafeCargoSubcommand(subToks)) {
+          return "forbidden 'xargs cargo' invocation without an explicit safe subcommand";
+        }
+        if (subBase === 'bash' || subBase === 'sh' || subBase === 'zsh') {
+          let hasC = false;
+          let idx = 1;
+          while (idx < subToks.length) {
+            const st = subToks[idx];
+            if (st === '--') {
+              idx += 1;
+              break;
+            }
+            if (st === '--rcfile' || st === '--init-file') {
+              idx += 2;
+              continue;
+            }
+            if (st.startsWith('--')) {
+              idx += 1;
+              continue;
+            }
+            if (st.startsWith('+') && st.length > 1) {
+              let c = 0;
+              for (const ch of st.slice(1)) {
+                if (ch === 'o' || ch === 'O') c += 1;
+              }
+              idx += 1 + c;
+              continue;
+            }
+            if (st.startsWith('-') && st.length > 1) {
+              let c = 0;
+              for (const ch of st.slice(1)) {
+                if (ch === 'c') hasC = true;
+                else if (ch === 'o' || ch === 'O') c += 1;
+              }
+              idx += 1 + c;
+              continue;
+            }
+            break;
+          }
+          if (hasC && idx >= subToks.length) {
+            return `forbidden 'xargs ${subBase} -c' without an explicit inline script`;
+          }
+        }
+        if (subBase === 'eval') {
+          let idx = 1;
+          if (subToks[idx] === '--') idx += 1;
+          if (idx >= subToks.length) {
+            return "forbidden 'xargs eval' without an explicit static script";
+          }
+        }
+        if (subBase === 'tauri' && subToks.length === 1) {
+          return "forbidden 'xargs tauri' without safe subcommand";
+        }
+        if (subBase === 'npm') {
+          let subIdx = -1;
+          for (let i = 1; i < subToks.length; i += 1) {
+            const st = subToks[i];
+            if (st === '--') break;
+            if (NPM_PRE_SUBCMD_VALUE_FLAGS.has(st)) {
+              i += 1;
+              continue;
+            }
+            if (st.startsWith('-')) continue;
+            subIdx = i;
+            break;
+          }
+          const npmSub = subIdx >= 0 ? subToks[subIdx] : '';
+          if (!npmSub) {
+            return "forbidden 'xargs npm' without an explicit subcommand";
+          }
+          if (npmSub === 'run' || npmSub === 'run-script') {
+            let hasScript = false;
+            for (let j = subIdx + 1; j < subToks.length; j += 1) {
+              const st = subToks[j];
+              if (st === '--') {
+                hasScript = j + 1 < subToks.length;
+                break;
+              }
+              if (NPM_VALUE_FLAGS.has(st)) {
+                j += 1;
+                continue;
+              }
+              if (st.startsWith('-')) continue;
+              hasScript = true;
+              break;
+            }
+            if (!hasScript) {
+              return "forbidden 'xargs npm run' without an explicit script name";
+            }
+          } else if (npmSub === 'exec' || npmSub === 'x') {
+            let hasExecCmd = false;
+            for (let j = subIdx + 1; j < subToks.length; j += 1) {
+              const st = subToks[j];
+              if (st === '--') {
+                hasExecCmd = j + 1 < subToks.length;
+                break;
+              }
+              if (NPM_EXEC_VALUE_FLAGS.has(st)) {
+                j += 1;
+                continue;
+              }
+              if (st.startsWith('-')) continue;
+              hasExecCmd = true;
+              break;
+            }
+            if (!hasExecCmd) {
+              return `forbidden 'xargs npm ${npmSub}' without an explicit command`;
+            }
+          }
+        }
+        if (subBase === 'npx') {
+          let idx = 1;
+          while (idx < subToks.length) {
+            const st = subToks[idx];
+            if (st === '--') {
+              idx += 1;
+              break;
+            }
+            if (NPX_VALUE_FLAGS.has(st)) {
+              idx += 2;
+              continue;
+            }
+            if (st.startsWith('-')) {
+              idx += 1;
+              continue;
+            }
+            break;
+          }
+          if (idx >= subToks.length || (subToks[idx] === 'tauri' && idx + 1 >= subToks.length)) {
+            return "forbidden 'xargs npx' without an explicit safe command";
+          }
+        }
+        if (subBase === 'rm') {
+          let hasRecursive = false;
+          let endOfFlags = false;
+          const targets = [];
+          for (let i = 1; i < subToks.length; i += 1) {
+            const st = subToks[i];
+            if (!endOfFlags && st === '--') {
+              endOfFlags = true;
+              continue;
+            }
+            if (!endOfFlags && st.startsWith('-') && st.length > 1) {
+              if (st === '--recursive' || (!st.startsWith('--') && /[rR]/.test(st.slice(1)))) {
+                hasRecursive = true;
+              }
+              continue;
+            }
+            targets.push(st);
+          }
+          if (hasRecursive && targets.length === 0) {
+            return "forbidden 'xargs rm -r' without explicit safe target paths";
+          }
+        }
+      }
+    }
+  }
+
+  if (baseCmd === 'find') {
+    for (let i = 1; i < tokens.length; i += 1) {
+      const tok = tokens[i];
+      if (tok === '-exec' || tok === '-execdir' || tok === '-ok' || tok === '-okdir') {
+        let j = i + 1;
+        while (j < tokens.length && tokens[j] !== ';' && tokens[j] !== '+') {
+          j += 1;
+        }
+        const subTokens = tokens.slice(i + 1, j);
+        if (subTokens.length > 0) {
+          const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false);
+          if (nestedReason) {
+            return `forbidden nested 'find ${tok}' command: ${nestedReason}`;
+          }
+          const strippedSub = stripCommandPrefixes(subTokens, depth + 1);
+          if (!strippedSub.error && strippedSub.tokens.length > 0) {
+            const subBase = strippedSub.tokens[0].split('/').pop() ?? strippedSub.tokens[0];
+            if (subBase === 'cargo' && !hasExplicitSafeCargoSubcommand(strippedSub.tokens)) {
+              return `forbidden 'find ${tok} cargo' invocation without an explicit safe subcommand`;
+            }
+          }
+        }
+        i = j;
       }
     }
   }
@@ -1045,7 +1503,7 @@ function checkTokensSafety(rawTokens, depth = 0) {
         preCallPayloads.push(tok.slice('--call='.length));
         continue;
       }
-      if (NPM_EXEC_VALUE_FLAGS.has(tok)) {
+      if (NPM_PRE_SUBCMD_VALUE_FLAGS.has(tok)) {
         i += 1;
         continue;
       }
@@ -1274,9 +1732,9 @@ function checkTokensSafety(rawTokens, depth = 0) {
   return null;
 }
 
-function checkSegmentSafety(segment, depth = 0) {
+function checkSegmentSafety(segment, depth = 0, pipedIn = false, endedAtSub = false) {
   const rawTokens = tokenizeSegment(segment);
-  return checkTokensSafety(rawTokens, depth);
+  return checkTokensSafety(rawTokens, depth, pipedIn, endedAtSub);
 }
 
 /**
@@ -1298,15 +1756,15 @@ export function validateCommand(script, depth = 0) {
   const logicalLines = stripHeredocsAndComments(script);
   for (const entry of logicalLines) {
     if (!entry.text.trim()) continue;
-    const segments = splitShellSegments(entry.text);
+    const segments = splitShellSegmentsWithMeta(entry.text);
     for (const seg of segments) {
-      const reason = checkSegmentSafety(seg, depth);
+      const reason = checkSegmentSafety(seg.text, depth, seg.pipedIn, seg.endedAtSub);
       if (reason) {
         return {
           ok: false,
           reason,
           lineIndex: entry.lineIndex,
-          lineText: seg,
+          lineText: seg.text,
         };
       }
     }
@@ -1467,6 +1925,10 @@ export function runStartupSelfChecks() {
     'npm run -- tauri:dev',
     'npm exec -- tauri dev',
     'npm x -- tauri build',
+    'npm exec -p @tauri-apps/cli -- tauri dev',
+    'npm -p run tauri:dev',
+    'npm -p exec -- tauri dev',
+    'npm -p x -- tauri build',
     "npm exec -c 'cargo run'",
     'npx --yes tauri dev',
     'cargo run --bin anima-lab',
@@ -1479,11 +1941,30 @@ export function runStartupSelfChecks() {
     "bash --rcfile /dev/null -c 'cargo run'",
     "bash --init-file /dev/null -c 'cargo run'",
     'eval "cargo run"',
+    'eval "$(echo \'cargo run\')"',
     'env -u RUST_LOG cargo run',
+    'env -P /Users/Shared/bin cargo run',
+    'env -P/Users/Shared/bin cargo run',
     'env -S "cargo run"',
+    'env -S "bash" -c "cargo run"',
     'env --split-string="cargo run"',
     'exec cargo run',
     'exec -a foo cargo run',
+    'builtin exec cargo run',
+    'builtin eval "cargo run"',
+    '{ cargo run; }',
+    'if true; then cargo run; fi',
+    'if false; then echo ok; else cargo run; fi',
+    'for i in 1; do cargo run; done',
+    '>/dev/null cargo run',
+    '2>&1 cargo run',
+    '< /dev/null cargo run',
+    'echo "$(\n# step 1)\ncargo run\n)"',
+    'echo \'cargo run\' | bash',
+    'bash <<< \'cargo run\'',
+    'bash <(echo \'cargo run\')',
+    'echo run | xargs cargo',
+    'find . -maxdepth 0 -exec cargo run \\;',
     'car\\\ngo run --bin anima-lab',
     'echo "hello\n<<EOF"\ncargo run',
     'cat <<EOF-1\nhi\nEOF-1\ncargo run',
@@ -1512,8 +1993,15 @@ export function runStartupSelfChecks() {
     'cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab',
     '! node scripts/verify_e2_artifacts.mjs src-tauri/target/doc2-gate-neg',
     'echo "$(echo ok\necho done)"',
+    'echo "$(\n# step 1)\necho ok\n)"',
     'env -S "echo ok"',
+    'env -S "bash" -c "echo ok"',
     'npm exec -- eslint src',
+    'npm -p run check:docs',
+    '{ echo ok; echo done; }',
+    'if true; then echo ok; fi',
+    '> /dev/null',
+    'cat < in.txt',
   ];
   for (const cmd of safeCmds) {
     const res = validateCommand(cmd);
