@@ -161,6 +161,9 @@ Vấn đề thật không phải số chiều mà là **chất lượng điều 
 - Thay `locomotion.rs` mặc định cần ADR mới (thay thế hoặc mở rộng ADR-0006), bump
   `LIVE_MODEL_VERSION` theo ADR-0008, cập nhật `build_tick_schedule` và các test thứ tự lịch, và giữ
   đường cũ tới được bằng khoá opt-in.
+- CPG sóng lan truyền cũng là điều kiện tiên quyết cho **lực đẩy dưới nước** (cản dị hướng theo
+  từng đốt, khối lượng kèm theo) mà đề xuất môi trường thuỷ sinh cần; xem
+  [`QD_REALMS_HABITATS_RESEARCH_2026-11-22.md`](QD_REALMS_HABITATS_RESEARCH_2026-11-22.md).
 - Đối chiếu Rapier2D/Avian2D của báo cáo gốc dựa trên benchmark của một engine nhỏ (Balaur) và
   changelog; **yếu**, không dùng để loại trừ phương án.
 
