@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 // @ts-expect-error -- incident_dates.mjs has no .d.mts declaration
-import { EXPECTED_HEADERS, checkIncidentsCsv, parseCsv, runSelfTest } from '../../scripts/paper/incident_dates.mjs';
+import { EXPECTED_HEADERS, checkIncidentsCsv, parseCsv, runSelfTest, validateSourceAnchor } from '../../scripts/paper/incident_dates.mjs';
 
 interface CheckError {
   id: string;
@@ -255,5 +255,95 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
         expect(run.stderr).toContain('[<header>] header:');
       },
     );
+  });
+
+  it('executes main() when invoked via a symlink entrypoint (no vacuous exit 0)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anima-incident-dates-symlink-'));
+    try {
+      const symlinkScript = join(dir, 'incident_dates_link.mjs');
+      symlinkSync(SCRIPT_PATH, symlinkScript);
+
+      const bogusRun = spawnSync(process.execPath, [symlinkScript, '--bogus-flag'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      });
+      expect(bogusRun.status).toBe(2);
+      expect(bogusRun.stderr).toContain('unknown argument "--bogus-flag"');
+
+      withMutatedCsv(
+        (rows) => {
+          rows[1][6] = '2026-01-01T00:00:00+07:00';
+        },
+        (tmpCsv) => {
+          const failRun = spawnSync(
+            process.execPath,
+            [symlinkScript, '--check', '--csv', tmpCsv, '--root', REPO_ROOT],
+            {
+              cwd: REPO_ROOT,
+              encoding: 'utf8',
+            },
+          );
+          expect(failRun.status).toBe(1);
+          expect(failRun.stderr).toContain('[INC-01] introduced_date:');
+        },
+      );
+
+      const okRun = spawnSync(process.execPath, [symlinkScript, '--check'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      });
+      expect(okRun.status).toBe(0);
+      expect(okRun.stdout).toMatch(/^incident_dates: OK \(\d+ rows verified\)\r?\n$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects physicalLines + 1 on LF and CRLF trailing-newline files', () => {
+    const findingsRaw = readFileSync(resolve(REPO_ROOT, 'FINDINGS.md'), 'utf8');
+    const findingsPhysicalLines = findingsRaw.replace(/\r?\n$/, '').split(/\r?\n/).length;
+
+    withMutatedCsv(
+      (rows) => {
+        rows[1][10] = `FINDINGS.md:${findingsPhysicalLines}`;
+      },
+      (tmpCsv) => {
+        const okRun = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
+        expect(okRun.status).toBe(0);
+      },
+    );
+
+    withMutatedCsv(
+      (rows) => {
+        rows[1][10] = `FINDINGS.md:${findingsPhysicalLines + 1}`;
+      },
+      (tmpCsv) => {
+        const failRun = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
+        expect(failRun.status).toBe(1);
+        expect(failRun.stderr).toContain('[INC-01] source:');
+      },
+    );
+
+    const anchorCheck = validateSourceAnchor as (
+      sourceText: string,
+      repoRoot: string,
+    ) => { ok: boolean; error?: string };
+    const dir = mkdtempSync(join(tmpdir(), 'anima-incident-dates-eol-'));
+    try {
+      writeFileSync(join(dir, 'lf.md'), 'alpha\nbeta\n', 'utf8');
+      writeFileSync(join(dir, 'crlf.md'), 'alpha\r\nbeta\r\n', 'utf8');
+
+      expect(anchorCheck('lf.md:2', dir).ok).toBe(true);
+      const lfOffByOne = anchorCheck('lf.md:3', dir);
+      expect(lfOffByOne.ok).toBe(false);
+      expect(lfOffByOne.error).toContain('out of range (1..2)');
+
+      expect(anchorCheck('crlf.md:2', dir).ok).toBe(true);
+      const crlfOffByOne = anchorCheck('crlf.md:3', dir);
+      expect(crlfOffByOne.ok).toBe(false);
+      expect(crlfOffByOne.error).toContain('out of range (1..2)');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

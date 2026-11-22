@@ -6,10 +6,10 @@
 //   node scripts/paper/incident_dates.mjs --self-test
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 export const EXPECTED_HEADERS = [
   'id',
@@ -214,7 +214,8 @@ export function validateSourceAnchor(sourceText, repoRoot, lineCountCache = new 
     let lineCount = lineCountCache.get(resolvedFile);
     if (lineCount === undefined) {
       const content = readFileSync(resolvedFile, 'utf8');
-      lineCount = content.length === 0 ? 0 : content.split(/\r?\n/).length;
+      const normalized = content.replace(/\r?\n$/, '');
+      lineCount = content.length === 0 ? 0 : normalized.split(/\r?\n/).length;
       lineCountCache.set(resolvedFile, lineCount);
     }
 
@@ -634,6 +635,30 @@ export function runSelfTest() {
       'INC-T1',
       'introduced_commit',
     );
+
+    // Ensure trailing newline does not inflate physical lineCount by 1
+    mutateAndExpectFail(
+      'rejects trailing-newline off-by-1 source line (LF)',
+      (r) => {
+        r[0][10] = 'notes.md:5';
+      },
+      'INC-T1',
+      'source',
+    );
+
+    writeFileSync(join(dir, 'crlf.md'), 'line 1\r\nline 2\r\n', 'utf8');
+    recordCheck(
+      'accepts final physical line of CRLF-terminated source file',
+      validateSourceAnchor('crlf.md:2', dir).ok,
+    );
+    mutateAndExpectFail(
+      'rejects trailing-newline off-by-1 source line (CRLF)',
+      (r) => {
+        r[0][10] = 'crlf.md:3';
+      },
+      'INC-T1',
+      'source',
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -714,6 +739,18 @@ function main(argv) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+function canonicalizePath(filePath) {
+  const resolved = resolve(filePath);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+if (
+  process.argv[1] &&
+  canonicalizePath(fileURLToPath(import.meta.url)) === canonicalizePath(process.argv[1])
+) {
   main(process.argv.slice(2));
 }
