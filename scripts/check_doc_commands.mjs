@@ -592,8 +592,8 @@ function parseHeredocSpec(rest) {
     if (/[\s;|&<>()]/.test(c)) {
       break;
     }
-    if (c === '$' && rest[idx + 1] === "'") {
-      q = "$'";
+    if (c === '$' && (rest[idx + 1] === "'" || rest[idx + 1] === '"')) {
+      q = rest[idx + 1] === "'" ? "$'" : '"';
       hasToken = true;
       idx += 2;
       continue;
@@ -619,71 +619,306 @@ function parseHeredocSpec(rest) {
   return { delim, stripTabs, consumed: idx };
 }
 
-function scanShellLineForCommentAndHeredoc(line, initialQuote = null) {
-  let quote = initialQuote;
+function createCmdSubFrame(savedQuote = null) {
+  return {
+    savedQuote,
+    parenDepth: 1,
+    caseStack: [],
+    atCommandStart: true,
+    word: '',
+    wordPureUnquoted: true,
+  };
+}
+
+function flushCmdSubWord(frame) {
+  if (!frame.word) {
+    frame.wordPureUnquoted = true;
+    return;
+  }
+  const top = frame.caseStack[frame.caseStack.length - 1];
+  if (frame.wordPureUnquoted) {
+    if (frame.atCommandStart && frame.word === 'case') {
+      frame.caseStack.push({
+        state: 'WAIT_IN',
+        baseDepth: frame.parenDepth,
+        patternParen: false,
+        atPatternStart: false,
+      });
+      frame.atCommandStart = false;
+    } else if (
+      top &&
+      top.state === 'WAIT_IN' &&
+      frame.parenDepth === top.baseDepth &&
+      frame.word === 'in'
+    ) {
+      top.state = 'PATTERN';
+      top.patternParen = false;
+      top.atPatternStart = true;
+      frame.atCommandStart = false;
+    } else if (
+      top &&
+      frame.parenDepth === top.baseDepth &&
+      frame.word === 'esac' &&
+      (top.state === 'PATTERN' || (top.state === 'BODY' && frame.atCommandStart))
+    ) {
+      frame.caseStack.pop();
+      frame.atCommandStart = false;
+    } else if (
+      frame.atCommandStart &&
+      (frame.word === 'then' ||
+        frame.word === 'do' ||
+        frame.word === 'else' ||
+        frame.word === 'elif' ||
+        frame.word === '{' ||
+        frame.word === '!')
+    ) {
+      frame.atCommandStart = true;
+    } else {
+      frame.atCommandStart = false;
+    }
+  } else {
+    frame.atCommandStart = false;
+  }
+  frame.word = '';
+  frame.wordPureUnquoted = true;
+}
+
+function stepCmdSubChar(frame, str, idx) {
+  const ch = str[idx];
+
+  if (ch === '(') {
+    flushCmdSubWord(frame);
+    const top = frame.caseStack[frame.caseStack.length - 1];
+    if (top && top.state === 'PATTERN' && frame.parenDepth === top.baseDepth && top.atPatternStart) {
+      top.patternParen = true;
+      top.atPatternStart = false;
+      frame.parenDepth += 1;
+    } else {
+      if (top && top.state === 'PATTERN') {
+        top.atPatternStart = false;
+      }
+      frame.parenDepth += 1;
+      frame.atCommandStart = true;
+    }
+    return { handled: true, closed: false, nextIdx: idx };
+  }
+
+  if (ch === ')') {
+    flushCmdSubWord(frame);
+    const top = frame.caseStack[frame.caseStack.length - 1];
+    if (top && top.state === 'PATTERN') {
+      if (top.patternParen && frame.parenDepth === top.baseDepth + 1) {
+        frame.parenDepth -= 1;
+        top.patternParen = false;
+        top.state = 'BODY';
+        frame.atCommandStart = true;
+        return { handled: true, closed: false, nextIdx: idx };
+      }
+      if (!top.patternParen && frame.parenDepth === top.baseDepth) {
+        top.state = 'BODY';
+        frame.atCommandStart = true;
+        return { handled: true, closed: false, nextIdx: idx };
+      }
+    }
+    frame.parenDepth -= 1;
+    if (frame.parenDepth === 0) {
+      return { handled: true, closed: true, nextIdx: idx };
+    }
+    frame.atCommandStart = false;
+    return { handled: true, closed: false, nextIdx: idx };
+  }
+
+  if (ch === ';' || ch === '&' || ch === '|' || ch === '\n') {
+    flushCmdSubWord(frame);
+    const top = frame.caseStack[frame.caseStack.length - 1];
+    if (ch === ';' && (str[idx + 1] === ';' || str[idx + 1] === '&')) {
+      const nextIdx = str[idx + 1] === ';' && str[idx + 2] === '&' ? idx + 2 : idx + 1;
+      if (top && top.state === 'BODY' && frame.parenDepth === top.baseDepth) {
+        top.state = 'PATTERN';
+        top.patternParen = false;
+        top.atPatternStart = true;
+      }
+      frame.atCommandStart = false;
+      return { handled: true, closed: false, nextIdx };
+    }
+    if (ch === '|' && top && top.state === 'PATTERN' && frame.parenDepth === top.baseDepth) {
+      top.atPatternStart = false;
+      return { handled: true, closed: false, nextIdx: idx };
+    }
+    let nextIdx = idx;
+    if (
+      (ch === '&' && str[idx + 1] === '&') ||
+      (ch === '|' && (str[idx + 1] === '|' || str[idx + 1] === '&'))
+    ) {
+      nextIdx = idx + 1;
+    }
+    frame.atCommandStart = true;
+    return { handled: true, closed: false, nextIdx };
+  }
+
+  if (/\s/.test(ch)) {
+    flushCmdSubWord(frame);
+    return { handled: true, closed: false, nextIdx: idx };
+  }
+
+  if (ch === '<' || ch === '>') {
+    flushCmdSubWord(frame);
+    return { handled: true, closed: false, nextIdx: idx };
+  }
+
+  const top = frame.caseStack[frame.caseStack.length - 1];
+  if (top && top.state === 'PATTERN' && frame.parenDepth === top.baseDepth) {
+    top.atPatternStart = false;
+  }
+  frame.word += ch;
+  return { handled: true, closed: false, nextIdx: idx };
+}
+
+function scanShellLineForCommentAndHeredoc(line, state, prevLineContinuedNoSpace = false) {
   let commentStart = line.length;
   const heredocSpecs = [];
 
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
 
-    if (quote === "'") {
-      if (ch === "'") quote = null;
+    if (state.inBacktick !== false) {
+      if (ch === '\\' && i + 1 < line.length) {
+        i += 1;
+        continue;
+      }
+      if (ch === '`') {
+        state.quote = state.inBacktick.savedQuote;
+        state.inBacktick = false;
+        const activeFrame = state.cmdSubStack[state.cmdSubStack.length - 1];
+        if (activeFrame) {
+          activeFrame.wordPureUnquoted = false;
+          activeFrame.atCommandStart = false;
+        }
+      }
       continue;
     }
 
-    if (quote === "$'") {
+    if (state.quote === "'") {
+      if (ch === "'") state.quote = null;
+      continue;
+    }
+
+    if (state.quote === "$'") {
       if (ch === '\\') {
         i += 1;
         continue;
       }
-      if (ch === "'") quote = null;
+      if (ch === "'") state.quote = null;
       continue;
     }
 
-    if (quote === '"') {
+    if (state.quote === '"') {
       if (ch === '\\') {
         i += 1;
         continue;
       }
-      if (ch === '"') quote = null;
+      if (ch === '$' && line[i + 1] === '(') {
+        state.cmdSubStack.push(createCmdSubFrame('"'));
+        state.quote = null;
+        i += 1;
+        continue;
+      }
+      if (ch === '`') {
+        state.inBacktick = { savedQuote: '"' };
+        state.quote = null;
+        continue;
+      }
+      if (ch === '"') state.quote = null;
       continue;
     }
+
+    const activeFrame = state.cmdSubStack[state.cmdSubStack.length - 1] ?? null;
 
     if (ch === '\\') {
+      if (activeFrame) activeFrame.wordPureUnquoted = false;
       i += 1;
       continue;
     }
 
     if (ch === '$' && line[i + 1] === "'") {
-      quote = "$'";
+      if (activeFrame) activeFrame.wordPureUnquoted = false;
+      state.quote = "$'";
+      i += 1;
+      continue;
+    }
+
+    if (ch === '$' && line[i + 1] === '"') {
+      if (activeFrame) activeFrame.wordPureUnquoted = false;
+      state.quote = '"';
       i += 1;
       continue;
     }
 
     if (ch === "'" || ch === '"') {
-      quote = ch;
+      if (activeFrame) activeFrame.wordPureUnquoted = false;
+      state.quote = ch;
       continue;
     }
 
-    if (ch === '#' && (i === 0 || /\s|[;|&(]/.test(line[i - 1]))) {
+    if (
+      ch === '#' &&
+      ((i === 0 && !prevLineContinuedNoSpace) || (i > 0 && /\s|[;|&(]/.test(line[i - 1])))
+    ) {
+      if (activeFrame) flushCmdSubWord(activeFrame);
       commentStart = i;
       break;
     }
 
+    if (
+      (ch === '$' || ch === '<' || ch === '>') &&
+      line[i + 1] === '('
+    ) {
+      if (activeFrame) {
+        flushCmdSubWord(activeFrame);
+        activeFrame.atCommandStart = false;
+      }
+      state.cmdSubStack.push(createCmdSubFrame(null));
+      i += 1;
+      continue;
+    }
+
+    if (ch === '`') {
+      if (activeFrame) {
+        flushCmdSubWord(activeFrame);
+        activeFrame.atCommandStart = false;
+      }
+      state.inBacktick = { savedQuote: null };
+      continue;
+    }
+
     if (ch === '<' && line[i + 1] === '<' && line[i + 2] !== '<') {
+      if (activeFrame) flushCmdSubWord(activeFrame);
       const spec = parseHeredocSpec(line.slice(i + 2));
       if (spec) {
         heredocSpecs.push({ delim: spec.delim, stripTabs: spec.stripTabs });
         i += 1 + spec.consumed;
+        continue;
+      }
+    }
+
+    if (activeFrame) {
+      const step = stepCmdSubChar(activeFrame, line, i);
+      i = step.nextIdx;
+      if (step.closed) {
+        const popped = state.cmdSubStack.pop();
+        state.quote = popped.savedQuote;
+        const parentFrame = state.cmdSubStack[state.cmdSubStack.length - 1];
+        if (parentFrame) {
+          parentFrame.atCommandStart = false;
+        }
       }
     }
   }
 
   return {
     cleaned: line.slice(0, commentStart),
+    hasComment: commentStart < line.length,
     heredocSpecs,
-    endQuote: quote,
   };
 }
 
@@ -692,9 +927,20 @@ function scanShellLineForCommentAndHeredoc(line, initialQuote = null) {
  */
 export function stripHeredocsAndComments(script) {
   const rawLines = script.replace(/\r\n/g, '\n').split('\n');
-  const strippedLines = [];
   const heredocQueue = [];
-  let quote = null;
+  const pendingHeredocs = [];
+  const state = {
+    quote: null,
+    cmdSubStack: [],
+    inBacktick: false,
+  };
+
+  const logical = [];
+  let current = '';
+  let startIdx = 0;
+  let continuing = false;
+  let continueWithNewline = false;
+  let prevLineContinuedNoSpace = false;
 
   for (let i = 0; i < rawLines.length; i += 1) {
     const line = rawLines[i];
@@ -704,26 +950,31 @@ export function stripHeredocsAndComments(script) {
       if (candidate === active.delim) {
         heredocQueue.shift();
       }
-      strippedLines.push({ text: '', endQuote: quote });
+      if (continuing && continueWithNewline) {
+        current += '\n';
+      }
+      prevLineContinuedNoSpace = false;
       continue;
     }
 
-    const { cleaned, heredocSpecs, endQuote } = scanShellLineForCommentAndHeredoc(line, quote);
-    quote = endQuote;
-    strippedLines.push({ text: cleaned, endQuote });
+    const { cleaned, hasComment, heredocSpecs } = scanShellLineForCommentAndHeredoc(
+      line,
+      state,
+      prevLineContinuedNoSpace,
+    );
     if (heredocSpecs.length > 0) {
-      heredocQueue.push(...heredocSpecs);
+      pendingHeredocs.push(...heredocSpecs);
     }
-  }
 
-  const logical = [];
-  let current = '';
-  let startIdx = 0;
-  let continuing = false;
-  let continueWithNewline = false;
+    let trailingBackslashes = 0;
+    if (!hasComment && state.quote !== "'" && state.quote !== "$'") {
+      for (let k = cleaned.length - 1; k >= 0 && cleaned[k] === '\\'; k -= 1) {
+        trailingBackslashes += 1;
+      }
+    }
+    const continuedByBackslash = trailingBackslashes % 2 === 1;
+    const part = continuedByBackslash ? cleaned.slice(0, -1) : cleaned;
 
-  for (let i = 0; i < strippedLines.length; i += 1) {
-    const { text: part, endQuote } = strippedLines[i];
     if (!continuing) {
       startIdx = i;
       current = part;
@@ -733,36 +984,52 @@ export function stripHeredocsAndComments(script) {
       current += part;
     }
 
-    const trimmedEnd = current.replace(/[ \t]+$/, '');
-    let trailingBackslashes = 0;
-    for (let k = trimmedEnd.length - 1; k >= 0 && trimmedEnd[k] === '\\'; k -= 1) {
-      trailingBackslashes += 1;
-    }
-
-    if (endQuote !== "'" && endQuote !== "$'" && trailingBackslashes % 2 === 1) {
-      current = trimmedEnd.slice(0, -1);
+    if (continuedByBackslash) {
       continuing = true;
       continueWithNewline = false;
-    } else if (endQuote !== null) {
-      continuing = true;
-      continueWithNewline = true;
-    } else {
+      prevLineContinuedNoSpace = part.length > 0 && !/\s$/.test(part);
+      continue;
+    }
+
+    prevLineContinuedNoSpace = false;
+    const topFrame = state.cmdSubStack[state.cmdSubStack.length - 1];
+    if (topFrame && state.quote === null && !state.inBacktick) {
+      flushCmdSubWord(topFrame);
+      topFrame.atCommandStart = true;
+    }
+
+    if (state.quote === null && !state.inBacktick && pendingHeredocs.length > 0) {
+      heredocQueue.push(...pendingHeredocs);
+      pendingHeredocs.length = 0;
+    }
+
+    if (state.quote === null && !state.inBacktick && state.cmdSubStack.length === 0) {
       logical.push({ lineIndex: startIdx, text: current });
       current = '';
       continuing = false;
       continueWithNewline = false;
+    } else {
+      continuing = true;
+      continueWithNewline = true;
     }
   }
 
-  if (continuing && current.trim().length > 0) {
-    logical.push({ lineIndex: startIdx, text: current });
+  const isUnclosed = state.quote !== null || state.inBacktick !== false || state.cmdSubStack.length > 0;
+  if (continuing && (current.trim().length > 0 || isUnclosed)) {
+    logical.push({ lineIndex: startIdx, text: current, ...(isUnclosed ? { unclosed: true } : {}) });
+  } else if (isUnclosed) {
+    logical.push({
+      lineIndex: Math.max(0, rawLines.length - 1),
+      text: '',
+      unclosed: true,
+    });
   }
 
   return logical;
 }
 
 function findClosingCommandSubParen(str, startIdx) {
-  let depth = 1;
+  const frame = createCmdSubFrame(null);
   let q = null;
   for (let i = startIdx; i < str.length; i += 1) {
     const ch = str[i];
@@ -789,42 +1056,64 @@ function findClosingCommandSubParen(str, startIdx) {
         i = innerEnd;
         continue;
       }
+      if (ch === '`') {
+        const bt = extractDoubleQuotedBacktick(str, i + 1);
+        if (!bt) return -1;
+        i = bt.endIdx;
+        continue;
+      }
       if (ch === '"') q = null;
       continue;
     }
     if (ch === '\\' && i + 1 < str.length) {
+      frame.wordPureUnquoted = false;
       i += 1;
       continue;
     }
     if (ch === '$' && str[i + 1] === "'") {
+      frame.wordPureUnquoted = false;
       q = "$'";
       i += 1;
       continue;
     }
+    if (ch === '$' && str[i + 1] === '"') {
+      frame.wordPureUnquoted = false;
+      q = '"';
+      i += 1;
+      continue;
+    }
     if (ch === "'" || ch === '"') {
+      frame.wordPureUnquoted = false;
       q = ch;
       continue;
     }
     if (ch === '#' && (i === startIdx || /\s|[;|&(]/.test(str[i - 1]))) {
+      flushCmdSubWord(frame);
       const nl = str.indexOf('\n', i + 1);
       if (nl < 0) return -1;
+      frame.atCommandStart = true;
       i = nl;
       continue;
     }
-    if (ch === '$' && str[i + 1] === '(') {
+    if ((ch === '$' || ch === '<' || ch === '>') && str[i + 1] === '(') {
+      flushCmdSubWord(frame);
+      frame.atCommandStart = false;
       const innerEnd = findClosingCommandSubParen(str, i + 2);
       if (innerEnd < 0) return -1;
       i = innerEnd;
       continue;
     }
-    if (ch === '(') {
-      depth += 1;
+    if (ch === '`') {
+      flushCmdSubWord(frame);
+      frame.atCommandStart = false;
+      const bt = extractUnquotedBacktick(str, i + 1);
+      if (!bt) return -1;
+      i = bt.endIdx;
       continue;
     }
-    if (ch === ')') {
-      depth -= 1;
-      if (depth === 0) return i;
-    }
+    const step = stepCmdSubChar(frame, str, i);
+    i = step.nextIdx;
+    if (step.closed) return i;
   }
   return -1;
 }
@@ -877,6 +1166,10 @@ function extractNestedCommandSubSegments(inner) {
   const nested = [];
   const logicalLines = stripHeredocsAndComments(inner);
   for (const entry of logicalLines) {
+    if (entry.unclosed) {
+      nested.push({ text: entry.text || '', pipedIn: false, endedAtSub: true, unclosedSub: true });
+      continue;
+    }
     if (!entry.text.trim()) continue;
     nested.push(...splitShellSegmentsWithMeta(entry.text));
   }
@@ -888,11 +1181,18 @@ function splitShellSegmentsWithMeta(commandLine) {
   let quote = null;
   let current = '';
   let nextPipedIn = false;
+  let hasUnclosedSubInCurrent = false;
 
-  const flush = (setNextPipedIn = false, endedAtSub = false) => {
+  const flush = (setNextPipedIn = false, endedAtSub = false, unclosedSub = false) => {
+    const isUnclosed = unclosedSub || hasUnclosedSubInCurrent;
     const trimmed = current.trim();
-    if (trimmed) {
-      segments.push({ text: trimmed, pipedIn: nextPipedIn, endedAtSub });
+    if (trimmed || isUnclosed) {
+      segments.push({
+        text: trimmed,
+        pipedIn: nextPipedIn,
+        endedAtSub: endedAtSub || isUnclosed,
+        unclosedSub: isUnclosed,
+      });
       nextPipedIn = setNextPipedIn;
     } else if (setNextPipedIn) {
       nextPipedIn = true;
@@ -900,6 +1200,7 @@ function splitShellSegmentsWithMeta(commandLine) {
       nextPipedIn = false;
     }
     current = '';
+    hasUnclosedSubInCurrent = false;
   };
 
   for (let i = 0; i < commandLine.length; i += 1) {
@@ -937,6 +1238,7 @@ function splitShellSegmentsWithMeta(commandLine) {
           i = endIdx;
           continue;
         }
+        hasUnclosedSubInCurrent = true;
         segments.push(...extractNestedCommandSubSegments(commandLine.slice(i + 2)));
       }
       if (ch === '`') {
@@ -947,6 +1249,7 @@ function splitShellSegmentsWithMeta(commandLine) {
           i = bt.endIdx;
           continue;
         }
+        hasUnclosedSubInCurrent = true;
         segments.push(...extractNestedCommandSubSegments(commandLine.slice(i + 1)));
       }
       current += ch;
@@ -983,7 +1286,7 @@ function splitShellSegmentsWithMeta(commandLine) {
         continue;
       }
       segments.push(...extractNestedCommandSubSegments(commandLine.slice(i + 2)));
-      flush(false, true);
+      flush(false, true, true);
       i += 1;
       continue;
     }
@@ -998,6 +1301,9 @@ function splitShellSegmentsWithMeta(commandLine) {
         continue;
       }
       segments.push(...extractNestedCommandSubSegments(commandLine.slice(i + 2)));
+      flush(false, true, true);
+      i += 1;
+      continue;
     }
 
     if (ch === '`') {
@@ -1009,7 +1315,7 @@ function splitShellSegmentsWithMeta(commandLine) {
         continue;
       }
       segments.push(...extractNestedCommandSubSegments(commandLine.slice(i + 1)));
-      flush(false, true);
+      flush(false, true, true);
       continue;
     }
 
@@ -1054,7 +1360,7 @@ function splitShellSegmentsWithMeta(commandLine) {
     current += ch;
   }
 
-  flush(false, false);
+  flush(false, false, quote !== null);
   return segments;
 }
 
@@ -1148,14 +1454,31 @@ function tokenizeSegmentMeta(segment) {
   let quote = null;
   let hadToken = false;
   let currentHasQuoteOrEscape = false;
+  let currentHasUnquotedBrace = false;
+  let currentHasUnquotedGlob = false;
+  let braceStack = [];
+  let inBracketClass = false;
+  let bracketContentLen = 0;
+  let justSawUnquotedDollar = false;
 
   const pushCurrent = () => {
     if (hadToken || current.length > 0) {
-      tokens.push({ text: current, isRedirOp: false });
+      tokens.push({
+        text: current,
+        isRedirOp: false,
+        hasUnquotedBrace: currentHasUnquotedBrace,
+        hasUnquotedGlob: currentHasUnquotedGlob,
+      });
     }
     current = '';
     hadToken = false;
     currentHasQuoteOrEscape = false;
+    currentHasUnquotedBrace = false;
+    currentHasUnquotedGlob = false;
+    braceStack = [];
+    inBracketClass = false;
+    bracketContentLen = 0;
+    justSawUnquotedDollar = false;
   };
 
   for (let i = 0; i < segment.length; i += 1) {
@@ -1217,6 +1540,8 @@ function tokenizeSegmentMeta(segment) {
     }
 
     if (ch === '\\' && i + 1 < segment.length) {
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
       current += segment[i + 1];
       i += 1;
       hadToken = true;
@@ -1225,6 +1550,8 @@ function tokenizeSegmentMeta(segment) {
     }
 
     if (ch === '$' && segment[i + 1] === "'") {
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
       quote = "$'";
       hadToken = true;
       currentHasQuoteOrEscape = true;
@@ -1233,6 +1560,8 @@ function tokenizeSegmentMeta(segment) {
     }
 
     if (ch === "'" || ch === '"') {
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
       quote = ch;
       hadToken = true;
       currentHasQuoteOrEscape = true;
@@ -1244,12 +1573,14 @@ function tokenizeSegmentMeta(segment) {
         pushCurrent();
       }
       const op = segment[i + 2] === '>' ? '&>>' : '&>';
-      tokens.push({ text: op, isRedirOp: true });
+      tokens.push({ text: op, isRedirOp: true, hasUnquotedBrace: false, hasUnquotedGlob: false });
       i += op.length - 1;
       continue;
     }
 
     if ((ch === '>' || ch === '<' || ch === '$') && segment[i + 1] === '(') {
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
       const endIdx = findClosingCommandSubParen(segment, i + 2);
       if (endIdx >= 0) {
         current += segment.slice(i, endIdx + 1);
@@ -1261,6 +1592,8 @@ function tokenizeSegmentMeta(segment) {
     }
 
     if (ch === '`') {
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
       const bt = extractUnquotedBacktick(segment, i + 1);
       if (bt) {
         current += segment.slice(i, bt.endIdx + 1);
@@ -1296,7 +1629,12 @@ function tokenizeSegmentMeta(segment) {
           op = `<${next}`;
         }
       }
-      tokens.push({ text: `${fdPrefix}${op}`, isRedirOp: true });
+      tokens.push({
+        text: `${fdPrefix}${op}`,
+        isRedirOp: true,
+        hasUnquotedBrace: false,
+        hasUnquotedGlob: false,
+      });
       i += op.length - 1;
       continue;
     }
@@ -1304,6 +1642,50 @@ function tokenizeSegmentMeta(segment) {
     if (/\s/.test(ch)) {
       pushCurrent();
       continue;
+    }
+
+    if (ch === '{') {
+      if (!justSawUnquotedDollar) {
+        braceStack.push({ hasSep: false });
+      }
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
+    } else if (ch === ',' && braceStack.length > 0) {
+      braceStack[braceStack.length - 1].hasSep = true;
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
+    } else if (ch === '.' && segment[i + 1] === '.' && braceStack.length > 0) {
+      braceStack[braceStack.length - 1].hasSep = true;
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
+    } else if (ch === '}' && braceStack.length > 0) {
+      const frame = braceStack.pop();
+      if (frame.hasSep) {
+        currentHasUnquotedBrace = true;
+      }
+      justSawUnquotedDollar = false;
+      if (inBracketClass) bracketContentLen += 1;
+    } else {
+      justSawUnquotedDollar = ch === '$';
+      if (ch === '*' || ch === '?') {
+        currentHasUnquotedGlob = true;
+      }
+      if (ch === '[' && !inBracketClass) {
+        inBracketClass = true;
+        bracketContentLen = 0;
+      } else if (inBracketClass) {
+        if (ch === ']') {
+          if (bracketContentLen > 0) {
+            currentHasUnquotedGlob = true;
+            inBracketClass = false;
+            bracketContentLen = 0;
+          } else {
+            bracketContentLen += 1;
+          }
+        } else {
+          bracketContentLen += 1;
+        }
+      }
     }
 
     current += ch;
@@ -1314,12 +1696,9 @@ function tokenizeSegmentMeta(segment) {
   return tokens;
 }
 
-function tokenizeSegment(segment) {
-  return tokenizeSegmentMeta(segment).map((t) => t.text);
-}
-
 function stripRedirections(metaTokens) {
   const tokens = [];
+  const metas = [];
   const redirs = [];
   for (let i = 0; i < metaTokens.length; i += 1) {
     const item = metaTokens[i];
@@ -1334,8 +1713,12 @@ function stripRedirections(metaTokens) {
       continue;
     }
     tokens.push(item.text);
+    metas.push({
+      hasUnquotedBrace: Boolean(item.hasUnquotedBrace),
+      hasUnquotedGlob: Boolean(item.hasUnquotedGlob),
+    });
   }
-  return { tokens, redirs };
+  return { tokens, metas, redirs };
 }
 
 function validateEnvSplitStringPayload(payload, depth, hasRemaining = false) {
@@ -1344,10 +1727,13 @@ function validateEnvSplitStringPayload(payload, depth, hasRemaining = false) {
     const logicalLines = stripHeredocsAndComments(payload);
     const segments = [];
     for (const entry of logicalLines) {
+      if (entry.unclosed) {
+        return `forbidden nested 'env -S' command: unclosed quote or command substitution`;
+      }
       if (!entry.text.trim()) continue;
       segments.push(...splitShellSegmentsWithMeta(entry.text));
     }
-    if (segments.length <= 1) {
+    if (segments.length <= 1 && !segments.some((s) => s.unclosedSub)) {
       return null;
     }
   }
@@ -1368,21 +1754,36 @@ function hasDynamicShellExpansion(str) {
   return Boolean(str) && (SHELL_POSITIONAL_OR_VAR_RE.test(str) || /\$\(|`/.test(str));
 }
 
-function stripCommandPrefixes(rawTokens, depth = 0, redirs = []) {
+function hasBraceOrGlobMeta(metas, idx) {
+  const m = metas?.[idx];
+  return Boolean(m && (m.hasUnquotedBrace || m.hasUnquotedGlob));
+}
+
+function hasDynamicExpansionAt(tokens, metas, idx) {
+  if (idx < 0 || idx >= tokens.length) return false;
+  return hasDynamicShellExpansion(tokens[idx]) || hasBraceOrGlobMeta(metas, idx);
+}
+
+function stripCommandPrefixes(rawTokens, depth = 0, redirs = [], rawMetas = null) {
   if (depth > MAX_SHELL_RECURSION_DEPTH) {
     return {
       tokens: [],
+      metas: [],
       error: `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`,
     };
   }
 
   const tokens = [...rawTokens];
+  const metas = rawMetas
+    ? [...rawMetas]
+    : tokens.map(() => ({ hasUnquotedBrace: false, hasUnquotedGlob: false }));
   let idx = 0;
   while (idx < tokens.length) {
     const tok = tokens[idx];
     if (FORBIDDEN_STARTUP_ENV_ASSIGN_RE.test(tok)) {
       return {
         tokens: [],
+        metas: [],
         error: `forbidden shell startup file variable assignment '${tok}'`,
       };
     }
@@ -1422,15 +1823,16 @@ function stripCommandPrefixes(rawTokens, depth = 0, redirs = []) {
       ) {
         return {
           tokens: [],
+          metas: [],
           error: "forbidden 'exec' with input redirection",
         };
       }
       idx += 1;
-      const envSplitTokens = [];
+      const envSplitItems = [];
       while (idx < tokens.length) {
         if (
           base === 'env' &&
-          envSplitTokens.some((t) => !t.startsWith('-') && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t))
+          envSplitItems.some((item) => !item.text.startsWith('-') && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(item.text))
         ) {
           break;
         }
@@ -1446,16 +1848,16 @@ function stripCommandPrefixes(rawTokens, depth = 0, redirs = []) {
           if (flag === '-S' || flag === '--split-string') {
             const payload = tokens[idx + 1] ?? '';
             const err = validateEnvSplitStringPayload(payload, depth, idx + 2 < tokens.length);
-            if (err) return { tokens: [], error: err };
-            envSplitTokens.push(...tokenizeSegment(payload));
+            if (err) return { tokens: [], metas: [], error: err };
+            envSplitItems.push(...tokenizeSegmentMeta(payload).filter((m) => !m.isRedirOp));
             idx += 2;
             continue;
           }
           if (flag.startsWith('--split-string=')) {
             const payload = flag.slice('--split-string='.length);
             const err = validateEnvSplitStringPayload(payload, depth, idx + 1 < tokens.length);
-            if (err) return { tokens: [], error: err };
-            envSplitTokens.push(...tokenizeSegment(payload));
+            if (err) return { tokens: [], metas: [], error: err };
+            envSplitItems.push(...tokenizeSegmentMeta(payload).filter((m) => !m.isRedirOp));
             idx += 1;
             continue;
           }
@@ -1480,8 +1882,8 @@ function stripCommandPrefixes(rawTokens, depth = 0, redirs = []) {
                   depth,
                   idx + (consumedNext ? 2 : 1) < tokens.length,
                 );
-                if (err) return { tokens: [], error: err };
-                envSplitTokens.push(...tokenizeSegment(payload));
+                if (err) return { tokens: [], metas: [], error: err };
+                envSplitItems.push(...tokenizeSegmentMeta(payload).filter((m) => !m.isRedirOp));
                 break;
               }
               if (ch === 'u' || ch === 'C' || ch === 'P') {
@@ -1519,20 +1921,31 @@ function stripCommandPrefixes(rawTokens, depth = 0, redirs = []) {
       if (base === 'timeout' && idx < tokens.length) {
         idx += 1;
       }
-      if (base === 'env' && envSplitTokens.length > 0) {
-        const remaining = tokens.slice(idx);
-        const firstNonAssign = envSplitTokens.find((t) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t));
-        const spliced =
-          firstNonAssign && firstNonAssign.startsWith('-')
-            ? ['env', ...envSplitTokens, ...remaining]
-            : [...envSplitTokens, ...remaining];
-        return stripCommandPrefixes(spliced, depth + 1, redirs);
+      if (base === 'env' && envSplitItems.length > 0) {
+        const remainingTokens = tokens.slice(idx);
+        const remainingMetas = metas.slice(idx);
+        const firstNonAssign = envSplitItems.find((item) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(item.text));
+        const prefixEnv = firstNonAssign && firstNonAssign.text.startsWith('-');
+        const splicedTokens = [
+          ...(prefixEnv ? ['env'] : []),
+          ...envSplitItems.map((m) => m.text),
+          ...remainingTokens,
+        ];
+        const splicedMetas = [
+          ...(prefixEnv ? [{ hasUnquotedBrace: false, hasUnquotedGlob: false }] : []),
+          ...envSplitItems.map((m) => ({
+            hasUnquotedBrace: Boolean(m.hasUnquotedBrace),
+            hasUnquotedGlob: Boolean(m.hasUnquotedGlob),
+          })),
+          ...remainingMetas,
+        ];
+        return stripCommandPrefixes(splicedTokens, depth + 1, redirs, splicedMetas);
       }
       continue;
     }
     break;
   }
-  return { tokens: tokens.slice(idx), error: null };
+  return { tokens: tokens.slice(idx), metas: metas.slice(idx), error: null };
 }
 
 function isDangerousRmTarget(rawTarget) {
@@ -1690,14 +2103,15 @@ const NPM_KNOWN_BOOLEAN_FLAGS = new Set([
 ]);
 
 const NPM_SHORT_BOOL_CHARS = new Set(['s', 'q', 'd', 'g', 'p', 'l', 'j', 'y', 'f', 'v', 'h', 'a']);
-const NPM_NON_BOOLEAN_KNOWN_FLAGS = new Set([
-  '--silent',
-  '--quiet',
+const NPM_INFO_BOOL_FLAGS = new Set([
+  '-v',
   '--version',
+  '-h',
   '--help',
   '--usage',
   '--versions',
 ]);
+const NPM_INFO_BOOL_SHORT_CHARS = new Set(['v', 'h']);
 const SAFE_VITE_SUBCOMMANDS = new Set(['build', 'optimize']);
 const VITE_VALUE_FLAGS = new Set([
   '--host',
@@ -1720,35 +2134,74 @@ const VITE_VALUE_FLAGS = new Set([
 
 function resolveTauriSubcommand(tauriTokens) {
   let hasInfoFlag = false;
+  let sub = '';
+  let subIdx = -1;
+  let secondarySub = '';
+  let secondarySubIdx = -1;
+  let afterDashDash = false;
   for (let i = 1; i < tauriTokens.length; i += 1) {
     const tok = tauriTokens[i];
-    if (tok === '--') {
-      return { sub: tauriTokens[i + 1] ?? '', hasInfoFlag };
+    if (!afterDashDash && tok === '--') {
+      afterDashDash = true;
+      continue;
     }
-    if (tok === '-h' || tok === '--help' || tok === '-V' || tok === '--version') {
+    if (!afterDashDash && (tok === '-h' || tok === '--help' || tok === '-V' || tok === '--version')) {
       hasInfoFlag = true;
       continue;
     }
-    if (tok.startsWith('-')) {
+    if (!afterDashDash && tok.startsWith('-')) {
       continue;
     }
-    return { sub: tok, hasInfoFlag };
+    if (subIdx < 0) {
+      sub = tok;
+      subIdx = i;
+      if (sub !== 'android' && sub !== 'ios') {
+        break;
+      }
+      continue;
+    }
+    secondarySub = tok;
+    secondarySubIdx = i;
+    break;
   }
-  return { sub: '', hasInfoFlag };
+  return { sub, subIdx, secondarySub, secondarySubIdx, hasInfoFlag };
 }
 
-function isSafeViteCommand(viteTokens) {
+function isForbiddenTauriSubcommand(tauriInfo, tokens, metas = null, placeholders = null) {
+  if (
+    tauriInfo.sub === 'dev' ||
+    tauriInfo.sub === 'build' ||
+    hasDynamicExpansionAt(tokens, metas, tauriInfo.subIdx) ||
+    containsAnyPlaceholder(tauriInfo.sub, placeholders)
+  ) {
+    return true;
+  }
+  if (tauriInfo.sub === 'android' || tauriInfo.sub === 'ios') {
+    if (
+      tauriInfo.secondarySub === 'dev' ||
+      tauriInfo.secondarySub === 'build' ||
+      tauriInfo.secondarySub === 'run' ||
+      hasDynamicExpansionAt(tokens, metas, tauriInfo.secondarySubIdx) ||
+      containsAnyPlaceholder(tauriInfo.secondarySub, placeholders)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isSafeViteCommand(viteTokens, viteMetas = null) {
   let hasInfoFlag = false;
   let sub = '';
   for (let i = 1; i < viteTokens.length; i += 1) {
     const tok = viteTokens[i];
-    if (hasDynamicShellExpansion(tok)) {
+    if (hasDynamicExpansionAt(viteTokens, viteMetas, i)) {
       return false;
     }
     if (tok === '--') {
       if (i + 1 < viteTokens.length) {
         const after = viteTokens[i + 1];
-        if (hasDynamicShellExpansion(after)) return false;
+        if (hasDynamicExpansionAt(viteTokens, viteMetas, i + 1)) return false;
         if (!sub) sub = after;
       }
       break;
@@ -1758,8 +2211,9 @@ function isSafeViteCommand(viteTokens) {
       continue;
     }
     if (VITE_VALUE_FLAGS.has(tok)) {
-      const next = viteTokens[i + 1] ?? '';
-      if (hasDynamicShellExpansion(next)) return false;
+      if (i + 1 < viteTokens.length && hasDynamicExpansionAt(viteTokens, viteMetas, i + 1)) {
+        return false;
+      }
       i += 1;
       continue;
     }
@@ -1808,17 +2262,11 @@ function consumesNpmFlagValue(tokens, idx, valueFlags) {
   if (tok === '--color' || tok === '--no-color') {
     return next === 'always' || next === 'true' || next === 'false';
   }
-  if (NPM_BOOLEAN_CONFIG_FLAGS.has(tok)) {
+  if (tok.startsWith('--no-')) {
     return next === 'true' || next === 'false';
   }
-  if (tok.startsWith('--no-')) {
-    const positive = `--${tok.slice('--no-'.length)}`;
-    if (
-      !NPM_NON_BOOLEAN_KNOWN_FLAGS.has(positive) &&
-      (NPM_BOOLEAN_CONFIG_FLAGS.has(positive) || NPM_KNOWN_BOOLEAN_FLAGS.has(positive))
-    ) {
-      return next === 'true' || next === 'false';
-    }
+  if (NPM_BOOLEAN_CONFIG_FLAGS.has(tok) || NPM_INFO_BOOL_FLAGS.has(tok)) {
+    return next === 'true' || next === 'false';
   }
   if (/^-[A-Za-z]{2,}$/.test(tok)) {
     const chars = [...tok.slice(1)];
@@ -1832,7 +2280,11 @@ function consumesNpmFlagValue(tokens, idx, valueFlags) {
     }
     if (
       (next === 'true' || next === 'false') &&
-      chars.some((ch) => !valueFlags.has(`-${ch}`) && NPM_BOOLEAN_CONFIG_FLAGS.has(`-${ch}`))
+      chars.some(
+        (ch) =>
+          !valueFlags.has(`-${ch}`) &&
+          (NPM_BOOLEAN_CONFIG_FLAGS.has(`-${ch}`) || NPM_INFO_BOOL_SHORT_CHARS.has(ch)),
+      )
     ) {
       return true;
     }
@@ -1930,7 +2382,13 @@ function parseShellInvocationFlags(tokens) {
   return { hasCFlag, hasSFlag, hasInfoFlag, hasStdinRedir, hasExpandAliasesOpt, argIdx };
 }
 
-function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindContext = false) {
+function checkDynamicSubcommand(
+  subToks,
+  placeholders,
+  contextLabel,
+  isFindContext = false,
+  subMetas = null,
+) {
   if (subToks.length === 0) return null;
   const subBase = subToks[0].split('/').pop() ?? subToks[0];
 
@@ -2003,8 +2461,9 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
           j += 1;
         }
         const execSubTokens = subToks.slice(i + 1, j);
+        const execSubMetas = subMetas ? subMetas.slice(i + 1, j) : null;
         if (execSubTokens.length > 0) {
-          const strippedExec = stripCommandPrefixes(execSubTokens);
+          const strippedExec = stripCommandPrefixes(execSubTokens, 0, [], execSubMetas);
           if (strippedExec.error) {
             return `forbidden '${contextLabel} find ${ft}' command: ${strippedExec.error}`;
           }
@@ -2014,6 +2473,7 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
               placeholders,
               `${contextLabel} find ${ft}`,
               false,
+              strippedExec.metas,
             );
             if (dynamicReason) {
               return dynamicReason;
@@ -2029,17 +2489,17 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
     const tauriInfo = resolveTauriSubcommand(subToks);
     if (
       (!tauriInfo.hasInfoFlag && !tauriInfo.sub) ||
-      tauriInfo.sub === 'dev' ||
-      tauriInfo.sub === 'build' ||
-      containsAnyPlaceholder(tauriInfo.sub, placeholders) ||
-      hasDynamicShellExpansion(tauriInfo.sub)
+      ((tauriInfo.sub === 'android' || tauriInfo.sub === 'ios') &&
+        !tauriInfo.hasInfoFlag &&
+        !tauriInfo.secondarySub) ||
+      isForbiddenTauriSubcommand(tauriInfo, subToks, subMetas, placeholders)
     ) {
       return `forbidden '${contextLabel} tauri' without safe subcommand`;
     }
   }
 
   if (subBase === 'vite') {
-    if (!isSafeViteCommand(subToks) || subToks.some((t) => containsAnyPlaceholder(t, placeholders))) {
+    if (!isSafeViteCommand(subToks, subMetas) || subToks.some((t) => containsAnyPlaceholder(t, placeholders))) {
       return `forbidden '${contextLabel} vite' dev server command`;
     }
   }
@@ -2071,14 +2531,20 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
       break;
     }
     const npmSub = subIdx >= 0 ? subToks[subIdx] : '';
-    if (!npmSub || containsAnyPlaceholder(npmSub, placeholders) || hasDynamicShellExpansion(npmSub)) {
+    if (
+      !npmSub ||
+      containsAnyPlaceholder(npmSub, placeholders) ||
+      hasDynamicExpansionAt(subToks, subMetas, subIdx)
+    ) {
       return `forbidden '${contextLabel} npm' without an explicit subcommand`;
     }
     if (NPM_RUN_SUBCOMMANDS.has(npmSub)) {
       let scriptName = '';
+      let scriptIdx = -1;
       for (let j = subIdx + 1; j < subToks.length; j += 1) {
         const st = subToks[j];
         if (st === '--') {
+          scriptIdx = j + 1;
           scriptName = subToks[j + 1] ?? '';
           break;
         }
@@ -2087,18 +2553,25 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
           continue;
         }
         if (st.startsWith('-')) continue;
+        scriptIdx = j;
         scriptName = st;
         break;
       }
-      if (!scriptName || containsAnyPlaceholder(scriptName, placeholders) || hasDynamicShellExpansion(scriptName)) {
+      if (
+        !scriptName ||
+        containsAnyPlaceholder(scriptName, placeholders) ||
+        hasDynamicExpansionAt(subToks, subMetas, scriptIdx)
+      ) {
         return `forbidden '${contextLabel} npm ${npmSub}' without an explicit script name`;
       }
     } else if (npmSub === 'exec' || npmSub === 'x') {
       let execCmd = '';
+      let execIdx = -1;
       let hasCallPayload = false;
       for (let j = subIdx + 1; j < subToks.length; j += 1) {
         const st = subToks[j];
         if (st === '--') {
+          execIdx = j + 1;
           execCmd = subToks[j + 1] ?? '';
           break;
         }
@@ -2116,10 +2589,15 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
           continue;
         }
         if (st.startsWith('-')) continue;
+        execIdx = j;
         execCmd = st;
         break;
       }
-      if ((!execCmd && !hasCallPayload) || containsAnyPlaceholder(execCmd, placeholders) || hasDynamicShellExpansion(execCmd)) {
+      if (
+        (!execCmd && !hasCallPayload) ||
+        containsAnyPlaceholder(execCmd, placeholders) ||
+        hasDynamicExpansionAt(subToks, subMetas, execIdx)
+      ) {
         return `forbidden '${contextLabel} npm ${npmSub}' without an explicit command`;
       }
     }
@@ -2155,20 +2633,22 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
     }
     const npxTarget = subToks[idx] ?? '';
     const npxTail = subToks.slice(idx);
+    const npxTailMetas = subMetas ? subMetas.slice(idx) : null;
     const tauriCheck =
       npxTarget === 'tauri' ? resolveTauriSubcommand(npxTail) : null;
     if (
       (!npxTarget && !hasCallPayload) ||
       containsAnyPlaceholder(npxTarget, placeholders) ||
-      hasDynamicShellExpansion(npxTarget) ||
+      hasDynamicExpansionAt(subToks, subMetas, idx) ||
       (tauriCheck &&
         ((!tauriCheck.hasInfoFlag && !tauriCheck.sub) ||
-          tauriCheck.sub === 'dev' ||
-          tauriCheck.sub === 'build' ||
-          containsAnyPlaceholder(tauriCheck.sub, placeholders) ||
-          hasDynamicShellExpansion(tauriCheck.sub))) ||
+          ((tauriCheck.sub === 'android' || tauriCheck.sub === 'ios') &&
+            !tauriCheck.hasInfoFlag &&
+            !tauriCheck.secondarySub) ||
+          isForbiddenTauriSubcommand(tauriCheck, npxTail, npxTailMetas, placeholders))) ||
       (npxTarget === 'vite' &&
-        (!isSafeViteCommand(npxTail) || npxTail.some((t) => containsAnyPlaceholder(t, placeholders))))
+        (!isSafeViteCommand(npxTail, npxTailMetas) ||
+          npxTail.some((t) => containsAnyPlaceholder(t, placeholders))))
     ) {
       return `forbidden '${contextLabel} npx' without an explicit safe command`;
     }
@@ -2185,32 +2665,50 @@ function checkDynamicSubcommand(subToks, placeholders, contextLabel, isFindConte
         continue;
       }
       if (!endOfFlags && st.startsWith('-') && st.length > 1) {
+        if (hasDynamicExpansionAt(subToks, subMetas, i) || containsAnyPlaceholder(st, placeholders)) {
+          return `forbidden '${contextLabel} rm' with dynamic flag '${st}'`;
+        }
         if (st === '--recursive' || (!st.startsWith('--') && /[rR]/.test(st.slice(1)))) {
           hasRecursive = true;
         }
         continue;
       }
+      if (
+        containsAnyPlaceholder(st, placeholders) ||
+        hasDynamicShellExpansion(st) ||
+        subMetas?.[i]?.hasUnquotedBrace
+      ) {
+        return `forbidden '${contextLabel} rm' with dynamic target '${st}'`;
+      }
       targets.push(st);
     }
-    if (hasRecursive && (targets.length === 0 || targets.some((t) => containsAnyPlaceholder(t, placeholders)))) {
-      return `forbidden '${contextLabel} rm -r' without explicit safe target paths`;
+    if (targets.length === 0 || (hasRecursive && targets.some((t) => isDangerousRmTarget(t)))) {
+      return `forbidden '${contextLabel} rm' without explicit safe target paths`;
     }
   }
 
   return null;
 }
 
-function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = false, redirs = []) {
+function checkTokensSafety(
+  rawTokens,
+  depth = 0,
+  pipedIn = false,
+  endedAtSub = false,
+  redirs = [],
+  rawMetas = null,
+) {
   if (depth > MAX_SHELL_RECURSION_DEPTH) {
     return `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`;
   }
-  const stripped = stripCommandPrefixes(rawTokens, depth, redirs);
+  const stripped = stripCommandPrefixes(rawTokens, depth, redirs, rawMetas);
   if (stripped.error) return stripped.error;
   const tokens = stripped.tokens;
+  const metas = stripped.metas;
   if (tokens.length === 0) return null;
 
   const cmd = tokens[0];
-  if (hasDynamicShellExpansion(cmd)) {
+  if (hasDynamicExpansionAt(tokens, metas, 0)) {
     return `forbidden dynamic command word '${cmd}'`;
   }
 
@@ -2459,18 +2957,25 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
     if (cmdIdx < tokens.length) {
       const subTokens = tokens.slice(cmdIdx);
-      const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false);
+      const subMetas = metas.slice(cmdIdx);
+      const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false, [], subMetas);
       if (nestedReason) {
         return `forbidden nested 'xargs' command: ${nestedReason}`;
       }
-      const strippedSub = stripCommandPrefixes(subTokens, depth + 1);
+      const strippedSub = stripCommandPrefixes(subTokens, depth + 1, [], subMetas);
       if (strippedSub.error) {
         return `forbidden nested 'xargs' command: ${strippedSub.error}`;
       }
       if (strippedSub.tokens.length === 0) {
         return "forbidden 'xargs' wrapper invocation with no explicit target command";
       }
-      const dynamicReason = checkDynamicSubcommand(strippedSub.tokens, xargsPlaceholders, 'xargs', false);
+      const dynamicReason = checkDynamicSubcommand(
+        strippedSub.tokens,
+        xargsPlaceholders,
+        'xargs',
+        false,
+        strippedSub.metas,
+      );
       if (dynamicReason) {
         return dynamicReason;
       }
@@ -2486,18 +2991,20 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           j += 1;
         }
         const subTokens = tokens.slice(i + 1, j);
+        const subMetas = metas.slice(i + 1, j);
         if (subTokens.length > 0) {
-          const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false);
+          const nestedReason = checkTokensSafety(subTokens, depth + 1, false, false, [], subMetas);
           if (nestedReason) {
             return `forbidden nested 'find ${tok}' command: ${nestedReason}`;
           }
-          const strippedSub = stripCommandPrefixes(subTokens, depth + 1);
+          const strippedSub = stripCommandPrefixes(subTokens, depth + 1, [], subMetas);
           if (!strippedSub.error && strippedSub.tokens.length > 0) {
             const dynamicReason = checkDynamicSubcommand(
               strippedSub.tokens,
               new Set(['{}']),
               `find ${tok}`,
               true,
+              strippedSub.metas,
             );
             if (dynamicReason) {
               return dynamicReason;
@@ -2551,7 +3058,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
     }
 
     const subCmd = subIdx >= 0 ? tokens[subIdx] : '';
-    if (hasDynamicShellExpansion(subCmd)) {
+    if (hasDynamicExpansionAt(tokens, metas, subIdx)) {
       return `forbidden dynamic 'npm' subcommand '${subCmd}'`;
     }
 
@@ -2583,7 +3090,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
       if (FORBIDDEN_NPM_SCRIPTS.has(scriptName)) {
         return `forbidden desktop/dev script 'npm ${subCmd} ${scriptName}'`;
       }
-      if (hasDynamicShellExpansion(scriptName)) {
+      if (hasDynamicExpansionAt(tokens, metas, scriptIdx)) {
         return `forbidden dynamic script name '${scriptName}' in 'npm ${subCmd}'`;
       }
       if (sawUnrecognizedRunFlag && scriptIdx >= 0) {
@@ -2594,7 +3101,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
             if (FORBIDDEN_NPM_SCRIPTS.has(afterDash)) {
               return `forbidden desktop/dev script 'npm ${subCmd} ${afterDash}'`;
             }
-            if (hasDynamicShellExpansion(afterDash)) {
+            if (hasDynamicExpansionAt(tokens, metas, k + 1)) {
               return `forbidden dynamic script name '${afterDash}' in 'npm ${subCmd}'`;
             }
             break;
@@ -2603,7 +3110,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           if (FORBIDDEN_NPM_SCRIPTS.has(tok)) {
             return `forbidden desktop/dev script 'npm ${subCmd} ${tok}'`;
           }
-          if (hasDynamicShellExpansion(tok)) {
+          if (hasDynamicExpansionAt(tokens, metas, k)) {
             return `forbidden dynamic script name '${tok}' in 'npm ${subCmd}'`;
           }
         }
@@ -2644,7 +3151,8 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
       if (cmdIdx >= 0 && cmdIdx < tokens.length) {
         const resolved = tokens.slice(cmdIdx);
-        const nestedReason = checkTokensSafety(resolved, depth + 1);
+        const resolvedMetas = metas.slice(cmdIdx);
+        const nestedReason = checkTokensSafety(resolved, depth + 1, false, false, [], resolvedMetas);
         if (nestedReason) {
           return nestedReason;
         }
@@ -2654,7 +3162,14 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           const tok = tokens[k];
           if (tok === '--') {
             if (k + 1 < tokens.length) {
-              const nestedReason = checkTokensSafety(tokens.slice(k + 1), depth + 1);
+              const nestedReason = checkTokensSafety(
+                tokens.slice(k + 1),
+                depth + 1,
+                false,
+                false,
+                [],
+                metas.slice(k + 1),
+              );
               if (nestedReason) return nestedReason;
             }
             break;
@@ -2668,6 +3183,18 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
               }
             }
             k += callFlag.step - 1;
+            continue;
+          }
+          if (!tok.startsWith('-')) {
+            const nestedReason = checkTokensSafety(
+              tokens.slice(k),
+              depth + 1,
+              false,
+              false,
+              [],
+              metas.slice(k),
+            );
+            if (nestedReason) return nestedReason;
           }
         }
       }
@@ -2676,7 +3203,14 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         const tok = tokens[k];
         if (tok === '--') {
           if (k + 1 < tokens.length) {
-            const fallbackReason = checkTokensSafety(['npm', ...tokens.slice(k + 1)], depth + 1);
+            const fallbackReason = checkTokensSafety(
+              ['npm', ...tokens.slice(k + 1)],
+              depth + 1,
+              false,
+              false,
+              [],
+              [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...metas.slice(k + 1)],
+            );
             if (fallbackReason) {
               return fallbackReason;
             }
@@ -2695,7 +3229,14 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
           continue;
         }
         if (NPM_RUN_SUBCOMMANDS.has(tok) || tok === 'exec' || tok === 'x') {
-          const fallbackReason = checkTokensSafety(['npm', ...tokens.slice(k)], depth + 1);
+          const fallbackReason = checkTokensSafety(
+            ['npm', ...tokens.slice(k)],
+            depth + 1,
+            false,
+            false,
+            [],
+            [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...metas.slice(k)],
+          );
           if (fallbackReason) {
             return fallbackReason;
           }
@@ -2739,22 +3280,20 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
     }
     const npxCmd = tokens[cmdIdx] ?? '';
     const npxTail = tokens.slice(cmdIdx);
+    const npxTailMetas = metas.slice(cmdIdx);
     if (npxCmd === 'tauri') {
       const tauriInfo = resolveTauriSubcommand(npxTail);
-      if (
-        tauriInfo.sub === 'dev' ||
-        tauriInfo.sub === 'build' ||
-        hasDynamicShellExpansion(tauriInfo.sub)
-      ) {
-        return `forbidden desktop command 'npx tauri ${tauriInfo.sub}'`;
+      if (isForbiddenTauriSubcommand(tauriInfo, npxTail, npxTailMetas)) {
+        const shown = tauriInfo.secondarySub ? `${tauriInfo.sub} ${tauriInfo.secondarySub}` : tauriInfo.sub;
+        return `forbidden desktop command 'npx tauri ${shown}'`;
       }
     }
-    if (npxCmd === 'vite' && !isSafeViteCommand(npxTail)) {
+    if (npxCmd === 'vite' && !isSafeViteCommand(npxTail, npxTailMetas)) {
       const npxArg = tokens[cmdIdx + 1] ?? '';
       return `forbidden dev server command 'npx vite${npxArg ? ` ${npxArg}` : ''}'`;
     }
     if (cmdIdx < tokens.length) {
-      const nestedReason = checkTokensSafety(tokens.slice(cmdIdx), depth + 1);
+      const nestedReason = checkTokensSafety(npxTail, depth + 1, false, false, [], npxTailMetas);
       if (nestedReason) {
         return nestedReason;
       }
@@ -2764,7 +3303,14 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         const tok = tokens[k];
         if (tok === '--') {
           if (k + 1 < tokens.length) {
-            const nestedReason = checkTokensSafety(['npx', ...tokens.slice(k)], depth + 1);
+            const nestedReason = checkTokensSafety(
+              ['npx', ...tokens.slice(k)],
+              depth + 1,
+              false,
+              false,
+              [],
+              [{ hasUnquotedBrace: false, hasUnquotedGlob: false }, ...metas.slice(k)],
+            );
             if (nestedReason) return nestedReason;
           }
           break;
@@ -2778,6 +3324,18 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
             }
           }
           k += callFlag.step - 1;
+          continue;
+        }
+        if (!tok.startsWith('-')) {
+          const nestedReason = checkTokensSafety(
+            tokens.slice(k),
+            depth + 1,
+            false,
+            false,
+            [],
+            metas.slice(k),
+          );
+          if (nestedReason) return nestedReason;
         }
       }
     }
@@ -2785,16 +3343,13 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
   if (baseCmd === 'tauri') {
     const tauriInfo = resolveTauriSubcommand(tokens);
-    if (
-      tauriInfo.sub === 'dev' ||
-      tauriInfo.sub === 'build' ||
-      hasDynamicShellExpansion(tauriInfo.sub)
-    ) {
-      return `forbidden desktop command 'tauri ${tauriInfo.sub}'`;
+    if (isForbiddenTauriSubcommand(tauriInfo, tokens, metas)) {
+      const shown = tauriInfo.secondarySub ? `${tauriInfo.sub} ${tauriInfo.secondarySub}` : tauriInfo.sub;
+      return `forbidden desktop command 'tauri ${shown}'`;
     }
   }
 
-  if (baseCmd === 'vite' && !isSafeViteCommand(tokens)) {
+  if (baseCmd === 'vite' && !isSafeViteCommand(tokens, metas)) {
     return `forbidden dev server command 'vite${tokens[1] ? ` ${tokens[1]}` : ''}'`;
   }
 
@@ -2804,6 +3359,7 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
   if (baseCmd === 'cargo') {
     let sub = '';
+    let subIdx = -1;
     for (let i = 1; i < tokens.length; i += 1) {
       const tok = tokens[i];
       if (CARGO_GLOBAL_VALUE_FLAGS.has(tok)) {
@@ -2814,10 +3370,11 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         continue;
       }
       sub = tok;
+      subIdx = i;
       break;
     }
 
-    if (sub === 'run' || sub === 'r' || hasDynamicShellExpansion(sub)) {
+    if (sub === 'run' || sub === 'r' || hasDynamicExpansionAt(tokens, metas, subIdx)) {
       return "forbidden 'cargo run' invocation (build the release binary first and invoke it directly)";
     }
 
@@ -2844,6 +3401,9 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
         continue;
       }
       if (!endOfFlags && tok.startsWith('-') && tok.length > 1) {
+        if (hasDynamicExpansionAt(tokens, metas, i)) {
+          return `dangerous 'rm' dynamic flag '${tok}'`;
+        }
         if (tok === '--recursive' || (!tok.startsWith('--') && /[rR]/.test(tok.slice(1)))) {
           hasRecursive = true;
         }
@@ -2856,18 +3416,13 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
       if (ATTACHED_REDIR_RE.test(tok)) {
         continue;
       }
-      if (/\$\(|`/.test(tok)) {
+      if (hasDynamicShellExpansion(tok) || metas[i]?.hasUnquotedBrace) {
         return `dangerous 'rm' dynamic argument '${tok}'`;
       }
       targets.push(tok);
     }
 
-    const hasDynamicLeadingArg =
-      targets.length >= 2 &&
-      targets.slice(0, -1).some((t) => hasDynamicShellExpansion(t)) &&
-      targets.some((t) => isDangerousRmTarget(t));
-
-    if (hasRecursive || hasDynamicLeadingArg) {
+    if (hasRecursive) {
       for (const target of targets) {
         if (isDangerousRmTarget(target)) {
           return `dangerous 'rm' target '${target}' (only explicit subpaths like src-tauri/target/... or /tmp/... are allowed)`;
@@ -2881,8 +3436,8 @@ function checkTokensSafety(rawTokens, depth = 0, pipedIn = false, endedAtSub = f
 
 function checkSegmentSafety(segment, depth = 0, pipedIn = false, endedAtSub = false) {
   const metaTokens = tokenizeSegmentMeta(segment);
-  const { tokens, redirs } = stripRedirections(metaTokens);
-  return checkTokensSafety(tokens, depth, pipedIn, endedAtSub, redirs);
+  const { tokens, metas, redirs } = stripRedirections(metaTokens);
+  return checkTokensSafety(tokens, depth, pipedIn, endedAtSub, redirs, metas);
 }
 
 /**
@@ -2903,9 +3458,25 @@ export function validateCommand(script, depth = 0) {
 
   const logicalLines = stripHeredocsAndComments(script);
   for (const entry of logicalLines) {
+    if (entry.unclosed) {
+      return {
+        ok: false,
+        reason: 'unclosed quote or command substitution',
+        lineIndex: entry.lineIndex,
+        lineText: entry.text,
+      };
+    }
     if (!entry.text.trim()) continue;
     const segments = splitShellSegmentsWithMeta(entry.text);
     for (const seg of segments) {
+      if (seg.unclosedSub || seg.endedAtSub) {
+        return {
+          ok: false,
+          reason: 'unclosed command substitution',
+          lineIndex: entry.lineIndex,
+          lineText: seg.text,
+        };
+      }
       const reason = checkSegmentSafety(seg.text, depth, seg.pipedIn, seg.endedAtSub);
       if (reason) {
         return {
@@ -3239,6 +3810,63 @@ export function runStartupSelfChecks() {
     'rm -rf ~-',
     'coproc cargo run',
     'coproc MYPROC { cargo run; }',
+    '$(\necho cargo\n) run',
+    '`\necho cargo\n` run',
+    'cargo $(\necho run\n)',
+    'npm run $(\necho tauri:dev\n)',
+    '$(cat <<\'EOF\'\ncargo run\nEOF\n)',
+    'cargo $(cat <<\'EOF\'\nrun\nEOF\n)',
+    'npm run $(cat <<\'EOF\'\ntauri:dev\nEOF\n)',
+    'rm -rf $(cat <<\'EOF\'\n/\nEOF\n)',
+    'tauri $(\necho dev\n)',
+    'echo $(cargo run',
+    'cat <<EOF \\\n&& cargo run\nhello\nEOF',
+    'cat <<EOF \\\n&& npm run tauri:dev\nhello\nEOF',
+    "cat <<'EOF' \\\n&& rm -rf /\nhello\nEOF",
+    'cat <<EOF \\\n\\\n&& cargo run\nhi\nEOF',
+    'cat <<$"EOF" > /dev/null\nhi\nEOF\ncargo run',
+    'cat <<-$"EOF" > /dev/null\n\thi\n\tEOF\ncargo run',
+    'cat <<E$"O"F > /dev/null\nhi\nEOF\ncargo run',
+    'cat <<$"" > /dev/null\nhi\n\ncargo run',
+    'npm --prefix $(echo `case x in x) echo . ;; esac` >/dev/null; echo .) run tauri:dev',
+    'cargo -C $(echo `case x in x) echo . ;; esac` >/dev/null; echo .) run',
+    'echo $(case x in x) cargo run ;; esac)',
+    'echo "$(case a in a) cargo run;; esac)"',
+    '{cargo,} run',
+    'cargo {run,}',
+    'cargo {run,check}',
+    '{npm,} run tauri:dev',
+    'npm {run,} tauri:dev',
+    'npm run {tauri:dev,check:docs}',
+    'rm -rf {/,/tmp/safe}',
+    'rm {-rf,} /',
+    "bash -c '{cargo,} run'",
+    'eval {cargo,run}',
+    'env {cargo,} run',
+    'echo run | xargs {cargo,}',
+    'tauri {dev,info}',
+    "/bin/ba[s]h -c 'cargo run'",
+    '/usr/bin/e[n]v cargo run',
+    './node_modules/.bin/tau[r]i dev',
+    './node_modules/.bin/vi[t]e --port 3000',
+    '$PROBE/bin/car[g]o run',
+    'find . -maxdepth 0 -exec $PROBE/bin/car[g]o run \\;',
+    'echo run | xargs $PROBE/bin/car[g]o',
+    'F="-rf /"; rm $F',
+    "bash -c 'rm $1' _ '-rf /'",
+    'set -- -rf /; rm "$@"',
+    "bash -c 'rm $@' _ -rf /",
+    'npm -v false run tauri:dev',
+    'npm --help false run tauri:dev',
+    'npm -sv false run tauri:dev',
+    'npm exec -v false -- tauri dev',
+    'npx --no-unknown false tauri dev',
+    'npx --no-silent false tauri dev',
+    'npm exec --no-unknown false tauri dev',
+    'tauri android dev',
+    'tauri ios dev',
+    'tauri android build',
+    'tauri ios run',
   ];
   for (const cmd of unsafeCmds) {
     if (validateCommand(cmd).ok) {
@@ -3290,6 +3918,14 @@ export function runStartupSelfChecks() {
     'tauri info',
     'tauri --help',
     'tauri -v info',
+    'echo $(\necho ok\n)',
+    "echo $(cat <<'EOF'\ncargo run\nEOF\n)",
+    'echo $(case x in x) echo ok ;; esac)',
+    'ls file.{a,b}',
+    'echo "${HOME:-/tmp}"',
+    'for f in docs/*.md; do echo "$f"; done',
+    'tauri android --help',
+    'tauri ios --help',
   ];
   for (const cmd of safeCmds) {
     const res = validateCommand(cmd);
