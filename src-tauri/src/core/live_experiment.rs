@@ -250,9 +250,20 @@ pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 /// 5:1. `0.0`/absent keeps the legacy soft/uncapped path bit-identical so frozen E3 and historical
 /// manifests stay reproducible.
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
+/// FINDINGS F-066: `1.0` records the live population's lineage — every founder as a root, every
+/// birth as a node with an edge from its parent and its origin tick, every death as a destruction
+/// tick — in a [`crate::core::live_lineage::LiveLineage`] the snapshot carries. It also gives each
+/// child a **unique** minted id (`birth-{run}-{n}`) instead of the legacy `parent.generation`,
+/// which every sibling shared.
+///
+/// **Changes the trajectory when on**: `autonomous_reproduction_system` orders parents by lineage
+/// id, so new ids reorder the `SimRng` draws. `0.0`/absent keeps the legacy ids and records
+/// nothing, bit-identical to every earlier manifest. Exact boolean. Honoured by the headless
+/// adapter only; the desktop viewer's genesis ignores it.
+pub const LIVE_KEY_LINEAGE_TRACKING: &str = "live.lineage_tracking";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 29] = [
+pub const LIVE_KEYS: [&str; 30] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_FOUNDER_LAYOUT,
     LIVE_KEY_PREDATOR_FRACTION,
@@ -282,6 +293,7 @@ pub const LIVE_KEYS: [&str; 29] = [
     LIVE_KEY_DRIFT_RESET_TICKS,
     LIVE_KEY_LAND_MASK,
     LIVE_KEY_STRICT_PREY_CAP,
+    LIVE_KEY_LINEAGE_TRACKING,
 ];
 
 /// The genesis the manifest asked for.
@@ -376,6 +388,10 @@ pub struct LiveWorldConfig {
     /// `autonomous_reproduction_system`; `0.0`/absent keeps the legacy soft gate bit-identical.
     #[serde(default)]
     pub strict_prey_cap: bool,
+    /// F-066 (`live.lineage_tracking`): record live births/deaths and mint unique child ids;
+    /// `0.0`/absent keeps the legacy ids and records nothing, bit-identical.
+    #[serde(default)]
+    pub lineage_tracking: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -442,6 +458,7 @@ impl Default for LiveWorldConfig {
             lake_layout: 0,
             land_mask: false,
             strict_prey_cap: false,
+            lineage_tracking: false,
         }
     }
 }
@@ -729,6 +746,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_STRICT_PREY_CAP => match *value {
                     0.0 => config.strict_prey_cap = false,
                     1.0 => config.strict_prey_cap = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_LINEAGE_TRACKING => match *value {
+                    0.0 => config.lineage_tracking = false,
+                    1.0 => config.lineage_tracking = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -2151,6 +2180,11 @@ impl LiveExperimentAdapter {
         {
             drift.sync_tick(tick);
         }
+        // Same moment, same reason: births and deaths in the tick about to run are stamped with
+        // its number (F-066). Absent resource = nothing.
+        if let Some(mut live) = world.get_resource_mut::<crate::core::live_lineage::LiveLineage>() {
+            live.set_tick(tick);
+        }
     }
 
     fn record_drift_shortfalls_if_due(&mut self, tick: u64, force_flush: bool) {
@@ -2704,6 +2738,23 @@ fn build_live_world(
             // colliders (when `tick_count > 0 || clock_tick > 0`), leaving post-rebuild spawns
             // unindexed until tick K+1's rebuild (F-045).
             populate_spatial_grid(&mut world, state);
+            if config.lineage_tracking {
+                let agent_ids = state.agents.iter().map(|a| a.lineage_id.clone()).chain(
+                    state
+                        .dormant_agents
+                        .iter()
+                        .map(|d| d.agent.lineage_id.clone()),
+                );
+                let live = crate::core::live_lineage::LiveLineage::restore(
+                    seed,
+                    state.live_lineage.as_ref(),
+                    state.lineage_nodes.clone(),
+                    state.lineage_relations.clone(),
+                    agent_ids,
+                )
+                .map_err(|reason| ExperimentError::InvalidPopulation { reason })?;
+                world.insert_resource(live);
+            }
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
@@ -2714,10 +2765,30 @@ fn build_live_world(
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
             try_apply_live_genesis_and_policies(&mut world, seed, config, bounds)?;
+            if config.lineage_tracking {
+                insert_live_lineage_founders(&mut world, seed);
+            }
         }
     }
 
     Ok(world)
+}
+
+/// `live.lineage_tracking` (F-066): record every genesis founder as a root born at tick 0, in id
+/// order so the graph does not depend on archetype iteration order.
+fn insert_live_lineage_founders(world: &mut World, seed: u64) {
+    use crate::core::agent_systems::{AgentGenotype, AgentLineageId};
+    let mut founders: Vec<(String, crate::evolution::genotype::MorphologyGenotype)> = world
+        .query_filtered::<(&AgentLineageId, &AgentGenotype), With<crate::core::ecs::Agent>>()
+        .iter(world)
+        .map(|(id, genotype)| (id.0.clone(), genotype.0.clone()))
+        .collect();
+    founders.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut live = crate::core::live_lineage::LiveLineage::new(seed);
+    for (id, genotype) in founders {
+        live.record_founder(id, genotype);
+    }
+    world.insert_resource(live);
 }
 
 /// `live.resource_capacity_scale` (card S6): scale the pasture's capacity and standing crop once, at

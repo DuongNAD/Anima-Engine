@@ -195,6 +195,8 @@ fn a_pre_field_graph_still_reads_and_still_counts() {
             generation: g,
             genotype: None,
             cumulative_mutations: None,
+            origin_tick: None,
+            destruction_tick: None,
         })
         .collect();
     let relations: Vec<LineageRelation> = (1..4)

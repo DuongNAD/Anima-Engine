@@ -3,7 +3,7 @@
 //! walkability, explicit thirst > local Food > grass > global Food priority).
 //!
 //! Covers every acceptance requirement without pinning trajectory floats or absolute intake:
-//! 1. Key registration (`LIVE_KEY_GRASS_STEERING = "live.grass_steering"`, `LIVE_KEYS.len() = 29`),
+//! 1. Key registration (`LIVE_KEY_GRASS_STEERING = "live.grass_steering"`, `LIVE_KEYS.len() = 30`),
 //!    exact `{0.0, 1.0}` validation, `GrassSteeringPolicy` / `LiveWorldConfig` defaults, serde
 //!    backward compatibility, and preflight refusal without `live.locomotion = 1.0`.
 //! 2. `absent` and `0.0` produce identical checksums and observables across every sampled tick
@@ -97,7 +97,7 @@ fn run_steering_once(world: &mut World) {
 #[test]
 fn key_is_registered_validated_and_refused_without_locomotion() {
     assert_eq!(LIVE_KEY_GRASS_STEERING, "live.grass_steering");
-    assert_eq!(LIVE_KEYS.len(), 29);
+    assert_eq!(LIVE_KEYS.len(), 30);
     assert!(LIVE_KEYS.contains(&LIVE_KEY_GRASS_STEERING));
 
     assert!(!LiveWorldConfig::default().grass_steering);

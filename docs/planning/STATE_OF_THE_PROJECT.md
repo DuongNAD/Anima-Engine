@@ -641,7 +641,7 @@ mang số đo. "Opt-in" nghĩa là khoá manifest vắng thì thế giới chạ
 | Quần thể luân chuyển trong adapter sống | Headless, opt-in | `live.reproduction` (thẻ S1, #66, [ADR-0005](../decisions/ADR-0005-live-population-turnover.md)); gate ở `live_turnover_tests.rs`. `EvolutionaryReplacement` của app không đổi. Khoá này chỉ điều khiển adapter: trong app desktop `autonomous_reproduction_system` chạy mặc định, vì `ReproductionPolicy` vắng mặt nghĩa là bật (`core/resources.rs`) |
 | Vận động | Headless, opt-in | `live.locomotion` (#76, [ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)); gate ở `locomotion_steering_tests.rs` và bản zero-alloc. Chưa bật mặc định trong app; ba câu hỏi mở ở §3.00 P3 |
 | Sinh thái sống được cho thú săn và con mồi | Headless, opt-in | Sàn bộ lái, lái theo khát và ba khoá thu nhập của thú săn (#82, #87, [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md)); test khoá P1 là `predator_prey_coexistence_tests.rs` (#89). **Không** phải S43 hay Red Queen |
-| Phả hệ | Live integrated, trừ OSS-073 | Newick, `simplify`, nén trong tracker sống và MRCA (#75, lệnh `get_lineage_mrca`). Line of descent (OSS-073) chưa làm — xem §3.15 |
+| Phả hệ | Live integrated, trừ OSS-073 | Newick, `simplify`, nén trong tracker sống và MRCA (#75, lệnh `get_lineage_mrca`). Ca sinh/chết live vào tracker với id duy nhất qua khoá opt-in `live.lineage_tracking` (F-066, 2026-11-22). Line of descent (OSS-073) chưa làm — xem §3.15 |
 | Bảo vệ nhánh và CI bắt buộc | Live integrated | Hai nhánh được bảo vệ từ 2026-11-17 — xem §3.00 |
 | Thế giới đọc được (frontend) | Đã merge mười thẻ | RW-A1…A3, RW-B1…B3, RW-C1…C4. Ba thẻ cần phần cứng còn lại ở §3.00 P4 |
 
@@ -1548,6 +1548,24 @@ fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
 báo, vì rừng nhiều gốc là chuyện bình thường ở đây.
 
 Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) — nó cần MRCA.
+
+**(3) Ca sinh live vào tracker, id duy nhất, thời điểm chết (F-066).** ✅ **Xong, opt-in** (2026-11-22).
+Trước đó OSS-073, cổng S43 và ứng viên loài AE-S11 bị chặn trên quần thể live bởi hai khe: ca sinh live
+(`SpawnOffspringCommand`) không ghi cạnh nào vào tracker (chỉ epoch MAP-Elites gọi `add_reproduction`),
+và id con `cha.thế_hệ` trùng giữa anh em (gốc của F-047). Nay khoá `live.lineage_tracking = 1` của
+adapter headless bật [`core/live_lineage.rs`](../../src-tauri/src/core/live_lineage.rs): founder là root
+`origin_tick = 0`, mỗi ca sinh có id `birth-{run}-{n}` riêng, một cạnh từ cha (`Clone`/`Mutate` theo việc
+genome có thật sự đổi) và `origin_tick`; mỗi ca chết ghi `destruction_tick`. Snapshot mang cả đồ thị lẫn
+con trỏ id (`SavedSimulationState::live_lineage`); save cũ vẫn đọc được. Gate:
+`tests/live_lineage_tests.rs`.
+
+- **Opt-in vì đổi id là đổi quỹ đạo**: `autonomous_reproduction_system` duyệt cha theo thứ tự id. Vắng
+  khoá thì đường cũ giữ nguyên từng bit (checksum trunk và nhánh trùng nhau, số đo trong PR), nên
+  `LIVE_MODEL_VERSION` không đổi. Một manifest **bật** khoá là một quỹ đạo khác; đừng so checksum của nó
+  với lượt chạy không bật.
+- **Còn lại:** app desktop chưa đặt khoá (Neo4j chưa có cột cho hai tick); nén vẫn nối đường đơn nhánh,
+  nên một chuỗi genotype kiểu Avida theo từng bước dọc line of descent cần thêm tuỳ chọn tắt nén. OSS-073
+  nay **làm được** trên quần thể live với đồ thị có thật; giao thức đo của nó vẫn chưa viết.
 
 **Hai cái bẫy đã trả giá rồi, đừng đạp lại:**
 

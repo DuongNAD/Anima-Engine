@@ -30,6 +30,22 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-066 — Ca sinh trong thế giới live không bao giờ tới lineage tracker, và anh em cùng cha dùng chung một lineage id
+- **Ngày:** 2026-11-22
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/simulation_loop.rs:956`: lời gọi `add_reproduction` duy nhất là epoch MAP-Elites trên luồng tiến hoá. Sinh sản liên tục (ADR-0005) đi qua `autonomous_reproduction_system` → `SpawnOffspringCommand::apply` (`src-tauri/src/core/agent_systems.rs:478` ở trunk `7111093`), mang id cha nhưng không ghi cạnh nào.
+  - `src-tauri/src/core/agent_systems.rs:1129` (trunk `7111093`): id con là `format!("{parent_lineage_id}.{}", parent_generation + 1)`, nên mọi con của cùng một cha có **cùng** id. Đây là gốc của F-047; F-047 được sửa bằng cách ghép phản hồi suy luận theo `(lineage_id, request_id)`, không phải bằng id duy nhất.
+  - `src-tauri/src/evolution/lineage.rs`: `LineageNode` không có thời điểm chết, nên không xuất được `destruction_time` theo chuẩn dữ liệu ALife.
+- **Phát hiện bởi:** tay (đọc code sau các báo cáo nghiên cứu ngày 2026-11-22; ghi ở `docs/research/OPEN_ENDEDNESS_LINEAGE_SPECIES_RESEARCH_2026-11-22.md` §1, PR #206)
+- **Triệu chứng:** Chạy thế giới live có sinh sản thì đồ thị phả hệ rỗng (adapter) hoặc chỉ chứa con MAP-Elites (app), và các cá thể sống có id trùng nhau. Mọi phép đo dòng dõi trên quần thể live (OSS-073 line of descent kiểu Avida, cổng Red-Queen S43, ứng viên loài AE-S11) vì thế không làm được: không có đồ thị, và id cũng không gọi tên được node của nó.
+- **Vì sao phải opt-in, không sửa thẳng:** id không chỉ là nhãn. `autonomous_reproduction_system` duyệt cha **theo thứ tự id** (`agent_systems.rs:958` ở nhánh này), và thứ tự ứng viên của drift replay cũng khoá theo id, nên đổi id là đổi thứ tự rút `SimRng`, đổi quỹ đạo và checksum. Các manifest đã hiệu chuẩn (E3, SEL2-P2) đo trên id cũ. Vì vậy cả đường mới nằm sau khoá `live.lineage_tracking = 1`; vắng khoá thì không có resource `LiveLineage`, hai command chỉ kiểm tra sự có mặt của nó (không cấp phát, không rút số), quỹ đạo giữ nguyên từng bit và `LIVE_MODEL_VERSION` không đổi. Bằng chứng ở mô tả PR: checksum của đường mặc định trên trunk và trên nhánh trùng nhau ở mọi mốc đo.
+- **Sửa:** module mới `src-tauri/src/core/live_lineage.rs` (resource `LiveLineage`). Khi bật khoá: founder là root có `origin_tick = 0`; mỗi ca sinh lấy id `birth-{run:016x}-{n:08x}` (namespace riêng, không đụng con trỏ `lineage-…` của MAP-Elites), thành một node có cạnh từ cha, `origin_tick` và kiểu cạnh `Clone`/`Mutate` theo việc genome có thật sự đổi hay không (`mutate_genotype_reporting`); mỗi ca chết qua `ReclaimAndDespawnAgentCommand` ghi `destruction_tick`. Mọi việc này nằm trong deferred command, không trong system của vòng tick. `LineageNode` có thêm `origin_tick`/`destruction_tick` (`Option<u64>`, `#[serde(default)]`); `compact` coi mọi node "mở" (đã sinh, chưa chết) là sample. Snapshot mang đồ thị và `SavedSimulationState::live_lineage` (con trỏ id, ngưỡng nén); save cũ không có trường này vẫn đọc được và con trỏ được khôi phục từ các id có trong save.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test live_lineage_tests`. Trên trunk `7111093` file này không biên dịch được (khoá và API chưa có); test `the_legacy_path_records_nothing_and_keeps_parent_generation_ids` cho thấy đường mặc định vẫn tái hiện va chạm id anh em.
+- **Test khoá lại:** `src-tauri/tests/live_lineage_tests.rs` (7 test: cạnh từ đúng cha, id anh em khác nhau, thời điểm chết, `run N == run K → snapshot → restore → run N−K` cả checksum lẫn đồ thị, save thiếu trường mới, đường legacy) và 4 unit test trong `core/live_lineage.rs`.
+- **Chưa phủ:** app desktop chưa đặt khoá (luồng `simulation_loop` vẫn chỉ thấy con MAP-Elites; Neo4j chưa có cột cho hai tick); chế độ viewer W2-lite bỏ qua khoá; di cư và ngủ đông không phải là chết nên node vẫn mở; nén nối đường đơn nhánh nên genotype của tổ tiên trung gian bị bỏ (như OSS-071b), một chuỗi genotype kiểu Avida theo từng bước cần thêm tuỳ chọn tắt nén.
+- **Trạng thái:** FIXED (opt-in) ở PR sửa F-066.
+
 ### F-054 — `check:bundle` nhận ra chunk 3D chỉ bằng tên file, nên không thấy three.js bị import thẳng vào trang chính
 - **Ngày:** 2026-11-20
 - **Loại:** BUG

@@ -573,6 +573,15 @@ pub struct SavedSimulationState {
     /// behavior.
     #[serde(default)]
     pub unindexed_colliders: Option<SavedUnindexedColliders>,
+    /// The live lineage id cursor and compaction threshold (`live.lineage_tracking`, F-066). The
+    /// graph itself is in `lineage_nodes` / `lineage_relations`.
+    ///
+    /// `None` on every run without the key and on every save written before it existed — additive,
+    /// so no schema bump: a reader that predates it ignores it, and a restore that finds `None`
+    /// either has no live lineage to resume or recovers the cursor from the ids in the save
+    /// ([`crate::core::live_lineage::LiveLineage::restore`]).
+    #[serde(default)]
+    pub live_lineage: Option<crate::core::live_lineage::SavedLiveLineage>,
 
     /// Which on-disk schema this state was read from, filled in by
     /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
@@ -636,6 +645,7 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         shared_learning: None,
         next_node_id: None,
         unindexed_colliders: None,
+        live_lineage: None,
         loaded_from_schema: 0,
     }
 }
@@ -1131,6 +1141,21 @@ pub fn serialize_world_state(
         ActiveEnvironmentEvent, AgentClass, AgentParentLineageIds, EpochManager, Food,
         FoodSpawnSettings, Lake, MapBounds, ParentAgent, Predator, Segment, Tree, Velocity,
     };
+    // A world that records its own live lineage (`live.lineage_tracking`, F-066) owns its graph:
+    // the births and deaths are in the `LiveLineage` resource, not in the shared tracker handle,
+    // which on that path (the headless adapter) is an empty placeholder. Every other world saves
+    // the handle's graph exactly as before.
+    let (lineage_nodes, lineage_relations, live_lineage) =
+        match world.get_resource::<crate::core::live_lineage::LiveLineage>() {
+            Some(live) => {
+                let (nodes, relations) = live.graph();
+                (nodes, relations, Some(live.saved()))
+            }
+            None => {
+                let (nodes, relations) = lineage_tracker.get_lineage_graph().unwrap_or_default();
+                (nodes, relations, None)
+            }
+        };
     let active_environment_event = world
         .get_resource::<ActiveEnvironmentEvent>()
         .map(|e| e.0)
@@ -1451,8 +1476,8 @@ pub fn serialize_world_state(
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone(),
-        lineage_nodes: lineage_tracker.get_lineage_graph().unwrap_or_default().0,
-        lineage_relations: lineage_tracker.get_lineage_graph().unwrap_or_default().1,
+        lineage_nodes,
+        lineage_relations,
         lakes,
         trees,
         world_identity,
@@ -1478,6 +1503,7 @@ pub fn serialize_world_state(
             trees: unindexed_trees,
             lakes: unindexed_lakes,
         }),
+        live_lineage,
         loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
 }

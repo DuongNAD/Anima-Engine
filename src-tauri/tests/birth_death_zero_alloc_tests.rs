@@ -185,6 +185,7 @@ fn measure_max_size_bodies() -> MaxBodyAllocs {
         starting_energy: 40.0,
         energy_target: 100.0,
         brain: None,
+        relation_type: anima_engine_lib::evolution::lineage::RelationType::Clone,
     };
 
     let mut world = World::new();
@@ -367,6 +368,7 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
             starting_energy: 50.0,
             energy_target: 100.0,
             brain: Some(Arc::clone(&inherited_brain)),
+            relation_type: anima_engine_lib::evolution::lineage::RelationType::Clone,
         }
         .apply(&mut world);
     }
@@ -489,6 +491,7 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
         starting_energy: 40.0,
         energy_target: 100.0,
         brain: Some(Arc::clone(&inherited_brain)),
+        relation_type: anima_engine_lib::evolution::lineage::RelationType::Clone,
     };
 
     let deaths_before_combined = world.resource::<DemographicTracker>().total_deaths();
