@@ -25,7 +25,49 @@ import { pathToFileURL } from 'node:url';
 const DEFAULT_SUBDIRS = ['docs/tutorials', 'docs/how-to'];
 const ALLOWED_SHELL_LANGS = new Set(['', 'bash', 'sh', 'zsh']);
 const FORBIDDEN_NPM_SCRIPTS = new Set(['tauri:dev', 'tauri:build', 'tauri', 'dev', 'preview']);
-const WRAPPER_COMMANDS = new Set(['env', 'command', 'nohup', 'time', 'nice']);
+const WRAPPER_COMMANDS = new Set(['env', 'command', 'nohup', 'time', 'nice', 'timeout']);
+const MAX_SHELL_RECURSION_DEPTH = 5;
+const ENV_VALUE_FLAGS = new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string', '--argv0']);
+const NICE_VALUE_FLAGS = new Set(['-n', '--adjustment']);
+const TIMEOUT_VALUE_FLAGS = new Set(['-k', '--kill-after', '-s', '--signal']);
+const NPM_VALUE_FLAGS = new Set([
+  '--prefix',
+  '-C',
+  '--loglevel',
+  '--workspace',
+  '-w',
+  '--userconfig',
+  '--cache',
+  '--registry',
+  '--scope',
+  '--tag',
+  '--script-shell',
+]);
+const NPX_VALUE_FLAGS = new Set([
+  '--package',
+  '-p',
+  '-c',
+  '--call',
+  '--userconfig',
+  '--prefix',
+  '-C',
+  '--workspace',
+  '-w',
+  '--loglevel',
+  '--cache',
+  '--registry',
+]);
+const CARGO_GLOBAL_VALUE_FLAGS = new Set([
+  '--manifest-path',
+  '-C',
+  '--config',
+  '--target-dir',
+  '--lockfile-path',
+  '--color',
+  '--message-format',
+  '-Z',
+  '--explain',
+]);
 
 function toPosixPath(p) {
   return p.replace(/\\/g, '/');
@@ -303,10 +345,84 @@ export function extractDocCommands(markdownText, filePath) {
   return { blocks, errors };
 }
 
-function scanShellLineForCommentAndHeredoc(line) {
-  let quote = null;
+function parseHeredocSpec(rest) {
+  let idx = 0;
+  let stripTabs = false;
+  if (rest[idx] === '-') {
+    stripTabs = true;
+    idx += 1;
+  }
+  while (idx < rest.length && (rest[idx] === ' ' || rest[idx] === '\t')) {
+    idx += 1;
+  }
+  if (idx >= rest.length) return null;
+
+  let delim = '';
+  let hasToken = false;
+  let q = null;
+
+  while (idx < rest.length) {
+    const c = rest[idx];
+    if (q === "'") {
+      if (c === "'") {
+        q = null;
+      } else {
+        delim += c;
+      }
+      hasToken = true;
+      idx += 1;
+      continue;
+    }
+    if (q === '"') {
+      if (c === '\\' && idx + 1 < rest.length) {
+        const next = rest[idx + 1];
+        if (next === '"' || next === '\\' || next === '$' || next === '`') {
+          delim += next;
+        } else {
+          delim += `\\${next}`;
+        }
+        hasToken = true;
+        idx += 2;
+        continue;
+      }
+      if (c === '"') {
+        q = null;
+      } else {
+        delim += c;
+      }
+      hasToken = true;
+      idx += 1;
+      continue;
+    }
+
+    if (/[\s;|&<>()]/.test(c)) {
+      break;
+    }
+    if (c === "'" || c === '"') {
+      q = c;
+      hasToken = true;
+      idx += 1;
+      continue;
+    }
+    if (c === '\\' && idx + 1 < rest.length) {
+      delim += rest[idx + 1];
+      hasToken = true;
+      idx += 2;
+      continue;
+    }
+    delim += c;
+    hasToken = true;
+    idx += 1;
+  }
+
+  if (!hasToken || q !== null) return null;
+  return { delim, stripTabs, consumed: idx };
+}
+
+function scanShellLineForCommentAndHeredoc(line, initialQuote = null) {
+  let quote = initialQuote;
   let commentStart = line.length;
-  let heredocDelim = null;
+  const heredocSpecs = [];
 
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
@@ -340,18 +456,19 @@ function scanShellLineForCommentAndHeredoc(line) {
       break;
     }
 
-    if (ch === '<' && line[i + 1] === '<' && line[i + 2] !== '<' && heredocDelim === null) {
-      const rest = line.slice(i + 2);
-      const m = /^-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/.exec(rest);
-      if (m) {
-        heredocDelim = m[2];
+    if (ch === '<' && line[i + 1] === '<' && line[i + 2] !== '<') {
+      const spec = parseHeredocSpec(line.slice(i + 2));
+      if (spec) {
+        heredocSpecs.push({ delim: spec.delim, stripTabs: spec.stripTabs });
+        i += 1 + spec.consumed;
       }
     }
   }
 
   return {
     cleaned: line.slice(0, commentStart),
-    heredocDelim,
+    heredocSpecs,
+    endQuote: quote,
   };
 }
 
@@ -361,22 +478,26 @@ function scanShellLineForCommentAndHeredoc(line) {
 export function stripHeredocsAndComments(script) {
   const rawLines = script.replace(/\r\n/g, '\n').split('\n');
   const strippedLines = [];
-  let heredocDelim = null;
+  const heredocQueue = [];
+  let quote = null;
 
   for (let i = 0; i < rawLines.length; i += 1) {
     const line = rawLines[i];
-    if (heredocDelim !== null) {
-      if (line.trim() === heredocDelim) {
-        heredocDelim = null;
+    if (heredocQueue.length > 0) {
+      const active = heredocQueue[0];
+      const candidate = active.stripTabs ? line.replace(/^\t+/, '') : line;
+      if (candidate === active.delim) {
+        heredocQueue.shift();
       }
-      strippedLines.push('');
+      strippedLines.push({ text: '', endQuote: quote });
       continue;
     }
 
-    const { cleaned, heredocDelim: nextDelim } = scanShellLineForCommentAndHeredoc(line);
-    strippedLines.push(cleaned);
-    if (nextDelim !== null) {
-      heredocDelim = nextDelim;
+    const { cleaned, heredocSpecs, endQuote } = scanShellLineForCommentAndHeredoc(line, quote);
+    quote = endQuote;
+    strippedLines.push({ text: cleaned, endQuote });
+    if (heredocSpecs.length > 0) {
+      heredocQueue.push(...heredocSpecs);
     }
   }
 
@@ -384,14 +505,17 @@ export function stripHeredocsAndComments(script) {
   let current = '';
   let startIdx = 0;
   let continuing = false;
+  let continueWithNewline = false;
 
   for (let i = 0; i < strippedLines.length; i += 1) {
-    const part = strippedLines[i];
+    const { text: part, endQuote } = strippedLines[i];
     if (!continuing) {
       startIdx = i;
       current = part;
+    } else if (continueWithNewline) {
+      current += `\n${part}`;
     } else {
-      current += ` ${part.trimStart()}`;
+      current += part;
     }
 
     const trimmedEnd = current.replace(/[ \t]+$/, '');
@@ -399,13 +523,19 @@ export function stripHeredocsAndComments(script) {
     for (let k = trimmedEnd.length - 1; k >= 0 && trimmedEnd[k] === '\\'; k -= 1) {
       trailingBackslashes += 1;
     }
-    if (trailingBackslashes % 2 === 1) {
+
+    if (endQuote !== "'" && trailingBackslashes % 2 === 1) {
       current = trimmedEnd.slice(0, -1);
       continuing = true;
+      continueWithNewline = false;
+    } else if (endQuote !== null) {
+      continuing = true;
+      continueWithNewline = true;
     } else {
       logical.push({ lineIndex: startIdx, text: current });
       current = '';
       continuing = false;
+      continueWithNewline = false;
     }
   }
 
@@ -414,6 +544,77 @@ export function stripHeredocsAndComments(script) {
   }
 
   return logical;
+}
+
+function findClosingCommandSubParen(str, startIdx) {
+  let depth = 1;
+  let q = null;
+  for (let i = startIdx; i < str.length; i += 1) {
+    const ch = str[i];
+    if (q === "'") {
+      if (ch === "'") q = null;
+      continue;
+    }
+    if (q === '"') {
+      if (ch === '\\' && i + 1 < str.length) {
+        i += 1;
+        continue;
+      }
+      if (ch === '$' && str[i + 1] === '(') {
+        const innerEnd = findClosingCommandSubParen(str, i + 2);
+        if (innerEnd < 0) return -1;
+        i = innerEnd;
+        continue;
+      }
+      if (ch === '"') q = null;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < str.length) {
+      i += 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      q = ch;
+      continue;
+    }
+    if (ch === '$' && str[i + 1] === '(') {
+      const innerEnd = findClosingCommandSubParen(str, i + 2);
+      if (innerEnd < 0) return -1;
+      i = innerEnd;
+      continue;
+    }
+    if (ch === '(') {
+      depth += 1;
+      continue;
+    }
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function extractDoubleQuotedBacktick(str, startIdx) {
+  let inner = '';
+  for (let i = startIdx; i < str.length; i += 1) {
+    const ch = str[i];
+    if (ch === '\\' && i + 1 < str.length) {
+      const next = str[i + 1];
+      if (next === '`' || next === '\\' || next === '$' || next === '"') {
+        inner += next;
+      } else {
+        inner += ch + next;
+      }
+      i += 1;
+      continue;
+    }
+    if (ch === '`') {
+      return { inner, endIdx: i };
+    }
+    inner += ch;
+  }
+  return null;
 }
 
 function splitShellSegments(commandLine) {
@@ -441,6 +642,26 @@ function splitShellSegments(commandLine) {
         current += ch + commandLine[i + 1];
         i += 1;
         continue;
+      }
+      if (ch === '$' && commandLine[i + 1] === '(') {
+        const endIdx = findClosingCommandSubParen(commandLine, i + 2);
+        if (endIdx >= 0) {
+          const inner = commandLine.slice(i + 2, endIdx);
+          segments.push(...splitShellSegments(inner));
+          current += commandLine.slice(i, endIdx + 1);
+          i = endIdx;
+          continue;
+        }
+        segments.push(...splitShellSegments(commandLine.slice(i + 2)));
+      }
+      if (ch === '`') {
+        const bt = extractDoubleQuotedBacktick(commandLine, i + 1);
+        if (bt) {
+          segments.push(...splitShellSegments(bt.inner));
+          current += commandLine.slice(i, bt.endIdx + 1);
+          i = bt.endIdx;
+          continue;
+        }
       }
       current += ch;
       if (ch === '"') quote = null;
@@ -564,12 +785,27 @@ function stripCommandPrefixes(tokens) {
     const base = tok.split('/').pop() ?? tok;
     if (WRAPPER_COMMANDS.has(base)) {
       idx += 1;
-      while (idx < tokens.length && tokens[idx].startsWith('-')) {
-        if (base === 'nice' && tokens[idx] === '-n' && idx + 1 < tokens.length) {
+      while (idx < tokens.length) {
+        const flag = tokens[idx];
+        if (flag === '--') {
+          idx += 1;
+          break;
+        }
+        if (!flag.startsWith('-') || flag === '-') {
+          break;
+        }
+        if (
+          (base === 'env' && ENV_VALUE_FLAGS.has(flag)) ||
+          (base === 'nice' && NICE_VALUE_FLAGS.has(flag)) ||
+          (base === 'timeout' && TIMEOUT_VALUE_FLAGS.has(flag))
+        ) {
           idx += 2;
         } else {
           idx += 1;
         }
+      }
+      if (base === 'timeout' && idx < tokens.length) {
+        idx += 1;
       }
       continue;
     }
@@ -604,7 +840,7 @@ function isDangerousRmTarget(rawTarget) {
   return false;
 }
 
-function checkSegmentSafety(segment) {
+function checkSegmentSafety(segment, depth = 0) {
   const rawTokens = tokenizeSegment(segment);
   const tokens = stripCommandPrefixes(rawTokens);
   if (tokens.length === 0) return null;
@@ -612,23 +848,128 @@ function checkSegmentSafety(segment) {
   const cmd = tokens[0];
   const baseCmd = cmd.split('/').pop() ?? cmd;
 
-  if (baseCmd === 'npm' && tokens[1] === 'run') {
-    const scriptName = tokens[2] ?? '';
-    if (FORBIDDEN_NPM_SCRIPTS.has(scriptName)) {
-      return `forbidden desktop/dev script 'npm run ${scriptName}'`;
+  if (baseCmd === 'bash' || baseCmd === 'sh' || baseCmd === 'zsh') {
+    let hasCFlag = false;
+    let argIdx = 1;
+    while (argIdx < tokens.length) {
+      const tok = tokens[argIdx];
+      if (tok === '--') {
+        argIdx += 1;
+        break;
+      }
+      if (tok === '-o' || tok === '+o') {
+        argIdx += 2;
+        continue;
+      }
+      if (tok.startsWith('--') || tok.startsWith('+')) {
+        argIdx += 1;
+        continue;
+      }
+      if (tok.startsWith('-') && tok.length > 1) {
+        if (tok.slice(1).includes('c')) {
+          hasCFlag = true;
+        }
+        argIdx += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (hasCFlag && argIdx < tokens.length) {
+      const subScript = tokens[argIdx];
+      if (subScript.trim().length > 0) {
+        const subRes = validateCommand(subScript, depth + 1);
+        if (!subRes.ok) {
+          return `forbidden nested '${baseCmd} -c' command: ${subRes.reason}`;
+        }
+      }
     }
   }
 
-  if (baseCmd === 'npx' && tokens[1] === 'tauri' && (tokens[2] === 'dev' || tokens[2] === 'build')) {
-    return `forbidden desktop command 'npx tauri ${tokens[2]}'`;
+  if (baseCmd === 'eval') {
+    let argIdx = 1;
+    if (tokens[argIdx] === '--') {
+      argIdx += 1;
+    }
+    const evalScript = tokens.slice(argIdx).join(' ');
+    if (evalScript.trim().length > 0) {
+      const subRes = validateCommand(evalScript, depth + 1);
+      if (!subRes.ok) {
+        return `forbidden nested 'eval' command: ${subRes.reason}`;
+      }
+    }
+  }
+
+  if (baseCmd === 'npm') {
+    let subIdx = -1;
+    for (let i = 1; i < tokens.length; i += 1) {
+      const tok = tokens[i];
+      if (tok === '--') break;
+      if (NPM_VALUE_FLAGS.has(tok)) {
+        i += 1;
+        continue;
+      }
+      if (tok.startsWith('-')) {
+        continue;
+      }
+      subIdx = i;
+      break;
+    }
+
+    if (subIdx >= 0 && (tokens[subIdx] === 'run' || tokens[subIdx] === 'run-script')) {
+      let scriptName = '';
+      for (let j = subIdx + 1; j < tokens.length; j += 1) {
+        const tok = tokens[j];
+        if (tok === '--') {
+          scriptName = tokens[j + 1] ?? '';
+          break;
+        }
+        if (NPM_VALUE_FLAGS.has(tok)) {
+          j += 1;
+          continue;
+        }
+        if (tok.startsWith('-')) {
+          continue;
+        }
+        scriptName = tok;
+        break;
+      }
+      if (FORBIDDEN_NPM_SCRIPTS.has(scriptName)) {
+        return `forbidden desktop/dev script 'npm run ${scriptName}'`;
+      }
+    }
+  }
+
+  if (baseCmd === 'npx') {
+    let cmdIdx = 1;
+    while (cmdIdx < tokens.length) {
+      const tok = tokens[cmdIdx];
+      if (tok === '--') {
+        cmdIdx += 1;
+        break;
+      }
+      if (NPX_VALUE_FLAGS.has(tok)) {
+        cmdIdx += 2;
+        continue;
+      }
+      if (tok.startsWith('-')) {
+        cmdIdx += 1;
+        continue;
+      }
+      break;
+    }
+    const npxCmd = tokens[cmdIdx] ?? '';
+    const npxArg = tokens[cmdIdx + 1] ?? '';
+    if (npxCmd === 'tauri' && (npxArg === 'dev' || npxArg === 'build')) {
+      return `forbidden desktop command 'npx tauri ${npxArg}'`;
+    }
+    if (npxCmd === 'vite' && (cmdIdx + 1 >= tokens.length || npxArg === 'preview')) {
+      return `forbidden dev server command 'npx vite${npxArg ? ` ${npxArg}` : ''}'`;
+    }
   }
 
   if (baseCmd === 'tauri' && (tokens[1] === 'dev' || tokens[1] === 'build')) {
     return `forbidden desktop command 'tauri ${tokens[1]}'`;
-  }
-
-  if (baseCmd === 'npx' && tokens[1] === 'vite' && (tokens.length === 2 || tokens[2] === 'preview')) {
-    return `forbidden dev server command 'npx vite${tokens[2] ? ` ${tokens[2]}` : ''}'`;
   }
 
   if (baseCmd === 'vite' && (tokens.length === 1 || tokens[1] === 'preview')) {
@@ -640,14 +981,32 @@ function checkSegmentSafety(segment) {
   }
 
   if (baseCmd === 'cargo') {
-    const subIdx = tokens.findIndex((t, i) => i > 0 && !t.startsWith('-') && !t.startsWith('+'));
-    const sub = subIdx >= 0 ? tokens[subIdx] : '';
-    if (sub === 'run') {
+    let sub = '';
+    for (let i = 1; i < tokens.length; i += 1) {
+      const tok = tokens[i];
+      if (CARGO_GLOBAL_VALUE_FLAGS.has(tok)) {
+        i += 1;
+        continue;
+      }
+      if (tok.startsWith('-') || tok.startsWith('+')) {
+        continue;
+      }
+      sub = tok;
+      break;
+    }
+
+    if (sub === 'run' || sub === 'r') {
       return "forbidden 'cargo run' invocation (build the release binary first and invoke it directly)";
     }
-    const binFlagIdx = tokens.indexOf('--bin');
-    if (binFlagIdx >= 0 && tokens[binFlagIdx + 1] === 'anima-engine') {
-      return "forbidden '--bin anima-engine' desktop target";
+
+    for (let i = 1; i < tokens.length; i += 1) {
+      const tok = tokens[i];
+      if (tok === '--bin=anima-engine' || tok === '--bin=anima-engine.exe') {
+        return "forbidden '--bin anima-engine' desktop target";
+      }
+      if (tok === '--bin' && (tokens[i + 1] === 'anima-engine' || tokens[i + 1] === 'anima-engine.exe')) {
+        return "forbidden '--bin anima-engine' desktop target";
+      }
     }
   }
 
@@ -690,7 +1049,15 @@ function checkSegmentSafety(segment) {
 /**
  * Validate a single doc-test block's script against safety rules.
  */
-export function validateCommand(script) {
+export function validateCommand(script, depth = 0) {
+  if (depth > MAX_SHELL_RECURSION_DEPTH) {
+    return {
+      ok: false,
+      reason: `nested shell command recursion depth exceeded (>${MAX_SHELL_RECURSION_DEPTH})`,
+      lineIndex: 0,
+      lineText: typeof script === 'string' ? script : '',
+    };
+  }
   if (typeof script !== 'string' || script.trim().length === 0) {
     return { ok: false, reason: 'empty command block', lineIndex: 0, lineText: '' };
   }
@@ -700,7 +1067,7 @@ export function validateCommand(script) {
     if (!entry.text.trim()) continue;
     const segments = splitShellSegments(entry.text);
     for (const seg of segments) {
-      const reason = checkSegmentSafety(seg);
+      const reason = checkSegmentSafety(seg, depth);
       if (reason) {
         return {
           ok: false,
@@ -862,7 +1229,21 @@ export function runStartupSelfChecks() {
 
   const unsafeCmds = [
     'npm run tauri:dev',
+    'npm --silent run tauri:dev',
+    'npm --prefix . run tauri:dev',
+    'npm run -- tauri:dev',
+    'npx --yes tauri dev',
     'cargo run --bin anima-lab',
+    'cargo --manifest-path src-tauri/Cargo.toml run --bin anima-lab',
+    'cargo -C src-tauri run',
+    'cargo build --manifest-path src-tauri/Cargo.toml --bin=anima-engine',
+    "bash -c 'cargo run'",
+    'eval "cargo run"',
+    'env -u RUST_LOG cargo run',
+    'car\\\ngo run --bin anima-lab',
+    'echo "hello\n<<EOF"\ncargo run',
+    'cat <<EOF-1\nhi\nEOF-1\ncargo run',
+    'echo "$(cargo run)"',
     'npx tauri dev',
     'vite preview',
     './src-tauri/target/release/anima-engine',
@@ -880,6 +1261,9 @@ export function runStartupSelfChecks() {
     'rm -rf src-tauri/target/doc2-gate-neg\nmkdir -p src-tauri/target/doc2-gate-neg',
     'rm -rf /tmp/doc-commands-safe-dir',
     "cat <<'EOF' > m.json\n{\"note\": \"do not cargo run or npm run tauri:dev\"}\nEOF\n# cargo run in comment",
+    'cat <<EOF-1 > n.txt\ncargo run\nEOF-1\necho ok',
+    'cat <<-EOF > n2.txt\n\tcargo run\n\tEOF\necho ok',
+    'cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab',
     '! node scripts/verify_e2_artifacts.mjs src-tauri/target/doc2-gate-neg',
   ];
   for (const cmd of safeCmds) {

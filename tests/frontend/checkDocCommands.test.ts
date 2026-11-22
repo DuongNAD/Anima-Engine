@@ -269,6 +269,92 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
     expect(blockErrs[0]?.message).toContain('how-to/BAD.md:10');
   });
 
+  it('rejects cargo/npm/npx/wrapper/subshell/heredoc/continuation/command-sub bypasses without false positives', () => {
+    let deepNested = 'echo hi';
+    for (let i = 0; i < 6; i += 1) {
+      deepNested = `bash -c ${JSON.stringify(deepNested)}`;
+    }
+
+    const bypassAttempts = [
+      // 1. cargo global value-taking flags, r alias, and --bin=anima-engine
+      'cargo --manifest-path src-tauri/Cargo.toml run --bin anima-lab',
+      'cargo -C src-tauri run',
+      'cargo --target-dir /tmp/tgt --color never r --bin anima-lab',
+      'cargo +nightly --config build.jobs=4 run',
+      'cargo --lockfile-path src-tauri/Cargo.lock --message-format short run',
+      'cargo build --manifest-path src-tauri/Cargo.toml --bin=anima-engine',
+      // 2. bash/sh/zsh -c (including combined short flags) & eval
+      "bash -c 'cargo run'",
+      'sh -c "cargo run"',
+      'zsh -c "npm run tauri:dev"',
+      "bash -ec 'cargo run'",
+      "bash -lc 'rm -rf /'",
+      'bash -euoc "npm run tauri:dev"',
+      'bash -o pipefail -c "cargo run"',
+      'eval "cargo run"',
+      "eval -- 'npm run tauri:dev'",
+      deepNested,
+      // 3. npm / npx flags & -- separator
+      'npm --silent run tauri:dev',
+      'npm --prefix . run tauri:dev',
+      'npm run -- tauri:dev',
+      'npm --workspace web -s run --if-present dev',
+      'npx --yes tauri dev',
+      'npx -p @tauri-apps/cli -- tauri build',
+      'npx -q vite preview',
+      // 4. Wrapper flags (env, nice, command, timeout)
+      'env -u RUST_LOG cargo run',
+      'env -i --unset=RUST_LOG -C /tmp cargo run',
+      'nice -10 cargo run',
+      'nice --adjustment=5 cargo run',
+      'command -p cargo run',
+      'timeout -k 5s -s TERM 10s cargo run',
+      'timeout 30 npm run tauri:dev',
+      // 5. Backslash line continuation splitting tokens
+      'car\\\ngo run --bin anima-lab',
+      'npm \\\nrun tauri:dev',
+      // 6. Multi-line quotes & heredoc delimiter parsing (<< vs <<-, EOF-1, \EOF)
+      'echo "hello\n<<EOF"\ncargo run',
+      "echo 'hello\n<<EOF'\ncargo run",
+      'cat <<EOF-1\nhi\nEOF-1\ncargo run',
+      'cat <<\\EOF\nhi\nEOF\ncargo run',
+      'cat <<-EOF\n\t\thi\n\tEOF\ncargo run',
+      // 7. Double-quoted command substitutions
+      'echo "$(cargo run)"',
+      'echo "`npm run tauri:dev`"',
+      'echo "$(echo "$(cargo run)")"',
+    ];
+
+    for (const cmd of bypassAttempts) {
+      const res = validateCommand(cmd) as ValidateCommandResult;
+      expect(res.ok, `expected safety rejection for bypass: ${cmd}`).toBe(false);
+    }
+
+    const safeForms = [
+      'cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab',
+      'cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+      'npm --silent run check:docs',
+      'npm run -- check:e2',
+      'env -u RUST_LOG CARGO_BUILD_JOBS=4 nice -n 10 cargo test --manifest-path src-tauri/Cargo.toml --test e2_seam_tests',
+      'cargo build --manifest-path src-tauri/Cargo.toml \\\n  --release --bin anima-lab',
+      "bash -c 'echo ok'",
+      'eval "echo ok"',
+      'cat <<EOF-1 > out.txt\ncargo run\nEOF-1\necho ok',
+      'cat <<-EOF > out2.txt\n\tcargo run\n\tEOF\necho ok',
+      'cat <<\\EOF > out3.txt\ncargo run\nEOF\necho ok',
+      'cat <<EOF > out4.txt\n  EOF\ncargo run\nEOF',
+      'echo "\ncargo run\n"',
+      "echo '$(cargo run)'",
+      'echo "\\$(cargo run)"',
+      'echo "$(echo ok)"',
+    ];
+
+    for (const cmd of safeForms) {
+      const res = validateCommand(cmd) as ValidateCommandResult;
+      expect(res.ok, `unexpected rejection for safe command (${cmd}): ${res.reason ?? ''}`).toBe(true);
+    }
+  });
+
   it('executes blocks in order, supports heredocs and ! negation, and fails fast naming doc:line without running later blocks', () => {
     const fixture = makeTempDir();
     try {
@@ -420,15 +506,16 @@ describe('check_doc_commands — extraction, ordering, safety, and fail-fast gat
 
   it('wires weekly schedule + workflow_dispatch in .github/workflows/docs-commands.yml without PR triggers', () => {
     const yaml = readFileSync(WORKFLOW_PATH, 'utf8');
-    expect(yaml).toContain('schedule:');
-    expect(yaml).toContain('cron:');
-    expect(yaml).toContain('workflow_dispatch:');
+    expect(yaml).toMatch(/^on\s*:/m);
+    expect(yaml).toMatch(/^\s+schedule\s*:/m);
+    expect(yaml).toMatch(/^\s+-\s*cron\s*:/m);
+    expect(yaml).toMatch(/^\s+workflow_dispatch\s*:/m);
     expect(yaml).not.toMatch(/^\s*pull_request\s*:/m);
     expect(yaml).not.toMatch(/^\s*push\s*:/m);
-    expect(yaml).toContain('permissions:\n  contents: read');
-    expect(yaml).toContain('runs-on: ubuntu-latest');
-    expect(yaml).toContain('Swatinem/rust-cache@v2');
-    expect(yaml).toContain('node scripts/check_doc_commands.mjs --self-test');
-    expect(yaml).toContain('npm run check:doc-commands');
+    expect(yaml).toMatch(/^permissions\s*:\s*(?:\r?\n)+\s+contents\s*:\s*read\b/m);
+    expect(yaml).toMatch(/^\s+runs-on\s*:\s*ubuntu-latest\b/m);
+    expect(yaml).toMatch(/uses\s*:\s*Swatinem\/rust-cache@v2\b/);
+    expect(yaml).toMatch(/run\s*:\s*node\s+scripts\/check_doc_commands\.mjs\s+--self-test\b/);
+    expect(yaml).toMatch(/run\s*:\s*npm\s+run\s+check:doc-commands\b/);
   });
 });
