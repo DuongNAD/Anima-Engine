@@ -2,7 +2,7 @@
 title: Kế hoạch áp dụng nguồn mở
 status: active
 owner: architecture
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-22
 review_cycle: quarterly
 target: M0-M4
 ---
@@ -16,10 +16,11 @@ target: M0-M4
 > đã được gộp thành một hàng theo trạng thái hiện tại. Hàng OS7 và hàng OSS-072 được cập nhật: MRCA đã
 > merge vào thân cây ở #75. Số thành phần của `NOTICE` và SBOM nằm ở STATE §1, không chép ở đây.
 >
-> **Rà toàn văn 2026-11-18.** Mọi trạng thái trong trang đã được đối chiếu với mã, CI và danh sách PR.
+> **Rà toàn văn 2026-11-18, cập nhật 2026-11-22.** Mọi trạng thái trong trang đã được đối chiếu với mã, CI và danh sách PR.
 > Các mục có ngày bên dưới vẫn là bản ghi của ngày đó; chỗ nào bản ghi ấy nay đã sai có một dòng *Rà
-> 2026-11-18* ngay tại chỗ. Bốn điều đổi cách đọc cả trang: **QĐ-C đã được quyết** (lối C, nâng `burn`,
-> thẻ R1c), nên `hexf-parse` không còn là quyết định pháp lý mà là việc kỹ thuật chưa làm; **nén đường
+> 2026-11-18* ngay tại chỗ. Bốn điều đổi cách đọc cả trang: **QĐ-C đã hoàn tất trên thân cây** (`hexf-parse`
+> rời cây phụ thuộc ở thẻ R1c `#127`, và dòng cuối `utf8-chars` đóng bằng QĐ-C2 tại PR `#175` ngày 2026-11-19 nên
+> [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) = 0); **nén đường
 > đơn trong tracker phả hệ đã bật** từ 2026-07-27; **xuất Newick đã có lệnh IPC**; và hợp đồng IPC nay
 > ở [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md), không còn ở `PROJECT.md`.
 
@@ -35,7 +36,7 @@ trong khảo sát.
 
 | Mục | Kế hoạch nói | Thực tế | Xử lý |
 |---|---|---|---|
-| OSS-003 license | Blocker quản trị duy nhất | Relicense **`MIT OR Apache-2.0`** (2026-08-08), thay bản proprietary 2026-07-26; `NOTICE` + văn bản license bên thứ ba **sinh tự động**, có gate CI (2026-07-27) | **Đóng cho licence của dự án.** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/`.anmw` tách trong README. **Còn nợ, vẫn chặn phát hành:** 1 thành phần chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md)). QĐ-C đã quyết ngày 2026-11-17: lối C, nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc ([roadmap 31/10 §4.3](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được)). Việc còn lại là kỹ thuật: thẻ R1c, chưa có PR |
+| OSS-003 license | Blocker quản trị duy nhất | Relicense **`MIT OR Apache-2.0`** (2026-08-08), thay bản proprietary 2026-07-26; `NOTICE` + văn bản license bên thứ ba **sinh tự động**, có gate CI (2026-07-27) | **Đóng phần kỹ thuật (2026-11-19).** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/`.anmw` tách trong README. `hexf-parse` rời cây phụ thuộc ở R1c (`#127`), dòng cuối `utf8-chars` đóng bằng chọn Apache-2.0 (QĐ-C2, PR `#175`), [`UNRESOLVED.md`](../../licensing/UNRESOLVED.md) = 0 (câu hỏi pháp lý hẹp xem `STATE_OF_THE_PROJECT.md` §1.c và `licensing/README.md`) |
 | OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có cho dependency code (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), CycloneDX 1.5 đã validate schema, sinh từ lockfile | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
 | OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
 | OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
@@ -102,13 +103,13 @@ thiết, test, benchmark, migration/rollback và cập nhật tài liệu nguồ
 
 ### OS0 — Quản trị tài liệu và giấy phép
 
-**Thời lượng:** 1–2 ngày. **Phụ thuộc:** không. **Trạng thái:** xong về cấu trúc (OSS-001 đến OSS-004). Còn nợ: `hexf-parse` (thẻ R1c) và inventory cho model, dataset, asset. Tiêu chí "≤ 2 lần nhấp" của OSS-001 chưa từng được đo.
+**Thời lượng:** 1–2 ngày. **Phụ thuộc:** không. **Trạng thái:** xong về cấu trúc (OSS-001 đến OSS-004). Đã đóng phần `hexf-parse` / `UNRESOLVED.md` (R1c `#127` + PR `#175`, 2026-11-19); còn nợ inventory cho model, dataset, asset. Tiêu chí "≤ 2 lần nhấp" của OSS-001 chưa từng được đo.
 
 | ID | Công việc | Bằng chứng hoàn tất |
 |---|---|---|
 | OSS-001 | Dùng `README.md` và `docs/README.md` làm hai điểm vào duy nhất | Mọi tài liệu chuẩn có đường đi ≤ 2 lần nhấp |
 | OSS-002 | Ban hành quy tắc Diátaxis, metadata, ADR và deprecation | Link nội bộ hợp lệ; không có hai nguồn sự thật |
-| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế. `NOTICE` và `licensing/THIRD_PARTY_LICENSES.txt` sinh tự động và có gate CI từ 2026-07-27. **Còn nợ:** **1** thành phần (`hexf-parse` 0.2.1) mà upstream chưa từng publish văn bản license. QĐ-C đã quyết ngày 2026-11-17 (lối C, nâng `burn`); hàng trong `UNRESOLVED.md` chỉ đóng khi thẻ R1c merge và hồ sơ giấy phép được sinh lại |
+| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08; đóng văn bản thiếu 2026-11-19).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế. `NOTICE` và `licensing/THIRD_PARTY_LICENSES.txt` sinh tự động và có gate CI từ 2026-07-27. `hexf-parse` 0.2.1 đã rời cây ở R1c (`#127`); dòng cuối `utf8-chars` 3.0.7 đóng bằng chọn Apache-2.0 (QĐ-C2, PR `#175`), `UNRESOLVED.md` = 0 (câu hỏi pháp lý hẹp xem `STATE_OF_THE_PROJECT.md` §1.c) |
 | OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
 
 **Gate:** license của mọi thành phần bên thứ ba phải được xác minh **theo đúng tag/commit** trước
@@ -436,16 +437,16 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 
 ## Ba hành động tiếp theo
 
-> **Cập nhật 2026-11-17, sửa 2026-11-18.** Ba việc đánh số bên dưới viết ngày 2026-07-26 và **cả ba đã đổi trạng thái**:
+> **Cập nhật 2026-11-17, sửa 2026-11-18, cập nhật 2026-11-22.** Ba việc đánh số bên dưới viết ngày 2026-07-26 và **cả ba đã đổi trạng thái**:
 > (1) số đếm đột biến theo node đã ship ngày 2026-07-27 và nén đã bật; (2) OSS-072 MRCA đã merge vào
 > thân cây ở #75; (3) licence của dự án đã đóng bằng relicense ngày 2026-08-08. Việc nối xuất Newick vào
-> IPC cũng đã có: lệnh `export_phylogenetic_tree`. Ba hành động tiếp theo của kế hoạch này hôm nay là:
+> IPC cũng đã có: lệnh `export_phylogenetic_tree`. Mục `hexf-parse` / `UNRESOLVED.md` (từng nêu ở đợt rà 2026-11-18)
+> nay cũng **đã đóng** (`hexf-parse` rời cây ở R1c `#127`, và `utf8-chars` đóng ở PR `#175` ngày 2026-11-19).
+> Hai hành động tiếp theo của kế hoạch này hôm nay là:
 >
 > 1. **OSS-073** — giao thức đo "line of descent" kiểu Avida. MRCA không còn chặn nó. Kế hoạch swarm
 >    gọi là thẻ S5.
-> 2. **`hexf-parse`** — văn bản license cuối cùng còn thiếu, và nó chặn phát hành. QĐ-C đã quyết ngày
->    2026-11-17 (lối C, nâng `burn`); việc còn lại là thẻ R1c, chưa có PR.
-> 3. **Inventory cho model / dataset / asset** — phần còn nợ của OSS-004.
+> 2. **Inventory cho model / dataset / asset** — phần còn nợ của OSS-004.
 >
 > OSS-011 (`tracing`) vẫn mở và vẫn ở ưu tiên thấp. Hai câu ở cuối danh sách đánh số bên dưới cũng đã
 > hết hiệu lực: nối xuất Newick vào IPC đã xong, và con số ~4,2 ms đã được đối chứng (#101).
