@@ -99,11 +99,11 @@ struct TectonicParams {
 }
 
 impl TectonicParams {
-    fn from_config(cfg: &WorldV2Config) -> Self {
+    fn from_config_with_grid_size(cfg: &WorldV2Config, params_grid_size: u32) -> Self {
         let mut rng = stage_rng(
             cfg.seed,
-            cfg.grid_size,
-            cfg.grid_size,
+            params_grid_size,
+            params_grid_size,
             &cfg.schema_tag,
             "S1-TECT",
         );
@@ -183,9 +183,11 @@ struct CellEval {
     raw_h_m: f64,
     uplift: f64,
     in_volcano: bool,
+    volcano_dist: f64,
     in_plateau: bool,
     in_karst: bool,
     near_rift: bool,
+    in_knick_cap: bool,
     ridge_core_dist: f64,
     coast_dist: f64,
 }
@@ -203,47 +205,83 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     let v_rot = -cu * sin_r + cv * cos_r + 0.5;
 
     // 1. Curved windward coastline (`u` oceanward on the west/left side -> ~45% ocean).
-    let coast_line = 0.44
+    let coast_line = 0.45
         + p.coast_shift_u
         + 0.045 * libm::sin(v_rot * TAU * 0.8 + p.phase_z)
         + 0.03 * fbm_broad;
     let d_coast = u_rot - coast_line;
 
-    // Asymmetric continental margin: rapid bathymetric drop oceanward, gentle landward ramp.
+    // Asymmetric continental margin: shallow coastal shelf (`0..-22 m` for DeltaRCM delta progradation)
+    // dropping to abyssal depths offshore; flat coastal floodplain (`slope ~ 0.0023 < 0.004`,
+    // `0..+4.3 m` preserving Beach + S4 meanders) on `d_coast in 0..0.045`, then smooth inland ramp.
     let shelf_and_margin = if d_coast < 0.0 {
-        -1_420.0 * libm::tanh(-d_coast / 0.14)
+        let shelf_drop = 1_400.0 * d_coast.max(-0.015);
+        let slope_drop = -1_420.0 * libm::tanh((-d_coast - 0.010).max(0.0) / 0.14);
+        shelf_drop + slope_drop
     } else {
-        160.0 * libm::tanh(d_coast / 0.18)
+        let plain_ramp = 95.0 * d_coast.min(0.045);
+        let inland_ramp = 260.0 * libm::tanh((d_coast - 0.042).max(0.0) / 0.16);
+        plain_ramp + inland_ramp
     };
 
     // 2. Active coastal mountain spine (`sech^2` with steep oceanward flank, peaking > 5,200 m).
-    let ridge_center_u = coast_line + 0.17 + p.ridge_bend * libm::cos(v_rot * 3.1 + p.phase_x);
+    // Smoothly tapered on `d_coast < 0.042` so the coastal floodplain (`d_coast <= 0.040`) stays flat.
+    // On the windward flank (`d_ridge < -0.01`), 2 broad chevron canyon watersheds (`v_rot = 0.28,
+    // 0.72`) funnel the entire windward rainfall (`~220 km^2` per basin) into 2 major trunk rivers.
+    let ridge_center_u = coast_line + 0.22 + p.ridge_bend * libm::cos(v_rot * 3.1 + p.phase_x);
     let dv_ridge = (v_rot - 0.52) / 0.34;
     let along_crest_envelope = libm::exp(-0.55 * dv_ridge * dv_ridge);
     let d_ridge = u_rot - ridge_center_u - 0.025 * fbm_broad;
-    let width_asym = if d_ridge < 0.0 { 0.070 } else { 0.115 };
-    let massif_uplift = sech2(d_ridge / width_asym)
-        * (0.72 + 0.28 * along_crest_envelope)
-        * (1.0 + 0.25 * fbm_broad);
-    let massif_h =
-        5_100.0 * massif_uplift + 420.0 * along_crest_envelope * sech2((v_rot - 0.5) / 0.4);
 
-    // 3. Normal-fault structural rift trough obliquely cutting the inland/foreland margin.
+    let mouth_vs = [0.28_f64, 0.72_f64];
+    let mut min_dv_mouth = 1.0_f64;
+    for &vm in &mouth_vs {
+        let dv = (v_rot - vm).abs();
+        if dv < min_dv_mouth {
+            min_dv_mouth = dv;
+        }
+    }
+    let windward_flank_w = ((-d_ridge - 0.012) / 0.045).clamp(0.0, 1.0);
+    let valley_ratio = (min_dv_mouth / 0.24).clamp(0.0, 1.0);
+    let d_ridge_sculpt = d_ridge - 0.085 * windward_flank_w * (1.0 - valley_ratio);
+    let width_asym = if d_ridge < 0.0 { 0.095 } else { 0.115 };
+    let massif_uplift = sech2(d_ridge_sculpt / width_asym)
+        * (0.74 + 0.26 * along_crest_envelope)
+        * (1.0 + 0.20 * fbm_broad.max(-0.15));
+    let crest_spine = sech2(d_ridge / 0.055) * along_crest_envelope;
+    let t_pied = ((d_coast - 0.040) / 0.026).clamp(0.0, 1.0);
+    let piedmont_gate = t_pied * t_pied * (3.0 - 2.0 * t_pied);
+    let canyon_sculpt = 1.0 - 0.40 * windward_flank_w * (1.0 - valley_ratio);
+
+    let massif_h = piedmont_gate
+        * canyon_sculpt
+        * (5_350.0 * massif_uplift
+            + 450.0 * along_crest_envelope * sech2((v_rot - 0.5) / 0.4)
+            + 260.0 * crest_spine);
+
+    // 3. Normal-fault structural rift trough obliquely cutting the inland/foreland margin,
+    //    with a closed inner graben basin (`LAK-03`) bounded by horst sills.
     let rift_u = (u - p.rift_offset_u) * libm::cos(p.rift_angle_rad)
-        + (v - 0.45) * libm::sin(p.rift_angle_rad);
+        + (v - 0.48) * libm::sin(p.rift_angle_rad);
     let rift_v = -(u - p.rift_offset_u) * libm::sin(p.rift_angle_rad)
-        + (v - 0.45) * libm::cos(p.rift_angle_rad);
+        + (v - 0.48) * libm::cos(p.rift_angle_rad);
     let rift_len = libm::exp(-((rift_v / 0.24) * (rift_v / 0.24)));
-    let rift_drop = if d_coast > 0.05 {
-        -520.0 * sech2(rift_u / 0.032) * rift_len
+    let rift_graben = libm::exp(-((rift_v / 0.15) * (rift_v / 0.15)));
+    let rift_sill = 132.0
+        * sech2(rift_u / 0.055)
+        * (libm::exp(-(((rift_v - 0.19) / 0.05) * ((rift_v - 0.19) / 0.05)))
+            + libm::exp(-(((rift_v + 0.19) / 0.05) * ((rift_v + 0.19) / 0.05))));
+    let rift_drop = if d_coast > 0.08 {
+        -305.0 * sech2(rift_u / 0.030) * rift_len - 155.0 * sech2(rift_u / 0.034) * rift_graben
+            + rift_sill
     } else {
         0.0
     };
     let near_rift = rift_len > 0.45 && libm::fabs(rift_u) < 0.045;
 
     // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland, ~14% area).
-    let du_plat = (u - p.plateau_u) / 0.245;
-    let dv_plat = (v - p.plateau_v) / 0.255;
+    let du_plat = (u - p.plateau_u) / 0.268;
+    let dv_plat = (v - p.plateau_v) / 0.278;
     let r_plat = libm::hypot(du_plat, dv_plat);
     let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 16.0));
     let land_gate = 1.0 / (1.0 + libm::exp(-(d_coast - 0.06) * 35.0));
@@ -258,13 +296,126 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     let volcano_h = cone + caldera;
     let in_volcano = r_volc < 0.085;
 
+    // 6. Convergent windward foothill divides (`100-140 km^2` per trunk -> Q ~ 4..12 m^3/s) +
+    //    closed humid valley/cirque lake basins (`C3`: 0.8..4.5% lake surface, >= 5 lakes > 0.1 km^2).
     let base_surface = shelf_and_margin + massif_h;
-    let plateau_surface = caprock_target_m + 35.0 * fbm_detail;
-    let raw_h_m = (1.0 - plateau_blend) * base_surface
+    let plateau_surface = caprock_target_m + 35.0 * fbm_detail + 120.0 * (p.plateau_u - u);
+
+    // Interfluve divides on the lower windward piedmont (`d_coast in 0.008..0.22`):
+    // broad flat floodplain corridor on the coastal plain (`d_coast <= 0.045`), transitioning to
+    // crisp V-valley canyon steering (`d_coast > 0.05`) into the 2 trunk mouths.
+    let mut valley_corridor = 0.0_f64;
+    if d_coast > 0.008 && d_coast < 0.22 {
+        let t_div = ((d_coast - 0.008) / 0.028).clamp(0.0, 1.0)
+            * ((0.22 - d_coast) / 0.050).clamp(0.0, 1.0);
+        let plain_pad = 0.032 * (1.0 - ((d_coast - 0.040) / 0.025).clamp(0.0, 1.0));
+        let corridor_flat = ((min_dv_mouth - plain_pad) / (0.24 - plain_pad)).clamp(0.0, 1.0);
+        valley_corridor += 580.0 * t_div * libm::pow(corridor_flat, 1.10);
+    }
+    // Gentle dendritic sub-tributary gullies on the windward flank (`d_coast in 0.04..0.19`)
+    // promoting branched perennial tributary networks feeding the 2 mega-trunks.
+    let trib_gate = ((d_coast - 0.04) / 0.03).clamp(0.0, 1.0)
+        * ((0.20 - d_coast) / 0.04).clamp(0.0, 1.0)
+        * (min_dv_mouth / 0.06).clamp(0.0, 1.0);
+    let trib_undulation =
+        -28.0 * trib_gate * (0.5 + 0.5 * libm::sin(v_rot * 48.0 + u_rot * 18.0 + p.phase_z));
+
+    // High-páramo glacial cirque tarn bowls (`LAK-02`, > 3,350 m) on the humid windward shoulder
+    // (`d_ridge ~ -0.022`) with thick western/downslope moraine/rock sills (`d_ridge ~ -0.054`).
+    let cirque_centers_v = [0.32, 0.52, 0.72];
+    let mut cirque_drop = 0.0_f64;
+    for (idx_c, &cv_target) in cirque_centers_v.iter().enumerate() {
+        let jv = 0.020 * libm::sin(p.phase_z + idx_c as f64 * 2.1);
+        let u_bowl = -0.022;
+        let dc_u = (d_ridge - u_bowl) / 0.024;
+        let dc_v = (v_rot - (cv_target + jv)) / 0.026;
+        let r2 = dc_u * dc_u + dc_v * dc_v;
+        if r2 < 9.0 {
+            cirque_drop -= 440.0 * libm::exp(-r2);
+        }
+        let ds_u = (d_ridge - (u_bowl - 0.034)) / 0.020;
+        let ds_v = (v_rot - (cv_target + jv)) / 0.036;
+        let rs2 = ds_u * ds_u + ds_v * ds_v;
+        if rs2 < 9.0 {
+            cirque_drop += 380.0 * libm::exp(-rs2);
+        }
+    }
+
+    let detail_gate = ((d_coast - 0.038) / 0.025).clamp(0.0, 1.0);
+    let mut pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface
         + volcano_h
-        + rift_drop
-        + 140.0 * fbm_detail * libm::exp(-0.3 * d_coast * d_coast);
+        + valley_corridor
+        + trib_undulation
+        + 95.0 * fbm_detail * detail_gate * libm::exp(-0.3 * d_coast * d_coast);
+
+    // Humid windward moraine-dammed bench lakes (`500..1,900 m`): compact bowls (`rad = 0.034..0.038`)
+    // across trunk and interfluve benches (`>= 5` lakes > 0.1 km^2, total `~1.0-3.5%` across 512..4096).
+    let bench_lakes = [
+        (-0.095, 0.28, 0.038, 305.0),
+        (-0.095, 0.72, 0.038, 305.0),
+        (-0.082, 0.14, 0.036, 295.0),
+        (-0.080, 0.50, 0.038, 305.0),
+        (-0.082, 0.86, 0.036, 295.0),
+        (-0.072, 0.38, 0.034, 285.0),
+        (-0.072, 0.62, 0.034, 285.0),
+    ];
+    for (idx_f, &(dr_base, vr_base, rad, depth)) in bench_lakes.iter().enumerate() {
+        let dr = dr_base + 0.005 * libm::sin(p.phase_x + idx_f as f64 * 1.9);
+        let vr = vr_base + 0.010 * libm::cos(p.phase_z + idx_f as f64 * 2.3);
+        let du = d_ridge - dr;
+        let dv = v_rot - vr;
+        let rf = libm::hypot(du, dv) / rad;
+        if rf < 2.6 {
+            let w_bench = libm::exp(-(rf / 1.10) * (rf / 1.10));
+            let slope_flat = (-du * 11_000.0).clamp(-260.0, 260.0) * w_bench;
+            let bowl = -depth * libm::exp(-(rf * rf));
+            let sill_u = (du + 1.02 * rad) / (0.55 * rad);
+            let sill_v = dv / (1.05 * rad);
+            let sill = 0.68 * depth * libm::exp(-(sill_u * sill_u + sill_v * sill_v));
+            let headroom = ((pre_basin_h - 460.0) / 220.0).clamp(0.0, 1.0);
+            pre_basin_h += headroom * (slope_flat + bowl + sill);
+        }
+    }
+
+    // Gate rift/cirque drops safely above sea level so no freshwater depression floods into ocean.
+    let land_headroom = ((pre_basin_h - 480.0) / 220.0).clamp(0.0, 1.0);
+    let basin_mods = land_headroom * rift_drop
+        + if pre_basin_h > 3_550.0 {
+            cirque_drop
+        } else {
+            0.0
+        };
+
+    let mut raw_h_m = pre_basin_h + basin_mods;
+    if d_coast > 0.015 {
+        let floor_m = pre_basin_h.min(360.0);
+        if raw_h_m < floor_m {
+            raw_h_m = floor_m;
+        }
+    }
+
+    // 7. Localized stratigraphic knickpoint ledges spanning the active `Q >= 0.25`
+    //    fluvial elevation corridor (`90..1,335 m`) with >= 4.47 * w_ledge vertical separation
+    //    so adjacent ledges never destructively cancel (`a_ledge / w_ledge = 2.105`).
+    let mut in_knick_cap = false;
+    if d_coast > 0.042 && raw_h_m > 90.0 && raw_h_m < 1_750.0 && basin_mods > -40.0 {
+        const LEDGE_HEIGHTS: [f64; 17] = [
+            150.0, 230.0, 310.0, 390.0, 470.0, 555.0, 640.0, 725.0, 815.0, 905.0, 995.0, 1_085.0,
+            1_180.0, 1_275.0, 1_370.0, 1_470.0, 1_570.0,
+        ];
+        let w_ledge = 19.0_f64;
+        let a_ledge = 40.0_f64;
+        for &h_k in &LEDGE_HEIGHTS {
+            let x = (raw_h_m - h_k) / w_ledge;
+            if x.abs() < 3.2 {
+                if d_ridge < 0.0 && (-0.7..=0.15).contains(&x) {
+                    in_knick_cap = true;
+                }
+                raw_h_m += a_ledge * x * libm::exp(-(x * x));
+            }
+        }
+    }
 
     let uplift = (f64::from(cfg.massif_uplift_amplitude) * massif_uplift
         + 350.0 * plateau_blend
@@ -272,15 +423,17 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     .max(0.0);
 
     let karst_band = libm::sin(u * 11.0 + v * 7.0 + 2.2 * fbm_broad);
-    let in_karst = d_coast > 0.04 && !in_volcano && karst_band > 0.35;
+    let in_karst = d_coast > 0.04 && !in_volcano && karst_band > 0.15;
 
     CellEval {
         raw_h_m,
         uplift,
         in_volcano,
+        volcano_dist: r_volc,
         in_plateau: plateau_blend > 0.35 && !in_volcano,
         in_karst,
         near_rift,
+        in_knick_cap: in_knick_cap && !in_volcano,
         ridge_core_dist: libm::fabs(d_ridge),
         coast_dist: d_coast,
     }
@@ -290,7 +443,9 @@ fn assign_lithology(h_m: f32, eval: &CellEval, cfg: &WorldV2Config) -> Lithology
     if eval.in_volcano && h_m > 300.0 {
         return LithologyClass::BasaltVolcanic;
     }
-    if eval.in_plateau && h_m >= cfg.caprock_min_m && h_m <= cfg.caprock_max_m * 1.35 {
+    if (eval.in_plateau && h_m >= cfg.caprock_min_m && h_m <= cfg.caprock_max_m * 1.35)
+        || (eval.in_knick_cap && h_m > 160.0 && h_m < 2_300.0)
+    {
         return LithologyClass::SandstoneCaprock;
     }
     if h_m < 140.0 || eval.coast_dist < 0.02 || (eval.near_rift && h_m < 420.0) {
@@ -313,7 +468,7 @@ fn calibrate_sea_level_shift(raw_h: &[f64], target_ocean_fraction: f32) -> f64 {
     let total = raw_h.len() as f64;
     for _ in 0..48 {
         let mid = 0.5 * (low + high);
-        let below = raw_h.iter().filter(|&&h| h + mid < 0.0).count() as f64;
+        let below = raw_h.par_iter().filter(|&&h| h + mid < 0.0).count() as f64;
         let frac = below / total;
         if frac > target {
             low = mid;
@@ -347,46 +502,45 @@ fn soft_bound_elevation(h_m: f64, elev_min_m: f32, elev_max_m: f32) -> f32 {
 
 /// Generates deterministic Stage S1 initial bedrock, uplift, lithology, and erodibility fields.
 ///
-/// Row-parallel via `rayon` with purely coordinate-indexed calculations so `1`-thread and
+/// Uses a two-pass memory-lean evaluation (`208 MiB` peak at `4096^2`, dropping `raw_h` before
+/// allocating outputs) and purely coordinate-indexed `rayon` row parallelism so `1`-thread and
 /// `N`-thread `rayon` pools on the same machine yield bit-identical IEEE-754 outputs.
 pub fn generate_uplift(cfg: &WorldV2Config) -> Result<TectonicField, ConfigError> {
+    generate_uplift_for_target(cfg, cfg.grid_size)
+}
+
+/// Generates Stage S1 fields at `cfg.grid_size` while deriving regional structural parameters
+/// from `params_grid_size` so coarse-to-fine multigrid levels share identical landform placement.
+pub fn generate_uplift_for_target(
+    cfg: &WorldV2Config,
+    params_grid_size: u32,
+) -> Result<TectonicField, ConfigError> {
     cfg.validate()?;
     let w = cfg.grid_size as usize;
     let h = cfg.grid_size as usize;
     let n = w * h;
-    let params = TectonicParams::from_config(cfg);
-
-    let mut evals = vec![
-        CellEval {
-            raw_h_m: 0.0,
-            uplift: 0.0,
-            in_volcano: false,
-            in_plateau: false,
-            in_karst: false,
-            near_rift: false,
-            ridge_core_dist: 0.0,
-            coast_dist: 0.0,
-        };
-        n
-    ];
+    let params = TectonicParams::from_config_with_grid_size(cfg, params_grid_size);
 
     let denom_x = (w - 1) as f64;
     let denom_z = (h - 1) as f64;
 
-    evals
+    // Pass 1: evaluate only `raw_h_m` (`128 MiB` @ 4096^2) to calibrate sea-level shift, then drop.
+    let mut raw_h = vec![0.0_f64; n];
+    raw_h
         .par_chunks_mut(w)
         .enumerate()
         .for_each(|(row, row_slice)| {
             let v = row as f64 / denom_z;
             for (col, slot) in row_slice.iter_mut().enumerate() {
                 let u = col as f64 / denom_x;
-                *slot = eval_cell_raw(u, v, &params, cfg);
+                *slot = eval_cell_raw(u, v, &params, cfg).raw_h_m;
             }
         });
 
-    let raw_heights: Vec<f64> = evals.iter().map(|e| e.raw_h_m).collect();
-    let shift = calibrate_sea_level_shift(&raw_heights, cfg.target_ocean_fraction);
+    let shift = calibrate_sea_level_shift(&raw_h, cfg.target_ocean_fraction);
+    drop(raw_h);
 
+    // Pass 2: evaluate directly into the 4 output slices (`208 MiB` @ 4096^2).
     let mut bedrock_h = vec![0.0_f32; n];
     let mut uplift_u = vec![0.0_f32; n];
     let mut lithology_id = vec![0_u8; n];
@@ -399,11 +553,12 @@ pub fn generate_uplift(cfg: &WorldV2Config) -> Result<TectonicField, ConfigError
         .zip(stratum_k.par_chunks_mut(w))
         .enumerate()
         .for_each(|(row, (((bh, uu), lid), sk))| {
-            let base = row * w;
+            let v = row as f64 / denom_z;
             for col in 0..w {
-                let ev = &evals[base + col];
+                let u = col as f64 / denom_x;
+                let ev = eval_cell_raw(u, v, &params, cfg);
                 let elev = soft_bound_elevation(ev.raw_h_m + shift, cfg.elev_min_m, cfg.elev_max_m);
-                let class = assign_lithology(elev, ev, cfg);
+                let class = assign_lithology(elev, &ev, cfg);
                 bh[col] = elev;
                 uu[col] = ev.uplift as f32;
                 lid[col] = class as u8;
@@ -420,6 +575,136 @@ pub fn generate_uplift(cfg: &WorldV2Config) -> Result<TectonicField, ConfigError
         lithology_id,
         stratum_k,
     })
+}
+
+/// Evaluates fine-grid `(uplift_u, lithology_id)` directly from an upsampled `fine_bedrock_h`
+/// without allocating `raw_h`, `bedrock_h`, or `stratum_k` (`80 MiB` total @ `4096^2`).
+pub fn generate_fine_s1_aux(
+    cfg: &WorldV2Config,
+    fine_bedrock_h: &[f32],
+    params_grid_size: u32,
+) -> Result<(Vec<f32>, Vec<u8>), ConfigError> {
+    cfg.validate()?;
+    let w = cfg.grid_size as usize;
+    let h = cfg.grid_size as usize;
+    let n = w * h;
+    if fine_bedrock_h.len() != n {
+        return Err(ConfigError {
+            message: format!(
+                "fine_bedrock_h length {} does not match {}x{}",
+                fine_bedrock_h.len(),
+                w,
+                h
+            ),
+        });
+    }
+    let params = TectonicParams::from_config_with_grid_size(cfg, params_grid_size);
+    let denom_x = (w - 1) as f64;
+    let denom_z = (h - 1) as f64;
+
+    let mut uplift_u = vec![0.0_f32; n];
+    let mut lithology_id = vec![0_u8; n];
+
+    uplift_u
+        .par_chunks_mut(w)
+        .zip(lithology_id.par_chunks_mut(w))
+        .zip(fine_bedrock_h.par_chunks(w))
+        .enumerate()
+        .for_each(|(row, ((uu, lid), bh))| {
+            let v = row as f64 / denom_z;
+            for col in 0..w {
+                let u = col as f64 / denom_x;
+                let ev = eval_cell_raw(u, v, &params, cfg);
+                let class = assign_lithology(bh[col], &ev, cfg);
+                uu[col] = ev.uplift as f32;
+                lid[col] = class as u8;
+                debug_assert!((lid[col] as usize) < LITHOLOGY_CLASS_COUNT);
+            }
+        });
+
+    Ok((uplift_u, lithology_id))
+}
+
+/// Restores fine-scale (`10-20 m`) stratigraphic knickpoint bench sharpness after coarse-to-fine
+/// bilinear upsampling so `2048^2`/`4096^2` fluvial erosion undercuts `>= 12 m` waterfalls within
+/// `<= 30 m` horizontal run.
+pub fn refine_fine_s1_knickpoints(
+    cfg: &WorldV2Config,
+    bedrock_h: &mut [f32],
+    lithology_id: &mut [u8],
+    params_grid_size: u32,
+) {
+    let w = cfg.grid_size as usize;
+    let h = cfg.grid_size as usize;
+    if w < 2 || h < 2 || bedrock_h.len() != w * h || lithology_id.len() != w * h {
+        return;
+    }
+    let params = TectonicParams::from_config_with_grid_size(cfg, params_grid_size);
+    let denom_x = (w - 1) as f64;
+    let denom_z = (h - 1) as f64;
+    const LEDGE_HEIGHTS: [f64; 43] = [
+        35.0, 76.0, 117.0, 158.0, 199.0, 240.0, 281.0, 322.0, 363.0, 404.0, 445.0, 486.0, 527.0,
+        568.0, 609.0, 650.0, 691.0, 732.0, 773.0, 814.0, 855.0, 896.0, 937.0, 978.0, 1_020.0,
+        1_065.0, 1_110.0, 1_155.0, 1_200.0, 1_250.0, 1_300.0, 1_350.0, 1_405.0, 1_460.0, 1_520.0,
+        1_580.0, 1_640.0, 1_705.0, 1_775.0, 1_845.0, 1_920.0, 2_000.0, 2_080.0,
+    ];
+    let half_band = 20.0_f64;
+    let cap_id = LithologyClass::SandstoneCaprock as u8;
+    let shale_id = LithologyClass::SoftShale as u8;
+
+    let smooth_c2 = |edge0: f64, edge1: f64, x: f64| -> f64 {
+        let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+        t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    };
+
+    bedrock_h
+        .par_chunks_mut(w)
+        .zip(lithology_id.par_chunks_mut(w))
+        .enumerate()
+        .for_each(|(row, (bh, lid))| {
+            let v = row as f64 / denom_z;
+            for col in 0..w {
+                let h_cur = f64::from(bh[col]);
+                if h_cur <= 15.0 {
+                    continue;
+                }
+                for &h_k in &LEDGE_HEIGHTS {
+                    let t = (h_cur - h_k) / half_band;
+                    if (-1.0..=1.0).contains(&t) {
+                        // Strictly monotone C^0 1-D profile: flattens upstream sandstone shelf
+                        // (`t in [0, 0.65]`) to ~0.038x slope (<< 0.08) and concentrates the
+                        // drop across `t in [-0.045, 0)` (~20.4x slope -> ~18.4 m plunge
+                        // clearing >= 12 m over 30-88 m across [35..2,080 m]).
+                        // Applied purely as a 1-D function of `h_cur` alone (with
+                        // `LEDGE_HEIGHTS[0] - half_band = 15.0 m` leaving coastal plains/ocean
+                        // untouched) so spatially varying masks never introduce backward drops.
+                        let g = if t >= 0.65 {
+                            0.025 + (t - 0.65) * (0.975 / 0.35)
+                        } else if t >= 0.0 {
+                            (0.025 / 0.65) * t
+                        } else if t >= -0.045 {
+                            (0.95 / 0.045) * t
+                        } else {
+                            -1.0 + (t + 1.0) * (0.05 / 0.955)
+                        };
+                        let h_ledge = h_k + half_band * g;
+                        bh[col] = h_ledge as f32;
+                        if (-0.38..=0.25).contains(&t)
+                            && lid[col] != LithologyClass::BasaltVolcanic as u8
+                        {
+                            let u = col as f64 / denom_x;
+                            let ev = eval_cell_raw(u, v, &params, cfg);
+                            let mask_w = smooth_c2(0.032, 0.072, ev.coast_dist)
+                                * smooth_c2(0.085, 0.125, ev.volcano_dist);
+                            if mask_w >= 0.5 {
+                                lid[col] = if t >= -0.012 { cap_id } else { shale_id };
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]
@@ -457,5 +742,55 @@ mod tests {
             assert_eq!(y < 0.0, raw < 0.0, "sea-level sign mismatch at {raw}");
             prev = y;
         }
+    }
+
+    #[test]
+    fn refine_fine_s1_knickpoints_preserves_monotone_ramp_across_mask_seams() {
+        use super::{LithologyClass, WorldV2Config};
+        let cases: &[(u32, u64, f32, f32)] = &[
+            (256, 57_563_201, -100.0, 2_100.0),
+            (256, 57_563_201, 0.0, 800.0),
+            (1024, 57_563_201, -100.0, 2_100.0),
+            (1024, 314_159, -100.0, 2_100.0),
+            (1024, 42, 0.0, 400.0),
+        ];
+        for &(n, seed, h_start, h_span) in cases {
+            let nu = n as usize;
+            let cfg = WorldV2Config::for_size(seed, n);
+            let mut bh = vec![0.0_f32; nu * nu];
+            let mut lid = vec![LithologyClass::SolubleLimestone as u8; nu * nu];
+            for r in 0..nu {
+                for c in 0..nu {
+                    bh[r * nu + c] = h_start + (c as f32 / (nu - 1) as f32) * h_span;
+                }
+            }
+            super::refine_fine_s1_knickpoints(&cfg, &mut bh, &mut lid, n);
+            for r in 0..nu {
+                for c in 1..nu {
+                    assert!(
+                        bh[r * nu + c] >= bh[r * nu + c - 1],
+                        "non-monotone mask seam at n={n}, seed={seed}, ({r},{c}): {} < {}",
+                        bh[r * nu + c],
+                        bh[r * nu + c - 1]
+                    );
+                }
+            }
+            // Karst between knickpoint ledges must not be completely overwritten.
+            assert!(lid.contains(&(LithologyClass::SolubleLimestone as u8)));
+        }
+
+        // BasaltVolcanic lithology must never be overwritten on a ledge.
+        let n_b = 128_u32;
+        let nu_b = n_b as usize;
+        let cfg_b = WorldV2Config::for_size(57_563_201, n_b);
+        let mut bh_b = vec![76.0_f32; nu_b * nu_b];
+        let mut lid_b = vec![LithologyClass::BasaltVolcanic as u8; nu_b * nu_b];
+        super::refine_fine_s1_knickpoints(&cfg_b, &mut bh_b, &mut lid_b, n_b);
+        assert!(
+            lid_b
+                .iter()
+                .all(|&id| id == LithologyClass::BasaltVolcanic as u8),
+            "BasaltVolcanic must not be overwritten by ledge caprock/shale"
+        );
     }
 }

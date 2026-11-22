@@ -121,6 +121,7 @@ export const FEATURE_GATED_TARGETS = [
   { name: 'tests/phase5_burn_wgpu_fallback.rs', feature: 'ml-wgpu' },
   { name: 'tests/wv2_1a_tectonic_tests.rs', feature: 'generate' },
   { name: 'tests/wv2_1b_solver_hydro_tests.rs', feature: 'generate' },
+  { name: 'tests/wv2_2_climate_biome_cave_tests.rs', feature: 'generate' },
 ];
 
 /** Which features each named profile turns on. Used to decide "absent" vs "must run". */

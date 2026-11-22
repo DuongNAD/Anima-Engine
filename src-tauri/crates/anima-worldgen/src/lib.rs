@@ -27,6 +27,8 @@ pub mod hydrology;
 #[cfg(feature = "generate")]
 pub mod lakes_falls;
 #[cfg(feature = "generate")]
+pub mod pipeline;
+#[cfg(feature = "generate")]
 pub mod rng;
 #[cfg(feature = "generate")]
 pub mod tectonic;

@@ -656,7 +656,7 @@ pub fn apply_deposition(
             .sum::<f32>()
             / chain.len() as f32;
         let w_bank = mean_w.max(cfg.dx_m);
-        let ds_target = (1.5 * w_bank).clamp(cfg.dx_m, 35.0);
+        let ds_target = (1.5 * w_bank).clamp(cfg.dx_m, 35.0_f32.max(cfg.dx_m));
 
         // Convert to physical metres polyline & resample to uniform `ds_target`.
         let raw_pts: Vec<(f32, f32)> = chain

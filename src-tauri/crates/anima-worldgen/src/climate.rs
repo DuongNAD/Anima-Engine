@@ -467,8 +467,8 @@ pub fn compute_climate(
 
     let step_scale = dx_c / 80.0;
     let oro_gain = (cfg.windward_precip_target_m_yr / 3.2).clamp(0.4, 2.0);
-    let c_bg = 1.28 * oro_gain;
-    let c_oro = 4.55 * oro_gain;
+    let c_bg = 1.92 * oro_gain;
+    let c_oro = 3.90 * oro_gain;
     let w_sat = 0.19_f32;
     let c_lee = 5.2_f32;
     let s0_sq = 0.25_f32 * 0.25_f32;
@@ -528,9 +528,9 @@ pub fn compute_climate(
                 // Rainout depletes column moisture during orographic condensation excess and
                 // leeward adiabatic drying; flat humid lowlands gently recycle moisture.
                 let oro_rain = (cond - q_in * f_cc * c_bg).max(0.0);
-                let rain_deplete = 0.014 * step_scale * oro_rain + 0.008 * step_scale * w_down;
-                let evap_recycle = if w_down < 0.02 && h < 450.0 {
-                    0.0045 * step_scale * (0.94 - q_in).max(0.0)
+                let rain_deplete = 0.0018 * step_scale * oro_rain + 0.005 * step_scale * w_down;
+                let evap_recycle = if w_down < 0.02 && h < 1_200.0 {
+                    0.0045 * step_scale * (0.96 - q_in).max(0.0)
                 } else {
                     0.0008 * step_scale * (0.50 - q_in).max(0.0)
                 };
@@ -670,6 +670,138 @@ pub fn compute_climate(
         ela_m,
         wind_azimuth_rad,
     })
+}
+
+/// Memory-lean Stage S7 Pass 2 helper computing only `(twi, moisture)` from existing
+/// `precip_m_yr` and `pet_m_yr` plus Stage S5 `flow_acc_m2` (`128 MiB` output @ `4096^2`,
+/// avoiding re-allocating `temp_c`/`precip_m_yr`/`pet_m_yr`/`ela_m`).
+pub fn compute_twi_and_moisture(
+    elev_m: &[f32],
+    precip_m_yr: &[f32],
+    pet_m_yr: &[f32],
+    flow_acc_m2: &[f64],
+    width: usize,
+    height: usize,
+    dx_m: f32,
+) -> Result<(Vec<f32>, Vec<f32>), ClimateError> {
+    if flow_acc_m2.len() != width * height {
+        return Err(ClimateError {
+            message: "input slice lengths do not match grid dimensions".to_owned(),
+        });
+    }
+    let half = flow_acc_m2.len() / 2;
+    compute_twi_and_moisture_halves(
+        elev_m,
+        precip_m_yr,
+        pet_m_yr,
+        &flow_acc_m2[..half],
+        &flow_acc_m2[half..],
+        width,
+        height,
+        dx_m,
+    )
+}
+
+/// Split-halves variant of [`compute_twi_and_moisture`] avoiding `128 MiB` `Vec<f64>` @ `4096^2`.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_twi_and_moisture_halves(
+    elev_m: &[f32],
+    precip_m_yr: &[f32],
+    pet_m_yr: &[f32],
+    flow_acc_lo: &[f64],
+    flow_acc_hi: &[f64],
+    width: usize,
+    height: usize,
+    dx_m: f32,
+) -> Result<(Vec<f32>, Vec<f32>), ClimateError> {
+    if width < 8 || height < 8 {
+        return Err(ClimateError {
+            message: "grid dimensions must be >= 8x8".to_owned(),
+        });
+    }
+    if !dx_m.is_finite() || dx_m <= 0.0 {
+        return Err(ClimateError {
+            message: "dx_m must be finite and > 0".to_owned(),
+        });
+    }
+    let n = width * height;
+    let half = n / 2;
+    if elev_m.len() != n
+        || precip_m_yr.len() != n
+        || pet_m_yr.len() != n
+        || flow_acc_lo.len() != half
+        || flow_acc_hi.len() != n - half
+    {
+        return Err(ClimateError {
+            message: "input slice lengths do not match grid dimensions".to_owned(),
+        });
+    }
+    if elev_m.iter().any(|h| !h.is_finite()) {
+        return Err(ClimateError {
+            message: "elev_m contains non-finite values".to_owned(),
+        });
+    }
+    if precip_m_yr.iter().any(|&v| !v.is_finite() || v < 0.0) {
+        return Err(ClimateError {
+            message: "precip_m_yr contains non-finite or negative values".to_owned(),
+        });
+    }
+    if pet_m_yr.iter().any(|&v| !v.is_finite() || v < 0.0) {
+        return Err(ClimateError {
+            message: "pet_m_yr contains non-finite or negative values".to_owned(),
+        });
+    }
+    if flow_acc_lo.iter().any(|&v| !v.is_finite() || v < 0.0)
+        || flow_acc_hi.iter().any(|&v| !v.is_finite() || v < 0.0)
+    {
+        return Err(ClimateError {
+            message: "flow_acc_m2 contains non-finite or negative values".to_owned(),
+        });
+    }
+
+    let mut twi = vec![0.0_f32; n];
+    let mut moisture = vec![0.0_f32; n];
+    let dx_f64 = f64::from(dx_m);
+
+    twi.par_chunks_mut(width)
+        .zip(moisture.par_chunks_mut(width))
+        .enumerate()
+        .for_each(|(r, (twi_row, m_row))| {
+            let r_lo = r.saturating_sub(1);
+            let r_hi = (r + 1).min(height - 1);
+            let dz_span = ((r_hi - r_lo).max(1) as f32) * dx_m;
+            let row_base = r * width;
+            for c in 0..width {
+                let c_lo = c.saturating_sub(1);
+                let c_hi = (c + 1).min(width - 1);
+                let dx_span = ((c_hi - c_lo).max(1) as f32) * dx_m;
+                let idx = row_base + c;
+                let hx = (elev_m[row_base + c_hi] - elev_m[row_base + c_lo]) / dx_span;
+                let hz = (elev_m[r_hi * width + c] - elev_m[r_lo * width + c]) / dz_span;
+                let slope_tan = libm::hypotf(hx, hz);
+                let denom = f64::from(slope_tan.max(0.002));
+                let acc = if idx < half {
+                    flow_acc_lo[idx]
+                } else {
+                    flow_acc_hi[idx - half]
+                };
+                let log_num = if acc > 1e300_f64 {
+                    libm::log(acc) - libm::log(dx_f64)
+                } else {
+                    libm::log(acc / dx_f64 + dx_f64)
+                };
+                let twi_val = (log_num - libm::log(denom)) as f32;
+                twi_row[c] = twi_val;
+
+                let p = precip_m_yr[idx];
+                let pet = pet_m_yr[idx];
+                let aridity_frac = if p + pet > 0.0 { p / (p + pet) } else { 0.0 };
+                let twi_frac = ((twi_val - 4.0) / 10.0).clamp(0.0, 1.0);
+                m_row[c] = (0.78 * aridity_frac + 0.22 * twi_frac).clamp(0.0, 1.0);
+            }
+        });
+
+    Ok((twi, moisture))
 }
 
 /// 2-pass climate–erosion coupling helper (`§2.2.7` item 4).
@@ -1076,5 +1208,39 @@ mod tests {
             couple_climate_for_resolution(&clean_elev, 16, 16, 32, 32, Some(&huge_up_acc), &cfg)
                 .expect("huge finite upsampled flow_acc_m2");
         assert!(huge_up_clim.twi.iter().all(|v| v.is_finite()));
+
+        let clean_p = vec![1.2_f32; 16 * 16];
+        let clean_pet = vec![1.0_f32; 16 * 16];
+        let clean_acc = vec![100.0_f64; 16 * 16];
+        assert!(
+            compute_twi_and_moisture(&elev, &clean_p, &clean_pet, &clean_acc, 16, 16, 100.0)
+                .is_err()
+        );
+
+        let mut bad_p = clean_p.clone();
+        bad_p[2] = f32::NAN;
+        assert!(compute_twi_and_moisture(
+            &clean_elev,
+            &bad_p,
+            &clean_pet,
+            &clean_acc,
+            16,
+            16,
+            100.0
+        )
+        .is_err());
+
+        let mut bad_pet = clean_pet.clone();
+        bad_pet[4] = f32::INFINITY;
+        assert!(compute_twi_and_moisture(
+            &clean_elev,
+            &clean_p,
+            &bad_pet,
+            &clean_acc,
+            16,
+            16,
+            100.0
+        )
+        .is_err());
     }
 }

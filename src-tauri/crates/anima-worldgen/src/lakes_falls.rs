@@ -117,7 +117,7 @@ impl<'a> LakesFallsInput<'a> {
 }
 
 /// Geomorphic classification of a retained lake basin (`§5.1` `C3`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LakeClassification {
     FreshwaterSpilling,
     EndorheicClosed,
@@ -127,7 +127,7 @@ pub enum LakeClassification {
 }
 
 /// Summary metadata for a retained lake basin.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LakeBasinRecord {
     pub id: u32,
     pub water_kind: u8,
@@ -147,7 +147,7 @@ pub struct LakeBasinRecord {
 }
 
 /// Mapped knickpoint waterfall and plunge-pool metadata (`§2.2.6`, `§5.1` `C1`).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WaterfallRecord {
     pub lip_cell: u32,
     pub base_cell: u32,
@@ -208,7 +208,7 @@ struct DepNode {
     ext_outlet_cell: u32,
     children: Option<(u32, u32)>,
     parent_node: u32,
-    own_cells: Vec<u32>,
+    own_head: u32,
 }
 
 fn find_root(dsu: &mut [u32], mut x: u32) -> u32 {
@@ -220,11 +220,28 @@ fn find_root(dsu: &mut [u32], mut x: u32) -> u32 {
     x
 }
 
-fn collect_subtree_cells(nodes: &[DepNode], root: u32, out: &mut Vec<u32>) {
+fn push_node_cell(nodes: &mut [DepNode], own_pool: &mut Vec<(u32, u32)>, node_id: u32, cell: u32) {
+    let pool_idx = own_pool.len() as u32;
+    let head = nodes[node_id as usize].own_head;
+    own_pool.push((cell, head));
+    nodes[node_id as usize].own_head = pool_idx;
+}
+
+fn collect_subtree_cells(
+    nodes: &[DepNode],
+    own_pool: &[(u32, u32)],
+    root: u32,
+    out: &mut Vec<u32>,
+) {
     let mut stack = vec![root];
     while let Some(u) = stack.pop() {
         let node = &nodes[u as usize];
-        out.extend_from_slice(&node.own_cells);
+        let mut p = node.own_head;
+        while p != NO_RECEIVER {
+            let (cell, nxt) = own_pool[p as usize];
+            out.push(cell);
+            p = nxt;
+        }
         if let Some((a, b)) = node.children {
             stack.push(a);
             stack.push(b);
@@ -265,6 +282,7 @@ fn has_any_humid_submerged(
 
 fn pick_receiving_child(
     nodes: &[DepNode],
+    own_pool: &[(u32, u32)],
     a: u32,
     b: u32,
     entry_outlet_cell: u32,
@@ -282,7 +300,7 @@ fn pick_receiving_child(
     let ec = (entry_outlet_cell as usize % w) as isize;
     let min_dist_sq = |root: u32, buf: &mut Vec<u32>| -> isize {
         buf.clear();
-        collect_subtree_cells(nodes, root, buf);
+        collect_subtree_cells(nodes, own_pool, root, buf);
         let mut best = isize::MAX;
         for &c in buf.iter() {
             let dr = (c as usize / w) as isize - er;
@@ -453,14 +471,24 @@ pub fn generate_lakes_and_waterfalls(
             let idx = r * w + c;
             let border = r == 0 || r + 1 == h || c == 0 || c + 1 == w;
             let marine = filled_h[idx] <= cfg.sea_level_m;
-            if border || marine {
-                bit_set(&mut closed, idx);
-                bit_set(&mut is_outlet, idx);
-                open.push(Reverse((float_ord_key(filled_h[idx]), idx as u32)));
-            }
             if marine {
                 water_kind[idx] = WaterKind::Ocean as u8;
                 water_h_m[idx] = cfg.sea_level_m;
+            }
+            if border || marine {
+                bit_set(&mut closed, idx);
+                bit_set(&mut is_outlet, idx);
+                if marine && !border {
+                    let all_marine_nbs = (0..8).all(|dir| {
+                        let nr = (r as isize + DZ8[dir]) as usize;
+                        let nc = (c as isize + DX8[dir]) as usize;
+                        filled_h[nr * w + nc] <= cfg.sea_level_m
+                    });
+                    if all_marine_nbs {
+                        continue;
+                    }
+                }
+                open.push(Reverse((float_ord_key(filled_h[idx]), idx as u32)));
             }
         }
     }
@@ -496,6 +524,8 @@ pub fn generate_lakes_and_waterfalls(
         }
     }
     drop(closed);
+    drop(open);
+    drop(pit_queue);
 
     // Steepest-descent D8 receiver on `filled_h`.
     let mut d8_rec = vec![NO_RECEIVER; n];
@@ -541,6 +571,7 @@ pub fn generate_lakes_and_waterfalls(
 
     let mut cell_leaf = vec![NO_RECEIVER; n];
     let mut nodes: Vec<DepNode> = Vec::new();
+    let mut own_pool: Vec<(u32, u32)> = Vec::with_capacity(dep_cells.len());
     let mut dsu: Vec<u32> = Vec::new();
 
     for &(_, c_u32) in &dep_cells {
@@ -586,13 +617,14 @@ pub fn generate_lakes_and_waterfalls(
                 ext_outlet_cell: best_ext_nb,
                 children: None,
                 parent_node: NO_RECEIVER,
-                own_cells: vec![c_u32],
+                own_head: NO_RECEIVER,
             });
+            push_node_cell(&mut nodes, &mut own_pool, id, c_u32);
             dsu.push(id);
             cell_leaf[c_idx] = id;
         } else if nr_len == 1 {
             let root = neigh_roots[0];
-            nodes[root as usize].own_cells.push(c_u32);
+            push_node_cell(&mut nodes, &mut own_pool, root, c_u32);
             if best_ext_h < nodes[root as usize].ext_spill_h {
                 nodes[root as usize].ext_spill_h = best_ext_h;
                 nodes[root as usize].ext_outlet_cell = best_ext_nb;
@@ -632,7 +664,7 @@ pub fn generate_lakes_and_waterfalls(
                     ext_outlet_cell: ext_nb,
                     children: Some((cur, other)),
                     parent_node: NO_RECEIVER,
-                    own_cells: Vec::new(),
+                    own_head: NO_RECEIVER,
                 });
                 dsu.push(p_id);
                 dsu[cur as usize] = p_id;
@@ -643,10 +675,14 @@ pub fn generate_lakes_and_waterfalls(
                 nodes[cur as usize].ext_spill_h = best_ext_h;
                 nodes[cur as usize].ext_outlet_cell = best_ext_nb;
             }
-            nodes[cur as usize].own_cells.push(c_u32);
+            push_node_cell(&mut nodes, &mut own_pool, cur, c_u32);
             cell_leaf[c_idx] = cur;
         }
     }
+    let any_pit = !dep_cells.is_empty();
+    drop(dep_cells);
+    drop(dsu);
+    drop(filled_h);
 
     for node in &mut nodes {
         if node.parent_node == NO_RECEIVER {
@@ -671,16 +707,18 @@ pub fn generate_lakes_and_waterfalls(
             }
         }
         let mut runoff_acc = vec![0.0_f32; n];
-        let mut queue: VecDeque<u32> = VecDeque::new();
+        let mut queue: Vec<u32> = Vec::new();
         for i in 0..n {
             let q_loc = (input.precip_m_yr[i] - input.pet_m_yr[i]).max(0.0) * cell_area_f32;
             runoff_acc[i] = q_loc;
             if cell_leaf[i] == NO_RECEIVER && in_deg[i] == 0 {
-                queue.push_back(i as u32);
+                queue.push(i as u32);
             }
         }
-        while let Some(u_u32) = queue.pop_front() {
-            let u = u_u32 as usize;
+        let mut q_head = 0_usize;
+        while q_head < queue.len() {
+            let u = queue[q_head] as usize;
+            q_head += 1;
             let rec = d8_rec[u];
             if rec == NO_RECEIVER {
                 continue;
@@ -693,7 +731,7 @@ pub fn generate_lakes_and_waterfalls(
                 runoff_acc[rec_u] += runoff_acc[u];
                 in_deg[rec_u] = in_deg[rec_u].saturating_sub(1);
                 if in_deg[rec_u] == 0 {
-                    queue.push_back(rec);
+                    queue.push(rec);
                 }
             }
         }
@@ -727,6 +765,7 @@ pub fn generate_lakes_and_waterfalls(
 
     struct FsmState<'a> {
         nodes: &'a [DepNode],
+        own_pool: &'a [(u32, u32)],
         elev_m: &'a [f32],
         precip_m_yr: &'a [f32],
         pet_m_yr: &'a [f32],
@@ -757,7 +796,7 @@ pub fn generate_lakes_and_waterfalls(
 
         fn evap_to_sill(&mut self, u: u32, spill: f32) -> (f64, f64, f64) {
             self.scratch_cells.clear();
-            collect_subtree_cells(self.nodes, u, &mut self.scratch_cells);
+            collect_subtree_cells(self.nodes, self.own_pool, u, &mut self.scratch_cells);
             let mut cnt_below = 0usize;
             let mut pet_below = 0.0_f64;
             let mut p_below = 0.0_f64;
@@ -937,6 +976,7 @@ pub fn generate_lakes_and_waterfalls(
         ) {
             let (recv_c, other_c) = pick_receiving_child(
                 self.nodes,
+                self.own_pool,
                 a,
                 b,
                 entry_outlet_cell,
@@ -1015,6 +1055,7 @@ pub fn generate_lakes_and_waterfalls(
 
     let mut fsm = FsmState {
         nodes: &nodes,
+        own_pool: &own_pool,
         elev_m,
         precip_m_yr: input.precip_m_yr,
         pet_m_yr: input.pet_m_yr,
@@ -1077,6 +1118,7 @@ pub fn generate_lakes_and_waterfalls(
         fsm.evaluate_basin(u as u32, q_total);
     }
 
+    drop(node_inflow_m3_yr);
     let suppressed_child = fsm.suppressed_child;
     let pending = fsm.pending;
     let mut scratch_cells = fsm.scratch_cells;
@@ -1111,7 +1153,7 @@ pub fn generate_lakes_and_waterfalls(
             continue;
         }
         scratch_cells.clear();
-        collect_subtree_cells(&nodes, cand.node_idx, &mut scratch_cells);
+        collect_subtree_cells(&nodes, &own_pool, cand.node_idx, &mut scratch_cells);
 
         let mut submerged: Vec<u32> = Vec::with_capacity(scratch_cells.len());
         let mut max_depth = 0.0_f32;
@@ -1174,7 +1216,8 @@ pub fn generate_lakes_and_waterfalls(
         } else if max_wall_slope_deg > 25.0 || elongation > 3.5 {
             LakeClassification::CalderaOrTrough
         } else if mean_elev >= cfg.paramo_elev_m {
-            if area_m2 >= 5_000.0 {
+            let pond_cutoff_m2 = (5_000.0_f64).max(20.0 * cell_area_m2).min(95_000.0);
+            if area_m2 >= pond_cutoff_m2 {
                 LakeClassification::HighParamoGlacial
             } else {
                 LakeClassification::ParamoCirquePond
@@ -1260,7 +1303,7 @@ pub fn generate_lakes_and_waterfalls(
         // visited guard so the river traces continuously to a lower cell or `target_sib`.
         for (start_cell, full_id, q_out, target_sib) in internal_spill_traces {
             scratch_cells.clear();
-            collect_subtree_cells(&nodes, target_sib, &mut scratch_cells);
+            collect_subtree_cells(&nodes, &own_pool, target_sib, &mut scratch_cells);
             scratch_cells.sort_unstable();
             let depth = (0.25 * libm::powf(q_out.max(0.05), 0.40)).clamp(0.15, 3.0);
             let mut cur = start_cell;
@@ -1460,67 +1503,76 @@ pub fn generate_lakes_and_waterfalls(
     }
 
     // 6. Micro-pit cleanup outside retained lakes (only when Fill-Spill-Merge is enabled).
-    // If any retained lake (`EndorheicLake` or internal `FreshwaterLake`) sits strictly below
-    // Step 1's outer Priority-Flood surface (`water_h_m < filled_h - 1e-4`), recompute
-    // Priority-Flood seeded with ALL retained lake surfaces (`lake_id != 0`) so dry interior
-    // bowl walls and internal spillways retain their exact pre-existing slope instead of being
-    // buried up to the outer rim.
-    if cfg.enable_fill_spill_merge {
-        let needs_reseed = !basins.is_empty()
-            && (endorheic_cells > 0
-                || (0..n).any(|i| lake_id[i] != 0 && water_h_m[i] < filled_h[i] - 1e-4));
-        if needs_reseed {
-            filled_h.copy_from_slice(elev_m);
-            let mut closed2 = vec![0_u64; word_count];
-            let mut open2: BinaryHeap<Reverse<(u32, u32)>> =
-                BinaryHeap::with_capacity(w * 2 + h * 2);
-            let mut pit_q2: VecDeque<(u32, f32)> = VecDeque::new();
-            for r in 0..h {
-                for c in 0..w {
-                    let idx = r * w + c;
-                    let border = r == 0 || r + 1 == h || c == 0 || c + 1 == w;
-                    let marine = filled_h[idx] <= cfg.sea_level_m;
-                    let lake_seed = lake_id[idx] != 0;
-                    if lake_seed {
-                        filled_h[idx] = water_h_m[idx];
-                    }
-                    if border || marine || lake_seed {
-                        bit_set(&mut closed2, idx);
-                        open2.push(Reverse((float_ord_key(filled_h[idx]), idx as u32)));
-                    }
+    // Free FSM hierarchy memory (`nodes`, `suppressed_child`, `scratch_cells`) before allocating
+    // the reseeded Priority-Flood surface so `4096^2` peak RSS stays lean.
+    drop(nodes);
+    drop(own_pool);
+    drop(suppressed_child);
+    drop(scratch_cells);
+
+    if cfg.enable_fill_spill_merge && (any_pit || !basins.is_empty()) {
+        let mut filled2 = elev_m.to_vec();
+        let mut closed2 = vec![0_u64; word_count];
+        let mut open2: BinaryHeap<Reverse<(u32, u32)>> = BinaryHeap::with_capacity(w * 2 + h * 2);
+        let mut pit_q2: VecDeque<(u32, f32)> = VecDeque::new();
+        for r in 0..h {
+            for c in 0..w {
+                let idx = r * w + c;
+                let border = r == 0 || r + 1 == h || c == 0 || c + 1 == w;
+                let marine = filled2[idx] <= cfg.sea_level_m;
+                let lake_seed = lake_id[idx] != 0;
+                if lake_seed {
+                    filled2[idx] = water_h_m[idx];
                 }
-            }
-            while !open2.is_empty() || !pit_q2.is_empty() {
-                let (cell, current_h) = if let Some((c, hc)) = pit_q2.pop_front() {
-                    (c as usize, hc)
-                } else {
-                    let Reverse((_, c)) = open2.pop().expect("open2 heap non-empty");
-                    let cu = c as usize;
-                    (cu, filled_h[cu])
-                };
-                let r = cell / w;
-                let c = cell % w;
-                for dir in 0..8 {
-                    let nr = r as isize + DZ8[dir];
-                    let nc = c as isize + DX8[dir];
-                    if nr < 0 || nc < 0 || nr >= h as isize || nc >= w as isize {
-                        continue;
+                if border || marine || lake_seed {
+                    bit_set(&mut closed2, idx);
+                    if marine && !border && !lake_seed {
+                        let all_marine_nbs = (0..8).all(|dir| {
+                            let nr = (r as isize + DZ8[dir]) as usize;
+                            let nc = (c as isize + DX8[dir]) as usize;
+                            filled2[nr * w + nc] <= cfg.sea_level_m
+                        });
+                        if all_marine_nbs {
+                            continue;
+                        }
                     }
-                    let nb = nr as usize * w + nc as usize;
-                    if bit_get(&closed2, nb) {
-                        continue;
-                    }
-                    bit_set(&mut closed2, nb);
-                    if filled_h[nb] <= current_h {
-                        let raised = current_h.next_up();
-                        filled_h[nb] = raised;
-                        pit_q2.push_back((nb as u32, raised));
-                    } else {
-                        open2.push(Reverse((float_ord_key(filled_h[nb]), nb as u32)));
-                    }
+                    open2.push(Reverse((float_ord_key(filled2[idx]), idx as u32)));
                 }
             }
         }
+        while !open2.is_empty() || !pit_q2.is_empty() {
+            let (cell, current_h) = if let Some((c, hc)) = pit_q2.pop_front() {
+                (c as usize, hc)
+            } else {
+                let Reverse((_, c)) = open2.pop().expect("open2 heap non-empty");
+                let cu = c as usize;
+                (cu, filled2[cu])
+            };
+            let r = cell / w;
+            let c = cell % w;
+            for dir in 0..8 {
+                let nr = r as isize + DZ8[dir];
+                let nc = c as isize + DX8[dir];
+                if nr < 0 || nc < 0 || nr >= h as isize || nc >= w as isize {
+                    continue;
+                }
+                let nb = nr as usize * w + nc as usize;
+                if bit_get(&closed2, nb) {
+                    continue;
+                }
+                bit_set(&mut closed2, nb);
+                if filled2[nb] <= current_h {
+                    let raised = current_h.next_up();
+                    filled2[nb] = raised;
+                    pit_q2.push_back((nb as u32, raised));
+                } else {
+                    open2.push(Reverse((float_ord_key(filled2[nb]), nb as u32)));
+                }
+            }
+        }
+        drop(closed2);
+        drop(open2);
+        drop(pit_q2);
 
         for i in 0..n {
             if lake_id[i] == 0
@@ -1533,9 +1585,9 @@ pub fn generate_lakes_and_waterfalls(
                     WaterKind::None as u8
                 };
             }
-            if elev_m[i] > cfg.sea_level_m && filled_h[i] > elev_m[i] && lake_id[i] == 0 {
-                let delta = filled_h[i] - elev_m[i];
-                elev_m[i] = filled_h[i];
+            if elev_m[i] > cfg.sea_level_m && filled2[i] > elev_m[i] && lake_id[i] == 0 {
+                let delta = filled2[i] - elev_m[i];
+                elev_m[i] = filled2[i];
                 sediment_s[i] += delta;
                 water_h_m[i] = water_h_m[i].max(elev_m[i]);
             }
@@ -1660,11 +1712,18 @@ pub fn generate_lakes_and_waterfalls(
                     break;
                 }
                 path.push(rec);
-                let drop = elev_m[idx] - elev_m[rec_u];
-                if drop > best_drop {
-                    best_drop = drop;
-                    best_base = rec;
-                    best_path_len = path.len();
+                let plungeable_base = nr > 0
+                    && nr + 1 < h
+                    && nc > 0
+                    && nc + 1 < w
+                    && elev_m[rec_u] > cfg.sea_level_m + 0.5;
+                if plungeable_base {
+                    let drop = elev_m[idx] - elev_m[rec_u];
+                    if drop > best_drop {
+                        best_drop = drop;
+                        best_base = rec;
+                        best_path_len = path.len();
+                    }
                 }
                 cur = rec_u;
             }
@@ -1713,6 +1772,20 @@ pub fn generate_lakes_and_waterfalls(
         let base_u = cand.base_cell as usize;
         let br = base_u / w;
         let bc = base_u % w;
+        if br == 0
+            || br + 1 >= h
+            || bc == 0
+            || bc + 1 >= w
+            || lake_id[base_u] != 0
+            || elev_m[base_u] <= cfg.sea_level_m + 0.5
+        {
+            continue;
+        }
+        let plunge_depth_m = (0.15 * cand.drop_m).clamp(1.5, 8.0);
+        let min_pool_floor = cfg.sea_level_m + 0.15;
+        if (elev_m[base_u] - min_pool_floor).min(plunge_depth_m) <= 0.0 {
+            continue;
+        }
         let yaw_rad = libm::atan2f(br as f32 - lr as f32, bc as f32 - lc as f32);
 
         // Carve gorge lip notch (preserving drop >= waterfall_min_drop_m).
@@ -1725,10 +1798,8 @@ pub fn generate_lakes_and_waterfalls(
         }
 
         // Carve plunge pool at `base_cell` (clamped strictly above `sea_level_m`).
-        let plunge_depth_m = (0.15 * cand.drop_m).clamp(1.5, 8.0);
         let pool_rad = ((1.5 * input.river_w_m[lip_u] / cfg.dx_m).round() as isize).clamp(1, 2);
         let pool_surface = elev_m[base_u] + 0.35;
-        let min_pool_floor = cfg.sea_level_m + 0.15;
         let base_before = elev_m[base_u];
         for dr in -pool_rad..=pool_rad {
             for dc in -pool_rad..=pool_rad {
@@ -1779,7 +1850,6 @@ pub fn generate_lakes_and_waterfalls(
         });
     }
 
-    drop(filled_h);
     drop(d8_rec);
 
     let land_denom = land_cells.max(1) as f32;
@@ -3084,6 +3154,136 @@ mod tests {
                 field.lake_id[pit_fr], 0,
                 "sub_far must remain dry when sub_spill enters near sub_near (entry_outlet_cell preserved)"
             );
+        }
+    }
+
+    #[test]
+    fn waterfall_rejects_border_and_shallow_ocean_base_cells_without_zero_plunge() {
+        // Part 1: Steep knickpoint draining directly onto grid border row `0` must NOT emit a
+        // zero-plunge `WaterfallRecord` or mutate `water_kind` on border/lip cells.
+        {
+            let n = 32usize;
+            let mut elev = vec![200.0_f32; n * n];
+            // Gentle upstream channel (`up_slope = 0.025 < 0.08`) along col 16 draining north onto row 0:
+            // (3,16)=122 -> (2,16)=121 -> (1,16)=120 -> (0,16)=80 (40 m drop onto border row 0).
+            elev[3 * n + 16] = 122.0;
+            elev[2 * n + 16] = 121.0;
+            elev[n + 16] = 120.0;
+            elev[16] = 80.0;
+
+            let mut sed = vec![5.0_f32; n * n];
+            let mut wh = elev.clone();
+            let mut wk = vec![WaterKind::None as u8; n * n];
+            let precip = vec![2.5_f32; n * n];
+            let pet = vec![1.0_f32; n * n];
+            let mut q = vec![0.0_f32; n * n];
+            let mut rw = vec![0.0_f32; n * n];
+            let mut is_ch = vec![false; n * n];
+            for r in 0..=3 {
+                let i = r * n + 16;
+                q[i] = 2.0;
+                rw[i] = 8.0;
+                is_ch[i] = true;
+            }
+            let input = LakesFallsInput {
+                width: n,
+                height: n,
+                precip_m_yr: &precip,
+                pet_m_yr: &pet,
+                discharge_q_m3_s: &q,
+                river_w_m: &rw,
+                is_channel: &is_ch,
+            };
+            let cfg = LakesFallsConfig {
+                dx_m: 40.0,
+                sea_level_m: 0.0,
+                waterfall_max_run_m: 50.0,
+                ..LakesFallsConfig::default()
+            };
+            let field =
+                generate_lakes_and_waterfalls(&mut elev, &mut sed, &mut wh, &mut wk, &input, &cfg)
+                    .expect("border waterfall rejection");
+            assert!(
+                field.waterfalls.iter().all(|wf| wf.plunge_depth_m > 0.0),
+                "zero-plunge waterfall emitted: {:?}",
+                field.waterfalls
+            );
+            assert!(
+                !field
+                    .waterfalls
+                    .iter()
+                    .any(|wf| (wf.base_cell as usize) / n == 0),
+                "border cell emitted as waterfall base: {:?}",
+                field.waterfalls
+            );
+            assert_ne!(wk[16], WaterKind::Waterfall as u8);
+            assert_ne!(wk[n + 16], WaterKind::Waterfall as u8);
+        }
+
+        // Part 2: Shallow interior coastal cell (`<= sea_level_m + 0.5`) must NOT emit a
+        // zero-plunge waterfall, while an interior valid waterfall on the same grid still emits.
+        {
+            let n = 32usize;
+            let mut elev = vec![180.0_f32; n * n];
+            // Shallow coastal drop (`up_slope = 0.025 < 0.08`): (8,15)=46 -> (8,16)=45 -> (8,17)=0.30 -> ocean (8,18..n)=-2.0
+            elev[8 * n + 15] = 46.0;
+            elev[8 * n + 16] = 45.0;
+            elev[8 * n + 17] = 0.30;
+            for c in 18..n {
+                elev[8 * n + c] = -2.0;
+            }
+
+            // Valid interior drop far away (> 300 m, `up_slope = 0.025 < 0.08`), draining to east coast:
+            // (22,15)=59 -> (22,16)=58 -> (22,17)=20 -> (22,18)=15 -> ... -> ocean
+            elev[22 * n + 15] = 59.0;
+            elev[22 * n + 16] = 58.0;
+            elev[22 * n + 17] = 20.0;
+            for c in 18..n {
+                elev[22 * n + c] = (15.0 - (c - 18) as f32 * 1.5).max(-2.0);
+            }
+
+            let mut sed = vec![5.0_f32; n * n];
+            let mut wh = elev.clone();
+            let mut wk = vec![WaterKind::None as u8; n * n];
+            let precip = vec![2.5_f32; n * n];
+            let pet = vec![1.0_f32; n * n];
+            let mut q = vec![0.0_f32; n * n];
+            let mut rw = vec![0.0_f32; n * n];
+            let mut is_ch = vec![false; n * n];
+            for r in [8usize, 22usize] {
+                for c in 15..=18 {
+                    let i = r * n + c;
+                    q[i] = 2.0;
+                    rw[i] = 8.0;
+                    is_ch[i] = true;
+                }
+            }
+            let input = LakesFallsInput {
+                width: n,
+                height: n,
+                precip_m_yr: &precip,
+                pet_m_yr: &pet,
+                discharge_q_m3_s: &q,
+                river_w_m: &rw,
+                is_channel: &is_ch,
+            };
+            let cfg = LakesFallsConfig {
+                dx_m: 40.0,
+                sea_level_m: 0.0,
+                waterfall_max_run_m: 50.0,
+                ..LakesFallsConfig::default()
+            };
+            let field =
+                generate_lakes_and_waterfalls(&mut elev, &mut sed, &mut wh, &mut wk, &input, &cfg)
+                    .expect("shallow coastal waterfall rejection");
+            assert_eq!(field.waterfalls.len(), 1);
+            let wf = &field.waterfalls[0];
+            assert_eq!(wf.lip_cell as usize, 22 * n + 16);
+            assert_eq!(wf.base_cell as usize, 22 * n + 17);
+            assert!(wf.plunge_depth_m > 0.0);
+            assert_eq!(wk[22 * n + 17], WaterKind::Waterfall as u8);
+            assert_ne!(wk[8 * n + 17], WaterKind::Waterfall as u8);
+            assert_ne!(wk[8 * n + 16], WaterKind::Waterfall as u8);
         }
     }
 }
