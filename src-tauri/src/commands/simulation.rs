@@ -924,6 +924,12 @@ pub fn parse_and_validate_manifest_for_viewer(
     config
         .ensure_observables_supported(&manifest.observable_ids)
         .map_err(|e| e.to_string())?;
+    if config.requires_walkable_founder_capacity() {
+        let viewer_world = crate::core::ecs::init_world();
+        let terrain_map = viewer_world.get_resource::<crate::core::terrain::TerrainMap>();
+        crate::core::live_experiment::validate_founder_land_capacity(&config, terrain_map)
+            .map_err(|e| e.to_string())?;
+    }
     let seed = *manifest
         .seeds
         .first()

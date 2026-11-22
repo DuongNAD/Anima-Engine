@@ -127,9 +127,9 @@ Quy tắc ghi:
   - `src-tauri/src/core/live_experiment.rs:2589-2597`: `apply_live_genesis_and_policies` gọi `.unwrap_or_else(|e| panic!("{e}"))`.
 - **Phát hiện bởi:** tay (kiểm toán W2-lite sau PR #194)
 - **Triệu chứng:** Trên địa hình tạo mặc định (`256×256`), số ô đất đi được vượt trần `4096` founder nên chưa kích hoạt. Tuy nhiên khi app nạp file thế giới `.anmw` ít đất (`walkable_cells < founders`) — đường nạp mà `README.md` xác nhận vẫn tồn tại — lệnh `parse_and_validate_manifest_for_viewer` chấp nhận manifest và `start_from_manifest` trả `Ok`, sau đó luồng nền `sim` tự dừng bằng `panic!` ở bước genesis thay vì từ chối sạch từ preflight hoặc báo lỗi có cấu trúc.
-- **Tái hiện:** `just test` (chạy `post_194_hardening_audit_tests::w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling`)
-- **Test khoá lại:** `post_194_hardening_audit_tests::w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling`
-- **Trạng thái:** OPEN
+- **Tái hiện:** `just test` (chạy `post_194_hardening_audit_tests::w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling` và `post_194_hardening_audit_tests::f057_scarce_land_artifact_refused_at_preflight_and_non_panicking_in_engine`)
+- **Test khoá lại:** `post_194_hardening_audit_tests::{w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling, f057_scarce_land_artifact_refused_at_preflight_and_non_panicking_in_engine}` (khẳng định `parse_and_validate_manifest_for_viewer` và `start_from_manifest_with_engine` kiểm tra `validate_founder_land_capacity` khi `requires_walkable_founder_capacity()` đúng mà không làm dừng engine đang chạy, và `simulation_loop.rs` dùng `try_apply_live_genesis_and_policies` thoát sạch với `running == false` không panic khi khởi chạy trực tiếp trên `.anmw` khan hiếm đất)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2)
 
 ### F-056 — `terrain_navigation_system` làm hỏng mọi đốt thân con thành `NaN` dù vừa phục hồi được vị trí `root` về `LastWalkablePosition`
 - **Ngày:** 2026-11-21
@@ -140,8 +140,8 @@ Quy tắc ghi:
 - **Phát hiện bởi:** tay (kiểm toán `LAND1` sau PR #166)
 - **Triệu chứng:** Khi `pos.0` của `root` trở thành phi hữu hạn (`NaN` hoặc `±inf`) trong khi `LastWalkablePosition` vẫn giữ toạ độ đất hợp lệ, `terrain_navigation_system` phục hồi đúng `pos.0` của `root` về `LastWalkablePosition`, nhưng giữ `revert_delta = NaN` và cộng thẳng vào mọi đốt thân con, biến toàn bộ chuỗi đốt con thành `NaN` dù `root` đã lành (tick vật lý kế tiếp kéo ngược `root` hỏng theo).
 - **Tái hiện:** `just verify` hoặc `just test` (chạy `post_194_hardening_audit_tests::terrain_navigation_nan_root_poisons_child_segments_even_after_root_recovery`)
-- **Test khoá lại:** `post_194_hardening_audit_tests::terrain_navigation_nan_root_poisons_child_segments_even_after_root_recovery` (khẳng định hiện trạng `revert_delta.x.is_nan() && segs[0].x.is_nan()`; đảo sang `.is_finite()` khi sửa)
-- **Trạng thái:** OPEN
+- **Test khoá lại:** `post_194_hardening_audit_tests::terrain_navigation_nan_root_poisons_child_segments_even_after_root_recovery` (khẳng định `is_pos_walkable` từ chối toạ độ phi hữu hạn kể cả ở `y`, mọi trạng thái `NaN`/`±inf` phục hồi `root` sạch với `revert_delta == Vec3::ZERO` và đốt con giữ nguyên toạ độ hữu hạn hoặc phục hồi về `LastWalkablePosition`, không làm lệch đường bờ hữu hạn ở `land_mask_tests`)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2)
 
 ### F-055 — `grass_steering` dưới `LAND1` dẫn con mồi lao ra thức ăn trên biển (`DeepOcean`), kích hoạt bẫy giật lùi bờ biển dù dưới chân có cỏ giàu năng lượng
 - **Ngày:** 2026-11-21
@@ -152,8 +152,8 @@ Quy tắc ghi:
 - **Phát hiện bởi:** tay (kiểm toán tương tác `live.grass_steering` × `live.land_mask` sau PR #182)
 - **Triệu chứng:** Dù `spawn_food_system` đã né nước khi bật `LAND1`, bất kỳ thực thể `Food` nào nằm trên ô `DeepOcean`/`Ocean` (ví dụ khôi phục từ save tiền-LAND1 hoặc kịch bản có thức ăn trên mặt nước) đều khiến con mồi đang đứng trên ô cỏ đất liền giàu năng lượng (`r >= GRASS_STAY_FRACTION * r_max`) bỏ qua cỏ để lái thẳng về phía `Food` dưới biển, rồi bị `terrain_navigation_system` giật lùi lặp đi lặp lại ở đường bờ (`reverted_this_tick == true`). Fallback toàn cục `:165` khi hết cỏ trong vùng `7×7` cũng mắc cùng lỗi.
 - **Tái hiện:** `just verify` hoặc `just test` (chạy `post_194_hardening_audit_tests::grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_land_grass`)
-- **Test khoá lại:** `post_194_hardening_audit_tests::grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_land_grass` (khoá hiện trạng `vel_priority2.x > 1.4`, `revert_count > 0`, `vel_fallback.x > 1.4`; đảo sang `Vec3::ZERO` khi sửa)
-- **Trạng thái:** OPEN
+- **Test khoá lại:** `post_194_hardening_audit_tests::grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_land_grass` (khẳng định `vel_priority2 == Vec3::ZERO`, `revert_count == 0`, `vel_fallback == Vec3::ZERO`, bỏ qua `Food` phi hữu hạn, và đối chứng dương vẫn chọn `Food` đi được trên đất liền kể cả khi có `Food` trên biển ở gần hơn; giữ nguyên 0 heap allocation ở `locomotion_steering_zero_alloc_tests` và `grass_steering_tests`)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2)
 
 ### F-054 — `check:bundle` nhận ra chunk 3D chỉ bằng tên file, nên không thấy three.js bị import thẳng vào trang chính
 - **Ngày:** 2026-11-20
@@ -173,9 +173,9 @@ Quy tắc ghi:
   - `src-tauri/src/core/experiment_runner.rs:548` (`final_observables = model.observables()`): đọc sau mẫu cuối, đi qua `peek_window()` trên một cửa sổ đã trống, nên `mean_lifespan = None`, ghi ra thành `0.0`.
 - **Phát hiện bởi:** tay (người thẩm định độc lập thẻ E3-X-run)
 - **Triệu chứng:** Trong E3-X (#181), `live.mean_lifespan` ở `final-observables.json` bằng `0.0` ở cả 36/36 lượt, dù các cá thể có chết. Endpoint phụ S6 của E3 vì thế đọc một cửa sổ rỗng và được ghi là `reported_not_interpreted_structural_zero`. Thực nghiệm kiểm chứng trên `HD_SEED = 0x5EED` (`duration_ticks = 3_000`, `sample_period = 60` so với đối chứng không thẳng hàng `sample_period = 2_000` có cùng `final_checksum`) xác nhận **cả 5** observable cửa sổ (`live.births`, `live.deaths`, `live.mean_lifespan`, `live.deaths_starvation`, `live.deaths_dehydration`) trong `final_observables` đều bị rút về `0.0`.
-- **Tái hiện:** `python3 -c "import json;d=json.load(open('artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/final-observables.json'));print(d)" | grep -o "live.mean_lifespan[^,]*"` (cả 36 giá trị đều là `0.0`), hoặc chạy `just test` (`post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration`).
-- **Test khoá lại:** `post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration` (khoá hành vi rút cạn cả 5 chỉ số khi chia hết và đối chứng dương cùng checksum khi không chia hết).
-- **Trạng thái:** OPEN. Không sửa trong E3 (bản đăng ký cấm đổi metric). Thẻ sửa phải giữ nguyên các artifact đã đăng ký và cho một thí nghiệm mới khai báo rõ cửa sổ nó đọc.
+- **Tái hiện:** `python3 -c "import json;d=json.load(open('artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/final-observables.json'));print(d)" | grep -o "live.mean_lifespan[^,]*"` (cả 36 giá trị đều là `0.0`), hoặc chạy `just test` (`post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration` và `observables_tests::cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zero_deaths`).
+- **Test khoá lại:** `post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration`, `observables_tests::cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zero_deaths`, `s2_observables_tests::mean_energy_integral_survives_disk_checkpoint_fork_without_midrun_sampling`, và `prereg_sel2p_manifest_tests::drift_arm_omits_cause_split_observables_and_smoke_manifests_are_blind_to_body_mass` (khẳng định `live.mean_lifespan` cùng 4 chỉ số cửa sổ cũ và toàn bộ artifact đã đăng ký `E2`/`E3`/`E-SEL1`/`SEL2-P` giữ nguyên từng bit, trong khi `live.cumulative_mean_lifespan` tích luỹ toàn cửa sổ `[0, tick]` không bị rút cạn và khớp từng bit qua save/load checkpoint).
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2 — thẻ `F053-FIX`; giữ nguyên từng bit `live.mean_lifespan` và toàn bộ artifact đã đăng ký `E2`, `E3`, `E-SEL1`, `SEL2-P`, đồng thời bổ sung `live.cumulative_mean_lifespan` tại cuối `LIVE_EXTENDED_OBSERVABLE_IDS` đọc cửa sổ tường minh `[0, tick]`)
 
 ### F-052 — `prey_cap` chỉ là cửa chặn, không phải giới hạn: bộ đếm quần thể không tăng theo số ca sinh đã xếp trong cùng tick
 - **Ngày:** 2026-11-20

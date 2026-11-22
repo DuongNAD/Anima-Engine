@@ -1,6 +1,6 @@
 //! Observable gates — feature `ecological-selection`, branch O.
 //!
-//! - **Wiring** — all ids (legacy 12 + extended 15) emit in stable order, all finite.
+//! - **Wiring** — all ids (legacy 12 + extended 16) emit in stable order, all finite.
 //! - **OB-S01** — `live.shannon` / `live.simpson` match the panel's own index math on the same
 //!   abundances.
 //! - **OB-S02** — variance separates populations an identical mean cannot.
@@ -85,6 +85,14 @@ fn every_registered_id_emits_exactly_once_in_stable_order() {
             anima_engine_lib::core::experiment::Aggregation::Instant
         );
     }
+    let cum_lifespan_spec = reg
+        .get("live.cumulative_mean_lifespan")
+        .expect("live.cumulative_mean_lifespan registered");
+    assert_eq!(cum_lifespan_spec.unit, "ticks");
+    assert_eq!(
+        cum_lifespan_spec.aggregation,
+        anima_engine_lib::core::experiment::Aggregation::Instant
+    );
 }
 
 #[test]
@@ -260,7 +268,11 @@ fn death_observables_are_refused_when_the_run_declares_no_death_rule() {
     let cfg_off =
         anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(&off)
             .expect("valid");
-    for id in ["live.deaths", "live.mean_lifespan"] {
+    for id in [
+        "live.deaths",
+        "live.mean_lifespan",
+        "live.cumulative_mean_lifespan",
+    ] {
         let err = cfg_off
             .ensure_observables_supported(&[id.to_string()])
             .expect_err("death observables without a death rule must fail preflight");
@@ -280,6 +292,7 @@ fn death_observables_are_refused_when_the_run_declares_no_death_rule() {
         .ensure_observables_supported(&[
             "live.deaths".to_string(),
             "live.mean_lifespan".to_string(),
+            "live.cumulative_mean_lifespan".to_string(),
             "live.shannon".to_string(),
         ])
         .expect("with a declared death rule the death observables are legal");
@@ -375,4 +388,97 @@ fn turnover_is_visible_to_the_new_observables_and_invisible_to_the_legacy_semant
             "{id} claims turnover semantics it does not have"
         );
     }
+}
+
+#[test]
+fn cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zero_deaths() {
+    let mut a = adapter(&mortality_manifest_initials(true));
+
+    // Before any deaths, `live.cumulative_mean_lifespan` emits finite 0.0.
+    endow_healthy(&mut a, 500.0, 500.0);
+    a.run_schedule_once();
+    let initial_obs = a.observables();
+    assert_eq!(value_of(&initial_obs, "live.deaths"), 0.0);
+    assert_eq!(value_of(&initial_obs, "live.mean_lifespan"), 0.0);
+    assert_eq!(value_of(&initial_obs, "live.cumulative_mean_lifespan"), 0.0);
+
+    // Run 4 healthy ticks, then sentence 3 agents to die at tick ~6.
+    for _ in 0..4u32 {
+        a.run_schedule_once();
+    }
+    let first_wave_entities: Vec<Entity> = {
+        use anima_engine_lib::ai::hrrl::HomeostaticState;
+        use anima_engine_lib::core::ecs::Agent;
+        let mut world = a.world();
+        let mut q = world.query_filtered::<(Entity, &mut HomeostaticState), With<Agent>>();
+        let mut picked = Vec::new();
+        for (entity, mut homeo) in q.iter_mut(&mut world) {
+            if picked.len() < 3 {
+                homeo.hydration = 0.0;
+                homeo.dehydrating_ticks = Some(2);
+                picked.push(entity);
+            }
+        }
+        picked
+    };
+    assert_eq!(first_wave_entities.len(), 3);
+    a.run_schedule_once();
+
+    let wave1 = a.observables();
+    let w1_deaths = value_of(&wave1, "live.deaths");
+    let w1_mean = value_of(&wave1, "live.mean_lifespan");
+    let w1_cum = value_of(&wave1, "live.cumulative_mean_lifespan");
+    assert_eq!(w1_deaths, 3.0);
+    assert!(w1_mean > 0.0);
+    assert!((w1_cum - w1_mean).abs() < 1e-6);
+
+    // Sampling again drains `live.mean_lifespan` to 0.0, while `live.cumulative_mean_lifespan`
+    // retains the exact [0, tick] cumulative mean!
+    let after_drain = a.observables();
+    assert_eq!(value_of(&after_drain, "live.deaths"), 0.0);
+    assert_eq!(value_of(&after_drain, "live.mean_lifespan"), 0.0);
+    assert_eq!(
+        value_of(&after_drain, "live.cumulative_mean_lifespan").to_bits(),
+        w1_cum.to_bits()
+    );
+
+    // Run 10 more healthy ticks, then sentence the remaining 3 agents to die at a longer lifespan.
+    for _ in 0..10u32 {
+        a.run_schedule_once();
+    }
+    sentence_to_death(&mut a, 2);
+    a.run_schedule_once();
+
+    let wave2 = a.observables();
+    let w2_deaths = value_of(&wave2, "live.deaths");
+    let w2_mean = value_of(&wave2, "live.mean_lifespan");
+    let w2_cum = value_of(&wave2, "live.cumulative_mean_lifespan");
+    assert_eq!(w2_deaths, 3.0);
+    assert!(w2_mean > w1_mean);
+    let expected_cum = (w1_deaths * w1_mean + w2_deaths * w2_mean) / (w1_deaths + w2_deaths);
+    assert!(
+        (w2_cum - expected_cum).abs() < 1e-5,
+        "cumulative mean {w2_cum} must equal death-weighted mean {expected_cum}"
+    );
+
+    // Sampling again after all agents are dead still preserves cumulative_mean_lifespan.
+    let final_drain = a.observables();
+    assert_eq!(value_of(&final_drain, "live.mean_lifespan"), 0.0);
+    assert_eq!(
+        value_of(&final_drain, "live.cumulative_mean_lifespan").to_bits(),
+        w2_cum.to_bits()
+    );
+
+    // Preflight accepts `live.cumulative_mean_lifespan` under `live.drift_control = 1.0`.
+    let mut drift_init = mortality_manifest_initials(true);
+    drift_init.values.push(("live.reproduction".into(), 1.0));
+    drift_init.values.push(("live.drift_control".into(), 1.0));
+    let drift_cfg =
+        anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(
+            &drift_init,
+        )
+        .expect("valid drift config");
+    drift_cfg
+        .ensure_observables_supported(&["live.cumulative_mean_lifespan".to_string()])
+        .expect("drift_control = 1.0 with mortality = 1.0 supports live.cumulative_mean_lifespan");
 }

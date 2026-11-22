@@ -105,13 +105,37 @@ fn find_nearest_point(pos: Vec3, candidates: &[Vec3]) -> Option<(Vec3, f32)> {
     nearest.map(|t| (t, min_dist_sq))
 }
 
+#[inline]
+fn find_nearest_walkable_point(
+    pos: Vec3,
+    candidates: &[Vec3],
+    grass: &GrassContext<'_>,
+) -> Option<(Vec3, f32)> {
+    let mut nearest: Option<Vec3> = None;
+    let mut min_dist_sq = f32::MAX;
+    for &target in candidates.iter() {
+        if !target.is_finite() || !grass.is_walkable(target) {
+            continue;
+        }
+        let d = pos.distance_squared(target);
+        if d < min_dist_sq {
+            min_dist_sq = d;
+            nearest = Some(target);
+        }
+    }
+    nearest.map(|t| (t, min_dist_sq))
+}
+
 fn select_prey_grass_target(
     pos: Vec3,
     grass: &GrassContext<'_>,
     food_cache: &[Vec3],
 ) -> Option<Vec3> {
+    if !pos.is_finite() {
+        return None;
+    }
     let field = grass.field;
-    let nearest_food = find_nearest_point(pos, food_cache);
+    let nearest_food = find_nearest_walkable_point(pos, food_cache, grass);
     // Priority 2: local Food item inside the local scan radius wins over pasture grass.
     if let Some((food_pos, food_d2)) = nearest_food {
         if food_d2 <= grass.local_food_radius_sq {

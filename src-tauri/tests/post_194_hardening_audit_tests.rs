@@ -6,7 +6,10 @@
 
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
-use anima_engine_lib::commands::parse_and_validate_manifest_for_viewer;
+use anima_engine_lib::commands::{
+    parse_and_validate_manifest_for_viewer, start_from_manifest_with_engine, EvolutionSettings,
+    MapElitesGridState,
+};
 use anima_engine_lib::core::causal::CausalLedger;
 use anima_engine_lib::core::components::{
     Agent, Food, InertiaComponent, LastWalkablePosition, ParentAgent, Position, Prey, Velocity,
@@ -33,12 +36,13 @@ use anima_engine_lib::core::resources::{
     VitalStatistics,
 };
 use anima_engine_lib::core::sim_clock::SimClock;
+use anima_engine_lib::core::simulation_loop::SimulationEngine;
 use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
 use anima_engine_lib::core::terrain::{BiomeType, TerrainMap};
 use anima_engine_lib::core::terrain_navigation::{
     is_pos_walkable, snap_to_nearest_walkable, terrain_navigation_system, wrap_pos,
 };
-use anima_engine_lib::core::world_artifact::WorldIdentity;
+use anima_engine_lib::core::world_artifact::{WorldArtifact, WorldIdentity, CANONICAL_WORLD_SCALE};
 use anima_engine_lib::core::world_systems::wrap_coordinates_system;
 use anima_engine_lib::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
@@ -48,7 +52,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use glam::Vec3;
 use rand::{rngs::StdRng, SeedableRng};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 const HD_SEED: u64 = 0x5EED;
 static SNAP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -225,10 +231,10 @@ fn f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_dura
         "series must contain births and deaths in (2000, 3000]"
     );
 
-    // Bug F-053 characterization: on aligned runs (`duration_ticks % sample_period == 0`), the
-    // final time-series sample calls `VitalStatistics::sample_window()` and empties all five
-    // windowed vital observables right before `assemble_result` reads `final_observables`.
-    // Invert these assertions to > 0.0 (or cumulative totals) when F-053 is fixed.
+    // F-053 legacy non-regression: on aligned runs (`duration_ticks % sample_period == 0`), the
+    // five legacy sample-windowed vital observables keep their exact bit-for-bit behavior (0.0 in
+    // `final_observables` after the final sample tick drains `VitalStatistics::sample_window()`),
+    // preserving registered E2/E3/E-SEL1/SEL2-P artifacts.
     for metric in [
         "live.births",
         "live.deaths",
@@ -239,9 +245,27 @@ fn f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_dura
         assert_eq!(
             obs(&aligned.final_observables, metric),
             0.0,
-            "F-053: aligned run drains final_observables[{metric}] to 0.0"
+            "F-053 legacy semantics preserved: aligned run drains final_observables[{metric}] to 0.0"
         );
     }
+
+    // F053-FIX: the explicitly [0, tick] cumulative lifespan observable is NEVER drained by
+    // sample_window() and reports the exact death-weighted cumulative mean lifespan.
+    let aligned_cum_lifespan = obs(&aligned.final_observables, "live.cumulative_mean_lifespan");
+    assert!(
+        aligned_cum_lifespan > 0.0,
+        "F053-FIX: aligned final_observables[live.cumulative_mean_lifespan] must be > 0.0"
+    );
+    let weighted_lifespan_sum: f64 = aligned
+        .series
+        .iter()
+        .map(|s| obs(&s.observables, "live.deaths") * obs(&s.observables, "live.mean_lifespan"))
+        .sum();
+    let expected_cum_lifespan = weighted_lifespan_sum / sum_deaths;
+    assert!(
+        (aligned_cum_lifespan - expected_cum_lifespan).abs() <= 1e-3,
+        "F053-FIX: aligned cumulative_mean_lifespan ({aligned_cum_lifespan}) must match death-weighted series mean ({expected_cum_lifespan})"
+    );
 
     // Positive control: identical seed and identical duration_ticks = 3000 with unaligned
     // sample_period = 2000 leaves the trailing (2000, 3000] window open until final_observables.
@@ -273,6 +297,15 @@ fn f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_dura
                 > 0.0,
         "unaligned run preserves non-zero vital metrics in final_observables ({:?})",
         unaligned.final_observables
+    );
+    assert_eq!(
+        aligned_cum_lifespan.to_bits(),
+        obs(
+            &unaligned.final_observables,
+            "live.cumulative_mean_lifespan"
+        )
+        .to_bits(),
+        "F053-FIX: live.cumulative_mean_lifespan must be invariant to sampling cadence"
     );
 }
 
@@ -353,17 +386,15 @@ fn grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_
         .get::<InertiaComponent>(prey)
         .expect("prey has inertia")
         .target_velocity;
-    // Bug characterization (`select_prey_grass_target` Priority 2 in locomotion.rs:116-120):
-    // despite GrassContext carrying `nav` (`TerrainNavigation`), Priority 2 picks local Food on
-    // DeepOcean without checking `grass.is_walkable(food_pos)`, so it drives the prey toward ocean.
-    // Invert to `vel_priority2 == Vec3::ZERO` (stay on rich land grass) once fixed.
-    assert!(
-        vel_priority2.x > 1.4 && vel_priority2.z.abs() < 1e-5,
-        "expected Priority 2 ocean-Food lure along +x, got {vel_priority2:?}"
+    // F-055 fixed: Priority 2 ignores non-walkable DeepOcean Food and lets the prey stay on rich
+    // walkable grassland.
+    assert_eq!(
+        vel_priority2,
+        Vec3::ZERO,
+        "F-055: Priority 2 must ignore non-walkable ocean Food and stay on rich land grass, got {vel_priority2:?}"
     );
 
-    // Stepping physics + terrain navigation shows the practical consequence: the prey repeatedly
-    // tries to walk into DeepOcean and gets snapped back every tick instead of eating nearby land.
+    // Stepping physics + terrain navigation confirms zero shoreline revert traps.
     let mut revert_count = 0usize;
     for _ in 0..10 {
         world.run_system_once(steering_drive_system);
@@ -378,9 +409,9 @@ fn grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_
             revert_count += 1;
         }
     }
-    assert!(
-        revert_count > 0,
-        "steering toward ocean Food under LAND1 triggers shoreline revert trap (reverts={revert_count})"
+    assert_eq!(
+        revert_count, 0,
+        "F-055: prey grazing on land must trigger 0 shoreline reverts, got {revert_count}"
     );
     assert!(
         is_pos_walkable(
@@ -388,11 +419,11 @@ fn grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_
             &bounds,
             world.get::<Position>(prey).expect("prey pos").0
         ),
-        "LAND1 keeps root out of water while trapped at shore"
+        "LAND1 keeps root out of water"
     );
 
-    // Priority 3 fallback check (`locomotion.rs:165`): even when grass is exhausted and Food is
-    // outside local radius on DeepOcean, global Food fallback still steers into ocean.
+    // Priority 3 fallback check: when grass is exhausted and the only Food is on DeepOcean, global
+    // Food fallback ignores non-walkable Food and returns Vec3::ZERO.
     world.resource_mut::<ResourceField>().r.fill(0.0);
     world.get_mut::<Position>(prey).unwrap().0 = land_start;
     world.get_mut::<LastWalkablePosition>(prey).unwrap().pos = land_start;
@@ -402,10 +433,70 @@ fn grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_
         .get::<InertiaComponent>(prey)
         .expect("prey has inertia")
         .target_velocity;
-    // Invert to `Vec3::ZERO` once Food candidates respect `TerrainNavigation`.
+    assert_eq!(
+        vel_fallback,
+        Vec3::ZERO,
+        "F-055: global Food fallback must ignore non-walkable ocean Food, got {vel_fallback:?}"
+    );
+
+    // Non-finite Food coordinates must also be ignored cleanly.
+    let nan_food = world
+        .spawn((
+            Food {
+                energy_value: 20.0,
+                hydration_value: 0.0,
+            },
+            Position(Vec3::new(f32::NAN, 0.0, 5.0)),
+        ))
+        .id();
+    world.run_system_once(steering_drive_system);
+    assert_eq!(
+        world
+            .get::<InertiaComponent>(prey)
+            .expect("prey has inertia")
+            .target_velocity,
+        Vec3::ZERO
+    );
+    world.despawn(nan_food);
+
+    // Positive controls: walkable Food on Grassland is still chosen in both Priority 2 (even when
+    // an ocean Food is closer) and Priority 3 global fallback.
+    world.get_mut::<Position>(food_entity).unwrap().0 = ocean_food_local; // dist 10 on ocean
+    let land_food_local = Vec3::new(-25.0, 0.0, 5.0); // dist 20 <= 35 on Grassland
+    assert!(is_pos_walkable(
+        world.resource::<TerrainMap>(),
+        &bounds,
+        land_food_local
+    ));
+    let land_food = world
+        .spawn((
+            Food {
+                energy_value: 20.0,
+                hydration_value: 0.0,
+            },
+            Position(land_food_local),
+        ))
+        .id();
+    world.run_system_once(steering_drive_system);
+    let vel_walkable_local = world
+        .get::<InertiaComponent>(prey)
+        .expect("prey has inertia")
+        .target_velocity;
     assert!(
-        vel_fallback.x > 1.4 && vel_fallback.z.abs() < 1e-5,
-        "expected global Food fallback to steer toward distant DeepOcean Food, got {vel_fallback:?}"
+        vel_walkable_local.x < -1.4 && vel_walkable_local.z.abs() < 1e-5,
+        "positive control (Priority 2): farther walkable Food must be selected over closer ocean Food, got {vel_walkable_local:?}"
+    );
+
+    // Distant walkable Food fallback (> local_food_radius = 35): still selected over closer ocean Food.
+    world.get_mut::<Position>(land_food).unwrap().0 = Vec3::new(-45.0, 0.0, 5.0);
+    world.run_system_once(steering_drive_system);
+    let vel_walkable_fallback = world
+        .get::<InertiaComponent>(prey)
+        .expect("prey has inertia")
+        .target_velocity;
+    assert!(
+        vel_walkable_fallback.x < -1.4 && vel_walkable_fallback.z.abs() < 1e-5,
+        "positive control (Priority 3 fallback): distant walkable Food must be selected over closer ocean Food, got {vel_walkable_fallback:?}"
     );
 }
 
@@ -575,45 +666,71 @@ fn terrain_navigation_nan_root_poisons_child_segments_even_after_root_recovery()
 
     let valid_start = Vec3::new(-15.0, 0.0, 5.0);
     let root = decode_genotype(&mut world, &genotype, valid_start, glam::Quat::IDENTITY);
+    let child_entity = {
+        let mut seg_q = world.query_filtered::<(Entity, &ParentAgent), Without<Agent>>();
+        seg_q
+            .iter(&world)
+            .find(|(_, p)| p.0 == root)
+            .expect("child segment exists")
+            .0
+    };
+    let initial_child_pos = world.get::<Position>(child_entity).unwrap().0;
+    assert!(initial_child_pos.is_finite());
 
-    // Corrupt root position to NaN while LastWalkablePosition still holds valid finite land.
-    world.get_mut::<Position>(root).unwrap().0 = Vec3::new(f32::NAN, 0.0, 5.0);
+    // Helper verifying that any non-finite root position recovers cleanly without poisoning
+    // `revert_delta` or child segments.
+    let bad_positions = [
+        Vec3::new(f32::NAN, 0.0, 5.0),
+        Vec3::new(valid_start.x, f32::NAN, valid_start.z),
+        Vec3::new(f32::INFINITY, 0.0, 5.0),
+        Vec3::new(f32::NEG_INFINITY, 0.0, 5.0),
+        Vec3::new(valid_start.x, f32::INFINITY, valid_start.z),
+    ];
+    for bad_pos in bad_positions {
+        world.get_mut::<Position>(root).unwrap().0 = bad_pos;
+        world.get_mut::<Position>(child_entity).unwrap().0 = initial_child_pos;
+        world.run_system_once(terrain_navigation_system);
 
+        let root_after = world.get::<Position>(root).unwrap().0;
+        assert_eq!(
+            root_after, valid_start,
+            "root position must recover to LastWalkablePosition for {bad_pos:?}"
+        );
+        let last = world.get::<LastWalkablePosition>(root).unwrap();
+        assert!(last.pos.is_finite() && last.reverted_this_tick);
+        assert_eq!(
+            last.revert_delta,
+            Vec3::ZERO,
+            "F-056: non-finite root must clamp revert_delta to Vec3::ZERO (got {:?})",
+            last.revert_delta
+        );
+        let child_after = world.get::<Position>(child_entity).unwrap().0;
+        assert!(
+            child_after.is_finite(),
+            "F-056: child segment must stay finite after root recovery from {bad_pos:?}, got {child_after:?}"
+        );
+        assert_eq!(
+            child_after, initial_child_pos,
+            "child segment must retain its finite position when revert_delta is clamped to zero"
+        );
+    }
+
+    // Even if both root and child segment are non-finite (and LastWalkablePosition is valid), both
+    // recover to finite coordinates.
+    world.get_mut::<Position>(root).unwrap().0 = Vec3::new(f32::NAN, f32::INFINITY, 5.0);
+    world.get_mut::<Position>(child_entity).unwrap().0 = Vec3::new(f32::NAN, 0.0, 5.0);
     world.run_system_once(terrain_navigation_system);
-
-    let root_after = world.get::<Position>(root).unwrap().0;
-    assert_eq!(
-        root_after, valid_start,
-        "root position is repaired to LastWalkablePosition"
-    );
-    let revert_delta = world
-        .get::<LastWalkablePosition>(root)
-        .unwrap()
-        .revert_delta;
-    let mut seg_q = world.query_filtered::<(&ParentAgent, &Position), Without<Agent>>();
-    let segs: Vec<Vec3> = seg_q
-        .iter(&world)
-        .filter(|(p, _)| p.0 == root)
-        .map(|(_, pos)| pos.0)
-        .collect();
-    assert_eq!(segs.len(), 1);
-
-    // Bug characterization (`terrain_navigation.rs:231-249`): `delta = target - pos.0` subtracts
-    // corrupted `NaN` `pos.0` -> `revert_delta.x = NaN`, and `seg_pos.0 += last.revert_delta`
-    // poisons all child segments to NaN even after root recovery!
-    // Invert these assertions to `revert_delta.is_finite()` / `segs[0].is_finite()` once fixed.
-    assert!(
-        revert_delta.x.is_nan() && segs[0].x.is_nan(),
-        "expected NaN delta to poison child segment, got delta={revert_delta:?} seg={:?}",
-        segs[0]
-    );
+    assert_eq!(world.get::<Position>(root).unwrap().0, valid_start);
+    assert_eq!(world.get::<Position>(child_entity).unwrap().0, valid_start);
 }
 
 #[test]
 fn w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling() {
-    // Part A: W2-lite viewer preflight accepts `founder_layout = 1` + `land_mask = 1` + `founders = 20`,
-    // whereas `try_apply_live_genesis_and_policies` rejects a World whose TerrainMap has fewer than
-    // 20 walkable cells (and `simulation_loop.rs:1539` invokes the panicking `apply_live_genesis_and_policies`).
+    // Part A: On the default generated 256x256 terrain (plenty of walkable land), W2-lite viewer
+    // preflight accepts `founder_layout = 1` + `land_mask = 1` + `founders = 20`, whereas
+    // `try_apply_live_genesis_and_policies` still refuses an explicit scarce-land World whose
+    // TerrainMap has only 4 walkable cells (F-057 viewer scarce-land preflight and non-panicking
+    // engine fallback are verified in `f057_scarce_land_artifact_refused_at_preflight_and_non_panicking_in_engine`).
     let observable_ids: Vec<String> = LIVE_OBSERVABLE_IDS
         .iter()
         .copied()
@@ -725,5 +842,193 @@ fn w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling() {
     assert!(
         (end_eu - start_eu).abs() <= 1e-3,
         "closed EU must hold over-cap: start={start_eu}, end={end_eu}"
+    );
+}
+
+const F057_CHILD_ENV: &str = "ANIMA_F057_SCARCE_LAND_CHILD";
+
+fn build_scarce_land_manifest(founders: usize, layout: usize) -> ExperimentManifest {
+    let observable_ids: Vec<String> = LIVE_OBSERVABLE_IDS
+        .iter()
+        .copied()
+        .map(str::to_string)
+        .collect();
+    ExperimentManifest {
+        schema_version: MANIFEST_SCHEMA_VERSION,
+        experiment_id: format!("f057-scarce-{founders}-{layout}"),
+        name: format!("f057-scarce-{founders}-{layout}"),
+        world_identity: WorldIdentity::default(),
+        laws: WorldLawSet::baseline(),
+        initial_conditions: initial(&[
+            (LIVE_KEY_FOUNDERS, founders as f64),
+            (LIVE_KEY_FOUNDER_LAYOUT, layout as f64),
+            (LIVE_KEY_LAND_MASK, 1.0),
+            (LIVE_KEY_TREES, 1.0),
+            (LIVE_KEY_LAKES, 1.0),
+        ]),
+        interventions: vec![],
+        seeds: vec![HD_SEED],
+        duration_ticks: 100,
+        sample_period: 50,
+        observable_ids,
+        exotic_interventions: vec![],
+        observer: ObserverPolicy::default(),
+    }
+}
+
+#[test]
+fn f057_scarce_land_child_probe() {
+    if std::env::var_os(F057_CHILD_ENV).is_none() {
+        return;
+    }
+
+    let evo_settings = Arc::new(Mutex::new(EvolutionSettings {
+        mutation_rate: 0.15,
+        selection_bias: 1.5,
+        grid_resolution: 50,
+    }));
+    let evo_running = Arc::new(AtomicBool::new(false));
+    let map_grid = Arc::new(Mutex::new(MapElitesGridState {
+        grid: std::collections::HashMap::new(),
+        grid_resolution: 50,
+    }));
+
+    // 1. Both grid (1) and scatter (2) layouts with founders=20 (> 4 walkable cells) must fail at
+    //    viewer preflight with the exact capacity message.
+    for layout in [1usize, 2usize] {
+        let scarce_json =
+            serde_json::to_string(&build_scarce_land_manifest(20, layout)).expect("serialize");
+        let err = parse_and_validate_manifest_for_viewer(&scarce_json)
+            .expect_err("scarce-land artifact must fail viewer preflight");
+        assert!(
+            err.contains("distinct walkable cell"),
+            "unexpected preflight error for layout={layout}: {err}"
+        );
+    }
+
+    // 2. Start a valid manifest (founders=2 <= 4 walkable cells), confirm it runs, then verify
+    //    `start_from_manifest_with_engine` refuses the scarce manifest without stopping the engine.
+    let engine = SimulationEngine::new();
+    let ok_json = serde_json::to_string(&build_scarce_land_manifest(2, 1)).expect("serialize ok");
+    start_from_manifest_with_engine::<tauri::test::MockRuntime>(
+        &engine,
+        None,
+        Arc::clone(&evo_settings),
+        Arc::clone(&evo_running),
+        Arc::clone(&map_grid),
+        &ok_json,
+    )
+    .expect("2 founders fit on 4 walkable cells");
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while engine.get_status().tick_count == 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        engine.running.load(Ordering::SeqCst),
+        "valid engine should be running"
+    );
+
+    let scarce_json =
+        serde_json::to_string(&build_scarce_land_manifest(20, 1)).expect("serialize scarce");
+    let refused = start_from_manifest_with_engine::<tauri::test::MockRuntime>(
+        &engine,
+        None,
+        Arc::clone(&evo_settings),
+        Arc::clone(&evo_running),
+        Arc::clone(&map_grid),
+        &scarce_json,
+    )
+    .expect_err("start_from_manifest_with_engine must refuse scarce-land manifest");
+    assert!(refused.contains("distinct walkable cell"), "{refused}");
+    assert!(
+        engine.running.load(Ordering::SeqCst),
+        "refused scarce-land manifest must not stop an already-running simulation"
+    );
+    engine.stop();
+
+    // 3. Direct `SimulationEngine::start` bypassing preflight onto a scarce-land world must abort
+    //    cleanly without panicking the `sim` thread (`running == false`, `status.running == false`).
+    let bypassed_engine = SimulationEngine::new();
+    let bypassed_manifest = build_scarce_land_manifest(20, 2);
+    let bypassed_config =
+        anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(
+            &bypassed_manifest.initial_conditions,
+        )
+        .expect("valid config shape");
+    *bypassed_engine
+        .pending_manifest
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) =
+        Some(anima_engine_lib::core::simulation_loop::PendingManifest {
+            name: bypassed_manifest.name,
+            seed: bypassed_manifest.seeds[0],
+            config: bypassed_config,
+        });
+    bypassed_engine.start::<tauri::test::MockRuntime>(None, evo_settings, evo_running, map_grid);
+
+    let abort_deadline = Instant::now() + Duration::from_secs(10);
+    while (bypassed_engine.running.load(Ordering::SeqCst) || bypassed_engine.get_status().running)
+        && Instant::now() < abort_deadline
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        !bypassed_engine.running.load(Ordering::SeqCst),
+        "aborted scarce-land start must reset engine.running to false"
+    );
+    assert!(
+        !bypassed_engine.get_status().running,
+        "aborted scarce-land start must reset status.running to false"
+    );
+    assert_eq!(bypassed_engine.get_status().tick_count, 0);
+}
+
+#[test]
+fn f057_scarce_land_artifact_refused_at_preflight_and_non_panicking_in_engine() {
+    let dir = std::env::temp_dir().join(format!("anima_f057_scarce_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir for f057 artifact");
+    let artifact_path = dir.join("scarce_island.anmw");
+
+    // Build a valid 256x256 WorldArtifact with only 4 frontend Grassland (index 4) cells and all
+    // remaining cells Ocean (index 0).
+    let side = 256usize;
+    let n = side * side;
+    let mut biome = vec![0u8; n];
+    biome[0] = 4;
+    biome[1] = 4;
+    biome[side] = 4;
+    biome[side + 1] = 4;
+    let artifact = WorldArtifact {
+        width: side,
+        height: side,
+        sea_level: 0.5,
+        seed: 42,
+        generator_version: 1,
+        world_scale: CANONICAL_WORLD_SCALE,
+        elevation: vec![0.2; n],
+        moisture: vec![0.5; n],
+        temperature: vec![0.5; n],
+        flow: vec![0.0; n],
+        biome,
+    };
+    std::fs::write(&artifact_path, artifact.to_bytes()).expect("write scarce-land artifact");
+
+    let exe = std::env::current_exe().expect("current test executable");
+    let output = std::process::Command::new(exe)
+        .env("ANIMA_WORLD_ARTIFACT", &artifact_path)
+        .env(F057_CHILD_ENV, "1")
+        .args(["--exact", "f057_scarce_land_child_probe", "--nocapture"])
+        .output()
+        .expect("spawn isolated f057 child probe");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        output.status.success(),
+        "isolated f057 probe failed (status={}):\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }
