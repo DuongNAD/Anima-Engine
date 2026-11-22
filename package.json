@@ -45,6 +45,7 @@
     "check:text-hygiene": "node scripts/check_text_hygiene.mjs",
     "check:audit": "node scripts/check_npm_audit.mjs",
     "check:root-hygiene": "node scripts/check_root_hygiene.mjs",
+    "check:conflict-markers": "node scripts/check_conflict_markers.mjs",
     "verify:upstream-licenses": "node scripts/verify_upstream_licenses.mjs",
     "gen:compliance": "npm run gen:licenses && npm run gen:sbom && npm run gen:notice",
     "gen:notice": "node scripts/gen_notice.mjs",

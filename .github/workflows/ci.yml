@@ -317,6 +317,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run check:root-hygiene
 
+      - name: No unresolved Git conflict markers in tracked files
+        if: ${{ !cancelled() }}
+        run: npm run check:conflict-markers
+
       - name: E2 artifacts match the committed preregistration
         if: ${{ !cancelled() }}
         run: npm run check:e2
