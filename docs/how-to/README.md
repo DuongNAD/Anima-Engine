@@ -2,18 +2,26 @@
 title: Hướng dẫn thao tác
 status: active
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-22
 review_cycle: per-release
 ---
 
 # How-to
 
-> **Giao việc cho coding agent:** [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) — hàng đợi thẻ, quyết định
-> của chủ dự án đã điền sẵn, luật cho agent và lệnh xác minh trên macOS. Đo hiệu năng trong app:
-> [BENCHMARKING.md](BENCHMARKING.md). Chụp và so sánh bản đồ 3D trước/sau một thay đổi hình ảnh
-> (`npm run capture:map`, prototype): [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md). Buổi dùng thử đầu tiên với
-> người ngoài (dựng bản chạy trên Windows 1, danh sách kiểm, cài lên máy khác):
-> [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md).
+## Danh sách hướng dẫn thao tác
+
+| Nhiệm vụ | Tài liệu | Nội dung chính |
+|---|---|---|
+| Chạy thí nghiệm headless | [RUN_EXPERIMENTS.md](RUN_EXPERIMENTS.md) | Build và chạy `anima-lab` (`ensemble`, `sweep`, `branch`, JSON/CSV, negative control) |
+| Viết và kiểm chứng manifest | [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md) | Schema `ExperimentManifest`, `WorldLawSet`, `LIVE_KEYS`, `SweepManifest`, `BranchTreeManifest` |
+| Thêm biến quan sát mới | [ADD_AN_OBSERVABLE.md](ADD_AN_OBSERVABLE.md) | Đăng ký `ObservableSpec`, `LIVE_EXTENDED_OBSERVABLE_IDS`, `live_observables` vs `peek`, kiểm thử |
+| Thêm can thiệp mới | [ADD_AN_INTERVENTION.md](ADD_AN_INTERVENTION.md) | `InterventionKind`, `validate_intervention`, tag băm, `apply_live_interventions_system`, `EnergyLedger` |
+| Thêm cổng kiểm tra (gate) mới | [ADD_A_GATE.md](ADD_A_GATE.md) | Exit code, đối chứng âm (`selfTest()` / `--self-test` / Vitest), nối `package.json` và CI |
+| Tái lập thí nghiệm E2 | [REPRODUCE_E2.md](REPRODUCE_E2.md) | Chạy seam test, `--smoke`, `--ensemble`, `--replay`, và xác minh `npm run check:e2` |
+| Giao việc cho coding agent | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | Hàng đợi thẻ, quyết định chủ dự án đã điền sẵn, luật agent và lệnh xác minh macOS |
+| Đo hiệu năng từng system | [BENCHMARKING.md](BENCHMARKING.md) | Chạy Criterion `tick_systems`, `ANIMA_TICK_CAPTURE`, bảng baseline và checklist 1.000 agent |
+| Chụp và so sánh bản đồ 3D | [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md) | `npm run capture:map` (prototype), chụp before/after và đọc báo cáo FPS/draw call |
+| Buổi dùng thử đầu tiên | [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md) | Dựng bản Windows 1, danh sách kiểm và cài đặt thử nghiệm lên máy ngoài |
 
 ## Trên macOS và Linux
 
