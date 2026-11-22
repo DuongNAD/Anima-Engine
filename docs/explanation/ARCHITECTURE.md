@@ -27,7 +27,7 @@ Nếu chỉ nhìn cấu trúc thư mục, dễ tưởng Anima Engine là một �
 ```mermaid
 flowchart TB
     subgraph Domain["Lõi luật độc lập engine: crates/anima-domain"]
-        Laws["WorldLawSet / causal / energy / intervention / sim_clock / units"]
+        Laws["laws / causal / energy / intervention / sim_clock / units"]
     end
 
     subgraph Desktop["Desktop App Runtime (Tauri)"]
@@ -158,7 +158,7 @@ Luồng mô phỏng `SIM` có thể chạy nhanh (mục tiêu 60 Hz hoặc chạ
 
 ### Tại sao dùng `ts-rs` và snapshot khoa học tách khỏi file save thường
 
-Thay vì viết tay các interface TypeScript rồi mong hai bên khớp nhau (nguyên nhân từng gây lỗi `head_directions` lệch kiểu map vs array), các struct qua ranh giới IPC — cụ thể là `SimulationTickPayload` và `SimulationStatus` (`src-tauri/src/core/simulation_state.rs`) — gắn `#[derive(ts_rs::TS)]` để `cargo test --lib export_bindings` sinh thẳng 51 file `.ts` vào `src/types/generated/`. Cổng CI chạy `git diff --exit-code` trên thư mục sinh này để mọi thay đổi struct Rust không tái sinh type đều thất bại ngay.
+Thay vì viết tay các interface TypeScript rồi mong hai bên khớp nhau (nguyên nhân từng gây lỗi `head_directions` lệch kiểu map vs array), các struct qua ranh giới IPC — cụ thể là `SimulationTickPayload` và `SimulationStatus` (`src-tauri/src/core/simulation_state.rs`) — gắn `#[derive(ts_rs::TS)]` để `cargo test --lib export_bindings` sinh thẳng các file `.ts` vào `src/types/generated/`. Cổng CI chạy `git diff --exit-code` trên thư mục sinh này để mọi thay đổi struct Rust không tái sinh type đều thất bại ngay.
 
 Tương tự, `SavedSimulationState` được bọc trong `SnapshotEnvelope` (`src-tauri/src/core/snapshot.rs`) với SHA-256, `float_roundtrip` và ghi nguyên tử thay vì dùng định dạng save thường dễ mất bit hoặc hỏng dở khi mất điện (chi tiết hợp đồng tại [`SNAPSHOT_CONTRACT.md`](../reference/SNAPSHOT_CONTRACT.md)).
 
