@@ -106,6 +106,15 @@ cộng phân rã Robertson–Price. Đây là chỉ tiêu SEL2-P đã đăng ký
 | **Chỉ tiêu theo đảo và quần đảo** | ❌ thiếu | trung bình theo đảo, khác biệt đảo với đất liền, đa dạng gộp |
 | Kiểm chéo kết quả giữa nhiều máy | ⚠️ một phần | quỹ đạo thế giới sống lệch giữa các hệ điều hành từ khoảng tick 180, nên so khớp chính xác chỉ làm được trong cùng họ hệ điều hành (ADR-0010) |
 
+*Gợi ý để xét khi làm "Chỉ tiêu theo đảo và quần đảo" (ghi chú 2026-11-22, từ
+[đánh giá đài quan sát tiến hoá](../../research/EVOLUTION_OBSERVATORY_RESEARCH_2026-11-22.md) §2, chưa
+quyết):*
+- *Tiêu chí xâm lấn nguồn–bẫy (Pulliam 1988):* một dòng chỉ tính là đã định cư trên một đảo khi số
+  sinh tại chỗ vượt số chết tại chỗ trong một cửa sổ khai trước, không tính cá thể nhập cư; nếu không,
+  di cư vãng lai vào đảo bẫy sẽ đếm như xâm lấn (liên quan H2).
+- *Muller plot theo đảo, ngoại tuyến:* xuất chuỗi tần số theo dòng cho từng đảo để vẽ hình cho bài báo
+  bằng script phân tích, không thêm panel (khoá phạm vi §9).
+
 ## 6. Ràng buộc cứng (không thương lượng)
 
 - `WorldLawSet` không đổi trong một lần chạy. Mọi đảo của một quần đảo có cùng luật; chỉ điều kiện ban

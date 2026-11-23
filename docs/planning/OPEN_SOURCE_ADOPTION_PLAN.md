@@ -271,6 +271,18 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
 | OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ✅ 2026-11-16, #75: `evolution/mrca.rs`, lệnh `get_lineage_mrca`; đáp án là một **tập** |
 | OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
 
+*Ghi chú cho định nghĩa hoàn thành của OSS-073 (đề xuất, chưa phải quyết định; chi tiết ở
+[ghi chú nghiên cứu 2026-11-22](../research/OPEN_ENDEDNESS_LINEAGE_SPECIES_RESEARCH_2026-11-22.md) §1):*
+
+- **Genotype trung gian.** `compact` nén đường đơn (`compress_unary_paths: true`). Số đột biến vẫn đúng,
+  nhưng genotype của các bước trung gian bị xoá, nên không phân loại được từng bước có lợi / trung tính /
+  có hại. Định nghĩa hoàn thành cần nói rõ giữ chúng bằng cách nào: nhật ký sai phân trên cạnh, hay ghim
+  tổ tiên trước khi nén.
+- **Ca sinh của thế giới sống chưa vào tracker.** Lời gọi `add_reproduction` duy nhất là ở
+  `simulation_loop.rs` (vòng MAP-Elites). `SpawnOffspringCommand` có `parent_ids` nhưng không ghi vào
+  tracker, và các con cùng cha nhận cùng `lineage_id`. Line of descent trên thế giới sống cần việc này
+  trước.
+
 **Vì sao đáng làm sớm:** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi
 lần sinh sản kèm **bản sao đầy đủ** `MorphologyGenotype` và **không bao giờ prune**. Đó là đường
 tăng bộ nhớ không có trần với một run dài. *(Đó là lý do lúc lập kế hoạch, 2026-07-26. Từ 2026-07-27

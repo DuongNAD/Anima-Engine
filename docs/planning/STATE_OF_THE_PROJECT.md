@@ -1549,6 +1549,15 @@ báo, vì rừng nhiều gốc là chuyện bình thường ở đây.
 
 Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) — nó cần MRCA.
 
+*Hai lỗ cần lấp trước OSS-073 (rà soát 2026-11-22, [ghi chú](../research/OPEN_ENDEDNESS_LINEAGE_SPECIES_RESEARCH_2026-11-22.md)):*
+(a) **lần sinh trong thế giới live không vào cây phả hệ**: nơi duy nhất gọi `add_reproduction` là epoch
+MAP-Elites (`simulation_loop.rs`, khoảng dòng 956); `SpawnOffspringCommand` mang id cha mẹ nhưng không ghi
+cạnh nào, và các con cùng cha mẹ nhận **cùng** `lineage_id` (`format!("{parent}.{gen+1}")` trong
+`agent_systems.rs`, cùng gốc với F-047), nên cần id duy nhất cho từng cá thể trước. Mọi phép đo dòng dõi trên quần thể live (OSS-073, S43, ứng viên loài AE-S11) đều bị chặn ở đây.
+(b) `compact` giữ **số** đột biến qua chuỗi một con (`SimplifiedEdge.mutations`) nhưng giải phóng genotype
+trung gian, nên phân loại đột biến có lợi / trung tính / có hại kiểu Avida cần nhật ký diff đột biến theo
+cạnh hoặc ghim tổ tiên. Chưa có thẻ; đây là ghi nhận, không phải quyết định.
+
 **Hai cái bẫy đã trả giá rồi, đừng đạp lại:**
 
 - **`add_reproduction` nay từ chối ghi cạnh có cha không tồn tại.** Đừng "sửa" nó thành ghi vô điều

@@ -5531,9 +5531,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/form_urlencoded@1.2.2",
+      "bom-ref": "pkg:cargo/form_urlencoded@1.2.3",
       "name": "form_urlencoded",
-      "version": "1.2.2",
+      "version": "1.2.3",
       "description": "Parser and serializer for the application/x-www-form-urlencoded syntax, as used by HTML forms.",
       "scope": "required",
       "licenses": [
@@ -5541,7 +5541,7 @@
           "expression": "MIT OR Apache-2.0"
         }
       ],
-      "purl": "pkg:cargo/form_urlencoded@1.2.2",
+      "purl": "pkg:cargo/form_urlencoded@1.2.3",
       "externalReferences": [
         {
           "type": "vcs",
@@ -13825,9 +13825,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/url@2.5.8",
+      "bom-ref": "pkg:cargo/url@2.5.9",
       "name": "url",
-      "version": "2.5.8",
+      "version": "2.5.9",
       "description": "URL library for Rust, based on the WHATWG URL Standard",
       "scope": "required",
       "licenses": [
@@ -13835,7 +13835,7 @@
           "expression": "MIT OR Apache-2.0"
         }
       ],
-      "purl": "pkg:cargo/url@2.5.8",
+      "purl": "pkg:cargo/url@2.5.9",
       "externalReferences": [
         {
           "type": "vcs",
@@ -18883,7 +18883,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:cargo/form_urlencoded@1.2.2",
+      "ref": "pkg:cargo/form_urlencoded@1.2.3",
       "dependsOn": [
         "pkg:cargo/percent-encoding@2.3.2"
       ]
@@ -19595,7 +19595,7 @@
         "pkg:cargo/thiserror@1.0.69",
         "pkg:cargo/tokio-rustls@0.26.4",
         "pkg:cargo/tokio@1.53.3",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/webpki-roots@0.26.11"
       ]
     },
@@ -20144,7 +20144,7 @@
         "pkg:cargo/schemars_derive@0.8.22",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/serde_json@1.0.151",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/uuid@1.29.3"
       ]
     },
@@ -20465,7 +20465,7 @@
         "pkg:cargo/percent-encoding@2.3.2",
         "pkg:cargo/raw-window-handle@0.6.2",
         "pkg:cargo/unicode-segmentation@1.13.3",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/windows-core@0.61.2",
         "pkg:cargo/windows-version@0.1.7",
         "pkg:cargo/windows@0.61.3"
@@ -20490,7 +20490,7 @@
         "pkg:cargo/tauri-utils@2.9.3",
         "pkg:cargo/thiserror@2.0.19",
         "pkg:cargo/time@0.3.54",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/uuid@1.29.3",
         "pkg:cargo/walkdir@2.5.0"
       ]
@@ -20534,7 +20534,7 @@
         "pkg:cargo/tao@0.35.3",
         "pkg:cargo/tauri-runtime@2.11.3",
         "pkg:cargo/tauri-utils@2.9.3",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/webview2-com@0.38.2",
         "pkg:cargo/windows@0.61.3",
         "pkg:cargo/wry@0.55.1"
@@ -20551,7 +20551,7 @@
         "pkg:cargo/serde_json@1.0.151",
         "pkg:cargo/tauri-utils@2.9.3",
         "pkg:cargo/thiserror@2.0.19",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/webview2-com@0.38.2",
         "pkg:cargo/windows@0.61.3"
       ]
@@ -20584,7 +20584,7 @@
         "pkg:cargo/serde_with@3.21.0",
         "pkg:cargo/thiserror@2.0.19",
         "pkg:cargo/toml@1.1.3+spec-1.1.0",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/urlpattern@0.3.0",
         "pkg:cargo/uuid@1.29.3",
         "pkg:cargo/walkdir@2.5.0"
@@ -20619,7 +20619,7 @@
         "pkg:cargo/tauri-utils@2.9.3",
         "pkg:cargo/thiserror@2.0.19",
         "pkg:cargo/tokio@1.53.3",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/webview2-com@0.38.2",
         "pkg:cargo/window-vibrancy@0.6.0",
         "pkg:cargo/windows@0.61.3"
@@ -20844,7 +20844,7 @@
         "pkg:cargo/rand@0.8.7",
         "pkg:cargo/sha1@0.10.7",
         "pkg:cargo/thiserror@1.0.69",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/utf-8@0.7.6"
       ]
     },
@@ -20929,14 +20929,14 @@
         "pkg:cargo/rustls@0.23.46",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/serde_json@1.0.151",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/webpki-roots@0.26.11"
       ]
     },
     {
-      "ref": "pkg:cargo/url@2.5.8",
+      "ref": "pkg:cargo/url@2.5.9",
       "dependsOn": [
-        "pkg:cargo/form_urlencoded@1.2.2",
+        "pkg:cargo/form_urlencoded@1.2.3",
         "pkg:cargo/idna@1.1.0",
         "pkg:cargo/percent-encoding@2.3.2",
         "pkg:cargo/serde@1.0.229",
@@ -20949,7 +20949,7 @@
         "pkg:cargo/regex@1.13.1",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/unic-ucd-ident@0.9.0",
-        "pkg:cargo/url@2.5.8"
+        "pkg:cargo/url@2.5.9"
       ]
     },
     {
@@ -21409,7 +21409,7 @@
         "pkg:cargo/raw-window-handle@0.6.2",
         "pkg:cargo/sha2@0.10.9",
         "pkg:cargo/thiserror@2.0.19",
-        "pkg:cargo/url@2.5.8",
+        "pkg:cargo/url@2.5.9",
         "pkg:cargo/webview2-com@0.38.2",
         "pkg:cargo/windows-core@0.61.2",
         "pkg:cargo/windows-version@0.1.7",
@@ -21712,5 +21712,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:d2955bb2-2475-50aa-a7db-9c8372c9f737"
+  "serialNumber": "urn:uuid:56860b8f-dbed-51dd-b687-2eca7cf1f332"
 }
