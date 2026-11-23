@@ -970,7 +970,7 @@ export const GATES = [
   {
     id: 'check_test_targets_unscheduled',
     source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
-    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command,
+    ciCommand: `[harness-assembled: 12 policy targets] ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command}`,
     faultSummary: 'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184`',
     patch: 'check_test_targets_unscheduled.patch',
     cleanKey: 'check_test_targets:from_ci',
@@ -1268,7 +1268,7 @@ export const GATES = [
   {
     id: 'check_test_targets_empty',
     source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
-    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command,
+    ciCommand: `[harness-assembled: 12 policy targets] ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command}`,
     faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/tests/shared_domain_law_tests.rs`',
     patch: 'check_test_targets_empty.patch',
     cleanKey: 'check_test_targets:from_ci',
@@ -1286,7 +1286,7 @@ export const GATES = [
   {
     id: 'check_test_targets_ignored',
     source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
-    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command,
+    ciCommand: `[harness-assembled: 12 policy targets] ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command}`,
     faultSummary: 'Add `#[ignore]` to `the_engine_reads_the_domain_crates_values_for_the_time_laws`',
     patch: 'check_test_targets_ignored.patch',
     cleanKey: 'check_test_targets:from_ci',
