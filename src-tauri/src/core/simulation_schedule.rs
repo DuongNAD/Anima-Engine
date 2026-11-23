@@ -193,6 +193,7 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
                 crate::core::tick_capture::capture_checkpoint_ecology_system,
                 energy_flux_aggregation_system,
                 sync_evolution_settings_system,
+                crate::core::world_record::record_world_record_tick_system,
             )
                 .chain(),
         )
