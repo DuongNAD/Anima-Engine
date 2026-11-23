@@ -32,8 +32,9 @@ pub struct LineageNode {
     /// Recorded only by the opt-in live lineage path (`live.lineage_tracking`,
     /// [`crate::core::live_lineage`]). `None` means *not recorded*: every MAP-Elites node, every
     /// node of a save written before the field existed, and every node of a run without the key.
-    /// It never means "born at tick zero".
-    #[serde(default)]
+    /// It never means "born at tick zero". Omitted from the bytes when `None`, so a save that
+    /// records no live lineage is byte-for-byte what it was before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin_tick: Option<u64>,
     /// World tick at which this individual left the live population (death, culling or
     /// replacement) — the ALife data standard's `destruction_time`. `None` while it is alive, and
@@ -41,7 +42,7 @@ pub struct LineageNode {
     ///
     /// Read the two together: a node with `origin_tick: Some(_)` and `destruction_tick: None` is an
     /// **open** individual, which [`LineageTracker::compact`] keeps without being told to.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destruction_tick: Option<u64>,
 }
 

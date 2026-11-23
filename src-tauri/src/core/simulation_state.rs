@@ -132,6 +132,16 @@ pub struct SerializedAgent {
     /// deaths keep identical table swap order (F-045).
     #[serde(default)]
     pub sex: Option<crate::core::components::AgentSex>,
+    /// The agent's unique live-lineage id (`live.lineage_tracking`, F-066): its node in the graph
+    /// [`crate::core::live_lineage::LiveLineage`] keeps. A restore re-attaches exactly this id and
+    /// never mints a new one (D01).
+    ///
+    /// Separate from `lineage_id` on purpose: `lineage_id` keeps the legacy `parent.generation`
+    /// value, which the reproduction order sorts by, so that recording never changes the trajectory
+    /// (ADR-0008 driver 4). `None` on every run without the key and every save written before the
+    /// field existed; omitted from the bytes when `None`, so those saves are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -577,10 +587,10 @@ pub struct SavedSimulationState {
     /// graph itself is in `lineage_nodes` / `lineage_relations`.
     ///
     /// `None` on every run without the key and on every save written before it existed — additive,
-    /// so no schema bump: a reader that predates it ignores it, and a restore that finds `None`
-    /// either has no live lineage to resume or recovers the cursor from the ids in the save
-    /// ([`crate::core::live_lineage::LiveLineage::restore`]).
-    #[serde(default)]
+    /// so no schema bump, and omitted from the bytes when `None`: a reader that predates it ignores
+    /// it, and a restore that finds `None` either has no live lineage to resume or recovers the
+    /// cursor from the ids in the save ([`crate::core::live_lineage::LiveLineage::restore`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub live_lineage: Option<crate::core::live_lineage::SavedLiveLineage>,
 
     /// Which on-disk schema this state was read from, filled in by
@@ -1071,6 +1081,7 @@ pub fn serialize_single_agent(world: &mut World, root: Entity) -> Option<Seriali
         .get::<crate::core::components::InertiaComponent>(root)
         .cloned()
         .unwrap_or_default();
+    let live_id = live_lineage_id_of(world, root);
 
     let mut segments = Vec::new();
     let mut query = world.query::<(
@@ -1125,7 +1136,16 @@ pub fn serialize_single_agent(world: &mut World, root: Entity) -> Option<Seriali
         segments,
         brain,
         sex,
+        live_id,
     })
+}
+
+/// The unique live-lineage id of the agent rooted at `root`, when the world records one.
+fn live_lineage_id_of(world: &World, root: Entity) -> Option<String> {
+    world
+        .get_resource::<crate::core::live_lineage::LiveLineage>()
+        .and_then(|live| live.live_id(root))
+        .map(str::to_owned)
 }
 
 pub fn serialize_world_state(
@@ -1403,6 +1423,7 @@ pub fn serialize_world_state(
             segments,
             brain,
             sex,
+            live_id: live_lineage_id_of(world, entity),
         });
     }
 

@@ -1015,6 +1015,7 @@ mod tests {
             segments: Vec::new(),
             brain: None,
             sex: None,
+            live_id: None,
         }
     }
 

@@ -24,6 +24,32 @@ pub struct MorphologyGenotype {
 }
 
 impl MorphologyGenotype {
+    /// Whether `other` is this exact genome: the same nodes and edges in the same order, every
+    /// float equal bit for bit. What "the child is a clone" means for a lineage edge — a mutation
+    /// whose result clamps back onto the parent's value changed nothing, and is not counted.
+    /// Allocation-free.
+    pub fn is_bit_identical(&self, other: &Self) -> bool {
+        let v = |a: Vec3, b: Vec3| {
+            a.x.to_bits() == b.x.to_bits()
+                && a.y.to_bits() == b.y.to_bits()
+                && a.z.to_bits() == b.z.to_bits()
+        };
+        self.nodes.len() == other.nodes.len()
+            && self.edges.len() == other.edges.len()
+            && self.nodes.iter().zip(&other.nodes).all(|(a, b)| {
+                a.id == b.id
+                    && a.length.to_bits() == b.length.to_bits()
+                    && a.radius.to_bits() == b.radius.to_bits()
+                    && a.mass.to_bits() == b.mass.to_bits()
+            })
+            && self.edges.iter().zip(&other.edges).all(|(a, b)| {
+                a.source_node == b.source_node
+                    && a.target_node == b.target_node
+                    && v(a.joint_anchor, b.joint_anchor)
+                    && v(a.joint_axis, b.joint_axis)
+            })
+    }
+
     /// Total body mass = the mass of the segments this genotype actually grows: the root plus
     /// everything reachable from it, each counted once. In the Metabolic Theory of Ecology this
     /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is

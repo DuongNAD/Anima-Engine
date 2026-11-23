@@ -252,14 +252,17 @@ pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 /// FINDINGS F-066: `1.0` records the live population's lineage — every founder as a root, every
 /// birth as a node with an edge from its parent and its origin tick, every death as a destruction
-/// tick — in a [`crate::core::live_lineage::LiveLineage`] the snapshot carries. It also gives each
-/// child a **unique** minted id (`birth-{run}-{n}`) instead of the legacy `parent.generation`,
-/// which every sibling shared.
+/// tick — in a [`crate::core::live_lineage::LiveLineage`] the snapshot carries. Each child gets a
+/// **unique** minted id (`birth-{run}-{n}`), kept in that resource and in
+/// `SerializedAgent::live_id`; `AgentLineageId` keeps the legacy `parent.generation`, which
+/// siblings share.
 ///
-/// **Changes the trajectory when on**: `autonomous_reproduction_system` orders parents by lineage
-/// id, so new ids reorder the `SimRng` draws. `0.0`/absent keeps the legacy ids and records
-/// nothing, bit-identical to every earlier manifest. Exact boolean. Honoured by the headless
-/// adapter only; the desktop viewer's genesis ignores it.
+/// **Recording does not change the trajectory** (ADR-0008 driver 4): `autonomous_reproduction_system`
+/// orders parents by `AgentLineageId`, so the unique id is never written there, and recording reads
+/// and writes nothing the schedule reads. A run with the key and the same run without it have the
+/// same `world_checksum`, births and deaths at every tick
+/// (`recording_lineage_does_not_change_the_trajectory`). `0.0`/absent records nothing. Exact
+/// boolean. Honoured by the headless adapter only; the desktop viewer's genesis ignores it.
 pub const LIVE_KEY_LINEAGE_TRACKING: &str = "live.lineage_tracking";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
@@ -2677,15 +2680,20 @@ fn build_live_world(
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent(
                 state.active_environment_event,
             ));
+            // `live.lineage_tracking` (F-066) needs each restored agent's entity to re-attach its
+            // saved live id; the legacy path collects nothing.
+            let mut restored_roots: Vec<Entity> = Vec::new();
             for agent in &state.agents {
-                crate::core::simulation_state::spawn_serialized_agent(&mut world, agent).map_err(
-                    |error| ExperimentError::InvalidPopulation {
+                let root = crate::core::simulation_state::spawn_serialized_agent(&mut world, agent)
+                    .map_err(|error| ExperimentError::InvalidPopulation {
                         reason: format!(
                             "snapshot agent {} could not be restored: {error}",
                             agent.lineage_id
                         ),
-                    },
-                )?;
+                    })?;
+                if config.lineage_tracking {
+                    restored_roots.push(root);
+                }
             }
             crate::core::simulation_state::restore_energy_state(&mut world, state);
             // The save carries the standing crop `r` but not the capacity `r_max`, which
@@ -2739,18 +2747,24 @@ fn build_live_world(
             // unindexed until tick K+1's rebuild (F-045).
             populate_spatial_grid(&mut world, state);
             if config.lineage_tracking {
-                let agent_ids = state.agents.iter().map(|a| a.lineage_id.clone()).chain(
-                    state
-                        .dormant_agents
-                        .iter()
-                        .map(|d| d.agent.lineage_id.clone()),
-                );
+                let agents: Vec<crate::core::live_lineage::RestoredAgent<'_>> = restored_roots
+                    .iter()
+                    .zip(&state.agents)
+                    .map(
+                        |(&entity, saved)| crate::core::live_lineage::RestoredAgent {
+                            entity,
+                            saved,
+                        },
+                    )
+                    .collect();
                 let live = crate::core::live_lineage::LiveLineage::restore(
                     seed,
                     state.live_lineage.as_ref(),
                     state.lineage_nodes.clone(),
                     state.lineage_relations.clone(),
-                    agent_ids,
+                    &agents,
+                    &state.dormant_agents,
+                    state.tick_count,
                 )
                 .map_err(|reason| ExperimentError::InvalidPopulation { reason })?;
                 world.insert_resource(live);
@@ -2775,18 +2789,21 @@ fn build_live_world(
 }
 
 /// `live.lineage_tracking` (F-066): record every genesis founder as a root born at tick 0, in id
-/// order so the graph does not depend on archetype iteration order.
+/// order so the graph does not depend on archetype iteration order. A founder's live id is its
+/// genesis id, which is already unique. Read-only on the world: the founders are not touched.
 fn insert_live_lineage_founders(world: &mut World, seed: u64) {
     use crate::core::agent_systems::{AgentGenotype, AgentLineageId};
-    let mut founders: Vec<(String, crate::evolution::genotype::MorphologyGenotype)> = world
-        .query_filtered::<(&AgentLineageId, &AgentGenotype), With<crate::core::ecs::Agent>>()
+    use crate::core::ecs::Agent;
+    use crate::evolution::genotype::MorphologyGenotype;
+    let mut founders: Vec<(Entity, String, MorphologyGenotype)> = world
+        .query_filtered::<(Entity, &AgentLineageId, &AgentGenotype), With<Agent>>()
         .iter(world)
-        .map(|(id, genotype)| (id.0.clone(), genotype.0.clone()))
+        .map(|(entity, id, genotype)| (entity, id.0.clone(), genotype.0.clone()))
         .collect();
-    founders.sort_by(|a, b| a.0.cmp(&b.0));
+    founders.sort_by(|a, b| a.1.cmp(&b.1));
     let mut live = crate::core::live_lineage::LiveLineage::new(seed);
-    for (id, genotype) in founders {
-        live.record_founder(id, genotype);
+    for (entity, id, genotype) in founders {
+        live.record_founder(entity, id, genotype);
     }
     world.insert_resource(live);
 }

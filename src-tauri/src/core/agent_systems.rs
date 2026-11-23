@@ -140,14 +140,17 @@ pub struct ReclaimAndDespawnAgentCommand {
 impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
     fn apply(self, world: &mut World) {
         // `live.lineage_tracking` (F-066): stamp the death on the lineage node before the body is
-        // gone. Absent resource = one presence test, nothing else (the zero-allocation gate).
-        if world.contains_resource::<crate::core::live_lineage::LiveLineage>() {
-            if let Some(id) = world.get::<AgentLineageId>(self.root).map(|l| l.0.clone()) {
-                if let Some(mut live) =
-                    world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
-                {
-                    live.record_death(&id);
-                }
+        // gone. The node is found by entity in `LiveLineage`'s side table, never through a
+        // component, so recording reads nothing the schedule reads. A root that is already gone
+        // (a second despawn of one agent in a flush) is not a second death. Absent resource = one
+        // presence test, nothing else (the zero-allocation gate).
+        if world.contains_resource::<crate::core::live_lineage::LiveLineage>()
+            && world.get_entity(self.root).is_some()
+        {
+            if let Some(mut live) =
+                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
+            {
+                live.record_death(self.root);
             }
         }
 
@@ -267,6 +270,12 @@ impl bevy_ecs::system::Command for HibernateAgentCommand {
             store.0.push(record);
         }
 
+        // `live.lineage_tracking` (F-066): ngủ đông không phải cái chết — node vẫn mở, id
+        // đã nằm trong `snapshot.live_id` và quay lại qua `WakeAgentCommand`.
+        if let Some(mut live) = world.get_resource_mut::<crate::core::live_lineage::LiveLineage>() {
+            live.detach(self.root);
+        }
+
         // 5. Despawn tức thời (không phải Commands deferred) — không hệ thống
         //    nào trong tick này còn thấy một thân đã bị bank rồi.
         let mut doomed: Vec<Entity> = Vec::new();
@@ -354,6 +363,15 @@ impl bevy_ecs::system::Command for WakeAgentCommand {
                 return;
             }
         };
+
+        // `live.lineage_tracking` (F-066): cùng một cá thể, cùng id — gắn lại, không mint (D01).
+        if let Some(id) = record.agent.live_id.clone() {
+            if let Some(mut live) =
+                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
+            {
+                live.attach(root, id);
+            }
+        }
 
         // 4. Hoàn reserve vào thân vừa dựng — cùng sync point với việc trừ ngăn
         //    dormant ở bước 2. Census tick này trở đi đếm EU này ở `animals`.
@@ -492,21 +510,29 @@ pub struct SpawnOffspringCommand {
 }
 
 impl bevy_ecs::system::Command for SpawnOffspringCommand {
-    fn apply(mut self, world: &mut World) {
-        // `live.lineage_tracking` (F-066): replace the legacy `parent.generation` id — shared by
-        // every sibling — with a minted unique one, and keep the genotype for the birth node. With
-        // the resource absent this is one presence test, no allocation and no draw, so the legacy
-        // path (and the zero-allocation gate on this command) is untouched.
-        let live_birth_genotype =
-            match world.get_resource_mut::<crate::core::live_lineage::LiveLineage>() {
-                Some(mut live) => {
-                    self.lineage_id = live.mint_birth_id();
-                    Some(self.genotype.clone())
-                }
-                None => None,
-            };
-
+    fn apply(self, world: &mut World) {
         let entity = decode_genotype(world, &self.genotype, self.initial_pos, self.initial_rot);
+
+        // `live.lineage_tracking` (F-066): give the child a unique id and a node with an edge from
+        // its parent's own id, all inside `LiveLineage`. `self.lineage_id` — the legacy
+        // `parent.generation`, shared by siblings — is NOT replaced: `autonomous_reproduction_system`
+        // sorts parents by it, so changing it would change the trajectory (ADR-0008 driver 4).
+        // Recording touches no component, draw or entity id. With the resource absent this is one
+        // presence test, no allocation and no draw (the zero-allocation gate on this command).
+        if world.contains_resource::<crate::core::live_lineage::LiveLineage>() {
+            let genotype = self.genotype.clone();
+            if let Some(mut live) =
+                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
+            {
+                live.record_birth(
+                    entity,
+                    self.parent_entity,
+                    self.generation,
+                    genotype,
+                    self.relation_type,
+                );
+            }
+        }
 
         let (vx, vz) = match world.get_resource_mut::<crate::core::resources::SimRng>() {
             Some(mut rng) => {
@@ -536,20 +562,6 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
         };
 
         let vel_vec = glam::Vec3::new(vx, 0.0, vz);
-
-        if let Some(genotype) = live_birth_genotype {
-            let (id, generation, parents, relation) = (
-                self.lineage_id.clone(),
-                self.generation,
-                self.parent_ids.clone(),
-                self.relation_type,
-            );
-            if let Some(mut live) =
-                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
-            {
-                live.record_birth(id, generation, genotype, parents, relation);
-            }
-        }
 
         world.entity_mut(entity).insert((
             Agent,
@@ -1146,7 +1158,8 @@ fn execute_reproduction_birth(
     // Mutate child morphology with declared mutation probability
     let mut child_genotype = parent_genotype.clone();
     // The reporting variant draws exactly what `mutate_genotype` draws (it is the same function);
-    // the answer only labels the lineage edge.
+    // its answer — did the body actually change, compared bit for bit — only labels the lineage
+    // edge.
     let mut body_mutated = false;
     if let (Some(ref mut rng_res), Some(ref mut node_id_res)) =
         (sim_rng.as_mut(), next_node_id.as_mut())
@@ -1166,12 +1179,18 @@ fn execute_reproduction_birth(
     let child_brain = if let (Some(brain_geno_arc), Some(ref mut rng_res), true) =
         (parent_brain_genotype, sim_rng.as_mut(), mutation_rate > 0.0)
     {
-        // `mutate_brain` perturbs each weight with its own probability and does not report
-        // whether any moved; a brain that went through it is counted as mutated.
-        brain_mutated = true;
         let mut brain_geno = (**brain_geno_arc).clone();
         let r = rng_res.rng();
         let _ = crate::evolution::brain_genotype::mutate_brain(&mut brain_geno, 0.05, 0.02, r);
+        // Each weight is perturbed with its own probability, so a pass can leave every one as it
+        // was. Compare bits rather than trusting the rate: the edge label says what happened.
+        // A read-only zip, no allocation.
+        brain_mutated = brain_geno.weights.len() != brain_geno_arc.weights.len()
+            || brain_geno
+                .weights
+                .iter()
+                .zip(&brain_geno_arc.weights)
+                .any(|(child, parent)| child.to_bits() != parent.to_bits());
         Some(Arc::new(brain_geno))
     } else {
         parent_brain_genotype.cloned()
