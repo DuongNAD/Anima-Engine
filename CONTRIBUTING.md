@@ -88,9 +88,12 @@ superseded and must not be used as implementation plans.
 ## Gates
 
 Run the relevant gates locally before opening or updating a pull request. The
-commands below match `.github/workflows/ci.yml` line for line — `Frontend` runs
-on `ubuntu-latest` from the repository root `.`, and `Rust (src-tauri)` runs on
-`windows-latest` from `src-tauri/` (except the compliance steps marked `.`).
+commands below mirror `.github/workflows/ci.yml` — `Frontend` runs on
+`ubuntu-latest` from the repository root `.`, and `Rust (src-tauri)` runs on
+`windows-latest` from `src-tauri/` (except the compliance steps marked `.`). The
+local `cargo test` commands omit CI's `-- --nocapture` flag because `ci.yml`
+adds it solely for hang diagnostics (`ci.yml:166-181`) while executing the exact
+same test targets; pass `-- --nocapture` yourself when chasing a hang.
 
 ### Frontend & Docs (repo root `.`, Node 22)
 
@@ -179,20 +182,25 @@ Run one `cargo` process at a time; a full Rust build is heavy.
 6. Desktop test suite + empty-target policy (`ANIMA_USE_GPU=0` forces the CPU backend on GPU-less runners):
    ```bash
    set -o pipefail
-   ANIMA_USE_GPU=0 cargo test --features desktop -- --nocapture 2>&1 | tee ../cargo-test-output.txt
+   ANIMA_USE_GPU=0 cargo test --features desktop 2>&1 | tee ../cargo-test-output.txt
    node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop
    ```
    `--features desktop` is not optional: several test files are gated behind
    `networking` or `ml-wgpu` (`#![cfg(feature = "...")]` and `[[test]] required-features`),
    so a bare `cargo test` silently skips migration, cross-shard, and GPU-fallback tests.
+   Under [`scripts/test_target_policy.mjs`](scripts/test_target_policy.mjs), every
+   `#[ignore]`d test and every zero-test target must be named with a non-empty reason,
+   anything unlisted fails the gate, and any stale entry (an allow-listed empty target
+   that now runs tests or an allow-listed `#[ignore]` that no longer exists) also fails.
    CI passes `--profile desktop` to `check_test_targets.mjs` so `FEATURE_GATED_TARGETS`
-   are enforced alongside the zero-empty-target check. On Windows, redirect at the OS shell level
-   (`cmd /c "cargo test --features desktop --no-fail-fast > ..\cargo-test-output.txt 2>&1"`)
-   — do not pipe through PowerShell or run inside Git Bash.
+   are enforced alongside the zero-empty-target check. CI's `cargo test` step uses
+   `shell: bash` (`ci.yml:165`); on Windows, run inside Git Bash or redirect at the OS
+   `cmd` shell level (`cmd /c "cargo test --features desktop > ..\cargo-test-output.txt 2>&1"`)
+   — only piping through a PowerShell pipeline is banned.
 7. `anima-worldgen` CPU test suite + empty-target policy:
    ```bash
    set -o pipefail
-   cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture 2>&1 | tee ../cargo-test-worldgen-output.txt
+   cargo test -p anima-worldgen --features "reader,generate,bake" 2>&1 | tee ../cargo-test-worldgen-output.txt
    node ../scripts/check_test_targets.mjs ../cargo-test-worldgen-output.txt --profile worldgen-cpu
    ```
 8. Module dependency graph vs `dataflow.json` (requires `cargo-modules` and `python3`):
@@ -241,8 +249,9 @@ Do not copy the live queue or `DECISIONS` block into other docs; link there inst
 
 - **Swarm roles (`PROMPT 0` / `BLOCK S` / `VERIFIER`):**
   - **Lead:** verifies `DEPENDS ON`, `DECISIONS`, and `R5-AUTH`; serializes shared
-    paths and `[RUST]` capacity (max 2 concurrent Rust builds); dispatches verbatim
-    cards; never writes code or merges PRs.
+    paths and `[RUST]` capacity (one `cargo` process per machine per project, consistent
+    with the host rule above and `QD-MACSHARE`); dispatches verbatim cards; never writes
+    code or merges PRs.
   - **Worker:** works in an isolated worktree and branch, edits only `ALLOWED PATHS`
     (respecting `MAX FILES`), executes `DONE WHEN`, files a structured report
     (`WHAT CHANGED`, `WHY`, `VERIFY` raw output, `NOT DONE`, `SURPRISES`), and
@@ -259,7 +268,7 @@ Do not copy the live queue or `DECISIONS` block into other docs; link there inst
   (3) ADR if touching tick order, determinism, source of truth, save schema, or ≥ 2
   subsystems (`docs/decisions/ADR-0000-template.md`) → (4) Plan + task cards →
   (5) Swarm execution (worker + verifier PRs) → (6) Docs updated in the same PR →
-  (7) Measurement & status update (`STATE_OF_THE_PROJECT.md` §1 + `TODO.md`).
+  (7) Measurement & status update (`STATE_OF_THE_PROJECT.md` §1 + `TODO.md`; updated only by `anima-mac` or the lead).
 - **How to write a task card:** Use the mandatory template in
   [`docs/ai/planning/2026-11-05-swarm-prompts.md` §6](docs/ai/planning/2026-11-05-swarm-prompts.md#6-mẫu-thẻ-cho-việc-mới).
   Every card must populate: `CARD <ID> — <title>`, `WAVE` / `[RUST]` / `MAX FILES`,
