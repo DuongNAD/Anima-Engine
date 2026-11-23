@@ -189,7 +189,7 @@ jobs:
       # CI actually runs, so an accidental gate — or a file emptied by a bad merge — is loud.
       - name: No test target ran zero tests
         if: ${{ !cancelled() }}
-        run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt
+        run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop
 
       - name: cargo test (anima-worldgen CPU reader/generate/bake)
         if: ${{ !cancelled() }}
@@ -320,6 +320,14 @@ jobs:
       - name: E2 artifacts match the committed preregistration
         if: ${{ !cancelled() }}
         run: npm run check:e2
+
+      - name: E3 artifacts match the committed preregistration
+        if: ${{ !cancelled() }}
+        run: npm run check:e3
+
+      - name: Frontend invoke argument case matches Rust tauri commands
+        if: ${{ !cancelled() }}
+        run: npm run check:ipc
 
       - name: npm run lint
         if: ${{ !cancelled() }}

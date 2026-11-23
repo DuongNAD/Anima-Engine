@@ -107,6 +107,11 @@ Toàn bảng là nguồn ngoài.
 | MODES: thay đổi, mới lạ, sinh thái, phức tạp | Phả hệ cộng nhật ký thụ động | Nguồn ngoài |
 | Phylometrics: số lá, độ sâu, độ cân bằng của cây | Phả hệ; chỉ đúng nghĩa với dòng vô tính | Nguồn ngoài |
 
+*Rà 2026-11-22:* lượt "bóng trung tính" mà Bedau–Packard cần đã có từ thẻ SEL2-D
+([`drift_control.rs`](../../src-tauri/src/core/drift_control.rs)): phát lại cùng số ca sinh và chết
+mỗi tick nhưng chọn cha mẹ và nạn nhân ngẫu nhiên đều. Phần còn thiếu là thống kê hoạt động theo thành
+phần; xem [ghi chú 2026-11-22](OPEN_ENDEDNESS_LINEAGE_SPECIES_RESEARCH_2026-11-22.md) §3.
+
 Việc kéo theo: xuất sự kiện sinh và chết (định danh, tổ tiên, thời điểm sinh, thời điểm chết) ở
 dạng mà công cụ phả hệ bên ngoài đọc được. Việc này gần với OSS-072 và OSS-073. Báo cáo gọi "tiến
 hoá mở không giới hạn" là ngõ cụt cho bài báo đầu tiên.

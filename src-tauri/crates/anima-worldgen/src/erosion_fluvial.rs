@@ -27,6 +27,13 @@ pub enum FluvialSolverMode {
     SinglePassNoIterationNegativeControl,
 }
 
+/// Hard upper bound on `FluvialParams.max_dt_halvings` (`2^12 = 4,096` sub-steps max), preventing
+/// integer shift overflow (`>= 64`) and multi-hour retry loops.
+pub const MAX_ALLOWED_DT_HALVINGS: u32 = 12;
+
+/// Default total Gauss–Seidel sweep budget across Phase A and Phase B sub-steps in a single step.
+pub const DEFAULT_MAX_TOTAL_SWEEPS: usize = 4_096;
+
 /// Parameters controlling a Fastscape-SD step (`§2.2.2`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct FluvialParams {
@@ -40,8 +47,10 @@ pub struct FluvialParams {
     pub min_precip_m_yr: f64,
     pub max_gs_iters: usize,
     pub gs_tol_m: f64,
-    /// Maximum number of $\Delta t$ halving retries (`substeps = 2^halving`) when Gauss–Seidel fails to converge.
+    /// Maximum number of $\Delta t$ halving retries (`substeps = 2^halving`, capped at [`MAX_ALLOWED_DT_HALVINGS`]).
     pub max_dt_halvings: u32,
+    /// Total sweep budget across Phase A and all Phase B retries before failing loudly.
+    pub max_total_sweeps: usize,
     pub area_weight_mode: AreaWeightMode,
     pub solver_mode: FluvialSolverMode,
 }
@@ -59,6 +68,7 @@ impl Default for FluvialParams {
             max_gs_iters: 32,
             gs_tol_m: 1e-6,
             max_dt_halvings: 10,
+            max_total_sweeps: DEFAULT_MAX_TOTAL_SWEEPS,
             area_weight_mode: AreaWeightMode::Precipitation,
             solver_mode: FluvialSolverMode::CoupledGaussSeidel,
         }
@@ -66,7 +76,7 @@ impl Default for FluvialParams {
 }
 
 /// Failure returned when Fastscape-SD parameters are invalid or Gauss–Seidel fails to converge
-/// within `max_dt_halvings` sub-stepping retries.
+/// within `max_dt_halvings` / `max_total_sweeps`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FluvialError {
     InvalidSlopeExponent {
@@ -85,6 +95,8 @@ pub enum FluvialError {
         dt_yr: f64,
         substeps_attempted: usize,
         gs_iterations: usize,
+        total_sweeps: usize,
+        budget_exhausted: bool,
     },
 }
 
@@ -108,9 +120,11 @@ impl std::fmt::Display for FluvialError {
                 dt_yr,
                 substeps_attempted,
                 gs_iterations,
+                total_sweeps,
+                budget_exhausted,
             } => write!(
                 f,
-                "Fastscape-SD Gauss-Seidel did not converge at cell {cell_index}: last_delta_m={last_delta_m:e}, sub_dt_yr={dt_yr:e} after {substeps_attempted} substeps ({gs_iterations} GS iters)"
+                "Fastscape-SD Gauss-Seidel did not converge at cell {cell_index}: last_delta_m={last_delta_m:e}, sub_dt_yr={dt_yr:e} after {substeps_attempted} substeps ({gs_iterations} GS iters, total_sweeps={total_sweeps}, budget_exhausted={budget_exhausted})"
             ),
         }
     }
@@ -122,6 +136,7 @@ impl std::error::Error for FluvialError {}
 #[derive(Debug, Clone, PartialEq)]
 pub struct FluvialStepStats {
     pub converged: bool,
+    pub used_fallback_order: bool,
     pub substeps: usize,
     pub gs_iterations: usize,
     pub total_gs_iterations: usize,
@@ -184,6 +199,18 @@ fn validate_implicit_params(params: &FluvialParams) -> Result<(), FluvialError> 
             value: 0.0,
         });
     }
+    if params.max_dt_halvings > MAX_ALLOWED_DT_HALVINGS {
+        return Err(FluvialError::InvalidParameter {
+            name: "max_dt_halvings",
+            value: f64::from(params.max_dt_halvings),
+        });
+    }
+    if params.max_total_sweeps == 0 {
+        return Err(FluvialError::InvalidParameter {
+            name: "max_total_sweeps",
+            value: 0.0,
+        });
+    }
     Ok(())
 }
 
@@ -232,9 +259,10 @@ fn compute_weighted_area(dag: &FluvialDagView<'_>, params: &FluvialParams) -> Ve
 
 /// Advances elevations `h` by one coupled Fastscape-SD step on a fixed D8 DAG (`§2.2.2`).
 ///
-/// Uses in-place upstream-to-downstream Gauss–Seidel so the nonlocal $(G/\tilde{A})\Phi_{\text{in}}$
-/// deposition operator is inverted implicitly on every sweep, paired with adaptive $\Delta t$
-/// halving retries up to `params.max_dt_halvings` before returning [`FluvialError::NonConvergence`].
+/// Phase A attempts the fast receiver-first two-sweep Gauss–Seidel at full `dt_yr` (single pass,
+/// preserving humid-regime throughput). Only if Phase A fails to converge within `max_gs_iters`
+/// does Phase B fall back to in-place upstream-to-downstream Gauss–Seidel with adaptive `dt`
+/// halving up to `max_dt_halvings`, bounded by `max_total_sweeps` across both phases.
 pub fn step_fastscape_sd_dag(
     h: &mut [f64],
     dag: &FluvialDagView<'_>,
@@ -307,11 +335,14 @@ pub fn step_fastscape_sd_dag(
                 dt_yr: params.dt_yr,
                 substeps_attempted: 1,
                 gs_iterations: 1,
+                total_sweeps: 1,
+                budget_exhausted: false,
             });
         }
         h.copy_from_slice(&h_next);
         return Ok(FluvialStepStats {
             converged: true,
+            used_fallback_order: false,
             substeps: 1,
             gs_iterations: 1,
             total_gs_iterations: 1,
@@ -347,6 +378,7 @@ pub fn step_fastscape_sd_dag(
         let non_finite_count = h.iter().filter(|v| !v.is_finite()).count();
         return Ok(FluvialStepStats {
             converged: false,
+            used_fallback_order: false,
             substeps: 1,
             gs_iterations: 1,
             total_gs_iterations: 1,
@@ -359,12 +391,136 @@ pub fn step_fastscape_sd_dag(
 
     let n_iters = params.max_gs_iters;
     let mut phi_in = vec![0.0_f64; n];
-    let mut h_t = vec![0.0_f64; n];
-    let mut h_next = vec![0.0_f64; n];
-    let mut h_trial = vec![0.0_f64; n];
+    let mut h_t = h.to_vec();
+    let mut h_next = h.to_vec();
+    let mut sweeps_spent: usize = 0;
+    let mut budget_hit = false;
     let mut last_failure: Option<FluvialError> = None;
 
+    // Phase A: Fast receiver-first two-sweep Gauss-Seidel at full dt (no sub-stepping).
+    let mut phase_a_iters = 0_usize;
+    let mut phase_a_last_delta = 0.0_f64;
+    let mut phase_a_worst_cell = 0_usize;
+    let mut phase_a_converged = false;
+    for iter in 0..n_iters {
+        if sweeps_spent >= params.max_total_sweeps {
+            budget_hit = true;
+            last_failure = Some(FluvialError::NonConvergence {
+                cell_index: phase_a_worst_cell,
+                last_delta_m: phase_a_last_delta,
+                dt_yr: params.dt_yr,
+                substeps_attempted: 1,
+                gs_iterations: phase_a_iters,
+                total_sweeps: sweeps_spent,
+                budget_exhausted: true,
+            });
+            break;
+        }
+        sweeps_spent += 1;
+        phase_a_iters = iter + 1;
+        phi_in.fill(0.0);
+
+        for &node_u in dag.order_downstream_to_upstream.iter().rev() {
+            let k = node_u as usize;
+            let rec = dag.d8_receiver[k];
+            if rec == NO_RECEIVER {
+                continue;
+            }
+            let net_vol = if dag.fixed_outlet[k] {
+                0.0
+            } else {
+                (h_t[k] + params.dt_yr * dag.uplift_m_yr[k] - h_next[k]) * dx2
+            };
+            phi_in[rec as usize] += net_vol + phi_in[k];
+        }
+
+        let mut iter_max_delta = 0.0_f64;
+        let mut iter_worst_cell = 0_usize;
+        for &node_u in dag.order_downstream_to_upstream {
+            let i = node_u as usize;
+            let rec = dag.d8_receiver[i];
+            if dag.fixed_outlet[i] || rec == NO_RECEIVER {
+                continue;
+            }
+            let r_idx = rec as usize;
+            let al = alpha_base[i];
+            let target_free = h_t[i] + params.dt_yr * dag.uplift_m_yr[i];
+            let dep_up = (params.g_deposition / area_tilde[i]) * phi_in[i];
+
+            let updated = match params.solver_mode {
+                FluvialSolverMode::CoupledGaussSeidel => {
+                    (target_free * (1.0 + beta[i]) + al * h_next[r_idx] + dep_up)
+                        / (1.0 + al + beta[i])
+                }
+                FluvialSolverMode::NoLocalTermNegativeControl => {
+                    (target_free + al * h_next[r_idx] + dep_up) / (1.0 + al)
+                }
+                FluvialSolverMode::SinglePassNoIterationNegativeControl => unreachable!(),
+            };
+
+            let diff = if updated.is_finite() && h_next[i].is_finite() {
+                libm::fabs(updated - h_next[i])
+            } else {
+                f64::NAN
+            };
+            if !diff.is_finite() {
+                iter_max_delta = diff;
+                iter_worst_cell = i;
+                h_next[i] = updated;
+                break;
+            }
+            if diff > iter_max_delta {
+                iter_max_delta = diff;
+                iter_worst_cell = i;
+            }
+            h_next[i] = updated;
+        }
+
+        phase_a_last_delta = iter_max_delta;
+        phase_a_worst_cell = iter_worst_cell;
+
+        if !iter_max_delta.is_finite() || (iter >= 2 && iter_max_delta > 1.0e6) {
+            break;
+        }
+        if iter > 0 && iter_max_delta < params.gs_tol_m {
+            phase_a_converged = h_next.iter().all(|v| v.is_finite());
+            break;
+        }
+    }
+
+    if phase_a_converged {
+        h.copy_from_slice(&h_next);
+        return Ok(FluvialStepStats {
+            converged: true,
+            used_fallback_order: false,
+            substeps: 1,
+            gs_iterations: phase_a_iters,
+            total_gs_iterations: sweeps_spent,
+            max_gs_delta_m: phase_a_last_delta,
+            max_beta,
+            max_alpha: max_alpha_base,
+            non_finite_count: 0,
+        });
+    }
+
+    if !budget_hit {
+        last_failure = Some(FluvialError::NonConvergence {
+            cell_index: phase_a_worst_cell,
+            last_delta_m: phase_a_last_delta,
+            dt_yr: params.dt_yr,
+            substeps_attempted: 1,
+            gs_iterations: phase_a_iters,
+            total_sweeps: sweeps_spent,
+            budget_exhausted: false,
+        });
+    }
+
+    // Phase B: Fallback to in-place upstream-to-downstream Gauss-Seidel with adaptive dt halving.
+    let mut h_trial = vec![0.0_f64; n];
     for halving in 0..=params.max_dt_halvings {
+        if budget_hit || sweeps_spent >= params.max_total_sweeps {
+            break;
+        }
         let substeps = 1_usize << halving;
         let scale = 1.0 / (substeps as f64);
         let dt_sub = params.dt_yr * scale;
@@ -372,7 +528,6 @@ pub fn step_fastscape_sd_dag(
 
         let mut halving_ok = true;
         let mut max_gs_iters_seen = 0_usize;
-        let mut total_gs_iterations = 0_usize;
         let mut worst_final_delta = 0.0_f64;
 
         for _sub in 0..substeps {
@@ -384,11 +539,25 @@ pub fn step_fastscape_sd_dag(
             let mut last_worst_cell = 0_usize;
 
             for iter in 0..n_iters {
+                if sweeps_spent >= params.max_total_sweeps {
+                    budget_hit = true;
+                    last_failure = Some(FluvialError::NonConvergence {
+                        cell_index: last_worst_cell,
+                        last_delta_m: last_delta,
+                        dt_yr: dt_sub,
+                        substeps_attempted: substeps,
+                        gs_iterations: iters_used,
+                        total_sweeps: sweeps_spent,
+                        budget_exhausted: true,
+                    });
+                    break;
+                }
+                sweeps_spent += 1;
                 iters_used = iter + 1;
                 phi_in.fill(0.0);
 
-                // In-place upstream-to-downstream Gauss-Seidel: donors have updated `h_next` and
-                // pushed `phi_in` before node `i` executes, inverting (D + U) cleanly every pass.
+                // In-place upstream-to-downstream Gauss-Seidel: donors update `h_next` and push
+                // `phi_in` before node `i` executes, inverting (D + U) cleanly every pass.
                 let mut iter_max_delta = 0.0_f64;
                 let mut iter_worst_cell = 0_usize;
                 for &node_u in dag.order_downstream_to_upstream.iter().rev() {
@@ -450,9 +619,12 @@ pub fn step_fastscape_sd_dag(
                 }
             }
 
-            total_gs_iterations += iters_used;
             max_gs_iters_seen = max_gs_iters_seen.max(iters_used);
 
+            if budget_hit {
+                halving_ok = false;
+                break;
+            }
             if !sub_converged {
                 halving_ok = false;
                 last_failure = Some(FluvialError::NonConvergence {
@@ -461,6 +633,8 @@ pub fn step_fastscape_sd_dag(
                     dt_yr: dt_sub,
                     substeps_attempted: substeps,
                     gs_iterations: iters_used,
+                    total_sweeps: sweeps_spent,
+                    budget_exhausted: false,
                 });
                 break;
             }
@@ -474,6 +648,8 @@ pub fn step_fastscape_sd_dag(
                     dt_yr: dt_sub,
                     substeps_attempted: substeps,
                     gs_iterations: iters_used,
+                    total_sweeps: sweeps_spent,
+                    budget_exhausted: false,
                 });
                 break;
             }
@@ -486,9 +662,10 @@ pub fn step_fastscape_sd_dag(
             h.copy_from_slice(&h_trial);
             return Ok(FluvialStepStats {
                 converged: true,
+                used_fallback_order: true,
                 substeps,
                 gs_iterations: max_gs_iters_seen,
-                total_gs_iterations,
+                total_gs_iterations: sweeps_spent,
                 max_gs_delta_m: worst_final_delta,
                 max_beta,
                 max_alpha: max_alpha_base * scale,
@@ -503,6 +680,8 @@ pub fn step_fastscape_sd_dag(
         dt_yr: params.dt_yr,
         substeps_attempted: 1_usize << params.max_dt_halvings,
         gs_iterations: params.max_gs_iters,
+        total_sweeps: sweeps_spent,
+        budget_exhausted: budget_hit,
     }))
 }
 

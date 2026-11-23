@@ -1956,13 +1956,13 @@ pkg:cargo/foldhash@0.2.0
     repository : https://github.com/orlp/foldhash
     text       : T0032  cargo-registry:foldhash-0.2.0/LICENSE
 
-pkg:cargo/form_urlencoded@1.2.2
-    name       : form_urlencoded 1.2.2
+pkg:cargo/form_urlencoded@1.2.3
+    name       : form_urlencoded 1.2.3
     ecosystem  : cargo (cargo-registry)
     SPDX       : MIT OR Apache-2.0
     repository : https://github.com/servo/rust-url
-    text       : T0186  cargo-registry:form_urlencoded-1.2.2/LICENSE-APACHE
-    text       : T0037  cargo-registry:form_urlencoded-1.2.2/LICENSE-MIT
+    text       : T0186  cargo-registry:form_urlencoded-1.2.3/LICENSE-APACHE
+    text       : T0037  cargo-registry:form_urlencoded-1.2.3/LICENSE-MIT
 
 pkg:cargo/futures-channel@0.3.33
     name       : futures-channel 0.3.33
@@ -4072,13 +4072,13 @@ pkg:cargo/ureq@2.12.1
     text       : T0229  cargo-registry:ureq-2.12.1/LICENSE-APACHE
     text       : T0138  cargo-registry:ureq-2.12.1/LICENSE-MIT
 
-pkg:cargo/url@2.5.8
-    name       : url 2.5.8
+pkg:cargo/url@2.5.9
+    name       : url 2.5.9
     ecosystem  : cargo (cargo-registry)
     SPDX       : MIT OR Apache-2.0
     repository : https://github.com/servo/rust-url
-    text       : T0186  cargo-registry:url-2.5.8/LICENSE-APACHE
-    text       : T0203  cargo-registry:url-2.5.8/LICENSE-MIT
+    text       : T0186  cargo-registry:url-2.5.9/LICENSE-APACHE
+    text       : T0203  cargo-registry:url-2.5.9/LICENSE-MIT
 
 pkg:cargo/urlpattern@0.3.0
     name       : urlpattern 0.3.0
@@ -7698,7 +7698,7 @@ SOFTWARE.
 ------------------------------------------------------------------------------------------------
 T0037   sha256:20c7855c364d57ea4c97889a5e8d98470a9952dade37bd9248b9a54431670e5e
 applies to 1 component file(s):
-  pkg:cargo/form_urlencoded@1.2.2  (LICENSE-MIT)
+  pkg:cargo/form_urlencoded@1.2.3  (LICENSE-MIT)
 ------------------------------------------------------------------------------------------------
 
 Copyright (c) 2013-2016 The rust-url developers
@@ -19176,7 +19176,7 @@ applies to 107 component file(s):
   pkg:cargo/fixedbitset@0.4.2  (LICENSE-APACHE)
   pkg:cargo/flate2@1.1.9  (LICENSE-APACHE)
   pkg:cargo/fnv@1.0.7  (LICENSE-APACHE)
-  pkg:cargo/form_urlencoded@1.2.2  (LICENSE-APACHE)
+  pkg:cargo/form_urlencoded@1.2.3  (LICENSE-APACHE)
   pkg:cargo/futures-lite@2.6.1  (LICENSE-APACHE)
   pkg:cargo/gif@0.13.3  (LICENSE-APACHE)
   pkg:cargo/glob@0.3.4  (LICENSE-APACHE)
@@ -19248,7 +19248,7 @@ applies to 107 component file(s):
   pkg:cargo/unicode-segmentation@1.13.3  (LICENSE-APACHE)
   pkg:cargo/unicode-width@0.1.14  (LICENSE-APACHE)
   pkg:cargo/unicode-xid@0.2.6  (LICENSE-APACHE)
-  pkg:cargo/url@2.5.8  (LICENSE-APACHE)
+  pkg:cargo/url@2.5.9  (LICENSE-APACHE)
   pkg:cargo/utf8-chars@3.0.7  (elected: Apache-2.0)
   pkg:cargo/uuid@1.29.3  (LICENSE-APACHE)
   pkg:cargo/web_atoms@0.2.5  (LICENSE-APACHE)
@@ -21364,7 +21364,7 @@ T0203   sha256:b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5
 applies to 3 component file(s):
   pkg:cargo/idna@1.1.0  (LICENSE-MIT)
   pkg:cargo/percent-encoding@2.3.2  (LICENSE-MIT)
-  pkg:cargo/url@2.5.8  (LICENSE-MIT)
+  pkg:cargo/url@2.5.9  (LICENSE-MIT)
 ------------------------------------------------------------------------------------------------
 
 Copyright (c) 2013-2025 The rust-url developers

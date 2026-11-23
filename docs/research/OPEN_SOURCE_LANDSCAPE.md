@@ -409,6 +409,14 @@ kiểu gate "nhắm vào chế độ hỏng thật" mà bộ gate của dự án
 **Thứ tự phụ thuộc:** Newick → `simplify`/MRCA → giao thức đo kiểu Avida. Làm ngược thứ tự này sẽ
 mắc kẹt, vì không có MRCA thì không có gì để xuất ra cây có nghĩa.
 
+*Bổ sung 2026-11-22* (từ [đánh giá đài quan sát tiến hoá](EVOLUTION_OBSERVATORY_RESEARCH_2026-11-22.md) §2;
+chỉ tham khảo, chưa quyết):
+
+| Dự án | Vai trò phù hợp | Hạng rủi ro license | Quyết định | Biên tích hợp |
+|---|---|---|---|---|
+| [ALife Data Standards](https://alife-data-standards.github.io/alife-data-standards/phylogeny.html) (phylogeny) | Bảng phả hệ `id`, `ancestor_list`, `origin_time` mà công cụ ALife đọc được | **Định dạng — không phải code** | Reference — ứng viên định dạng xuất cạnh Newick | Nếu làm: serializer thuần Rust trên `LineageRelation`, như Newick |
+| [ggmuller](https://github.com/robjohnnoble/ggmuller) | Vẽ Muller plot từ phả hệ + chuỗi tần số | Chưa xác minh | Reference — chạy ngoài tiến trình | Chỉ dùng trong script phân tích ngoại tuyến; không nhập code vào app |
+
 ## Những thứ không nên kết hợp
 
 - Không chạy đồng thời Bevy ECS và một ABM engine khác như hai nguồn sự thật.
