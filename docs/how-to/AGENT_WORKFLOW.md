@@ -344,6 +344,22 @@ QD-VIAB1C = VIAB-1 continues as registered, without a re-run after the F-055/F-0
             VIAB-1 family enables live.grass_steering and live.land_mask together (the only
             combination F-055 changes). If one does, that family stops and the lead decides (owner in
             chat, 2026-11-23: "Duyệt theo đề xuất")
+QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation after an independent
+            review of four research reports and checks against VIAB-1 (#215):
+            - D1: keep live.predator_fraction = 0.3 (the calibrated cell), disclosed as effectively
+              herbivore-only;
+            - D2: directional H1 T > S with the 4-label R10 table;
+            - D3: complete-pair analysis is primary for T - S; contrasts involving U add Lee bounds and
+              survival (RMST) as a separate endpoint;
+            - D4: the per-seed log variance ratio ln[(var_T+e)/(var_S+e)], e = 5e-4, SESOI +/-ln(1.5),
+              N = 64;
+            - D5: a declared 2-segment founder, the genesis genotype minus its tail leaf, behind the
+              opt-in key live.founder_genotype.
+            E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
+            the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+MAP-D1    = the World v2 Card 3 gates stay as accepted; the terrain physics is reworked until it meets
+            them by process (WV2-2-PHYS: plan first, 1-D column test first). Amending the spec ranges
+            was declined. (Owner in chat, 2026-11-23: "làm lại vật lý".)
 QD-C2     = utf8-chars 3.0.7 (no licence file; the one row in licensing/UNRESOLVED.md): ask upstream
             and defer, and R1c merges as is. Upstream: A1-Triard/utf8-chars issue #4 and pull request #5
             (licence files). Fallback: if no utf8-chars release with licence texts exists when release
@@ -590,6 +606,17 @@ R5-AUTH   =
   AUTHORIZATION (owner via the lead, 2026-11-23): for cards E3B-P and E3B-PWR only (documents only),
   docs/ai/planning/2026-11-23-e3b-preregistration-draft.md. For card NR-SPIKE-PROTOCOL only (documents
   only), docs/ai/planning/2026-11-23-nr-spike-protocol.md. No code, manifest or fixture.
+  AUTHORIZATION (owner via the lead, 2026-11-23): for card FOUNDER-2SEG only, you may write to
+  src-tauri/src/core/live_experiment.rs (the live.founder_genotype key constant, LIVE_KEYS, the config
+  field, the validation and the parse arm, and the founder genotype in genesis only), the LIVE_KEYS.len()
+  assertions in src-tauri/tests/ (e2_seam, eco_card_b, founder_layout, grass_steering, lake_layout,
+  land_mask, strict_prey_cap, live_lineage and any other test pinning that count),
+  src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json (one default-absent key),
+  src-tauri/tests/prereg_e3_manifest_tests.rs (only if the key list needs it), one new test file
+  src-tauri/tests/founder_genotype_tests.rs, one amendment line in
+  docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md, one card note under
+  docs/ai/planning/, and dataflow.json (only if verify_dataflow.py needs it). This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
