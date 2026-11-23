@@ -984,7 +984,7 @@ export const GATES = [
     source: 'ci.yml (frontend chain)',
     ciCommand: getFrontendChainCommand(
       REPO_ROOT,
-      /(?:check:ipc|npm run lint|eslint_ratchet|typecheck:tests|npm run test\b|npm run test:frontend\b|npm run build|check_ipc_reference)/,
+      /(?:check:ipc|npm run lint|eslint_ratchet|typecheck:tests|npm run test(?:\s|$)|npm run test:frontend(?:\s|$)|npm run build|check_ipc_reference)/,
     ),
     faultSummary:
       'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts`',
@@ -993,11 +993,11 @@ export const GATES = [
     run(wt) {
       const cmd = getFrontendChainCommand(
         wt,
-        /(?:check:ipc|npm run lint|eslint_ratchet|typecheck:tests|npm run test\b|npm run test:frontend\b|npm run build|check_ipc_reference)/,
+        /(?:check:ipc|npm run lint|eslint_ratchet|typecheck:tests|npm run test(?:\s|$)|npm run test:frontend(?:\s|$)|npm run build|check_ipc_reference)/,
       );
       return runShell(cmd, wt, { ...process.env, CI: 'true' });
     },
-    matchers: [/FAIL src\/components\/Landscape\/utils\/worldCache\.ts:\d+ invoke\('save_simulation_state', \{ file_path/],
+    matchers: [/FAIL\s+src\/components\/Landscape\/utils\/worldCache\.ts:\d+ invoke\('save_simulation_state', \{ file_path/],
   },
   {
     id: 'ci_licenses_complete',
@@ -1027,13 +1027,13 @@ export const GATES = [
   {
     id: 'ci_e3',
     source: 'ci.yml (frontend E2/E3/Vitest chain)',
-    ciCommand: getFrontendChainCommand(REPO_ROOT, /(?:check:e2|check:e3|npm run test\b|npm run test:frontend\b)/),
+    ciCommand: getFrontendChainCommand(REPO_ROOT, /(?:check:e2|check:e3|npm run test(?:\s|$)|npm run test:frontend(?:\s|$))/),
     faultSummary:
       'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json`',
     patch: 'check_e3.patch',
     needsNodeModules: true,
     run(wt) {
-      const cmd = getFrontendChainCommand(wt, /(?:check:e2|check:e3|npm run test\b|npm run test:frontend\b)/);
+      const cmd = getFrontendChainCommand(wt, /(?:check:e2|check:e3|npm run test(?:\s|$)|npm run test:frontend(?:\s|$))/);
       return runShell(cmd, wt, { ...process.env, CI: 'true' });
     },
     matchers: [/SHA-256 mismatch for effects\.json/],
@@ -1404,7 +1404,10 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/ENERGY combat_system <-> metabolic_decay_system/],
+    matchers: [
+      /ENERGY\s+combat_system <-> metabolic_decay_system/,
+      /"combat_system <-> metabolic_decay_system"/,
+    ],
   },
   {
     id: 'zero_alloc',
@@ -1563,7 +1566,7 @@ export const GATES = [
         wt,
       );
     },
-    matchers: [/Pine declared 0\.9900 measured/],
+    matchers: [/^- Pine: declared 0\.99 but the geometry measures 0\.5500/m],
   },
   {
     id: 'verify_dataflow',
@@ -1665,7 +1668,7 @@ export const GATES = [
         wt,
       );
     },
-    matchers: [/FAIL analysis: effects\.json hashes to/],
+    matchers: [/FAIL\s+analysis: effects\.json hashes to/],
   },
   {
     id: 'check_e3',
@@ -1933,7 +1936,7 @@ export const GATES = [
         wt,
       );
     },
-    matchers: [/FAIL src\/components\/Landscape\/utils\/worldCache\.ts:\d+ invoke\('save_simulation_state', \{ file_path/],
+    matchers: [/FAIL\s+src\/components\/Landscape\/utils\/worldCache\.ts:\d+ invoke\('save_simulation_state', \{ file_path/],
   },
   {
     id: 'check_map_vision_manifest',
