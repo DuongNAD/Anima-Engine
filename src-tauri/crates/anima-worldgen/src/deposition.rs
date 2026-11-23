@@ -327,7 +327,10 @@ pub fn apply_deposition(
         if elev <= cfg.sea_level_m {
             water_kind[i] = WaterKind::Ocean as u8;
             water_h_m[i] = cfg.sea_level_m;
-        } else if input.is_channel[i] && water_kind[i] == WaterKind::None as u8 {
+        } else if input.is_channel[i]
+            && input.river_w_m[i] >= 0.5
+            && water_kind[i] == WaterKind::None as u8
+        {
             water_kind[i] = WaterKind::River as u8;
             water_h_m[i] = water_h_m[i].max(elev + input.river_d_m[i]);
         }
@@ -1713,5 +1716,53 @@ mod tests {
             .expect("step4 meander");
         assert!(m_out.meander_scroll.iter().all(|v| v.is_finite()));
         assert!(m_out.meander_scroll.iter().any(|&v| v > 0.1));
+    }
+
+    #[test]
+    fn sub_half_meter_channel_rills_stay_dry_water_kind_none() {
+        let n = 16;
+        let mut bed = vec![50.0_f32; n * n];
+        let mut sed = vec![0.0_f32; n * n];
+        let mut wh = bed.clone();
+        let mut wk = vec![WaterKind::None as u8; n * n];
+        let mut q = vec![0.0_f32; n * n];
+        let mut rw = vec![0.0_f32; n * n];
+        let rd = vec![0.1_f32; n * n];
+        let fx = vec![1.0_f32; n * n];
+        let fz = vec![0.0_f32; n * n];
+        let mut is_ch = vec![false; n * n];
+
+        let rill_idx = 5 * n + 5;
+        let river_idx = 5 * n + 8;
+        is_ch[rill_idx] = true;
+        rw[rill_idx] = 0.49;
+        q[rill_idx] = 0.02;
+        is_ch[river_idx] = true;
+        rw[river_idx] = 0.50;
+        q[river_idx] = 0.30;
+
+        let input = DepositionInput {
+            width: n,
+            height: n,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            river_d_m: &rd,
+            flow_dir_x: &fx,
+            flow_dir_z: &fz,
+            is_channel: &is_ch,
+            d8_receiver: None,
+        };
+        apply_deposition(
+            &mut bed,
+            &mut sed,
+            &mut wh,
+            &mut wk,
+            &input,
+            &DepositionConfig::default(),
+        )
+        .expect("deposition rill test");
+
+        assert_eq!(wk[rill_idx], WaterKind::None as u8);
+        assert_eq!(wk[river_idx], WaterKind::River as u8);
     }
 }

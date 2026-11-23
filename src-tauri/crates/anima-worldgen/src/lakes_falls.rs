@@ -1112,6 +1112,7 @@ pub fn generate_lakes_and_waterfalls(
             land_cells += 1;
         }
         if input.is_channel[i]
+            && input.river_w_m[i] >= 0.5
             && elev_m[i] > cfg.sea_level_m
             && water_kind[i] == WaterKind::None as u8
         {
@@ -3410,5 +3411,52 @@ mod tests {
             .expect("P=1.6 > PET=1.0 bowl must overflow as FreshwaterLake");
         assert!(lake.q_out_m3_s > 0.0);
         assert!((lake.water_level_m - lake.spill_elev_m).abs() < 1e-4);
+    }
+
+    #[test]
+    fn lakes_falls_keeps_sub_half_meter_rills_as_water_kind_none() {
+        let n = 16;
+        let mut elev: Vec<f32> = (0..n * n).map(|i| 10.0 + ((i % n) as f32) * 2.0).collect();
+        let mut sed = vec![0.0_f32; n * n];
+        let mut wh = elev.clone();
+        let mut wk = vec![WaterKind::None as u8; n * n];
+        let precip = vec![1.0_f32; n * n];
+        let pet = vec![0.5_f32; n * n];
+        let mut q = vec![0.0_f32; n * n];
+        let mut rw = vec![0.0_f32; n * n];
+        let mut is_ch = vec![false; n * n];
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
+
+        let rill_idx = 6 * n + 6;
+        let river_idx = 8 * n + 6;
+        is_ch[rill_idx] = true;
+        rw[rill_idx] = 0.49;
+        q[rill_idx] = 0.05;
+        is_ch[river_idx] = true;
+        rw[river_idx] = 0.50;
+        q[river_idx] = 0.40;
+
+        let input = LakesFallsInput {
+            width: n,
+            height: n,
+            precip_m_yr: &precip,
+            pet_m_yr: &pet,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            is_channel: &is_ch,
+            lithology_id: &lith,
+        };
+        generate_lakes_and_waterfalls(
+            &mut elev,
+            &mut sed,
+            &mut wh,
+            &mut wk,
+            &input,
+            &LakesFallsConfig::default(),
+        )
+        .expect("lakes_falls rill filter");
+
+        assert_eq!(wk[rill_idx], WaterKind::None as u8);
+        assert_eq!(wk[river_idx], WaterKind::River as u8);
     }
 }
