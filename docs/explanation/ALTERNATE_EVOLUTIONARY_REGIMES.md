@@ -1,5 +1,5 @@
 ---
-title: Alternate Evolutionary Regimes — thế giới khác luật, tiến hóa khác lịch sử
+title: Alternate Evolutionary Regimes — Different World Laws, Different Evolutionary Histories
 status: proposed
 owner: simulation-architecture
 last_reviewed: 2026-11-17
@@ -10,67 +10,50 @@ decision: ../decisions/ADR-0002-world-laws-and-exotic-energy.md
 
 # Alternate Evolutionary Regimes
 
-> **Trạng thái triển khai, rà toàn văn 2026-11-17.** Tài liệu này giải thích mô hình đích. Phần đã có
-> trong mã là lát headless AE1–AE3: manifest và runner, trường năng lượng ngoại lai có ngân sách, và
-> quần thể tham chiếu có chọn lọc; tất cả opt-in. **Thế giới Bevy sống chưa có trường MU**: adapter thí
-> nghiệm sống từ chối một manifest khai `laws.exotic_energy`. **World Lab (giao diện) chưa tồn tại**:
-> phép so sánh control–treatment hiện chỉ chạy headless (`genesis_fork`, `checkpoint_fork`,
-> `run_ensemble`, binary `anima-lab`) trên engine tham chiếu, chưa trên thế giới người dùng nhìn thấy.
-> [ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md) được chấp nhận ngày 2026-11-17, trong
-> phạm vi lát headless. Hợp đồng và các
-> gate: [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md).
+> *Vietnamese version / Bản tiếng Việt: [ALTERNATE_EVOLUTIONARY_REGIMES.vi.md](ALTERNATE_EVOLUTIONARY_REGIMES.vi.md).*
+
+> **Implementation status, full-text audit 2026-11-17.** This document explains the target design model. What exists in code today is the headless slice AE1–AE3: manifests and runner, budgeted exotic-energy field, and selective reference population — all opt-in. **The live Bevy world has no MU field yet**: `LiveExperimentAdapter` rejects manifests declaring `laws.exotic_energy`. **World Lab (UI) does not exist yet**: control–treatment comparisons currently run headlessly only (`genesis_fork`, `checkpoint_fork`, `run_ensemble`, binary `anima-lab`) on the reference engine, not inside the user-visible world. [ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md) was accepted on 2026-11-17 within the scope of the headless slice. Contract and gates: [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md).
 >
-> Cách đọc: mục nào mô tả thứ **chưa có trong mã** mang một dòng *Trạng thái mã* nói rõ điều đó. Mục
-> không có dòng ấy đã được đối chiếu với mã ngày 2026-11-17.
+> How to read this page: any section describing functionality **not yet in code** carries an *Implementation status* note stating that fact explicitly. Sections without one were verified against the codebase on 2026-11-17.
 
-## Ý tưởng cốt lõi
+## Core Idea
 
-Mục tiêu không phải “thêm mana để sinh vật mạnh hơn”. Mục tiêu là cho phép người dùng đặt một luật
-hoặc nguồn lực mới vào thế giới từ thời điểm sớm nhất, rồi quan sát xem các dòng sống tự tìm con
-đường khác qua nhiều thế hệ.
+The goal is not to "add mana to make creatures stronger." The goal is to let a user introduce a novel law or resource early in a world's history and watch lineages independently discover divergent evolutionary strategies across generations.
 
 ```mermaid
 flowchart LR
-    W["Cùng World Artifact"] --> C["Control<br/>không có exotic energy"]
-    W --> T["Treatment<br/>có Mana field"]
-    C --> EC["Hệ sinh thái baseline"]
-    T --> F["Field + source/sink MU"]
-    F --> P["Pathway có chi phí"]
-    P --> R["Performance khác nhau"]
+    W["Same World Artifact"] --> C["Control<br/>no exotic energy"]
+    W --> T["Treatment<br/>with Mana field"]
+    C --> EC["Baseline ecosystem"]
+    T --> F["Field + MU source/sink"]
+    F --> P["Costly pathway"]
+    P --> R["Differential performance"]
     R --> S["Survival + reproduction"]
-    S --> L["Lineage/niche phân nhánh"]
-    L --> SP["Ecotype hoặc candidate species"]
+    S --> L["Lineage/niche divergence"]
+    L --> SP["Ecotype or candidate species"]
     EC --> X["World Lab compare"]
     SP --> X
 ```
 
-Hai nhánh có thể dùng cùng địa hình, khí hậu ban đầu, sinh khối và seed. Điểm khác duy nhất là
-`WorldLawSet`. Nhờ vậy khác biệt về sau có thể được quy về điều kiện được thay, thay vì hai world
-không liên quan.
+Both branches can start from the exact same terrain, initial climate, biomass, and seed. The sole difference is `WorldLawSet`. Any subsequent divergence can therefore be attributed cleanly to the altered law rather than unrelated worlds.
 
-## Vì sao “mana” phải là một substrate tổng quát
+## Why "Mana" Must Be a General Substrate
 
-Tên game có thể là **Mana**, nhưng mã lõi dùng module tổng quát `core::exotic_energy`: luật
-`ExoticEnergyLaw` mang một `EnergySourceId` làm khoá và một `display_name` chỉ để hiển thị, còn trường là
-`ExoticEnergyField`. Không có kiểu nào tên `ExoticEnergy` hay `ExoticEnergySource`. Cùng abstraction có
-thể mô tả:
+Game UI may display **Mana**, while core simulation code uses the generic module `core::exotic_energy`: `ExoticEnergyLaw` carries an `EnergySourceId` key and a `display_name` strictly for display, backed by `ExoticEnergyField`. There is no Rust type named `ExoticEnergy` or `ExoticEnergySource`. The same abstraction can model:
 
-- năng lượng địa nhiệt;
-- chemosynthesis quanh khe phun;
-- bức xạ mà một lineage học cách khai thác;
-- tinh thể/hạt hư cấu phát năng lượng;
-- một field siêu nhiên trong world fantasy.
+- geothermal energy;
+- chemosynthesis near hydrothermal vents;
+- radiation that a lineage learns to harvest;
+- fictional energy-emitting crystals or particles;
+- a supernatural field in a fantasy setting.
 
-Mỗi nguồn có topology, flux, decay, toxicity và cách khai thác khác. Không cần tạo một engine phép
-thuật riêng.
+Each source can vary in topology, flux, decay, toxicity, and harvesting cost without building a separate magic engine.
 
-## Bốn lớp không được trộn
+## Four Layers That Must Stay Separate
 
-### 1. World law — điều gì có thể tồn tại
+### 1. World Law — What Can Exist
 
-Ví dụ minh hoạ (không phải schema: tên trường thật của `ExoticEnergyLaw` là `source_model`,
-`topology`, `diffusion_rate`, `decay_rate`, và luật còn bắt buộc `unit`, `initial_amount`, `max_density`,
-`boundary`):
+Illustrative example (not the literal schema: the actual fields of `ExoticEnergyLaw` are `source_model`, `topology`, `diffusion_rate`, `decay_rate`, plus required `unit`, `initial_amount`, `max_density`, `boundary`):
 
 ```text
 exotic_energy:
@@ -83,38 +66,32 @@ exotic_energy:
   decay: 0.005
 ```
 
-Đây là luật của run, không phải trait của organism.
+This is a run-level law, not an organism trait.
 
-### 2. Environment field — ở đâu và lúc nào nguồn có sẵn
+### 2. Environment Field — Where and When the Source Is Available
 
-`ExoticEnergyField` lưu density/flux theo cell/chunk. Nó có thể đồng đều, patchy, theo mùa, gắn với
-địa chất hoặc xuất hiện theo pulse. Field phải có budget và được render/inspect từ chính dữ liệu sim.
+`ExoticEnergyField` stores density and flux by cell/chunk. It may be uniform, patchy, seasonal, tied to geology, or pulsed. The field must preserve a closed/auditable budget and render/inspect directly from simulated data.
 
-*Trạng thái mã:* trường lưu mật độ MU theo ô cùng các bộ đếm của sổ MU; topology là `Uniform` hoặc
-`Patchy`. Chưa có chunk, chưa gắn với mùa hay địa chất, và chưa có gì render nó.
+*Implementation status:* the field stores per-cell MU density alongside MU ledger counters; topology supports `Uniform` or `Patchy`. There are no chunks, seasonal/geological coupling, or visual renderers yet.
 
-### 3. Organism pathway — sinh vật khai thác bằng cách nào
+### 3. Organism Pathway — How Creatures Exploit It
 
-Genotype có thể tiến hóa:
+Genotypes can evolve:
 
-- cảm nhận nguồn;
-- cơ quan hấp thụ;
-- dự trữ;
-- chuyển hóa;
-- chịu độc;
-- hành vi tìm hotspot.
+- source sensing;
+- uptake organs;
+- internal storage;
+- metabolic utilization;
+- toxicity tolerance;
+- hotspot-seeking behavior.
 
-Mỗi khả năng có maintenance/morphology/opportunity cost. Một sinh vật đầu tư vào mana trong thế giới
-không có mana có thể thua organism không mang chi phí đó.
+Every capability carries maintenance, morphological, or opportunity costs. An organism investing in mana inside a world with no mana can lose out to competitors without that overhead.
 
-*Trạng thái mã:* `EnergyPathwayGenotype` (`core/evolution_pathway.rs`) có sensing, uptake, storage,
-utilization, tolerance, maintenance và allocation, và chi phí được trả dù có MU hay không. Nó thuộc quần
-thể tham chiếu AE3, là hai cohort gộp chứ không phải cá thể trên bản đồ, nên "hành vi tìm hotspot" chưa
-có.
+*Implementation status:* `EnergyPathwayGenotype` (`core/evolution_pathway.rs`) implements sensing, uptake, storage, utilization, tolerance, maintenance, and allocation, with maintenance paid whether or not MU is present. It belongs to the AE3 reference population (two aggregate cohorts rather than spatial map individuals), so "hotspot-seeking behavior" does not exist yet.
 
-### 4. Evolutionary outcome — cái gì còn lại sau nhiều thế hệ
+### 4. Evolutionary Outcome — What Persists Over Generations
 
-Field không “ra lệnh” sinh ra loài. Nó chỉ đổi landscape of selection. Loài/morph xuất hiện từ:
+The field does not "command" speciation. It changes the selection landscape. Morphs/species emerge via:
 
 ```text
 variation → differential performance → survival/reproduction
@@ -122,123 +99,111 @@ variation → differential performance → survival/reproduction
 → reduced gene flow / species-candidate threshold
 ```
 
-## Mana tương tác với closed EU như thế nào
+## How Mana Interacts With Closed EU
 
-Current MVP định nghĩa EU là biomass-equivalent và khép kín:
+The current MVP defines EU as biomass-equivalent and closed:
 
 ```text
 plants + animals + detritus + dormant = constant
 ```
 
-Ngăn `dormant` giữ EU của sinh vật đang ngủ đông và bằng 0 khi không ai ngủ đông
-([`ENERGY_LEDGER_CONTRACT.md`](../reference/ENERGY_LEDGER_CONTRACT.md) §1.1).
+The `dormant` bucket holds the EU of hibernating agents and equals `0` whenever none are dormant ([`ENERGY_LEDGER_CONTRACT.md`](../reference/ENERGY_LEDGER_CONTRACT.md) §1.1).
 
-Vì thế Mana dùng đơn vị MU riêng. MVP không cho `1 MU → tạo biomass từ hư không`. Thay vào đó MU có
-thể:
+Mana therefore uses its own unit, MU. The MVP forbids converting `1 MU → biomass from thin air`. Instead, MU may:
 
-- trả một phần work cost cho vận động/cảm biến/điều nhiệt;
-- tăng rate organism chuyển detritus/nutrient thành biomass, nhưng material vẫn bị debit từ EU pool;
-- kích hoạt defense, repair hoặc behavior có trade-off;
-- trở thành resource cạnh tranh và tạo niche.
+- offset part of work costs for locomotion, sensing, or thermoregulation;
+- accelerate organism conversion of detritus/nutrients into biomass while still debiting matter from the closed EU pools;
+- power trade-off-bearing defense, repair, or behavior;
+- serve as a contested resource that structures ecological niches.
 
-*Trạng thái mã:* bốn cách ghép trên là lựa chọn thiết kế, chưa cách nào được hiện thực. Trong lát đã
-có, trường MU không ghi vào các pool EU; MU đã tiêu chỉ chuyển thành performance sinh sản của quần thể
-tham chiếu AE3.
+*Implementation status:* the four couplings above are design options; none are implemented yet. In the shipped slice, the MU field never writes into EU pools; spent MU translates purely into reproductive performance in the AE3 reference population.
 
-Nếu sau này muốn mana materialize vật chất thật, phải tách mass/physical-energy ledger bằng ADR mới.
+If a future milestone allows mana to materialize physical mass, mass and physical-energy ledgers must first be separated under a new ADR.
 
-## Các chế độ nguồn nên hỗ trợ
+## Source Modes to Support
 
-| Mode | Ý nghĩa | Câu hỏi tiến hóa |
+| Mode | Meaning | Evolutionary Question |
 |---|---|---|
-| `Disabled` | Không có nguồn; baseline | Pathway có bị loại vì cost không? |
-| `Finite` | Trữ lượng ban đầu, không tái tạo | Boom–bust, tranh chấp, extinction debt |
-| `Renewable` | Có source rate và sink | Specialist ổn định có hình thành không? |
-| `Pulsed` | Xuất hiện theo mùa/biến cố | Storage, dormancy hay migration có lợi hơn? |
-| `Patchy` topology | Hotspot không đều | Local adaptation và ecotype có phân vùng không? |
+| `Disabled` | No exotic source; baseline | Are costly pathways purged by selection? |
+| `Finite` | Initial stock only, no regeneration | Boom–bust dynamics, contest competition, extinction debt |
+| `Renewable` | Source rate and sink | Can stable specialists emerge? |
+| `Pulsed` | Seasonal or event-driven pulses | Which wins: storage, dormancy, or migration? |
+| `Patchy` topology | Heterogeneous hotspots | Do local adaptation and ecotypes partition space? |
 
-MVP nên làm `Disabled` + `Renewable/Patchy`; các mode khác dùng cùng contract sau.
+MVP targets `Disabled` + `Renewable/Patchy`; remaining modes follow the same contract later.
 
-*Trạng thái mã:* bảng trên là mục tiêu. `ExoticSourceModel` chỉ có `Renewable`. Tắt nguồn là
-`exotic_energy = None` trên `WorldLawSet`, và mã **cố ý không có** biến thể `Disabled` để một luật có mặt
-không bao giờ bị nhầm với baseline. `Finite` và `Pulsed` chưa hiện thực; xung chỉ có dưới dạng forcing
-runtime `ExoticInterventionKind::Pulse`. `Patchy` là một `SourceTopology`, không phải mode.
+*Implementation status:* the table above is the target roadmap. `ExoticSourceModel` implements `Renewable` only. Disabling the source corresponds to `exotic_energy = None` on `WorldLawSet`, and the code **intentionally omits** a `Disabled` enum variant so a present law can never be mistaken for baseline. `Finite` and `Pulsed` are not yet implemented; pulsing exists only as runtime forcing `ExoticInterventionKind::Pulse`. `Patchy` is a `SourceTopology`, not a mode.
 
-## Những kiểu sinh vật khác nhau có thể emergent
+## Candidate Organism Strategies That May Emerge
 
-Không hard-code tên loài, nhưng có thể kỳ vọng các chiến lược:
+Species names are never hardcoded, yet recognizable ecological strategies may evolve:
 
-| Áp lực | Candidate strategy | Chi phí đối trọng |
+| Selection Pressure | Candidate Strategy | Trade-Off Cost |
 |---|---|---|
-| Mana dày và ổn định | Specialist uptake cao | Cơ quan nặng, maintenance cao |
-| Mana loãng/patchy | Sensor + migration/foraging range lớn | Tốn vận động và neural cost |
-| Mana pulse | Storage lớn/dormancy | Chậm sinh sản hoặc thân nặng |
-| Mana độc ở density cao | Tolerance/detox | Conversion efficiency thấp |
-| Nhiều consumer tranh hotspot | Territorial/social defense | Injury/stress/group cost |
-| Mana chỉ producers dùng được | Food web dựa trên mana-producer | Phụ thuộc trophic source mới |
+| Dense, stable Mana | High specialist uptake | Heavy organs, higher maintenance |
+| Sparse/patchy Mana | Long-range sensors + migration/foraging | Locomotion and neural cost |
+| Pulsed Mana | Large storage / dormancy | Slower reproduction or heavier body |
+| Toxic Mana at high density | Tolerance / detoxification | Lower conversion efficiency |
+| High consumer competition at hotspots | Territorial / social defense | Injury, stress, or group cost |
+| Producer-only Mana uptake | Mana-producer-anchored food web | Dependency on the new trophic base |
 
-Đây là hypothesis để kiểm thử, không phải outcome được script.
+These are hypotheses to test, not scripted outcomes.
 
-## “Tác động từ sớm nhất” có hai nghĩa
+## Two Meanings of "Act From the Earliest Stage"
 
-### Genesis fork
+### Genesis Fork
 
-Đổi luật ngay trước `t=0`. Hai lịch sử chạy hàng trăm/thousands thế hệ. Cách này trả lời:
+Change the world law before `t=0`. Run two histories across hundreds/thousands of generations. Answers:
 
-> Một thế giới luôn có mana sẽ tiến hóa khác baseline ra sao?
+> How does a world that always had mana evolve differently from baseline?
 
-### Checkpoint fork
+### Checkpoint Fork
 
-Chạy chung đến thế hệ G, snapshot, rồi thêm hoặc rút nguồn ở một nhánh. Cách này trả lời:
+Run a shared history to generation G, snapshot, then add or withdraw the source on one branch. Answers:
 
-> Một hệ sinh thái đã ổn định phản ứng, phụ thuộc hoặc phục hồi thế nào khi luật/resource đổi?
+> How does an established ecosystem respond to, depend on, or recover when a law or resource changes?
 
-Cần cả hai; chỉ bật mana giữa run không trả lời được lịch sử từ genesis.
+Both are required; enabling mana mid-run cannot answer the genesis-history question.
 
-*Trạng thái mã:* checkpoint fork không đổi luật. Nhánh treatment nhận forcing runtime có `CauseId`
-(`AddSource`, `RemoveSource`, `Pulse`) trên một thế giới mà luật **đã** khai nguồn từ genesis; forcing
-ngoại lai trên một thế giới không khai nguồn bị từ chối. Vì thế "thêm mana giữa chừng vào một thế giới
-baseline" hiện không biểu diễn được. `RemoveSource` chặn dòng tái tạo, không rút MU đang tồn.
+*Implementation status:* checkpoint fork cannot alter `WorldLawSet`. Treatment branches apply runtime forcings carrying a `CauseId` (`AddSource`, `RemoveSource`, `Pulse`) on a world whose laws **already** declared the exotic source at genesis; exotic forcings on a world without an exotic law are rejected. Accordingly, "inject mana mid-run into a baseline world" is not yet expressible. `RemoveSource` halts source regeneration without draining existing MU.
 
-## World Lab — người dùng quan sát gì
+## World Lab — What the User Inspects
 
-*Trạng thái mã:* cả mục này là thiết kế đích. Chưa có giao diện World Lab, và backend của app desktop
-chưa có lệnh fork hay branch nào. Cây nhánh và phép so sánh có ở dạng headless (`core/branch_tree.rs`,
-`experiment_runner`).
+*Implementation status:* this entire section is target design. No World Lab UI exists yet, and the desktop app backend has no fork or branch commands yet. Branch trees and comparisons exist headlessly (`core/branch_tree.rs`, `experiment_runner`).
 
-### Lớp bản đồ
+### Map Overlays
 
-- density, source flux, uptake và depletion của MU;
-- biomass/resource/climate/water/soil hiện có;
-- phân bố pathway phenotype;
-- vùng sinh, chết, migration và reproductive success;
-- niche/species cluster theo thời gian.
+- MU density, source flux, uptake, and depletion;
+- existing biomass, resource, climate, water, and soil layers;
+- pathway phenotype spatial distributions;
+- birth, death, migration, and reproductive-success zones;
+- niche/species clusters over time.
 
-### Đồ thị
+### Charts
 
-- source → field → uptake → storage → expenditure;
-- EU và MU budget;
-- trait/allele frequency;
-- population, species richness, extinction;
-- phenotype distribution và MAP-Elites coverage;
-- food-web edges mới;
-- effect size control–treatment với confidence interval.
+- source → field → uptake → storage → expenditure flows;
+- EU and MU budgets;
+- trait/allele frequencies;
+- population, species richness, extinctions;
+- phenotype distributions and MAP-Elites coverage;
+- emerging food-web edges;
+- control–treatment effect sizes with confidence intervals.
 
 ### Inspector
 
-Click một cell/organism/lineage/species để xem:
+Click a cell, organism, lineage, or species to view:
 
-- giá trị hiện tại và đơn vị;
-- lịch sử;
+- current value and unit;
+- time-series history;
 - parent/root cause;
 - genotype vs developed phenotype vs runtime state;
 - energy transactions;
-- ancestor/descendant;
-- lý do candidate species được tạo hoặc bị gộp.
+- ancestor/descendant links;
+- rationale for candidate-species splitting or merging.
 
-### Branch timeline
+### Branch Timeline
 
-World Lab hiển thị cây experiment:
+World Lab displays the experiment tree:
 
 ```text
 run-0 baseline
@@ -249,55 +214,46 @@ run-0 baseline
        └─ run-4 remove mana
 ```
 
-Người dùng có thể replay, đổi một factor, tạo branch và so sánh trên cùng trục thời gian.
+Users can replay runs, vary a factor, spawn branches, and compare trajectories along a shared timeline.
 
-## Cách chứng minh khác biệt là tiến hóa
+## How to Prove Differences Are Truly Evolutionary
 
-Ba mức bằng chứng:
+Three tiers of evidence:
 
-1. **Mechanism:** MU field và pathway tạo transaction/performance khác đúng contract.
-2. **Selection:** pathway thay survival/reproductive success; frequency đổi qua thế hệ.
-3. **Divergence/speciation:** lineage/niche/mating khác bền và lặp lại trên ensemble.
+1. **Mechanism:** MU field and pathway yield transaction/performance differences consistent with contract.
+2. **Selection:** pathway shifts survival or reproductive success; trait frequencies shift over generations.
+3. **Divergence/speciation:** persistent, repeatable lineage, niche, or mating divergence across an ensemble.
 
-Ảnh con vật trông khác, một MAP-Elites cell mới hoặc correlation với hotspot chỉ đạt mức mô tả.
+Visually distinct creatures, a newly occupied MAP-Elites cell, or spatial hotspot correlation alone are descriptive only.
 
-## Vertical slice đề xuất
+## Proposed Vertical Slice
 
-Mở rộng “lưu vực – đồng cỏ – thỏ – sói” bằng một field Mana patchy:
+Extend the `"watershed – grassland – rabbit – wolf"` vertical slice with a patchy Mana field:
 
-- control: không Mana;
-- treatment A: Mana hỗ trợ producer chuyển detritus → plant biomass nhanh hơn;
-- treatment B: thêm consumer pathway có sensing/uptake/storage/cost;
-- treatment C: sau 100 thế hệ rút Mana khỏi cùng checkpoint.
+- control: no Mana;
+- treatment A: Mana accelerates producer detritus → plant biomass conversion;
+- treatment B: add consumer pathway with sensing/uptake/storage/cost;
+- treatment C: after 100 generations, remove Mana from the same checkpoint.
 
-Quan sát:
+Observations:
 
-- EU/MU budget;
-- plant/herbivore/predator response;
-- pathway frequency;
-- foraging range và morphology cost;
+- EU/MU budgets;
+- plant/herbivore/predator dynamics;
+- pathway frequencies;
+- foraging range and morphology cost;
 - niche divergence;
 - extinction/recovery;
-- causal chain;
-- multi-seed effect size.
+- causal chains;
+- multi-seed effect sizes.
 
-Vertical slice này cho kết quả quan sát sớm mà chưa cần spell, combat fantasy hoặc taxonomy loài đầy
-đủ.
+This vertical slice yields early observable outcomes without waiting for spells, fantasy combat, or full biological taxonomy.
 
-*Trạng thái mã:* treatment A chưa hiện thực (MU chưa ghép với EU). Treatment B có ở dạng quần thể tham
-chiếu gộp, chưa phải thỏ và sói trên bản đồ. Treatment C biểu diễn được bằng checkpoint fork với
-`RemoveSource`.
+*Implementation status:* treatment A is not implemented yet (MU is uncoupled from EU). Treatment B exists as the aggregate reference population rather than spatial rabbits and wolves on the map. Treatment C can already be represented via a checkpoint fork with `RemoveSource`.
 
-## Giới hạn trung thực
+## Honest Limitations
 
-- Thế giới Bevy sống đã có adapter thí nghiệm tất định `LiveExperimentAdapter` (`ExperimentModel`), kiểm
-  headless qua `tests/live_experiment_tests.rs`. Nó chưa được chạy trong app desktop dưới executor đa
-  luồng, từ chối `laws.exotic_energy` và không có quần thể AE3. Trait cũ `SimModel` (M2) vẫn chỉ do
-  `ReferenceEcosystem` hiện thực; AE1–AE3 chạy trên `ReferenceEvolutionWorld`.
-- Chưa có species clustering hay species policy nào trong mã. Sinh sản liên tục theo ngưỡng năng lượng
-  đã có (ADR-0005) nhưng chưa phải vòng đời M5–M7.
-- Causal ledger hiện chỉ có một parent và chưa phân bổ multi-cause.
-- Bằng chứng bản đồ (Animal Map Vision) chưa có; nó không áp cho lát headless (ADR-0002, mục quyết định
-  ngày 2026-11-17).
-- Do đó, ngoài lát headless AE1–AE3 nêu ở đầu trang, tài liệu này là thiết kế/experiment proposal, không
-  phải tuyên bố feature đã chạy.
+- The live Bevy world already has a deterministic experiment adapter (`LiveExperimentAdapter`: `ExperimentModel`), verified headlessly via `tests/live_experiment_tests.rs`. It has not yet run inside the multi-threaded desktop executor, rejects `laws.exotic_energy`, and contains no AE3 reference population. Legacy `SimModel` (M2) is implemented only by `ReferenceEcosystem`; AE1–AE3 run on `ReferenceEvolutionWorld`.
+- No biological species clustering or species policy exists in code yet. Continuous energy-threshold reproduction exists (ADR-0005), not yet the M5–M7 lifecycle.
+- The causal ledger currently stores a single parent and lacks multi-cause attribution.
+- Visual map evidence (Animal Map Vision) does not exist yet and is excluded for the headless slice (ADR-0002, decision log dated 2026-11-17).
+- Therefore, beyond the headless AE1–AE3 slice noted at the top of this page, this document is a design and experiment proposal, not a claim of running features.
