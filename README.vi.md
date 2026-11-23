@@ -57,9 +57,9 @@ Về lâu dài, mỗi lần một tầng, sẽ có thêm hệ sinh thái thật 
   được khoá trước khi chạy. Lượt smoke chạy "mù": không đọc các chỉ số kết quả. Cổng không qua thì đó là một kết
   quả, không được chạy lại và không được chỉnh tham số.
 - **Tái lập được.** Cùng hạt giống, cùng commit và cùng hệ điều hành thì cho cùng checksum. Giữa các hệ điều hành,
-  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Còn một
-  ngoại lệ đang được sửa (thẻ F051): lượt chạy không giao diện vẫn lấy địa hình từ file thế giới của app nếu máy
-  có file đó.
+  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Lượt chạy
+  không giao diện tự sinh địa hình và không bao giờ đọc file thế giới của app (thẻ F051); mỗi lượt ghi lại địa hình
+  nó đã dùng.
 - **Không có Lamarck.** Những gì một cá thể học được trong đời không bao giờ được ghi ngược vào bộ gen.
 
 ## Ranh giới hiện tại (2026-11-19)

@@ -60,8 +60,8 @@ Later, one realm at a time, real ecosystems in water, in the sky and underground
   controls are all locked before the run. Smoke runs are blind: they never read the outcome measures. A failed gate
   is a result. It is never re-run and its parameters are never tuned.
 - **Reproducible.** The same seed, commit and operating system give the same checksum. Trajectories differ across
-  operating systems, so tests compare two runs instead of pinning an absolute number. One exception is being fixed
-  (card F051): a headless run still takes its terrain from the app's world file if the machine has one.
+  operating systems, so tests compare two runs instead of pinning an absolute number. Headless runs generate their
+  own terrain and never read the app's world file (card F051), and each run records the terrain it used.
 - **No Lamarck.** What an individual learns in its lifetime is never written back into its genome.
 
 ## Current boundaries (2026-11-19)
