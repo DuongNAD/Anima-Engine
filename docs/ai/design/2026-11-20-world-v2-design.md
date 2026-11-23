@@ -49,6 +49,26 @@ The lead re-ran the test script and it reproduced exactly.
 seed (median about 10–14), below the Card 3 range of 20–80 on most seeds. If that holds, it is reported
 as a gate failure, not fixed by tuning.
 
+### MAP-D3 (2026-11-24): Card 3 gates not met after the physics rework
+
+Owner decision in chat: "Ghi nhận, đi tiếp". WV2-2-PHYS Step B implemented MAP-D2 without changing any
+gate or detector. An independent review traced the lithology data flow and found no code defect.
+
+Measured results:
+- waterfall_count: 0–6 per seed at 1024² and 0 at 4096², against a pre-run prediction of 5–19 and a gate of
+  20–80;
+- river_surface_fraction: about 0.0001–0.0003, against a gate of 0.0005–0.0030;
+- lake_surface_fraction and large_lakes: below the gate on most seeds;
+- endorheic_humid_fraction: non-zero only in the parked 0.5 ≤ P/PET < 1 band;
+- Taiga at 4096²: 1,996 cells, against a gate of ≥ 2,500.
+
+The waterfall shortfall comes from discharge. On seed 1337 at 1024², only 838 land cells reach
+Q ≥ 0.25 m³/s, only 3 of them are caprock, and P > PET on only a quarter of the caprock.
+
+These gates stay as written and are recorded as not met. The tests that hold them are ignored by name,
+with the reason, in `scripts/test_target_policy.mjs`. Improving them is a later card, which would need a
+sourced change to the world, not to the gates.
+
 # World v2 Design (`A21 / WV2-D — Revision 4`)
 
 - **Card:** `A21` (`WV2-D` — Map v2 Phase P1 design, strictly **READ-ONLY**: zero edits to `Anima-Engine` or worktrees, zero `cargo`/`npm` builds)

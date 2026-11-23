@@ -357,6 +357,18 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+MAP-D3    = World v2 Card 3 after WV2-2-PHYS Step B: record and move on. The gates the physics does not
+            meet (waterfall_count, river_surface_fraction, lake_surface_fraction / large_lakes,
+            endorheic_humid_fraction in the parked A6 band, Taiga at 4096²) stay defined and unchanged,
+            and are recorded as not met with the physical reason. The waterfall shortfall comes from
+            discharge: little flow crosses the caprock, most of which is drier than PET. An independent
+            review found no code defect. The tests holding those gates are #[ignore]d by name with a
+            MAP-D3 reason in scripts/test_target_policy.mjs, and nothing is loosened or tuned. Improving
+            them is a later card. (Owner in chat, 2026-11-24: "Ghi nhận, đi tiếp".)
+QD-E3B-D1a = E3b keeps live.predator_fraction = 0.3 and is declared a two-trophic experiment: with the
+            2-segment founder, predators persist to T = 18,000 in 11-12/12 seeds per arm (VIAB-1b, #228).
+            Recorded in the E3b preregistration draft v2 (#229). (Owner in chat, 2026-11-23: "Giữ 0.3,
+            có thú săn".)
 MAP-D2    = the design amendments for WV2-2-PHYS are approved: A1 (a dipping marginal sedimentary column,
             with lithology evaluated against a datum advected with uplift), A2 (an S2b paleo-glacial
             pass), A3 (rift segmentation) and A5 (a continuous cover transition in S3, an adaptation).
