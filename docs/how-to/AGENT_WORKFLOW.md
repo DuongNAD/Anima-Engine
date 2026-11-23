@@ -357,6 +357,19 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+QD-WAVE1124 = a 24-hour autonomous wave on three machines (owner in chat, 2026-11-24: "Duyệt, sẽ dán"):
+            anima-case (Windows 1) runs lane E (E3b smoke, confirmation run and RESULT, then SEL2-P2 and
+            law-fork drafts) and lane W (world record WR1, WR2 per ADR-0008, then S7 after the E3b
+            result); anima-dell (Windows 2) keeps STATE and TODO (their single writer this wave), builds a
+            release-0.9 installer workflow that never publishes, writes INSTALL / release notes / checklist,
+            ADR-0013 (proposed) and the V0-V6 card specs, and English versions of the Vietnamese public pages;
+            anima-mac finishes WV2-2 and runs WV2-3 -> WV2-4 -> WV2-5 (stopping at the asset and release
+            gates) -> WV2-7. Peer review ring: case reviews mac, dell reviews case, mac reviews dell; the
+            lead re-checks and merges after a peer VERIFIED and green checks (QD-LEAD); #199 and #231 stay
+            with the lead. L2 is five open code PRs for the wave (mac 2, case 2, dell 1). Agents may free
+            disk themselves below 25 GB, only from their own finished worktrees' target/ directories, merged
+            clean worktrees and cargo clean (rule A6 of the wave prompt). Full text: the hub files
+            PROMPTS_2026-11-24_*.md; the AUTHORIZATION lines are copied into R5-AUTH below.
 MAP-D3    = World v2 Card 3 after WV2-2-PHYS Step B: record and move on. The gates the physics does not
             meet (waterfall_count, river_surface_fraction, lake_surface_fraction / large_lakes,
             endorheic_humid_fraction in the parked A6 band, Taiga at 4096²) stay defined and unchanged,
@@ -636,6 +649,99 @@ R5-AUTH   =
   docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md, one card note under
   docs/ai/planning/, and dataflow.json (only if verify_dataflow.py needs it). This overrides AGENTS.md's
   read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  -- Wave 2026-11-24 (QD-WAVE1124): verbatim from the hub files PROMPTS_2026-11-24_*.md, backticks
+  -- removed. The owner approved them in chat ("Duyệt, sẽ dán") and grants them by pasting the prompts. --
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card
+  E3B-RUNNER only, you may write one new example src-tauri/examples/run_e3b_experiment.rs, one new test
+  src-tauri/tests/e3b_runner_tests.rs, package.json (one script line only) and one note under
+  docs/ai/planning/. **Not** src-tauri/src/**, not the frozen fixtures, not the frozen doc, not the
+  verifier. If the runner needs anything under src-tauri/src, stop: BLOCKED to owner.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card E3B-SMOKE
+  only, you may write artifacts/experiments/e3b-productivity-gradient-body-mass/smoke/** (runner output
+  only, never edited by hand) and one result note under docs/ai/planning/. No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card E3B-RUN
+  only, you may write artifacts/experiments/e3b-productivity-gradient-body-mass/confirmation/** (runner
+  output only) and the result note. No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card
+  E3B-RESULT only, you may write artifacts/experiments/e3b-productivity-gradient-body-mass/RESULT.md and
+  one note under docs/ai/planning/. No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card
+  SEL2P2-DRAFT only, you may write one new doc docs/ai/planning/<date>-sel2-p2-preregistration-draft.md.
+  No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card
+  LAW1-DRAFT only, one new doc docs/ai/planning/<date>-law1-fork-experiment-draft.md. No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card WR1 only,
+  you may write a new module under src-tauri/src/core/world_record/ (or one file src-
+  tauri/src/core/world_record.rs), its mod declaration in src-tauri/src/core/mod.rs, src-
+  tauri/src/core/simulation_schedule.rs (registering one recording system, inactive unless a recording
+  resource is present), new tests src-tauri/tests/world_record_*_tests.rs, src-tauri/Cargo.toml only if
+  a hashing crate already in the tree must become a direct dependency (no new crate), and one note under
+  docs/ai/planning/. **No** new LIVE_KEYS entry and no manifest key: the E3b freeze pins the live-key
+  partition. Recording is switched on through a Rust API that tests use. No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card WR2 only,
+  the WR1 module paths, src-tauri/src/core/simulation_schedule.rs (the same one system only), new tests
+  src-tauri/tests/world_record_*_tests.rs, and one note. No other path.
+  AUTHORIZATION (owner, 2026-11-24, to anima-case, given by pasting the wave prompt): for card S7 only,
+  you may write docs/decisions/ADR-0007-live-ecology-sustainability.md (an amendment section, owner
+  approves it in the PR), src-tauri/src/core/live_experiment.rs (the three keys in LIVE_KEYS and their
+  parsing), src-tauri/src/core/resources.rs (their policy resources and defaults), src-
+  tauri/src/core/agent_systems.rs (only where the predator's cost and strike radius are applied, and the
+  water-source hook), the tests that pin LIVE_KEYS.len() (the pinned count only), new tests src-
+  tauri/tests/s7_*_tests.rs, and one note.
+  AUTHORIZATION (owner, 2026-11-24, to anima-mac, given by pasting the wave prompt): for card WV2-3
+  only, you may write the paths the design's Card 4 spec and the §8 ownership table assign to WV2-3, and
+  only those: src-tauri/crates/anima-worldgen/**, src-tauri/src/core/world_artifact.rs, src-
+  tauri/src/core/ecs.rs (the loud v3 rejection only), src-tauri/src/core/live_experiment.rs and
+  docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md (only what the card names), every WorldIdentity { ...
+  } literal site the card lists (re-count them at your base with rg -n "WorldIdentity \{" src-tauri;
+  include sites added since the design), src-tauri/tests/world_v2_sim_gate_tests.rs, src-
+  tauri/Cargo.toml / Cargo.lock (as the card needs), NOTICE and the licensing artifacts (regenerated,
+  never hand-edited), scripts/test_target_policy.mjs, one note under docs/ai/planning/. Before your
+  first code commit, list the exact files in the draft PR body; the reviewer checks the diff against
+  that list. Anything else under src-tauri/src: stop, BLOCKED.
+  AUTHORIZATION (owner, 2026-11-24, to anima-mac, given by pasting the wave prompt): for card WV2-4
+  only: the paths the Card 5 spec and §8 assign to WV2-4 (src-tauri/crates/anima-worldgen/**, the verify
+  subcommand in src/bin/anima-worldgen.rs, artifacts/world-v2/ with preset_v2.toml, sim_256.anmw3,
+  index.json, gates.json, the CI / test-policy files the table lists) and one note. Nothing under src-
+  tauri/src.
+  AUTHORIZATION (owner, 2026-11-24, to anima-mac, given by pasting the wave prompt): for card WV2-5
+  only: the paths the Card 6 spec and §8 assign to WV2-5 (src/bin/anima-bake.rs, the crate, its bake
+  feature dependencies, grid job scripts, wv2_5_gpu_bake_tests with its policy entries,
+  artifacts/world-v2/index.json updates) and one note. Grid bake jobs are allowed under QD-OXS (offline
+  map jobs with pinned, hashed output, GRID WORKER only).
+  AUTHORIZATION (owner, 2026-11-24, to anima-mac, given by pasting the wave prompt): for card WV2-7
+  only: the paths of the Card 7 spec and §8 (src-tauri/src/core/world_artifact.rs, src-
+  tauri/src/core/ecs.rs AppArtifactOrGenerated, the audit of the lake threshold in simulation_loop.rs,
+  src-tauri/tauri.conf.json static bundle.resources with only the two committed files) and one note.
+  AUTHORIZATION (owner, 2026-11-24, to anima-dell, given by pasting the wave prompt): for card STATE-
+  SYNC only, you may write docs/planning/STATE_OF_THE_PROJECT.md (the banner at the top of §1, the stage
+  board in §3.00, the "done" lists under §3.00, and §4 traps with a date) and TODO.md. Not §1's
+  measurement tables (§1.a–§1.i): a measurement is added only by a measurement card. Not FINDINGS.md:
+  propose finding entries in the PR body for the lead.
+  AUTHORIZATION (owner, 2026-11-24, to anima-dell, given by pasting the wave prompt): for card REL09-CI
+  only, you may write one new workflow .github/workflows/release-build.yml and one note under
+  docs/ai/planning/. Not ci.yml, not tauri.conf.json, not package.json. If a change there is needed,
+  BLOCKED with the diff you would make.
+  AUTHORIZATION (owner, 2026-11-24, to anima-dell, given by pasting the wave prompt): for card
+  REL09-DOCS only, you may write docs/how-to/INSTALL.md (new, English), docs/release/0.9.0.md (new
+  release-notes draft, with a README.md index in docs/release/ if the docs policy requires one) and
+  docs/how-to/RELEASE_CHECKLIST.md (new). Nothing at the repository root: the root-hygiene gate forbids
+  new root files.
+  AUTHORIZATION (owner, 2026-11-24, to anima-dell, given by pasting the wave prompt): for card V-ADR
+  only, you may write one new ADR docs/decisions/ADR-0013-<slug>.md with status: proposed (check that
+  0013 is free; 0011 is reserved for the native renderer), its row in docs/decisions/README.md, and two
+  notes under docs/ai/planning/: a V0 card spec and a V1 card spec.
+  AUTHORIZATION (owner, 2026-11-24, to anima-dell, given by pasting the wave prompt): for card DOC-EN
+  only, you may write the pages you list in the PR body. For each one, the English text becomes the page
+  at its current path. The Vietnamese text moves, unchanged, to a sibling <NAME>.vi.md with its own
+  front matter, as a translation (QD-DOCLANG: "next to the English one, never instead of it"). You may
+  also update the index README.md of those three directories. Before writing, check
+  scripts/check_docs_metadata.mjs for how a .vi.md sibling must be indexed. If the checker cannot accept
+  siblings, BLOCKED with the error.
+  AUTHORIZATION (owner, 2026-11-24, to anima-dell, given by pasting the wave prompt): for card V-SPECS
+  only, one new note per card under docs/ai/planning/ (V2 SpeciesProfile, V3 lifecycle per your ADR-0013
+  draft, V4 carcasses and decomposition with a bit-exact EU ledger, V5 soil water, nutrients and grass
+  biomass as fields, V6 the four interventions with CauseId). No other path.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
