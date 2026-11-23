@@ -23,7 +23,7 @@ last_reviewed: 2026-11-23
   - `Cargo.lock` SHA-256: `BACB3866B558473E3C6F9FF2692DCED1FD59583108ABF97FD95D00A01ED9638A`
   - `src/main.rs` SHA-256: `C3D6E95B25411E6FFF0F5F5EBEEBCA1EB685C42E89724BED90657B3FB977A6A7`
   - `E:\.smart_drive_caches\cargo-target\release\viab1b_probe.exe` pre-run & post-run SHA-256 (unchanged): `6C0295AD42BBDC7AA8865494A0F461E4FAA2E1CBD3FC3AB2DE28824AF281FE8F`
-- **Pre-run criterion (recorded at `2026-11-23T15:16:30Z` BEFORE build/launch in `test_runs/anima-case_VIAB-1b_prerun_criterion.md`):**
+- **Pre-run criterion (recorded at `2026-11-23T15:16:30Z` BEFORE build/launch in `test_runs/anima-case_VIAB-1b_prerun_criterion.md`, SHA-256 `e13106d9521a1878a32a235244a227ac668dd5006700316d7b77d34c5ed508b8`; copied verbatim in [Appendix A](#appendix-a--verbatim-pre-run-criterion-recorded-2026-11-23t151630z)):**
   - **`e3b_fg1_g4_fl1` (`live.founder_genotype = 1`, `live.mutation_rate = 0.05`):** **`PASS`** iff arm survival `>= 11/12` in each arm (`U`, `S`, `T`, and `All`), `min_N >= 10` in `>= 11/12` seeds per arm, `WP-2` (`b1/b2/c/all`) `= 12/12`, `all_terrain_generated == true`, `max_abs_eu_drift < 1e-6`, and `0` `trait_mass` matches.
   - **`e3b_fg1_g4_fl1_mut0` (survival-only `mut0` check, exact same overrides + `live.mutation_rate = 0.0`):** **`PASS`** iff **`>= 11/12` seeds survive (`survived == true`, `final_n > 0` at `T = 18,000`) in EACH of the three arms `U`, `S`, and `T` (`U >= 11/12`, `S >= 11/12`, `T >= 11/12`)**, `all_terrain_generated == true`, `max_abs_eu_drift < 1e-6`, and `0` `trait_mass` matches; **`FAIL`** if any arm falls below `11/12`.
 
@@ -104,3 +104,38 @@ Base `e3_b1_g4_fl1` overrides across both cells (`live.predator_fraction = 0.3` 
 - **Not preregistered E3b confirmation evidence:** All `72` runs used exploratory calibration seeds `880001..=880012` (not the disjoint E3b confirmation seeds).
 - **200k-tick `SEL2-P2` persistence not tested here:** `VIAB-1b` ran `18,000` ticks (E3b horizon), not `200,000` ticks (`SEL2-P` horizon).
 - **Single OS & `Generated` terrain only:** Executed on `Windows 1 x86_64` with `Generated` terrain (`WorldIdentity 3152323152`) at trunk `98054ba2`, without `live.land_mask = 1` or desktop multi-threaded runtime execution.
+
+---
+
+## Appendix A — Verbatim Pre-Run Criterion (Recorded 2026-11-23T15:16:30Z)
+
+Verbatim copy of `test_runs/anima-case_VIAB-1b_prerun_criterion.md` (`26` lines, LF, SHA-256 `e13106d9521a1878a32a235244a227ac668dd5006700316d7b77d34c5ed508b8`):
+
+````markdown
+# VIAB-1b Pre-Run Criterion (Written BEFORE Launching Any Runs)
+
+- **Recorded UTC timestamp:** `2026-11-23T15:16:30Z` (prior to building against merged trunk `98054ba` or executing any `viab1b_probe` simulation runs)
+- **Target clean trunk commit:** `98054ba206d275014ecce89e7ab7c2ad603ead1d` (`origin/feat/ecological-selection`, post-PR `#224 FOUNDER-2SEG` and PR `#225` `cookie` fix)
+- **Blindness rule (`QD-VIAB`):** Only the 12 non-mass observables (`plants`, `detritus`, `live.closed_eu_total`, `live.agent_count`, `live.herbivore_count`, `live.predator_count`, `live.standing_crop`, `live.births`, `live.deaths`, `live.mean_lifespan`, `live.deaths_starvation`, `live.deaths_dehydration`) are requested or emitted. `live.trait_mass_*` is never read, printed, or branched on.
+- **Seeds & horizon:** Exploratory seeds `880001..=880012` (`12` seeds × `3` arms = `36` runs per cell, `72` runs total across both cells), `18,000` ticks, `ANIMA_WORLD_ARTIFACT` unset and `%TEMP%\anima_world_artifact.anmw` absent (`Generated` terrain).
+
+## 1. Primary Blind Viability Cell (`e3b_fg1_g4_fl1`)
+
+- **Config:** E3 registered base + `e3_b1_g4_fl1` overrides (`live.strict_prey_cap=1`, `live.founders=160`, `live.prey_cap=160`, `live.lakes=16`, `live.lake_layout=1`, `live.dehydration_ticks=960`, `live.founder_layout=1`) + **`live.founder_genotype=1`** (`live.mutation_rate=0.05` default, `live.predator_fraction=0.3`).
+- **Pre-run `PASS` / `FAIL` criterion (`e3b_fg1_g4_fl1`):**
+  - **PASS** iff:
+    1. Arm survival (`survived == true`, `completed == true` & `min_n > 0` across all sampled ticks to `T = 18,000`) is **`>= 11/12` in EACH arm (`U >= 11/12`, `S >= 11/12`, `T >= 11/12`)** AND joint **`All >= 11/12`**;
+    2. `min_N >= 10` holds in **`>= 11/12` seeds per arm (`U`, `S`, `T`)**;
+    3. `WP-2` (`b1`, `b2`, `c`, `all`) passes **`12/12`**;
+    4. `all_terrain_generated == true`, `max_abs_eu_drift < 1e-6`, and `0` `trait_mass` matches across all outputs.
+  - **FAIL** if any condition (1)–(4) is not met.
+
+## 2. Survival-Only `mut0` Check (`e3b_fg1_g4_fl1_mut0`)
+
+- **Question (`MSG_20261123_151500`):** Does starting at the 2-segment founder genotype (`live.founder_genotype = 1`) eliminate the `mut0` viability collapse seen under the 3-segment founder (`sel2p_f6` diagnosis `PR #216`) without relying on *de novo* morphological mutation (`live.mutation_rate = 0.0`)?
+- **Config:** Identical to `e3b_fg1_g4_fl1` PLUS **`live.mutation_rate=0`**.
+- **Pre-run `PASS` / `FAIL` criterion (`e3b_fg1_g4_fl1_mut0` — survival-only):**
+  - **PASS** iff **`>= 11/12` seeds survive (`survived == true`, `final_n > 0` at `T = 18,000`) in EACH of the three arms `U`, `S`, and `T` (`U >= 11/12` AND `S >= 11/12` AND `T >= 11/12`)**, AND `all_terrain_generated == true`, AND `max_abs_eu_drift < 1e-6`, AND `0` `trait_mass` matches.
+  - **FAIL** if any arm drops below `11/12` surviving seeds at `T = 18,000` (or if terrain/EU/blindness invariants fail).
+  - *Secondary diagnostics reported verbatim (not gating `mut0` survival PASS/FAIL):* joint `All` survival, `min_N >= 10`, `min_N`/`mean_N`/`final_N` ranges, `pred_final > 0`, `total_births`, `generations = total_births / mean_n`, `WP-2` (`b1`/`b2`/`c`), and `starvation_share`.
+````
