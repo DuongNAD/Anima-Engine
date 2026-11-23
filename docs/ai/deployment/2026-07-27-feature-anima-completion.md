@@ -217,6 +217,15 @@ bundle at build time, or obtain a legal review that says the current form suffic
 
 ### 3.2 `LICENSE` scope language
 
+> **Forward note (updated 2026-11-22):** This section records the **2026-07-27** proprietary
+> `LICENSE`. On **2026-08-08**, the repository was dual-licensed under `MIT OR Apache-2.0`
+> ([`LICENSE-MIT`](../../../LICENSE-MIT), [`LICENSE-APACHE`](../../../LICENSE-APACHE)), the
+> code / asset / `.anmw` scope separation moved to [`README.md#license`](../../../README.md#license),
+> and the licensing policy lives in [`docs/governance/OPEN_SOURCE_POLICY.md`](../../governance/OPEN_SOURCE_POLICY.md).
+> As of **2026-11-19** (`PR #175`), [`licensing/UNRESOLVED.md`](../../../licensing/UNRESOLVED.md) is
+> also empty (`0` unresolved third-party texts; see
+> [`STATE_OF_THE_PROJECT.md` §1.c](../../planning/STATE_OF_THE_PROJECT.md#1c-licensing--sbom--vệ-sinh--chạy-lại-2026-07-27-tại-e4eff6c)).
+
 `LICENSE` is proprietary and now carries a scope section separating code / model weights / datasets /
 assets. That is legal text, not documentation. It should not be treated as reviewed because it is
 committed — a maintainer or legal reviewer must approve the scope language and the distribution
