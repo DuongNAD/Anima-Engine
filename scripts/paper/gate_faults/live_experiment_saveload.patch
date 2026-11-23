@@ -1,0 +1,11 @@
+diff --git a/src-tauri/src/core/simulation_state.rs b/src-tauri/src/core/simulation_state.rs
+--- a/src-tauri/src/core/simulation_state.rs
++++ b/src-tauri/src/core/simulation_state.rs
+@@ -879,6 +879,6 @@
+     if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+         world.insert_resource(crate::core::resources::SimRng::restore(
+             state.sim_rng_seed,
+-            state.sim_rng_pos,
++            0,
+         ));
+     }

@@ -1,0 +1,13 @@
+diff --git a/src-tauri/src/core/ecs.rs b/src-tauri/src/core/ecs.rs
+index 4360d67..2abe3a1 100644
+--- a/src-tauri/src/core/ecs.rs
++++ b/src-tauri/src/core/ecs.rs
+@@ -131,7 +131,7 @@ pub fn init_world_with(terrain_source: TerrainSource) -> World {
+     // state — invariant D07 of the creature-development contract. Resolved here, where the world's
+     // identity is first known, so there is exactly one place that decides it.
+     world.insert_resource(crate::core::resources::SimRng::for_world(
+-        world_identity.seed,
++        world_identity.seed.wrapping_add(1),
+     ));
+     // Off unless `ANIMA_EVOLVED_BRAINS` says otherwise, so a default run is the ADR-0003 baseline.
+     world.insert_resource(crate::core::resources::BrainPolicy::from_env());

@@ -1,0 +1,10 @@
+diff --git a/src/main.tsx b/src/main.tsx
+index d08166a..5c4d06d 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,3 +1,5 @@
++import Ajv from "ajv";
++console.log(Boolean(Ajv));
+ import React from "react";
+ import ReactDOM from "react-dom/client";
+ import { App } from "./App";

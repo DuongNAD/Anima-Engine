@@ -1,0 +1,12 @@
+diff --git a/src-tauri/src/core/emit.rs b/src-tauri/src/core/emit.rs
+index bd2454d..1db8d52 100644
+--- a/src-tauri/src/core/emit.rs
++++ b/src-tauri/src/core/emit.rs
+@@ -55,6 +55,7 @@ pub fn refresh_tick_payload(
+     environmental_state: &EnvironmentalState,
+ ) {
+     // `SegmentState` is plain scalars, so this is a memcpy into retained capacity.
++    std::hint::black_box(Vec::<u8>::with_capacity(64));
+     payload.segments.clear();
+     payload.segments.extend_from_slice(segments);
+ 

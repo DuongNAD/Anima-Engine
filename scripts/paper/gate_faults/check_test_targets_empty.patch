@@ -1,0 +1,9 @@
+diff --git a/src-tauri/tests/shared_domain_law_tests.rs b/src-tauri/tests/shared_domain_law_tests.rs
+index c100a3e..f16622a 100644
+--- a/src-tauri/tests/shared_domain_law_tests.rs
++++ b/src-tauri/tests/shared_domain_law_tests.rs
+@@ -1,3 +1,4 @@
++#![cfg(any())]
+ //! G2 gate #1, for the laws that have moved: a law expressed **once** in `anima-domain` is the same
+ //! law on both sides of the engine boundary.
+ //!
