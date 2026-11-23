@@ -16,8 +16,81 @@ use anima_worldgen::pipeline::{read_bin_f32, read_bin_u8, read_bin_u8x4, run_wor
 use anima_worldgen::tectonic::LithologyClass;
 use anima_worldgen::{BiomeId, WaterKind};
 use rayon::ThreadPoolBuilder;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+const STREAM_CHUNK_ELEMS: usize = 65_536;
+
+fn read_chunk_f32(r: &mut BufReader<File>, dst: &mut Vec<f32>, elems: usize) {
+    dst.clear();
+    let mut raw = vec![0_u8; elems * 4];
+    r.read_exact(&mut raw).expect("read f32 chunk");
+    let (chunks, _) = raw.as_chunks::<4>();
+    for &ch in chunks {
+        dst.push(f32::from_le_bytes(ch));
+    }
+}
+
+fn read_chunk_u8(r: &mut BufReader<File>, dst: &mut Vec<u8>, elems: usize) {
+    dst.resize(elems, 0);
+    r.read_exact(dst).expect("read u8 chunk");
+}
+
+fn read_chunk_u8x4(r: &mut BufReader<File>, dst: &mut Vec<[u8; 4]>, elems: usize) {
+    dst.clear();
+    let mut raw = vec![0_u8; elems * 4];
+    r.read_exact(&mut raw).expect("read u8x4 chunk");
+    let (chunks, _) = raw.as_chunks::<4>();
+    dst.extend_from_slice(chunks);
+}
+
+/// Streams `(total_h_m, water_kind, precip_m_yr, pet_m_yr)` in `65_536`-element chunks (`<= 1 MiB`)
+/// and returns `(endorheic_humid_total_frac, frac_p_ge_pet, frac_0_5_to_1_0)`.
+fn stream_endorheic_humid_breakdown(dir: &Path, len: usize) -> (f32, f32, f32) {
+    let mut r_h = BufReader::new(File::open(dir.join("total_h_m.bin")).expect("total_h"));
+    let mut r_wk = BufReader::new(File::open(dir.join("water_kind.bin")).expect("water_kind"));
+    let mut r_p = BufReader::new(File::open(dir.join("precip_m_yr.bin")).expect("precip"));
+    let mut r_pet = BufReader::new(File::open(dir.join("pet_m_yr.bin")).expect("pet"));
+
+    let mut b_h = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_wk = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_p = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_pet = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+
+    let mut land = 0_usize;
+    let mut p_ge_pet = 0_usize;
+    let mut p_half_to_1 = 0_usize;
+    let mut rem = len;
+    while rem > 0 {
+        let take = rem.min(STREAM_CHUNK_ELEMS);
+        read_chunk_f32(&mut r_h, &mut b_h, take);
+        read_chunk_u8(&mut r_wk, &mut b_wk, take);
+        read_chunk_f32(&mut r_p, &mut b_p, take);
+        read_chunk_f32(&mut r_pet, &mut b_pet, take);
+        for i in 0..take {
+            if b_h[i] > 0.0 {
+                land += 1;
+            }
+            if b_wk[i] == WaterKind::EndorheicLake as u8 {
+                let ratio = b_p[i] / b_pet[i].max(0.05);
+                if ratio >= 1.0 {
+                    p_ge_pet += 1;
+                } else if ratio >= 0.5 {
+                    p_half_to_1 += 1;
+                }
+            }
+        }
+        rem -= take;
+    }
+    let denom = land.max(1) as f32;
+    (
+        (p_ge_pet + p_half_to_1) as f32 / denom,
+        p_ge_pet as f32 / denom,
+        p_half_to_1 as f32 / denom,
+    )
+}
 
 struct TempDirGuard(PathBuf);
 
@@ -61,80 +134,160 @@ fn verify_card3_1024_sweep() {
         20_261_122_u64,
     ];
     let t0 = Instant::now();
+    let mut violations: Vec<String> = Vec::new();
     for &seed in &seeds {
         let guard = TempDirGuard::new(&format!("card3_1024_{seed}"));
         let cfg = WorldV2Config::for_size(seed, size);
         let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 1024");
-        assert!(
-            (20..=80).contains(&meta.stats.waterfall_count),
-            "seed={seed}: waterfall_count={} outside 20..=80",
-            meta.stats.waterfall_count
-        );
-        assert!(
-            (0.0005..=0.0030).contains(&meta.stats.river_surface_fraction),
-            "seed={seed}: river_surface_fraction={} outside [0.0005, 0.0030]",
-            meta.stats.river_surface_fraction
-        );
-        assert!(
-            (0.008..=0.045).contains(&meta.stats.lake_surface_fraction),
-            "seed={seed}: lake_surface_fraction={} outside [0.008, 0.045]",
-            meta.stats.lake_surface_fraction
-        );
         let large_lakes = meta.basins.iter().filter(|b| b.area_m2 > 100_000.0).count();
-        assert!(
-            large_lakes >= 5,
-            "seed={seed}: expected >= 5 lakes > 0.1 km^2, got {large_lakes}"
+        let paramo_lakes = meta
+            .basins
+            .iter()
+            .filter(|b| b.mean_elev_m > 3_300.0)
+            .count();
+        let caldera_or_trough = meta
+            .basins
+            .iter()
+            .filter(|b| {
+                b.classification == LakeClassification::CalderaOrTrough
+                    || b.max_wall_slope_deg > 25.0
+                    || b.elongation > 3.5
+            })
+            .count();
+        let small_paramo_ponds = meta
+            .basins
+            .iter()
+            .filter(|b| b.mean_elev_m > 3_300.0 && b.area_m2 < 100_000.0)
+            .count();
+        let (eh_tot, eh_ge1, eh_half) = stream_endorheic_humid_breakdown(guard.path(), n);
+        let dune = read_bin_f32(&guard.path().join("dune_h_m.bin"), n).expect("dune");
+        let dune_cells = dune.iter().filter(|&&d| d > 0.0).count();
+        drop(dune);
+        let min_b16 = BiomeId::ZONED_TERRESTRIAL_16
+            .iter()
+            .map(|&b| meta.stats.biome_counts[b as usize])
+            .min()
+            .unwrap_or(0);
+
+        println!(
+            "1024 seed={seed:<10} | wf={:<3} | riv={:.6} | lake={:.6} (lg={large_lakes}, par={paramo_lakes}, cald={caldera_or_trough}, ponds={small_paramo_ponds}, s4pond={}) | sev={} pit={} | endo_hum={:.6} (p>=pet={:.6}, 0.5..1={:.6}) endo_land={:.6} | caves={} | eco={:.4} jump={:.5} min16={min_b16} dune={dune_cells}",
+            meta.stats.waterfall_count,
+            meta.stats.river_surface_fraction,
+            meta.stats.lake_surface_fraction,
+            meta.stats.micro_pond_count,
+            meta.stats.severed_humid_spillways,
+            meta.stats.unmodeled_micro_pits,
+            eh_tot,
+            eh_ge1,
+            eh_half,
+            meta.stats.endorheic_land_fraction,
+            meta.stats.cave_entrance_count,
+            meta.stats.ecotone_fraction,
+            meta.stats.non_cliff_jump_fraction,
         );
-        assert_eq!(meta.stats.severed_humid_spillways, 0);
-        assert_eq!(meta.stats.unmodeled_micro_pits, 0);
-        assert_eq!(meta.stats.endorheic_humid_fraction, 0.0);
-        assert!(
-            (30..=48).contains(&meta.stats.cave_entrance_count),
-            "seed={seed}: cave_entrance_count={} outside [30, 48]",
-            meta.stats.cave_entrance_count
-        );
+
+        if !(20..=80).contains(&meta.stats.waterfall_count) {
+            violations.push(format!(
+                "seed={seed}: waterfall_count={} outside 20..=80",
+                meta.stats.waterfall_count
+            ));
+        }
+        if !(0.0005..=0.0030).contains(&meta.stats.river_surface_fraction) {
+            violations.push(format!(
+                "seed={seed}: river_surface_fraction={} outside [0.0005, 0.0030]",
+                meta.stats.river_surface_fraction
+            ));
+        }
+        if !(0.008..=0.045).contains(&meta.stats.lake_surface_fraction) {
+            violations.push(format!(
+                "seed={seed}: lake_surface_fraction={} outside [0.008, 0.045]",
+                meta.stats.lake_surface_fraction
+            ));
+        }
+        if large_lakes < 5 {
+            violations.push(format!("seed={seed}: large_lakes={large_lakes} < 5"));
+        }
+        if meta.stats.severed_humid_spillways != 0 {
+            violations.push(format!(
+                "seed={seed}: severed_humid_spillways={} != 0",
+                meta.stats.severed_humid_spillways
+            ));
+        }
+        if meta.stats.unmodeled_micro_pits != 0 {
+            violations.push(format!(
+                "seed={seed}: unmodeled_micro_pits={} != 0",
+                meta.stats.unmodeled_micro_pits
+            ));
+        }
+        if meta.stats.endorheic_humid_fraction != 0.0 {
+            violations.push(format!(
+                "seed={seed}: endorheic_humid_fraction={} (p>=pet={eh_ge1}, 0.5..1={eh_half}) != 0.0",
+                meta.stats.endorheic_humid_fraction
+            ));
+        }
+        if !(30..=48).contains(&meta.stats.cave_entrance_count) {
+            violations.push(format!(
+                "seed={seed}: cave_entrance_count={} outside [30, 48]",
+                meta.stats.cave_entrance_count
+            ));
+        }
         let min_sp = LakesFallsConfig::default().waterfall_min_spacing_m;
         let wk = read_bin_u8(&guard.path().join("water_kind.bin"), n).expect("water_kind");
         for (wf_idx, wf) in meta.waterfalls.iter().enumerate() {
-            assert!(
-                wf.drop_m >= 12.0,
-                "seed={seed}: waterfall {wf_idx} drop_m < 12.0"
-            );
-            assert!(
-                wf.plunge_depth_m > 0.0,
-                "seed={seed}: waterfall {wf_idx} plunge_depth_m={} <= 0.0",
-                wf.plunge_depth_m
-            );
-            assert_eq!(wk[wf.base_cell as usize], WaterKind::Waterfall as u8);
+            if wf.drop_m < 12.0 {
+                violations.push(format!(
+                    "seed={seed}: waterfall {wf_idx} drop_m={} < 12.0",
+                    wf.drop_m
+                ));
+            }
+            if wf.plunge_depth_m <= 0.0 {
+                violations.push(format!(
+                    "seed={seed}: waterfall {wf_idx} plunge_depth_m={} <= 0.0",
+                    wf.plunge_depth_m
+                ));
+            }
+            if wk[wf.base_cell as usize] != WaterKind::Waterfall as u8 {
+                violations.push(format!(
+                    "seed={seed}: waterfall {wf_idx} base_cell not WaterKind::Waterfall"
+                ));
+            }
             for other in &meta.waterfalls[(wf_idx + 1)..] {
                 let d = libm::hypotf(wf.x_m - other.x_m, wf.z_m - other.z_m);
-                assert!(
-                    d >= min_sp - 1e-2,
-                    "seed={seed}: waterfall spacing {d} < {min_sp}"
-                );
+                if d < min_sp - 1e-2 {
+                    violations.push(format!("seed={seed}: waterfall spacing {d} < {min_sp}"));
+                }
             }
         }
-        assert!(
-            (0.15..=0.55).contains(&meta.stats.ecotone_fraction),
-            "seed={seed}: ecotone_fraction={} outside [0.15, 0.55]",
-            meta.stats.ecotone_fraction
-        );
-        assert!(
-            meta.stats.non_cliff_jump_fraction < 0.03,
-            "seed={seed}: non_cliff_jump_fraction={} >= 0.03",
-            meta.stats.non_cliff_jump_fraction
-        );
+        if !(0.15..=0.55).contains(&meta.stats.ecotone_fraction) {
+            violations.push(format!(
+                "seed={seed}: ecotone_fraction={} outside [0.15, 0.55]",
+                meta.stats.ecotone_fraction
+            ));
+        }
+        if meta.stats.non_cliff_jump_fraction >= 0.03 {
+            violations.push(format!(
+                "seed={seed}: non_cliff_jump_fraction={} >= 0.03",
+                meta.stats.non_cliff_jump_fraction
+            ));
+        }
         for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
             let cnt = meta.stats.biome_counts[b as usize];
-            assert!(
-                cnt >= scaled_floor,
-                "seed={seed}: biome {b:?} has {cnt} < {scaled_floor}"
-            );
+            if cnt < scaled_floor {
+                violations.push(format!(
+                    "seed={seed}: biome {b:?} has {cnt} < {scaled_floor}"
+                ));
+            }
         }
-        let dune = read_bin_f32(&guard.path().join("dune_h_m.bin"), n).expect("dune");
-        let dune_cells = dune.iter().filter(|&&d| d > 0.0).count();
-        assert!(dune_cells > 0, "seed={seed}: expected dune_cells > 0");
+        if dune_cells == 0 {
+            violations.push(format!("seed={seed}: expected dune_cells > 0"));
+        }
     }
+    assert!(
+        violations.is_empty(),
+        "card3_1024_12seeds failure(s) ({} total):\n  - {}",
+        violations.len(),
+        violations.join("\n  - ")
+    );
     println!(
         "PASS card3_1024_12seeds ({} seeds) in {:.2}s",
         seeds.len(),
@@ -161,25 +314,23 @@ fn verify_biome_512_sweep() {
         19_283_746_u64,
     ];
     let t0 = Instant::now();
+    let mut violations: Vec<String> = Vec::new();
     for &seed in &seeds {
         let guard = TempDirGuard::new(&format!("biomes_512_{seed}"));
         let cfg = WorldV2Config::for_size(seed, size);
         let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("full pipeline 512");
-        assert!((0.40..=0.50).contains(&meta.stats.ocean_fraction));
-        assert!((0.008..=0.045).contains(&meta.stats.lake_surface_fraction));
-        assert!((0.0005..=0.0030).contains(&meta.stats.river_surface_fraction));
-        assert_eq!(meta.stats.severed_humid_spillways, 0);
-        assert_eq!(meta.stats.unmodeled_micro_pits, 0);
-        assert_eq!(meta.stats.endorheic_humid_fraction, 0.0);
-        assert!(meta.stats.endorheic_land_fraction <= 0.10);
-        assert!((30..=48).contains(&meta.stats.cave_entrance_count));
-        assert_eq!(meta.stats.biome_counts[BiomeId::Chaparral as usize], 0);
-        assert_eq!(meta.stats.biome_counts[BiomeId::Steppe as usize], 0);
-        for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
-            assert!(meta.stats.biome_counts[b as usize] >= scaled_floor);
-        }
-        assert!((0.15..=0.55).contains(&meta.stats.ecotone_fraction));
-        assert!(meta.stats.non_cliff_jump_fraction < 0.03);
+        let large_lakes = meta.basins.iter().filter(|b| b.area_m2 > 100_000.0).count();
+        let paramo_lakes = meta
+            .basins
+            .iter()
+            .filter(|b| b.mean_elev_m > 3_300.0)
+            .count();
+        let small_paramo_ponds = meta
+            .basins
+            .iter()
+            .filter(|b| b.mean_elev_m > 3_300.0 && b.area_m2 < 100_000.0)
+            .count();
+        let (eh_tot, eh_ge1, eh_half) = stream_endorheic_humid_breakdown(guard.path(), n);
 
         let ids = read_bin_u8x4(&guard.path().join("biome_ids.bin"), n).expect("ids");
         let wts = read_bin_u8x4(&guard.path().join("biome_weights.bin"), n).expect("wts");
@@ -188,21 +339,131 @@ fn verify_biome_512_sweep() {
         let moist = read_bin_f32(&guard.path().join("moisture.bin"), n).expect("moist");
         let lith = read_bin_u8(&guard.path().join("lithology_id.bin"), n).expect("lith");
         for (id4, w4) in ids.iter().zip(wts.iter()) {
-            assert_eq!(w4.iter().map(|&w| u16::from(w)).sum::<u16>(), 255);
-            assert!(!id4.contains(&(BiomeId::Chaparral as u8)));
-            assert!(!id4.contains(&(BiomeId::Steppe as u8)));
+            if w4.iter().map(|&w| u16::from(w)).sum::<u16>() != 255 {
+                violations.push(format!("seed={seed}: biome_weights sum != 255"));
+                break;
+            }
+            if id4.contains(&(BiomeId::Chaparral as u8)) || id4.contains(&(BiomeId::Steppe as u8)) {
+                violations.push(format!("seed={seed}: forbidden biome in top4"));
+                break;
+            }
         }
         let mut dune_cells = 0usize;
         for i in 0..n {
             if dune[i] > 0.0 {
                 dune_cells += 1;
-                assert!(precip[i] < 0.48);
-                assert!(moist[i] < 0.28);
-                assert_ne!(lith[i], 1);
+                if precip[i] >= 0.48 || moist[i] >= 0.28 || lith[i] == 1 {
+                    violations.push(format!(
+                        "seed={seed}: invalid dune cell i={i} p={} m={} lith={}",
+                        precip[i], moist[i], lith[i]
+                    ));
+                    break;
+                }
             }
         }
-        assert!(dune_cells > 0);
+        let min_b16 = BiomeId::ZONED_TERRESTRIAL_16
+            .iter()
+            .map(|&b| meta.stats.biome_counts[b as usize])
+            .min()
+            .unwrap_or(0);
+
+        println!(
+            "512  seed={seed:<20} | wf={:<2} | riv={:.6} | lake={:.6} (lg={large_lakes}, par={paramo_lakes}, ponds={small_paramo_ponds}) | endo_hum={:.6} (p>=pet={:.6}, 0.5..1={:.6}) endo_land={:.6} | caves={} | eco={:.4} jump={:.5} min16={min_b16} dune={dune_cells}",
+            meta.stats.waterfall_count,
+            meta.stats.river_surface_fraction,
+            meta.stats.lake_surface_fraction,
+            eh_tot,
+            eh_ge1,
+            eh_half,
+            meta.stats.endorheic_land_fraction,
+            meta.stats.cave_entrance_count,
+            meta.stats.ecotone_fraction,
+            meta.stats.non_cliff_jump_fraction,
+        );
+
+        if !(0.40..=0.50).contains(&meta.stats.ocean_fraction) {
+            violations.push(format!(
+                "seed={seed}: ocean_fraction={} outside [0.40, 0.50]",
+                meta.stats.ocean_fraction
+            ));
+        }
+        if !(0.008..=0.045).contains(&meta.stats.lake_surface_fraction) {
+            violations.push(format!(
+                "seed={seed}: lake_surface_fraction={} outside [0.008, 0.045]",
+                meta.stats.lake_surface_fraction
+            ));
+        }
+        if !(0.0005..=0.0030).contains(&meta.stats.river_surface_fraction) {
+            violations.push(format!(
+                "seed={seed}: river_surface_fraction={} outside [0.0005, 0.0030]",
+                meta.stats.river_surface_fraction
+            ));
+        }
+        if meta.stats.severed_humid_spillways != 0 {
+            violations.push(format!(
+                "seed={seed}: severed_humid_spillways={}",
+                meta.stats.severed_humid_spillways
+            ));
+        }
+        if meta.stats.unmodeled_micro_pits != 0 {
+            violations.push(format!(
+                "seed={seed}: unmodeled_micro_pits={}",
+                meta.stats.unmodeled_micro_pits
+            ));
+        }
+        if meta.stats.endorheic_humid_fraction != 0.0 {
+            violations.push(format!(
+                "seed={seed}: endorheic_humid_fraction={} (p>=pet={eh_ge1}, 0.5..1={eh_half}) != 0.0",
+                meta.stats.endorheic_humid_fraction
+            ));
+        }
+        if meta.stats.endorheic_land_fraction > 0.10 {
+            violations.push(format!(
+                "seed={seed}: endorheic_land_fraction={} > 0.10",
+                meta.stats.endorheic_land_fraction
+            ));
+        }
+        if !(30..=48).contains(&meta.stats.cave_entrance_count) {
+            violations.push(format!(
+                "seed={seed}: cave_entrance_count={} outside [30, 48]",
+                meta.stats.cave_entrance_count
+            ));
+        }
+        if meta.stats.biome_counts[BiomeId::Chaparral as usize] != 0
+            || meta.stats.biome_counts[BiomeId::Steppe as usize] != 0
+        {
+            violations.push(format!("seed={seed}: forbidden biome count != 0"));
+        }
+        for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
+            if meta.stats.biome_counts[b as usize] < scaled_floor {
+                violations.push(format!(
+                    "seed={seed}: biome {b:?} has {} < {scaled_floor}",
+                    meta.stats.biome_counts[b as usize]
+                ));
+            }
+        }
+        if !(0.15..=0.55).contains(&meta.stats.ecotone_fraction) {
+            violations.push(format!(
+                "seed={seed}: ecotone_fraction={} outside [0.15, 0.55]",
+                meta.stats.ecotone_fraction
+            ));
+        }
+        if meta.stats.non_cliff_jump_fraction >= 0.03 {
+            violations.push(format!(
+                "seed={seed}: non_cliff_jump_fraction={} >= 0.03",
+                meta.stats.non_cliff_jump_fraction
+            ));
+        }
+        if dune_cells == 0 {
+            violations.push(format!("seed={seed}: expected dune_cells > 0"));
+        }
     }
+    assert!(
+        violations.is_empty(),
+        "biomes_512_11seeds failure(s) ({} total):\n  - {}",
+        violations.len(),
+        violations.join("\n  - ")
+    );
     println!(
         "PASS biomes_512_11seeds ({} seeds) in {:.2}s",
         seeds.len(),
@@ -329,50 +590,88 @@ fn verify_4096_full_pipeline() {
         .filter(|b| b.mean_elev_m > 3_300.0 && b.area_m2 < 100_000.0)
         .count();
 
-    let total_h = read_bin_f32(&g_a.path().join("total_h_m.bin"), n).expect("total_h");
-    let ela = read_bin_f32(&g_a.path().join("ela_m.bin"), n).expect("ela_m");
-    let glac = read_bin_f32(&g_a.path().join("glacier_h_m.bin"), n).expect("glacier_h_m");
-    let dom = read_bin_u8(&g_a.path().join("dominant_biome.bin"), n).expect("dominant_biome");
+    let mut r_h = BufReader::new(File::open(g_a.path().join("total_h_m.bin")).expect("total_h"));
+    let mut r_ela = BufReader::new(File::open(g_a.path().join("ela_m.bin")).expect("ela_m"));
+    let mut r_glac =
+        BufReader::new(File::open(g_a.path().join("glacier_h_m.bin")).expect("glacier_h_m"));
+    let mut r_dom =
+        BufReader::new(File::open(g_a.path().join("dominant_biome.bin")).expect("dominant_biome"));
+    let mut b_h = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_ela = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_glac = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_dom = Vec::with_capacity(STREAM_CHUNK_ELEMS);
     let mut ela_min = f32::INFINITY;
     let mut ela_max = f32::NEG_INFINITY;
     let mut sub_ela_violations = 0_usize;
-    for i in 0..n {
-        let e = ela[i];
-        if e < ela_min {
-            ela_min = e;
+    let mut rem = n;
+    while rem > 0 {
+        let take = rem.min(STREAM_CHUNK_ELEMS);
+        read_chunk_f32(&mut r_h, &mut b_h, take);
+        read_chunk_f32(&mut r_ela, &mut b_ela, take);
+        read_chunk_f32(&mut r_glac, &mut b_glac, take);
+        read_chunk_u8(&mut r_dom, &mut b_dom, take);
+        for i in 0..take {
+            let e = b_ela[i];
+            if e < ela_min {
+                ela_min = e;
+            }
+            if e > ela_max {
+                ela_max = e;
+            }
+            if b_h[i] < e
+                && (b_glac[i] > 0.0
+                    || b_dom[i] == BiomeId::Snow as u8
+                    || b_dom[i] == BiomeId::Glacier as u8)
+            {
+                sub_ela_violations += 1;
+            }
         }
-        if e > ela_max {
-            ela_max = e;
-        }
-        if total_h[i] < e
-            && (glac[i] > 0.0 || dom[i] == BiomeId::Snow as u8 || dom[i] == BiomeId::Glacier as u8)
-        {
-            sub_ela_violations += 1;
-        }
+        rem -= take;
     }
-    drop(total_h);
-    drop(ela);
-    drop(glac);
-    drop(dom);
+    drop(b_h);
+    drop(b_ela);
+    drop(b_glac);
+    drop(b_dom);
 
-    let ids = read_bin_u8x4(&g_a.path().join("biome_ids.bin"), n).expect("biome_ids");
-    let wts = read_bin_u8x4(&g_a.path().join("biome_weights.bin"), n).expect("biome_weights");
+    let mut r_ids =
+        BufReader::new(File::open(g_a.path().join("biome_ids.bin")).expect("biome_ids"));
+    let mut r_wts =
+        BufReader::new(File::open(g_a.path().join("biome_weights.bin")).expect("biome_weights"));
+    let mut b_ids = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut b_wts = Vec::with_capacity(STREAM_CHUNK_ELEMS);
     let mut weight_sum_bad = 0_usize;
     let mut forbidden_top4 = 0_usize;
-    for (id4, w4) in ids.iter().zip(wts.iter()) {
-        if w4.iter().map(|&w| u16::from(w)).sum::<u16>() != 255 {
-            weight_sum_bad += 1;
+    let mut rem_b = n;
+    while rem_b > 0 {
+        let take = rem_b.min(STREAM_CHUNK_ELEMS);
+        read_chunk_u8x4(&mut r_ids, &mut b_ids, take);
+        read_chunk_u8x4(&mut r_wts, &mut b_wts, take);
+        for (id4, w4) in b_ids.iter().zip(b_wts.iter()) {
+            if w4.iter().map(|&w| u16::from(w)).sum::<u16>() != 255 {
+                weight_sum_bad += 1;
+            }
+            if id4.contains(&(BiomeId::Chaparral as u8)) || id4.contains(&(BiomeId::Steppe as u8)) {
+                forbidden_top4 += 1;
+            }
         }
-        if id4.contains(&(BiomeId::Chaparral as u8)) || id4.contains(&(BiomeId::Steppe as u8)) {
-            forbidden_top4 += 1;
-        }
+        rem_b -= take;
     }
-    drop(ids);
-    drop(wts);
+    drop(b_ids);
+    drop(b_wts);
 
-    let dune = read_bin_f32(&g_a.path().join("dune_h_m.bin"), n).expect("dune_h_m");
-    let dune_cells = dune.iter().filter(|&&d| d > 0.0).count();
-    drop(dune);
+    let mut r_dune = BufReader::new(File::open(g_a.path().join("dune_h_m.bin")).expect("dune_h_m"));
+    let mut b_dune = Vec::with_capacity(STREAM_CHUNK_ELEMS);
+    let mut dune_cells = 0_usize;
+    let mut rem_d = n;
+    while rem_d > 0 {
+        let take = rem_d.min(STREAM_CHUNK_ELEMS);
+        read_chunk_f32(&mut r_dune, &mut b_dune, take);
+        dune_cells += b_dune.iter().filter(|&&d| d > 0.0).count();
+        rem_d -= take;
+    }
+    drop(b_dune);
+
+    let (eh_tot, eh_ge1, eh_half) = stream_endorheic_humid_breakdown(g_a.path(), n);
 
     println!(
         "=== 4096^2 REPORT (seed=0x{:x}, elapsed={:.2}s) ===",
@@ -393,7 +692,7 @@ fn verify_4096_full_pipeline() {
         wf_base_bad
     );
     println!(
-        "lakes_c3:             lake_surface_fraction={:.6}, large_lakes={}, paramo_lakes={}, caldera_or_trough={}, small_paramo_ponds={}, severed_humid_spillways={}, unmodeled_micro_pits={}, endorheic_humid_fraction={:.6}, endorheic_land_fraction={:.6}",
+        "lakes_c3:             lake_surface_fraction={:.6}, large_lakes={}, paramo_lakes={}, caldera_or_trough={}, small_paramo_ponds={}, severed_humid_spillways={}, unmodeled_micro_pits={}, endorheic_humid_fraction={:.6} (stream_tot={:.6}, p>=pet={:.6}, 0.5<=p/pet<1.0={:.6}), endorheic_land_fraction={:.6}",
         m_a.stats.lake_surface_fraction,
         large_lakes,
         paramo_lakes,
@@ -402,6 +701,9 @@ fn verify_4096_full_pipeline() {
         m_a.stats.severed_humid_spillways,
         m_a.stats.unmodeled_micro_pits,
         m_a.stats.endorheic_humid_fraction,
+        eh_tot,
+        eh_ge1,
+        eh_half,
         m_a.stats.endorheic_land_fraction
     );
     println!(
@@ -574,12 +876,24 @@ fn verify_4096_full_pipeline() {
 fn main() {
     let include_4096 = std::env::args().any(|a| a == "--include-4096");
     let only_4096 = std::env::args().any(|a| a == "--only-4096");
-    if !only_4096 {
-        verify_card3_1024_sweep();
-        verify_biome_512_sweep();
-        verify_1024_rayon_invariance();
+    let only_1024 = std::env::args().any(|a| a == "--only-1024");
+    let only_512 = std::env::args().any(|a| a == "--only-512");
+    if only_4096 {
+        verify_4096_full_pipeline();
+        return;
     }
-    if include_4096 || only_4096 {
+    if only_1024 {
+        verify_card3_1024_sweep();
+        return;
+    }
+    if only_512 {
+        verify_biome_512_sweep();
+        return;
+    }
+    verify_card3_1024_sweep();
+    verify_biome_512_sweep();
+    verify_1024_rayon_invariance();
+    if include_4096 {
         verify_4096_full_pipeline();
     }
 }

@@ -910,6 +910,30 @@ fn multigrid_two_level_upsampling_and_rayon_invariance() {
 }
 
 #[test]
+fn multigrid_three_level_cached_precip_reuse_and_rayon_invariance() {
+    let g_4t = TempDirGuard::new("256_mg3_4t");
+    let g_1t = TempDirGuard::new("256_mg3_1t");
+
+    let cfg = WorldV2Config::for_size(0x5756_3201, 256);
+    // Exercises level_idx == 2 cached_clim_precip bilinear reuse path cleanly in debug CI.
+    let schedule = [(64_u32, 10_usize), (128, 10), (256, 10)];
+    let pool_4 = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+    let pool_1 = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+
+    let m_4t = pool_4
+        .install(|| run_worldgen_to_dir_with_schedule(&cfg, g_4t.path(), &schedule))
+        .expect("256 3-level multigrid 4t");
+    let m_1t = pool_1
+        .install(|| run_worldgen_to_dir_with_schedule(&cfg, g_1t.path(), &schedule))
+        .expect("256 3-level multigrid 1t");
+
+    assert_eq!(m_4t, m_1t);
+    let c_4t = std::fs::read(g_4t.path().join("cave_network.bin")).unwrap();
+    let c_1t = std::fs::read(g_1t.path().join("cave_network.bin")).unwrap();
+    assert_eq!(c_4t, c_1t);
+}
+
+#[test]
 fn cli_generate_smoke_writes_raw_buffers_and_valid_anmc_v1() {
     let guard = TempDirGuard::new("cli_smoke");
     let bin = env!("CARGO_BIN_EXE_anima-worldgen");

@@ -1142,7 +1142,10 @@ mod tests {
 
         // Channel initiates on steep upper trough and must persist onto the flat `slope = 0.002`
         // floodplain (where local `A * S^2` falls well below `500 m^2`) in both full & lean routers.
-        assert!(std_res.is_channel[4 * w + 5], "expected channel head at (4,5)");
+        assert!(
+            std_res.is_channel[4 * w + 5],
+            "expected channel head at (4,5)"
+        );
         assert!(
             std_res.is_channel[4 * w + 12],
             "expected persistent channel on flat floodplain at (4,12)"
@@ -1152,8 +1155,8 @@ mod tests {
             "expected lean router channel persistence on flat floodplain at (4,12)"
         );
         // Unchannelized gentle lateral hillslope remains on MFD (`!is_channel`).
-        assert!(!std_res.is_channel[1 * w + 10]);
-        assert!(!lean_res.is_channel[1 * w + 10]);
+        assert!(!std_res.is_channel[w + 10]);
+        assert!(!lean_res.is_channel[w + 10]);
         assert_eq!(std_res.is_channel, lean_res.is_channel);
     }
 }

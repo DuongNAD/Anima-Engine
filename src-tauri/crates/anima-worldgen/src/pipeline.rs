@@ -12,6 +12,7 @@ use crate::erosion_fluvial::{
     erode_fluvial_step_f32_lean, FluvialErodibility, FluvialError, FluvialGridLean,
     FluvialLeanScratch, FluvialParams,
 };
+use crate::erosion_glacial::{run_paleo_glacial_pass, GlacialParams};
 use crate::erosion_thermal::{relax_thermal_and_hillslope, ThermalHillslopeParams};
 use crate::hydrology::{
     priority_flood_d8_lean_into, route_hybrid_mfd_d8_lean, route_hybrid_mfd_d8_lean_halves,
@@ -21,7 +22,10 @@ use crate::lakes_falls::{
     generate_lakes_and_waterfalls, LakeBasinRecord, LakesFallsConfig, LakesFallsError,
     LakesFallsInput, WaterfallRecord,
 };
-use crate::tectonic::{generate_fine_s1_aux, generate_uplift_for_target};
+use crate::tectonic::{
+    generate_fine_s1_aux_at_time, generate_uplift_for_target, update_lithology_advected_in_place,
+    STRAT_MIN_BED_THICKNESS_M,
+};
 use crate::{BiomeId, WaterKind, BIOME_COUNT};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -133,10 +137,10 @@ pub struct RawWorldMeta {
 #[must_use]
 pub fn compute_multigrid_schedule(target_size: u32) -> Vec<(u32, usize)> {
     if target_size <= 512 {
-        return vec![(target_size, 60)];
+        return vec![(target_size, 80)];
     }
     let mut levels = Vec::new();
-    for &(sz, steps) in &[(512_u32, 60_usize), (1024, 40), (2048, 25), (4096, 15)] {
+    for &(sz, steps) in &[(512_u32, 80_usize), (1024, 40), (2048, 25), (4096, 40)] {
         if sz < target_size {
             levels.push((sz, steps));
         }
@@ -144,7 +148,7 @@ pub fn compute_multigrid_schedule(target_size: u32) -> Vec<(u32, usize)> {
     let target_steps = match target_size {
         1024 => 40,
         2048 => 25,
-        4096 => 15,
+        4096 => 40,
         8192 => 8,
         _ => 25,
     };
@@ -436,6 +440,80 @@ fn upsert_layer(layers: &mut Vec<LayerMeta>, meta: LayerMeta) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn run_fluvial_step_advected(
+    lvl_cfg: &WorldV2Config,
+    target_size: u32,
+    cur_bedrock: &mut [f32],
+    cur_sediment: &mut [f32],
+    uplift_u: &[f32],
+    lithology_id: &mut [u8],
+    precip_for_s2: &[f32],
+    base_params: &FluvialParams,
+    scratch: &mut FluvialLeanScratch,
+    t_elapsed_yr: &mut f64,
+    depth: u8,
+) -> Result<(), PipelineError> {
+    update_lithology_advected_in_place(
+        lvl_cfg,
+        target_size,
+        cur_bedrock,
+        uplift_u,
+        *t_elapsed_yr,
+        lithology_id,
+    )?;
+    let mut grid = FluvialGridLean {
+        bedrock_h: cur_bedrock,
+        sediment_s: cur_sediment,
+        uplift_m_yr: uplift_u,
+        k_erodibility: FluvialErodibility::LithologyLut {
+            lithology_id,
+            k_scale: FLUVIAL_K_SCALE,
+        },
+        precip_m_yr: precip_for_s2,
+        pet_m_yr: None,
+        width: lvl_cfg.grid_size as usize,
+        height: lvl_cfg.grid_size as usize,
+        sea_level_m: Some(crate::SEA_LEVEL_M),
+    };
+    match erode_fluvial_step_f32_lean(&mut grid, base_params, Some(scratch)) {
+        Ok(_) => {
+            *t_elapsed_yr += base_params.dt_yr;
+            Ok(())
+        }
+        Err(FluvialError::IncisionCapExceeded { max_dh_m, cap_m }) if depth < 2 => {
+            let k = ((max_dh_m / cap_m).ceil() as usize).clamp(2, 16);
+            let sub_dt = base_params.dt_yr / (k as f64);
+            let sub_params = FluvialParams {
+                dt_yr: sub_dt,
+                max_incision_cap_m: if depth + 1 >= 2 {
+                    None
+                } else {
+                    base_params.max_incision_cap_m
+                },
+                ..base_params.clone()
+            };
+            for _ in 0..k {
+                run_fluvial_step_advected(
+                    lvl_cfg,
+                    target_size,
+                    cur_bedrock,
+                    cur_sediment,
+                    uplift_u,
+                    lithology_id,
+                    precip_for_s2,
+                    &sub_params,
+                    scratch,
+                    t_elapsed_yr,
+                    depth + 1,
+                )?;
+            }
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Runs the complete deterministic multigrid World v2 pipeline (`S1 -> S9`) using the default
 /// multigrid schedule and writes raw little-endian stage buffers, `cave_network.bin`, and
 /// `raw_meta.json` directly into `out_dir`.
@@ -503,6 +581,7 @@ pub fn run_worldgen_to_dir_with_schedule(
     let mut cur_sediment: Vec<f32> = Vec::new();
     let mut cur_size: usize = 0;
     let mut cached_clim_precip: Option<(usize, Vec<f32>)> = None;
+    let mut t_elapsed_yr: f64 = 0.0;
 
     for (level_idx, &(lvl_u32, n_steps)) in schedule.iter().enumerate() {
         let lvl = lvl_u32 as usize;
@@ -513,7 +592,7 @@ pub fn run_worldgen_to_dir_with_schedule(
             ..cfg.clone()
         };
 
-        let (mut uplift_u, lithology_id) = if level_idx == 0 {
+        let (mut uplift_u, mut lithology_id) = if level_idx == 0 {
             let s1 = generate_uplift_for_target(&lvl_cfg, target_size)?;
             cur_bedrock = s1.bedrock_h;
             cur_sediment = vec![0.0_f32; lvl_n];
@@ -527,29 +606,35 @@ pub fn run_worldgen_to_dir_with_schedule(
             drop(cur_sediment);
             cur_sediment = up_sed;
 
-            generate_fine_s1_aux(&lvl_cfg, &cur_bedrock, target_size)?
+            generate_fine_s1_aux_at_time(
+                &lvl_cfg,
+                &cur_bedrock,
+                target_size,
+                f64::from(UPLIFT_M_YR_SCALE),
+                t_elapsed_yr,
+            )?
         };
         cur_size = lvl;
         for u in &mut uplift_u {
             *u *= UPLIFT_M_YR_SCALE;
         }
 
-        // 2-pass S7 climate-erosion coupling:
-        // - If target <= 512: single level runs Pass 1 (30 steps) -> S5+S7 Pass 2 -> (30 steps).
-        // - If target > 512: 512^2 uses Pass 1; 1024^2 runs S5 + S7 Pass 2 and caches precip;
-        //   2048^2 and 4096^2 resample cached 1024^2 precip cleanly for S2.
+        // 2-pass S7 climate-erosion coupling + Step 0 Exp. B multigrid `dt_yr` & incision cap:
+        // - `512²` (`80 × 1,000 yr`), `1024²` (`40 × 1,000 yr`),
+        //   `2048²` (`25 × 200 yr = 5.0 kyr`), `4096²` (`40 × 100 yr = 4.0 kyr`), `G = 0.85` kept.
         let fluvial_params = FluvialParams {
             dx_m: f64::from(lvl_dx),
             dt_yr: if lvl_dx <= 12.0 {
-                4.0
+                100.0
             } else if lvl_dx <= 25.0 {
-                35.0
+                200.0
             } else {
                 FLUVIAL_DT_YR
             },
             g_deposition: 0.85,
             max_gs_iters: 64,
             gs_tol_m: 5.0e-4,
+            max_incision_cap_m: Some(0.25 * STRAT_MIN_BED_THICKNESS_M),
             ..FluvialParams::default()
         };
         let thermal_params = ThermalHillslopeParams {
@@ -563,6 +648,19 @@ pub fn run_worldgen_to_dir_with_schedule(
             },
             substeps: if lvl_dx < 30.0 { 4 } else { 12 },
             ..ThermalHillslopeParams::default()
+        };
+        let glacial_steps = if schedule.len() == 1 {
+            if lvl_u32 >= 256 {
+                10
+            } else {
+                0
+            }
+        } else if lvl_u32 == 512 {
+            6
+        } else if lvl_u32 == 1024 {
+            4
+        } else {
+            0
         };
 
         let mut precip_for_s2: Vec<f32>;
@@ -586,21 +684,19 @@ pub fn run_worldgen_to_dir_with_schedule(
             let half2 = n_steps - half1;
             let mut scratch = FluvialLeanScratch::default();
             for _ in 0..half1 {
-                let mut grid = FluvialGridLean {
-                    bedrock_h: &mut cur_bedrock,
-                    sediment_s: &mut cur_sediment,
-                    uplift_m_yr: &uplift_u,
-                    k_erodibility: FluvialErodibility::LithologyLut {
-                        lithology_id: &lithology_id,
-                        k_scale: FLUVIAL_K_SCALE,
-                    },
-                    precip_m_yr: &precip_for_s2,
-                    pet_m_yr: None,
-                    width: lvl,
-                    height: lvl,
-                    sea_level_m: Some(0.0),
-                };
-                erode_fluvial_step_f32_lean(&mut grid, &fluvial_params, Some(&mut scratch))?;
+                run_fluvial_step_advected(
+                    &lvl_cfg,
+                    target_size,
+                    &mut cur_bedrock,
+                    &mut cur_sediment,
+                    &uplift_u,
+                    &mut lithology_id,
+                    &precip_for_s2,
+                    &fluvial_params,
+                    &mut scratch,
+                    &mut t_elapsed_yr,
+                    0,
+                )?;
             }
             drop(scratch);
 
@@ -656,23 +752,42 @@ pub fn run_worldgen_to_dir_with_schedule(
 
             let mut scratch2 = FluvialLeanScratch::default();
             for _ in 0..half2 {
-                let mut grid = FluvialGridLean {
-                    bedrock_h: &mut cur_bedrock,
-                    sediment_s: &mut cur_sediment,
-                    uplift_m_yr: &uplift_u,
-                    k_erodibility: FluvialErodibility::LithologyLut {
-                        lithology_id: &lithology_id,
-                        k_scale: FLUVIAL_K_SCALE,
-                    },
-                    precip_m_yr: &precip_for_s2,
-                    pet_m_yr: None,
-                    width: lvl,
-                    height: lvl,
-                    sea_level_m: Some(0.0),
-                };
-                erode_fluvial_step_f32_lean(&mut grid, &fluvial_params, Some(&mut scratch2))?;
+                run_fluvial_step_advected(
+                    &lvl_cfg,
+                    target_size,
+                    &mut cur_bedrock,
+                    &mut cur_sediment,
+                    &uplift_u,
+                    &mut lithology_id,
+                    &precip_for_s2,
+                    &fluvial_params,
+                    &mut scratch2,
+                    &mut t_elapsed_yr,
+                    0,
+                )?;
             }
             drop(scratch2);
+            if glacial_steps > 0 {
+                let _s2b = run_paleo_glacial_pass(
+                    &mut cur_bedrock,
+                    &mut cur_sediment,
+                    lvl,
+                    lvl,
+                    &GlacialParams {
+                        dx_m: f64::from(lvl_dx),
+                        steps: glacial_steps,
+                        ..GlacialParams::default()
+                    },
+                );
+                update_lithology_advected_in_place(
+                    &lvl_cfg,
+                    target_size,
+                    &cur_bedrock,
+                    &uplift_u,
+                    t_elapsed_yr,
+                    &mut lithology_id,
+                )?;
+            }
             Vec::new()
         } else {
             if level_idx == 0 {
@@ -743,21 +858,40 @@ pub fn run_worldgen_to_dir_with_schedule(
 
             let mut scratch = FluvialLeanScratch::default();
             for _ in 0..n_steps {
-                let mut grid = FluvialGridLean {
-                    bedrock_h: &mut cur_bedrock,
-                    sediment_s: &mut cur_sediment,
-                    uplift_m_yr: &uplift_u,
-                    k_erodibility: FluvialErodibility::LithologyLut {
-                        lithology_id: &lithology_id,
-                        k_scale: FLUVIAL_K_SCALE,
+                run_fluvial_step_advected(
+                    &lvl_cfg,
+                    target_size,
+                    &mut cur_bedrock,
+                    &mut cur_sediment,
+                    &uplift_u,
+                    &mut lithology_id,
+                    &precip_for_s2,
+                    &fluvial_params,
+                    &mut scratch,
+                    &mut t_elapsed_yr,
+                    0,
+                )?;
+            }
+            if glacial_steps > 0 {
+                let _s2b = run_paleo_glacial_pass(
+                    &mut cur_bedrock,
+                    &mut cur_sediment,
+                    lvl,
+                    lvl,
+                    &GlacialParams {
+                        dx_m: f64::from(lvl_dx),
+                        steps: glacial_steps,
+                        ..GlacialParams::default()
                     },
-                    precip_m_yr: &precip_for_s2,
-                    pet_m_yr: None,
-                    width: lvl,
-                    height: lvl,
-                    sea_level_m: Some(0.0),
-                };
-                erode_fluvial_step_f32_lean(&mut grid, &fluvial_params, Some(&mut scratch))?;
+                );
+                update_lithology_advected_in_place(
+                    &lvl_cfg,
+                    target_size,
+                    &cur_bedrock,
+                    &uplift_u,
+                    t_elapsed_yr,
+                    &mut lithology_id,
+                )?;
             }
             let mut talus_frac = vec![0.0_f32; lvl_n];
             let (s_lo, s_hi, t_lo, t_hi) = scratch.thermal_halves_mut();
@@ -797,6 +931,14 @@ pub fn run_worldgen_to_dir_with_schedule(
 
         let is_final = level_idx + 1 == schedule.len();
         if is_final {
+            update_lithology_advected_in_place(
+                &lvl_cfg,
+                target_size,
+                &cur_bedrock,
+                &uplift_u,
+                t_elapsed_yr,
+                &mut lithology_id,
+            )?;
             // Spill uplift_u, lithology_id, talus_frac, bedrock_h, sediment_s; drop unneeded buffers.
             let mut layers: Vec<LayerMeta> = Vec::with_capacity(30);
             drop(cached_clim_precip.take());
@@ -915,13 +1057,7 @@ pub fn run_worldgen_to_dir_with_schedule(
             drop(pf_ord);
             let hcfg = HydrologyConfig {
                 dx_m: target_dx,
-                channel_init_threshold: if target_dx > 45.0 {
-                    250.0_f64.max(2.5 * f64::from(target_dx) * f64::from(target_dx))
-                } else if target_dx <= 10.5 {
-                    30.0
-                } else {
-                    30.0 + 3.5 * (f64::from(target_dx) - 10.0)
-                },
+                channel_init_threshold: 500.0,
                 ..HydrologyConfig::default()
             };
             let mut hydro = route_hybrid_mfd_d8_lean_halves(
