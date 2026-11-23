@@ -108,6 +108,8 @@ pub struct PipelineStats {
     pub ecotone_fraction: f32,
     pub non_cliff_jump_fraction: f32,
     pub biome_counts: Vec<usize>,
+    #[serde(default)]
+    pub uncapped_fluvial_substeps: usize,
 }
 
 /// Top-level JSON manifest written directly as `<out>/raw_meta.json`.
@@ -454,6 +456,7 @@ fn run_fluvial_step_advected(
     t_elapsed_yr: &mut f64,
     depth: u8,
     hint_k: &mut usize,
+    uncapped_substeps: &mut usize,
 ) -> Result<(f64, bool), PipelineError> {
     if depth == 0 && *hint_k > 1 {
         let k_init = (*hint_k).clamp(2, 16);
@@ -480,6 +483,7 @@ fn run_fluvial_step_advected(
                 t_elapsed_yr,
                 1,
                 &mut local_hint,
+                uncapped_substeps,
             )?;
             worst_dh = worst_dh.max(dh);
             any_split |= split;
@@ -524,6 +528,9 @@ fn run_fluvial_step_advected(
     };
     match erode_fluvial_step_f32_lean(&mut grid, base_params, Some(scratch)) {
         Ok(stats) => {
+            if base_params.max_incision_cap_m.is_none() {
+                *uncapped_substeps += 1;
+            }
             *t_elapsed_yr += base_params.dt_yr;
             Ok((stats.max_bedrock_incision_m, false))
         }
@@ -561,6 +568,7 @@ fn run_fluvial_step_advected(
                     t_elapsed_yr,
                     depth + 1,
                     &mut child_hint,
+                    uncapped_substeps,
                 )?;
                 worst_dh = worst_dh.max(dh);
                 if depth == 0 && child_hint > 1 {
@@ -641,6 +649,7 @@ pub fn run_worldgen_to_dir_with_schedule(
     let mut cur_size: usize = 0;
     let mut cached_clim_precip: Option<(usize, Vec<f32>)> = None;
     let mut t_elapsed_yr: f64 = 0.0;
+    let mut uncapped_fluvial_substeps: usize = 0;
 
     for (level_idx, &(lvl_u32, n_steps)) in schedule.iter().enumerate() {
         let lvl = lvl_u32 as usize;
@@ -757,6 +766,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &mut t_elapsed_yr,
                     0,
                     &mut fluvial_hint_k,
+                    &mut uncapped_fluvial_substeps,
                 )?;
             }
             drop(scratch);
@@ -826,6 +836,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &mut t_elapsed_yr,
                     0,
                     &mut fluvial_hint_k,
+                    &mut uncapped_fluvial_substeps,
                 )?;
             }
             drop(scratch2);
@@ -934,6 +945,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &mut t_elapsed_yr,
                     0,
                     &mut fluvial_hint_k,
+                    &mut uncapped_fluvial_substeps,
                 )?;
             }
             if glacial_steps > 0 {
@@ -1674,6 +1686,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     ecotone_fraction,
                     non_cliff_jump_fraction,
                     biome_counts,
+                    uncapped_fluvial_substeps,
                 },
                 basins: s6.basins,
                 waterfalls: s6.waterfalls,

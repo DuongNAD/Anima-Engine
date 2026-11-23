@@ -170,7 +170,7 @@ fn verify_card3_1024_sweep() {
             .unwrap_or(0);
 
         println!(
-            "1024 seed={seed:<10} | wf={:<3} | riv={:.6} | lake={:.6} (lg={large_lakes}, par={paramo_lakes}, cald={caldera_or_trough}, ponds={small_paramo_ponds}, s4pond={}) | sev={} pit={} | endo_hum={:.6} (p>=pet={:.6}, 0.5..1={:.6}) endo_land={:.6} | caves={} | eco={:.4} jump={:.5} min16={min_b16} dune={dune_cells}",
+            "1024 seed={seed:<10} | wf={:<3} | riv={:.6} | lake={:.6} (lg={large_lakes}, par={paramo_lakes}, cald={caldera_or_trough}, ponds={small_paramo_ponds}, s4pond={}) | sev={} pit={} | endo_hum={:.6} (p>=pet={:.6}, 0.5..1={:.6}) endo_land={:.6} | caves={} | eco={:.4} jump={:.5} min16={min_b16} dune={dune_cells} | uncapped={}",
             meta.stats.waterfall_count,
             meta.stats.river_surface_fraction,
             meta.stats.lake_surface_fraction,
@@ -184,6 +184,7 @@ fn verify_card3_1024_sweep() {
             meta.stats.cave_entrance_count,
             meta.stats.ecotone_fraction,
             meta.stats.non_cliff_jump_fraction,
+            meta.stats.uncapped_fluvial_substeps,
         );
 
         if !(20..=80).contains(&meta.stats.waterfall_count) {
@@ -368,7 +369,7 @@ fn verify_biome_512_sweep() {
             .unwrap_or(0);
 
         println!(
-            "512  seed={seed:<20} | wf={:<2} | riv={:.6} | lake={:.6} (lg={large_lakes}, par={paramo_lakes}, ponds={small_paramo_ponds}) | endo_hum={:.6} (p>=pet={:.6}, 0.5..1={:.6}) endo_land={:.6} | caves={} | eco={:.4} jump={:.5} min16={min_b16} dune={dune_cells}",
+            "512  seed={seed:<20} | wf={:<2} | riv={:.6} | lake={:.6} (lg={large_lakes}, par={paramo_lakes}, ponds={small_paramo_ponds}) | endo_hum={:.6} (p>=pet={:.6}, 0.5..1={:.6}) endo_land={:.6} | caves={} | eco={:.4} jump={:.5} min16={min_b16} dune={dune_cells} | uncapped={}",
             meta.stats.waterfall_count,
             meta.stats.river_surface_fraction,
             meta.stats.lake_surface_fraction,
@@ -379,6 +380,7 @@ fn verify_biome_512_sweep() {
             meta.stats.cave_entrance_count,
             meta.stats.ecotone_fraction,
             meta.stats.non_cliff_jump_fraction,
+            meta.stats.uncapped_fluvial_substeps,
         );
 
         if !(0.40..=0.50).contains(&meta.stats.ocean_fraction) {
@@ -707,10 +709,11 @@ fn verify_4096_full_pipeline() {
         m_a.stats.endorheic_land_fraction
     );
     println!(
-        "rivers_caves:         river_surface_fraction={:.6}, cave_entrance_count={} (ANMC={})",
+        "rivers_caves:         river_surface_fraction={:.6}, cave_entrance_count={} (ANMC={}), uncapped_fluvial_substeps={}",
         m_a.stats.river_surface_fraction,
         m_a.stats.cave_entrance_count,
-        net.entrances.len()
+        net.entrances.len(),
+        m_a.stats.uncapped_fluvial_substeps
     );
     println!(
         "biomes_c1_c2:         ecotone_fraction={:.6}, non_cliff_jump_fraction={:.6}, chaparral={}, steppe={}, weight_sum_bad={}, forbidden_top4={}, dune_cells={}",
