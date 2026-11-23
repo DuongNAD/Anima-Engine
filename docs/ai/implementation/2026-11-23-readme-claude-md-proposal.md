@@ -288,7 +288,7 @@ map-views/                canonical 1280x720 Map 1 PNG renders referenced by map
 
 - **Target:** `README.md:195-204`
 - **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6` (PR `#197` `03b9d3d`), `6adf6e3`
-- **Reason:** Per Policy Rule 4, `README.md` should link to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) instead of copying every CI gate (`eslint_ratchet`, `typecheck:tests`, `check:audit`, `check:text-hygiene`, `check:root-hygiene`, `check:ipc`, `check:e2`, `check:e3`, `check:csp`, `check:bundle`, `check:bundle-closure`, `check_e2e_specs.mjs`, `check:flora-footprint`, `check:compliance`). Note explicitly that `npm run check:compliance` (licenses, SBOM, NOTICE) runs against the Windows host `cargo tree --features desktop` inventory (`.github/workflows/ci.yml:210-213`) and reports stale on macOS/Linux by design — never suggest running it on macOS without that caveat.
+- **Reason:** Per Policy Rule 4, `README.md` should link to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) instead of copying CI gate names. CI never runs `check:compliance` as a single step: `.github/workflows/ci.yml:229-252` runs `check:licenses`, `check:sbom`, `check:sbom-schema`, and `check:notice` separately (while `npm run check:compliance` also includes OS-independent checks such as `check:sbom-schema` and `check:text-hygiene`), and `check:licenses`, `check:sbom`, and `check:notice` target the Windows `cargo tree --features desktop` graph (`.github/workflows/ci.yml:210-213`) so those three report stale off Windows by design.
 
 Current (`README.md:195-204`):
 ````markdown
@@ -317,7 +317,7 @@ npm run build
 npm run check:docs
 ```
 
-For the full CI gate list (including `eslint_ratchet`, `typecheck:tests`, `check:ipc`, `check:bundle`, `check:flora-footprint`, `check:e2`, `check:e3`, and Windows-only `check:compliance` per `.github/workflows/ci.yml:210-213`), see [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+For the full CI gate list, see [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (note that `check:licenses`, `check:sbom`, and `check:notice` target the Windows `cargo tree --features desktop` graph and report stale off Windows by design).
 ````
 
 ### `R11` — Link Backend CI gates to `CONTRIBUTING.md` instead of copying the list
@@ -634,7 +634,7 @@ map-views/                tám ảnh PNG chuẩn 1280x720 của Map 1 ghi trong 
 
 - **Target:** `README.vi.md:192-201`
 - **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6`, `6adf6e3`
-- **Reason:** Matches `R10` (links to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) instead of copying the full gate list, with the explicit Windows-only note for `check:compliance` per `.github/workflows/ci.yml:210-213`).
+- **Reason:** Matches `R10` (links to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) instead of copying gate names, noting accurately that CI runs `check:licenses`, `check:sbom`, `check:sbom-schema`, and `check:notice` separately and that `check:licenses`, `check:sbom`, and `check:notice` report stale off Windows).
 
 Current (`README.vi.md:192-201`):
 ````markdown
@@ -663,7 +663,7 @@ npm run build
 npm run check:docs
 ```
 
-Danh sách đầy đủ các cổng CI (gồm `eslint_ratchet`, `typecheck:tests`, `check:ipc`, `check:bundle`, `check:flora-footprint`, `check:e2`, `check:e3`, và `check:compliance` chỉ chạy trên Windows theo `.github/workflows/ci.yml:210-213`) nằm tại [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) và [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+Danh sách đầy đủ các cổng CI nằm tại [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) và [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (lưu ý `check:licenses`, `check:sbom` và `check:notice` kiểm tra đồ thị `cargo tree --features desktop` trên Windows nên sẽ báo lệch ngoài Windows theo thiết kế).
 ````
 
 ### `V11` — Link `Kiểm chứng` Backend CI gates to `CONTRIBUTING.md` (`README.vi.md:203-209`)
@@ -927,7 +927,7 @@ Proposed (`CLAUDE.md:52`):
 Recorded here for visibility only — **not** part of `README.md`, `README.vi.md`, or `CLAUDE.md`:
 
 - `scripts/root_allowlist.json:62` still describes `"src-tauri"` as `"Rust workspace: the anima-engine package and crates/anima-domain"` (omits `crates/anima-worldgen`).
-- `docs/planning/STATE_OF_THE_PROJECT.md:1589` carries an older Phase 1 dependency row `burn 0.13.2` (while `STATE` §3.00 line 697 already reflects `burn 0.22.1`).
+- `docs/planning/STATE_OF_THE_PROJECT.md:1589` carries an older row 3.13 "Nợ phụ thuộc" (dependency debt) entry `burn 0.13.2` (while `STATE` §3.00 line 697 already reflects `burn 0.22.1`).
 - `.github/workflows/ci.yml:162` still has a comment mentioning `ndarray CPU backend` whereas CPU execution uses `burn-flex` (`74dcd31`).
 
 ---
