@@ -31,7 +31,7 @@ interface RunResult {
   exitStatus?: number;
   message?: string;
   output?: string;
-  executed: Array<{ file: string; fenceLine: number; status: number; dryRun: boolean }>;
+  executed: Array<{ file: string; fenceLine: number; status: number }>;
 }
 
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
@@ -147,8 +147,33 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
       expect(cliRes.status).toBe(1);
       expect(cliRes.stderr).toContain('0 <!-- doc-test --> blocks found');
 
-      const apiRes = runDocCommands([], { cwd: tmp.dir }) as RunResult;
-      expect(apiRes.ok).toBe(false);
+      const staticRes = spawnSync(
+        process.execPath,
+        [SCRIPT_PATH, '--dir', 'tutorials', '--dir', 'how-to', '--cwd', tmp.dir, '--static'],
+        { encoding: 'utf8' },
+      );
+      expect(staticRes.status).toBe(1);
+      expect(staticRes.stderr).toContain('0 <!-- doc-test --> blocks found');
+
+      const scanZero = collectDocTestBlocks(['tutorials', 'how-to'], tmp.dir) as {
+        blocks: ExtractedBlock[];
+        errors: ParseError[];
+      };
+      expect(scanZero.blocks).toEqual([]);
+      expect(scanZero.errors.map((e) => e.message)).toEqual([
+        'check_doc_commands: 0 <!-- doc-test --> blocks found; failing closed',
+      ]);
+
+      // Missing default directory exits cleanly with status 1 and no uncaught stack trace.
+      const emptyCwd = makeTempDir('anima-doc8-empty-cwd-');
+      try {
+        const missingDirRes = spawnSync(process.execPath, [SCRIPT_PATH, '--cwd', emptyCwd.dir], { encoding: 'utf8' });
+        expect(missingDirRes.status).toBe(1);
+        expect(missingDirRes.stderr).toContain('check_doc_commands: Doc directory not found:');
+        expect(missingDirRes.stderr).not.toContain('at collectMarkdownFiles');
+      } finally {
+        emptyCwd.cleanup();
+      }
     } finally {
       tmp.cleanup();
     }
@@ -231,21 +256,49 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
       ),
     ).toContain('running 0 tests');
 
-    // End-to-end with a stub `cargo` binary on PATH.
+    // End-to-end with realistic split-stream `cargo` stubs on PATH (Cargo metadata on stderr, test counts on stdout).
     const tmp = makeTempDir();
     try {
-      const binDir = join(tmp.dir, 'bin');
-      mkdirSync(binDir, { recursive: true });
-      const stubCargo = join(binDir, 'cargo');
+      const passBin = join(tmp.dir, 'bin-pass');
+      mkdirSync(passBin, { recursive: true });
       writeFileSync(
-        stubCargo,
-        '#!/usr/bin/env bash\necho "Finished \\`test\\` profile"\necho "running 0 tests"\necho "test result: ok. 0 passed"\n',
+        join(passBin, 'cargo'),
+        [
+          '#!/usr/bin/env bash',
+          'echo "   Compiling anima-engine v0.1.0" >&2',
+          'echo "    Finished \\`test\\` profile [unoptimized + debuginfo] target(s) in 0.42s" >&2',
+          'echo "     Running tests/sample.rs (target/debug/deps/sample)" >&2',
+          'echo "running 5 tests"',
+          'echo "test result: ok. 5 passed; 0 failed"',
+        ].join('\n'),
+        { encoding: 'utf8', mode: 0o755 },
+      );
+
+      const passRes = runDocCommands(
+        [{ file: 'docs/how-to/PASS.md', markerLine: 4, fenceLine: 5, lang: 'bash', script: 'cargo test --test sample' }],
+        { cwd: tmp.dir, env: { PATH: `${passBin}:${process.env.PATH ?? ''}` } },
+      ) as RunResult;
+      expect(passRes.ok).toBe(true);
+      expect(passRes.executed).toEqual([{ file: 'docs/how-to/PASS.md', fenceLine: 5, status: 0 }]);
+
+      const zeroBin = join(tmp.dir, 'bin-zero');
+      mkdirSync(zeroBin, { recursive: true });
+      writeFileSync(
+        join(zeroBin, 'cargo'),
+        [
+          '#!/usr/bin/env bash',
+          'echo "   Compiling anima-engine v0.1.0" >&2',
+          'echo "    Finished \\`test\\` profile [unoptimized + debuginfo] target(s) in 0.12s" >&2',
+          'echo "     Running tests/sample.rs (target/debug/deps/sample)" >&2',
+          'echo "running 0 tests"',
+          'echo "test result: ok. 0 passed; 0 failed"',
+        ].join('\n'),
         { encoding: 'utf8', mode: 0o755 },
       );
 
       const res = runDocCommands(
         [{ file: 'docs/how-to/STALE.md', markerLine: 4, fenceLine: 5, lang: 'bash', script: 'cargo test --test missing' }],
-        { cwd: tmp.dir, env: { PATH: `${binDir}:${process.env.PATH ?? ''}` } },
+        { cwd: tmp.dir, env: { PATH: `${zeroBin}:${process.env.PATH ?? ''}` } },
       ) as RunResult;
       expect(res.ok).toBe(false);
       expect(res.message).toContain('docs/how-to/STALE.md:5');
@@ -255,7 +308,7 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
     }
   });
 
-  it('validates npm scripts, node scripts/*.mjs paths, and cargo --test targets via --static', () => {
+  it('validates npm scripts, node scripts/*.mjs paths (including ./scripts), and cargo --test targets via --static', () => {
     const okErrors = runStaticChecks(
       [
         {
@@ -266,6 +319,7 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
           script: [
             'npm run check:docs',
             'node scripts/verify_e2_artifacts.mjs',
+            'node ./scripts/verify_e2_artifacts.mjs',
             'cd src-tauri && cargo test --features desktop --test observables_tests',
           ].join('\n'),
         },
@@ -284,6 +338,7 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
           script: [
             'npm run nonexistent:script',
             'node scripts/does_not_exist.mjs',
+            'node ./scripts/does_not_exist.mjs',
             'cd src-tauri && cargo test --test nonexistent_rust_target',
           ].join('\n'),
         },
@@ -293,18 +348,19 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
     expect(badErrors).toEqual([
       "docs/how-to/broken.md:10: unknown npm script 'nonexistent:script'",
       'docs/how-to/broken.md:10: referenced script not found: scripts/does_not_exist.mjs',
+      'docs/how-to/broken.md:10: referenced script not found: scripts/does_not_exist.mjs',
       "docs/how-to/broken.md:10: unknown Rust test target '--test nonexistent_rust_target'",
     ]);
   });
 
-  it('parses CLI options and wires check:doc-commands in package.json and workflow without removed --self-test', () => {
-    expect(parseArgs(['--dir', 'docs/a', '--static', '--dry-run'])).toEqual({
+  it('parses CLI options and wires check:doc-commands in package.json, docs-commands.yml, and ci.yml', () => {
+    expect(parseArgs(['--dir', 'docs/a', '--static'])).toEqual({
       dirs: ['docs/a'],
       cwd: null,
       staticOnly: true,
-      dryRun: true,
       help: false,
     });
+    expect(() => parseArgs(['--dry-run'])).toThrow(/Unknown or incomplete option/);
     expect(() => parseArgs(['--unknown'])).toThrow(/Unknown or incomplete option/);
 
     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8')) as {
@@ -314,6 +370,10 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
 
     const workflow = readFileSync(join(REPO_ROOT, '.github/workflows/docs-commands.yml'), 'utf8');
     expect(workflow).toContain('npm run check:doc-commands');
+    expect(workflow).not.toContain('--static');
     expect(workflow).not.toContain('--self-test');
+
+    const ci = readFileSync(join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
+    expect(ci).toContain('node scripts/check_doc_commands.mjs --static');
   });
 });

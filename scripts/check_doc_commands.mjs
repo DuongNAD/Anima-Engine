@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Extract and verify `<!-- doc-test -->` fenced shell blocks in docs/tutorials and docs/how-to.
-// Usage: node scripts/check_doc_commands.mjs [--dir <path>]... [--cwd <path>] [--static] [--dry-run]
+// Usage: node scripts/check_doc_commands.mjs [--dir <path>]... [--cwd <path>] [--static]
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -13,12 +13,11 @@ const ALLOWED_LANGS = new Set(['', 'bash', 'sh']);
 const cmpAscii = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 export function parseArgs(argv) {
-  const opts = { dirs: [], cwd: null, staticOnly: false, dryRun: false, help: false };
+  const opts = { dirs: [], cwd: null, staticOnly: false, help: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--static') opts.staticOnly = true;
-    else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--dir' && i + 1 < argv.length) { opts.dirs.push(argv[i + 1]); i += 1; }
     else if (a.startsWith('--dir=')) opts.dirs.push(a.slice('--dir='.length));
     else if (a === '--cwd' && i + 1 < argv.length) { opts.cwd = argv[i + 1]; i += 1; }
@@ -112,6 +111,9 @@ export function collectDocTestBlocks(dirs = [], cwd = process.cwd()) {
     blocks.push(...res.blocks);
     errors.push(...res.errors);
   }
+  if (errors.length === 0 && blocks.length === 0) {
+    errors.push({ file: '', line: 0, message: 'check_doc_commands: 0 <!-- doc-test --> blocks found; failing closed' });
+  }
   return { files, blocks, errors };
 }
 
@@ -153,7 +155,7 @@ export function runStaticChecks(blocks, repoRoot) {
     for (const m of active.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:_-]+)/g)) {
       if (!pkgScripts.has(m[1])) errors.push(`${b.file}:${b.fenceLine}: unknown npm script '${m[1]}'`);
     }
-    for (const m of active.matchAll(/\bnode\s+(?:["'])?(?:\.\.\/)*(scripts\/[A-Za-z0-9._/-]+\.mjs)(?:["'])?/g)) {
+    for (const m of active.matchAll(/\bnode\s+(?:["'])?(?:\.\.?\/)*(scripts\/[A-Za-z0-9._/-]+\.mjs)(?:["'])?/g)) {
       if (!existsSync(join(repoRoot, m[1]))) errors.push(`${b.file}:${b.fenceLine}: referenced script not found: ${m[1]}`);
     }
     for (const m of active.matchAll(/\bcargo\s+test\b[^\n]*?\s--test(?:=|\s+)([A-Za-z0-9_-]+)/g)) {
@@ -163,22 +165,20 @@ export function runStaticChecks(blocks, repoRoot) {
   return errors;
 }
 
-export function runDocCommands(blocks, { cwd = process.cwd(), dryRun = false, env = {} } = {}) {
+export function runDocCommands(blocks, { cwd = process.cwd(), env = {} } = {}) {
   const executed = [];
-  if (blocks.length === 0) return { ok: false, message: 'check_doc_commands: 0 <!-- doc-test --> blocks found', executed };
   for (const b of blocks) {
-    if (dryRun) { executed.push({ file: b.file, fenceLine: b.fenceLine, status: 0, dryRun: true }); continue; }
-    const res = spawnSync('bash', ['-eo', 'pipefail', '-c', b.script], {
+    const res = spawnSync('bash', ['-eo', 'pipefail', '-c', `exec 2>&1\n${b.script}`], {
       cwd,
       env: { ...process.env, ...env },
       encoding: 'utf8',
       maxBuffer: 32 * 1024 * 1024,
     });
-    const combined = `${res.stdout || ''}\n${res.stderr || ''}`;
+    const combined = `${res.stdout || ''}${res.stderr ? `\n${res.stderr}` : ''}`;
     const rawStatus = res.status ?? 1;
     const zeroMsg = rawStatus === 0 ? detectCargoZeroTests(b.script, combined) : null;
     const status = zeroMsg ? 1 : rawStatus;
-    executed.push({ file: b.file, fenceLine: b.fenceLine, status, dryRun: false });
+    executed.push({ file: b.file, fenceLine: b.fenceLine, status });
     if (status !== 0) {
       return {
         ok: false,
@@ -197,20 +197,25 @@ function main() {
   let opts;
   try { opts = parseArgs(process.argv.slice(2)); } catch (err) { console.error(err.message); process.exit(2); }
   if (opts.help) {
-    console.log('Usage: node scripts/check_doc_commands.mjs [--dir <path>]... [--cwd <path>] [--static] [--dry-run]');
+    console.log('Usage: node scripts/check_doc_commands.mjs [--dir <path>]... [--cwd <path>] [--static]');
     return;
   }
   const cwd = resolve(opts.cwd ?? process.cwd());
-  const scan = collectDocTestBlocks(opts.dirs, cwd);
+  let scan;
+  try {
+    scan = collectDocTestBlocks(opts.dirs, cwd);
+  } catch (err) {
+    console.error(`check_doc_commands: ${err.message}`);
+    process.exit(1);
+  }
   if (scan.errors.length > 0) { scan.errors.forEach((e) => console.error(e.message)); process.exit(1); }
-  if (scan.blocks.length === 0) { console.error('check_doc_commands: 0 <!-- doc-test --> blocks found; failing closed'); process.exit(1); }
   if (opts.staticOnly) {
     const errs = runStaticChecks(scan.blocks, cwd);
     if (errs.length > 0) { errs.forEach((e) => console.error(e)); process.exit(1); }
     console.log(`check_doc_commands: static ok (${scan.blocks.length} block(s) in ${scan.files.length} file(s))`);
     return;
   }
-  const res = runDocCommands(scan.blocks, { cwd, dryRun: opts.dryRun });
+  const res = runDocCommands(scan.blocks, { cwd });
   if (!res.ok) { console.error(res.message); if (res.output) console.error(res.output); process.exit(res.exitStatus || 1); }
   console.log(`check_doc_commands: OK (${res.executed.length} block(s) in ${scan.files.length} file(s))`);
 }

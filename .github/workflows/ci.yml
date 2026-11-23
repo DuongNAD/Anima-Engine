@@ -459,3 +459,9 @@ jobs:
       - name: IPC reference check
         if: ${{ !cancelled() }}
         run: node scripts/check_ipc_reference.mjs
+
+      # Cheap static check of <!-- doc-test --> references (npm scripts, node scripts/*.mjs,
+      # cargo --test targets). Full execution stays in the weekly docs-commands.yml workflow.
+      - name: Doc commands static check
+        if: ${{ !cancelled() }}
+        run: node scripts/check_doc_commands.mjs --static
