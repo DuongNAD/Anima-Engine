@@ -11,6 +11,7 @@ last_reviewed: 2026-11-23
 # Draft Preregistration (v2) — E3b: Spatial Productivity Gradient and Body-Mass Variance Ratio
 
 > **Status: `proposed` (documents only — DO NOT FREEZE until Owner approves `E3B-P-v2` and signs off on the two `VIAB-1b` findings below).**
+> - **Frozen preregistration:** Frozen without decision changes in [2026-11-24-e3b-preregistration.md](2026-11-24-e3b-preregistration.md) (pinned to trunk `b0413f2eeecbab8e5ee045c22c72d5c00c16b87a`).
 > - **No code, manifests, fixtures, or scripts are modified by this PR.** Only this document is updated on trunk `98054ba206d275014ecce89e7ab7c2ad603ead1d`.
 > - **Confirmation seeds executed:** `0` (`810001..=873001` and smoke seed `999953` have never been run).
 > - **Body-mass blindness (`QD-VIAB`):** `anima-case` measured, read, or consulted `0` body-mass numbers (`live.trait_mass_*`) from [E3-X results](2026-11-20-e3-x-confirmation-results.md), [VIAB-1](2026-11-23-viab1-results.md), or `VIAB-1b` (`PR #228`). All `VIAB-1b` metrics here use exclusively non-mass fields (`0` `trait_mass` substrings). Founder choices cite only the lead's diagnosis in [2026-11-23-mut0-collapse-diagnosis.md](2026-11-23-mut0-collapse-diagnosis.md) (`PR #216`).
