@@ -5744,9 +5744,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/form_urlencoded@1.2.2",
+      "purl": "pkg:cargo/form_urlencoded@1.2.3",
       "name": "form_urlencoded",
-      "version": "1.2.2",
+      "version": "1.2.3",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -5759,7 +5759,7 @@
           "id": "T0186",
           "filename": "LICENSE-APACHE",
           "origin": "installed",
-          "provenance": "cargo-registry:form_urlencoded-1.2.2/LICENSE-APACHE",
+          "provenance": "cargo-registry:form_urlencoded-1.2.3/LICENSE-APACHE",
           "sourceSha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
           "sourceBytes": 10847,
           "textSha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
@@ -5768,7 +5768,7 @@
           "id": "T0037",
           "filename": "LICENSE-MIT",
           "origin": "installed",
-          "provenance": "cargo-registry:form_urlencoded-1.2.2/LICENSE-MIT",
+          "provenance": "cargo-registry:form_urlencoded-1.2.3/LICENSE-MIT",
           "sourceSha256": "20c7855c364d57ea4c97889a5e8d98470a9952dade37bd9248b9a54431670e5e",
           "sourceBytes": 1072,
           "textSha256": "20c7855c364d57ea4c97889a5e8d98470a9952dade37bd9248b9a54431670e5e"
@@ -14144,9 +14144,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/url@2.5.8",
+      "purl": "pkg:cargo/url@2.5.9",
       "name": "url",
-      "version": "2.5.8",
+      "version": "2.5.9",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -14159,7 +14159,7 @@
           "id": "T0186",
           "filename": "LICENSE-APACHE",
           "origin": "installed",
-          "provenance": "cargo-registry:url-2.5.8/LICENSE-APACHE",
+          "provenance": "cargo-registry:url-2.5.9/LICENSE-APACHE",
           "sourceSha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
           "sourceBytes": 10847,
           "textSha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
@@ -14168,7 +14168,7 @@
           "id": "T0203",
           "filename": "LICENSE-MIT",
           "origin": "installed",
-          "provenance": "cargo-registry:url-2.5.8/LICENSE-MIT",
+          "provenance": "cargo-registry:url-2.5.9/LICENSE-MIT",
           "sourceSha256": "b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5",
           "sourceBytes": 1072,
           "textSha256": "b38f11f6096706e6de553dabe2a7ed142d59b6fa8c97e290c67496154745cdd5"
