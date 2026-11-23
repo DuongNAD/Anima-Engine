@@ -5,7 +5,7 @@
 //! - `F-063`: `to_newick` / `to_newick_from` silently discards self-loops and cycles when a smaller
 //!   `parent_id` appears first on the target node.
 //! - `F-064`: `SobolSequence` `SOBOL_POLY_TABLE` contains invalid `init_m >= 2^(i+1)` and non-primitive/
-//!   reducible polynomials, collapsing 2D `16x16` stratification to ~64/256 cells.
+//!   reducible polynomials, misaligning high-dimensional Sobol direction numbers and inducing strong correlation.
 //! - `F-065`: `pearson_correlation` and `DimensionSpec::Logarithmic::grid_values` use unscaled
 //!   `<= 1e-15` thresholds, misclassifying valid small-scale positive series as zero-variance / single-point.
 
@@ -29,7 +29,6 @@ use anima_engine_lib::core::sweeps::{
 };
 use anima_engine_lib::evolution::lineage::{LineageNode, LineageRelation, RelationType};
 use anima_engine_lib::evolution::newick::{to_newick, NewickError};
-use std::collections::HashSet;
 
 const HD_SEED: u64 = 0x5EED;
 
@@ -394,63 +393,179 @@ fn f063_newick_detects_cycles_and_self_loops_across_all_edges_and_dedups_duplica
 }
 
 #[test]
-fn f064_sobol_primitive_polynomials_and_direction_numbers_stratify_all_2d_pairs() {
+fn f064_sobol_matches_joe_kuo_reference_points_and_decorrelates_high_dims() {
     let mut sobol = SobolSequence::new(32);
     let mut pts = Vec::with_capacity(1024);
     for _ in 0..1024 {
         pts.push(sobol.next_point());
     }
 
-    let grid_coverage_16x16 = |d1: usize, d2: usize| -> usize {
-        let mut cells: HashSet<(usize, usize)> = HashSet::with_capacity(256);
-        for p in &pts[..256] {
-            let gx = ((p[d1] * 16.0).floor() as usize).min(15);
-            let gy = ((p[d2] * 16.0).floor() as usize).min(15);
-            cells.insert((gx, gy));
-        }
-        cells.len()
-    };
-
-    // Pair (0, 1) as well as previously collapsed pairs (0, 21) and (6, 16) achieve >= 240/256.
-    let cov_0_1 = grid_coverage_16x16(0, 1);
-    let cov_0_21 = grid_coverage_16x16(0, 21);
-    let cov_6_16 = grid_coverage_16x16(6, 16);
-    assert!(
-        cov_0_1 >= 240,
-        "Sobol pair (0, 1) must stratify 16x16 grid well, got {cov_0_1}/256"
-    );
-    assert!(
-        cov_0_21 >= 240,
-        "F-064: Sobol pair (0, 21) must stratify >= 240/256, got {cov_0_21}/256"
-    );
-    assert!(
-        cov_6_16 >= 240,
-        "F-064: Sobol pair (6, 16) must stratify >= 240/256, got {cov_6_16}/256"
-    );
-
-    // Every one of the 496 dimension pairs must achieve >= 128/256 cells at N=256 and |r| < 0.05 at N=1024.
-    let mut min_cov = usize::MAX;
-    let mut max_abs_r = 0.0f64;
-    for d1 in 0..32 {
-        let x: Vec<f64> = pts.iter().map(|p| p[d1]).collect();
-        for d2 in (d1 + 1)..32 {
-            let cov = grid_coverage_16x16(d1, d2);
-            min_cov = min_cov.min(cov);
+    // 1. All 1024 x 32 coordinates lie in [0.0, 1.0) and every dimension mean at N=1024 is centered.
+    for (row_idx, p) in pts.iter().enumerate() {
+        assert_eq!(p.len(), 32);
+        for (d, &u) in p.iter().enumerate() {
             assert!(
-                cov >= 128,
-                "pair ({d1}, {d2}) had collapsed 16x16 coverage {cov}/256"
-            );
-            let y: Vec<f64> = pts.iter().map(|p| p[d2]).collect();
-            let r = pearson_correlation(&x, &y).expect("Sobol projections have non-zero variance");
-            max_abs_r = max_abs_r.max(r.abs());
-            assert!(
-                r.abs() < 0.05,
-                "pair ({d1}, {d2}) has excessive correlation at N=1024: r={r}"
+                u.is_finite() && (0.0..1.0).contains(&u),
+                "Sobol coord out of [0, 1) at row={row_idx}, dim={d}: {u}"
             );
         }
     }
-    assert!(min_cov >= 128);
-    assert!(max_abs_r < 0.05);
+    for d in 0..32 {
+        let mean: f64 = pts.iter().map(|p| p[d]).sum::<f64>() / (pts.len() as f64);
+        assert!(
+            (0.48..=0.52).contains(&mean),
+            "dim {d} mean at N=1024 drifted: {mean}"
+        );
+    }
+
+    // 2. Exact u32 numerator parity against `scipy.stats.qmc.Sobol(d=32, scramble=False)`
+    //    (Joe & Kuo `new-joe-kuo-6.21201`) across low, middle, and dims 23..=31.
+    const REF_DIMS: [usize; 9] = [0, 1, 6, 7, 15, 23, 24, 25, 31];
+    const REF_POINTS: [(usize, [u32; 9]); 7] = [
+        (
+            1,
+            [
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+                2_147_483_648,
+            ],
+        ),
+        (
+            2,
+            [
+                3_221_225_472,
+                1_073_741_824,
+                1_073_741_824,
+                3_221_225_472,
+                1_073_741_824,
+                1_073_741_824,
+                1_073_741_824,
+                3_221_225_472,
+                1_073_741_824,
+            ],
+        ),
+        (
+            3,
+            [
+                1_073_741_824,
+                3_221_225_472,
+                3_221_225_472,
+                1_073_741_824,
+                3_221_225_472,
+                3_221_225_472,
+                3_221_225_472,
+                1_073_741_824,
+                3_221_225_472,
+            ],
+        ),
+        (
+            8,
+            [
+                805_306_368,
+                1_342_177_280,
+                1_879_048_192,
+                4_026_531_840,
+                4_026_531_840,
+                4_026_531_840,
+                1_879_048_192,
+                268_435_456,
+                3_489_660_928,
+            ],
+        ),
+        (
+            16,
+            [
+                402_653_184,
+                2_013_265_920,
+                2_281_701_376,
+                3_623_878_656,
+                134_217_728,
+                2_550_136_832,
+                2_281_701_376,
+                671_088_640,
+                1_476_395_008,
+            ],
+        ),
+        (
+            64,
+            [
+                100_663_296,
+                1_711_276_032,
+                2_852_126_720,
+                905_969_664,
+                2_181_038_080,
+                1_509_949_440,
+                3_388_997_632,
+                3_724_541_952,
+                3_456_106_496,
+            ],
+        ),
+        (
+            256,
+            [
+                25_165_824,
+                2_139_095_040,
+                1_568_669_696,
+                1_535_115_264,
+                545_259_520,
+                3_967_811_584,
+                444_596_224,
+                3_615_490_048,
+                494_927_872,
+            ],
+        ),
+    ];
+    for (pt_one_based, expected_nums) in REF_POINTS {
+        let row = &pts[pt_one_based - 1];
+        for (&dim, &expected_num) in REF_DIMS.iter().zip(expected_nums.iter()) {
+            let expected_u = (expected_num as f64) * (1.0 / 4_294_967_296.0);
+            assert_eq!(
+                row[dim].to_bits(),
+                expected_u.to_bits(),
+                "Joe-Kuo parity mismatch at point {pt_one_based}, dim {dim}: got {} vs {expected_u}",
+                row[dim]
+            );
+        }
+    }
+
+    // 3. Previously correlated high dims (23, 24) and (24, 25) must stay decorrelated at N=256
+    //    (was |r| ~ 0.74 before using verbatim `new-joe-kuo-6.21201`).
+    for (da, db) in [(23usize, 24usize), (24usize, 25usize)] {
+        let xa: Vec<f64> = pts[..256].iter().map(|p| p[da]).collect();
+        let xb: Vec<f64> = pts[..256].iter().map(|p| p[db]).collect();
+        let r = pearson_correlation(&xa, &xb).expect("Sobol projections have non-zero variance");
+        assert!(
+            r.abs() < 0.25,
+            "F-064: pair ({da}, {db}) correlation at N=256 too high: |r|={} >= 0.25",
+            r.abs()
+        );
+    }
+
+    // 4. Exact 1D elementary-interval stratification over the first 255 non-zero points
+    //    (Sobol indices 1..=255): every dimension splits [0, 1) into 16 bins with [15, 16, ..., 16].
+    for d in 0..32 {
+        let mut bins = [0usize; 16];
+        for p in &pts[..255] {
+            let gx = ((p[d] * 16.0).floor() as usize).min(15);
+            bins[gx] += 1;
+        }
+        assert_eq!(
+            bins[0], 15,
+            "F-064: dim {d} bin 0 over 255 points expected 15, got {}",
+            bins[0]
+        );
+        assert!(
+            bins[1..].iter().all(|&c| c == 16),
+            "F-064: dim {d} bins 1..16 over 255 points expected 16 each, got {:?}",
+            &bins[1..]
+        );
+    }
 }
 
 #[test]

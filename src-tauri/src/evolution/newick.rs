@@ -221,9 +221,10 @@ where
     // ---- cycle check across the FULL deduplicated edge graph, BEFORE single-parent selection -
     //
     // Iterative sink-peeling (`O(V + E)`): any node with `out_deg == 0` cannot be on or feed into
-    // a cycle and is peeled away. Whatever remains has out-degree >= 1 inside the unpeeled subgraph
-    // (no tails hanging off a cycle survive), so walking smallest-id `children_of` until a node
-    // repeats guarantees reporting a node actually on the loop without recursion.
+    // a cycle and is peeled away. Whatever remains has `out_deg >= 1` inside the unpeeled subgraph
+    // (incoming ancestor chains feeding into a cycle survive, while outgoing tails are peeled).
+    // Walking smallest-id `children_of` inside that subgraph until a node repeats must enter a
+    // cycle, so the first repeated node is guaranteed to lie on the loop without recursion.
     let mut out_deg = vec![0usize; n];
     let mut parents_of: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut children_of: Vec<Vec<usize>> = vec![Vec::new(); n];

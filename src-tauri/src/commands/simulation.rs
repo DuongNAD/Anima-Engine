@@ -869,6 +869,24 @@ pub fn export_scientific_dataset(
 
 const MAX_MANIFEST_JSON_BYTES: usize = 4 * 1024 * 1024;
 
+fn load_viewer_terrain_map() -> crate::core::terrain::TerrainMap {
+    let settings = crate::core::terrain::MapSettings::default();
+    let path = crate::core::world_artifact::default_artifact_path();
+    if let Ok(bytes) = std::fs::read(&path) {
+        match crate::core::world_artifact::WorldArtifact::from_bytes(&bytes) {
+            Ok(artifact) => return artifact.to_terrain_map(settings.width, settings.height),
+            Err(e) => eprintln!(
+                "shared world artifact at {} is invalid ({e}); using local terrain",
+                path.display()
+            ),
+        }
+    }
+    let cache_dir = std::env::var_os("ANIMA_CACHE_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("anima_world_cache"));
+    crate::core::terrain::TerrainMap::load_or_generate(&settings, &cache_dir)
+}
+
 /// Parse and run the live experiment runner's preflight validation on a manifest JSON payload
 /// for the desktop viewer (card W2-lite; prototype, to be replaced).
 pub fn parse_and_validate_manifest_for_viewer(
@@ -925,9 +943,8 @@ pub fn parse_and_validate_manifest_for_viewer(
         .ensure_observables_supported(&manifest.observable_ids)
         .map_err(|e| e.to_string())?;
     if config.requires_walkable_founder_capacity() {
-        let viewer_world = crate::core::ecs::init_world();
-        let terrain_map = viewer_world.get_resource::<crate::core::terrain::TerrainMap>();
-        crate::core::live_experiment::validate_founder_land_capacity(&config, terrain_map)
+        let terrain_map = load_viewer_terrain_map();
+        crate::core::live_experiment::validate_founder_land_capacity(&config, Some(&terrain_map))
             .map_err(|e| e.to_string())?;
     }
     let seed = *manifest

@@ -482,3 +482,146 @@ fn cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zer
         .ensure_observables_supported(&["live.cumulative_mean_lifespan".to_string()])
         .expect("drift_control = 1.0 with mortality = 1.0 supports live.cumulative_mean_lifespan");
 }
+
+#[test]
+fn cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork() {
+    use anima_engine_lib::ai::hrrl::HomeostaticState;
+    use anima_engine_lib::core::agent_systems::AgentLineageId;
+    use anima_engine_lib::core::causal::CausalLedger;
+    use anima_engine_lib::core::ecs::Agent;
+    use anima_engine_lib::core::experiment::WorldLawSet;
+    use anima_engine_lib::core::intervention::InterventionCommand;
+    use anima_engine_lib::core::live_experiment::LiveSnapshot;
+    use anima_engine_lib::core::resources::VitalStatistics;
+    use anima_engine_lib::core::sim_clock::SimClock;
+    use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
+    use rand::SeedableRng;
+
+    struct TempDirCleanup(std::path::PathBuf);
+    impl Drop for TempDirCleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    let sentence_sorted_subset = |a: &mut LiveExperimentAdapter, count: usize| {
+        let mut world = a.world();
+        let mut q = world.query_filtered::<(Entity, &AgentLineageId), With<Agent>>();
+        let mut candidates: Vec<(String, Entity)> =
+            q.iter(&world).map(|(e, id)| (id.0.clone(), e)).collect();
+        candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        for (_, entity) in candidates.into_iter().take(count) {
+            if let Some(mut homeo) = world.get_mut::<HomeostaticState>(entity) {
+                homeo.hydration = 0.0;
+                homeo.dehydrating_ticks = Some(2);
+            }
+        }
+    };
+
+    const TOTAL_TICKS: u64 = 40;
+    const FORK_TICK: u64 = 20;
+    let laws = WorldLawSet::baseline();
+    let mut init = mortality_manifest_initials(true);
+    init.values.push(("live.reproduction".into(), 1.0));
+    init.values.push(("live.locomotion".into(), 1.0));
+    init.values.push(("live.drive_floor".into(), 0.5));
+
+    // Uninterrupted arm: 0 -> TOTAL_TICKS with identical death events before and after FORK_TICK.
+    let mut reference =
+        LiveExperimentAdapter::from_manifest(&laws, &init, &[], SEED, (16, 16), TOTAL_TICKS)
+            .expect("reference builds");
+    endow_healthy(&mut reference, 500.0, 500.0);
+    let mut rng_ref = rand::rngs::StdRng::seed_from_u64(SEED);
+    let mut clock_ref = SimClock::new();
+    let mut ledger_ref = CausalLedger::new();
+
+    // Forked arm: 0 -> FORK_TICK -> disk checkpoint -> restore -> FORK_TICK..TOTAL_TICKS.
+    let mut prefix =
+        LiveExperimentAdapter::from_manifest(&laws, &init, &[], SEED, (16, 16), TOTAL_TICKS)
+            .expect("prefix builds");
+    endow_healthy(&mut prefix, 500.0, 500.0);
+    let mut rng_fork = rand::rngs::StdRng::seed_from_u64(SEED);
+    let mut clock_fork = SimClock::new();
+    let mut ledger_fork = CausalLedger::new();
+
+    let empty_active: Vec<&InterventionCommand> = Vec::new();
+    for tick in 1..=FORK_TICK {
+        let t_ref = clock_ref.advance();
+        let t_fork = clock_fork.advance();
+        assert_eq!(t_ref, tick);
+        assert_eq!(t_fork, tick);
+        if tick == 10 {
+            sentence_sorted_subset(&mut reference, 2);
+            sentence_sorted_subset(&mut prefix, 2);
+        }
+        reference.step(&clock_ref, &empty_active, &mut ledger_ref, &mut rng_ref);
+        prefix.step(&clock_fork, &empty_active, &mut ledger_fork, &mut rng_fork);
+    }
+
+    let deaths_before_fork = reference.world().resource::<VitalStatistics>().total_deaths;
+    assert!(
+        deaths_before_fork >= 2,
+        "must record deaths before FORK_TICK, got {deaths_before_fork}"
+    );
+
+    let dir = std::env::temp_dir().join(format!("anima_f053_fork_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create checkpoint temp dir");
+    let _cleanup = TempDirCleanup(dir.clone());
+    let path = dir.join("checkpoint.json");
+    let snap = prefix.snapshot();
+    let envelope = SnapshotEnvelope::seal(snap.saved).expect("seal snapshot");
+    snapshot::write_atomic(&path, &envelope).expect("write checkpoint atomically");
+    let saved = snapshot::read(&path).expect("read checkpoint from disk");
+    let mut resumed = LiveExperimentAdapter::from_snapshot(&LiveSnapshot {
+        saved,
+        config: snap.config,
+        seed: snap.seed,
+    })
+    .expect("resume from disk snapshot succeeds");
+
+    for tick in (FORK_TICK + 1)..=TOTAL_TICKS {
+        let t_ref = clock_ref.advance();
+        let t_fork = clock_fork.advance();
+        assert_eq!(t_ref, tick);
+        assert_eq!(t_fork, tick);
+        if tick == 30 {
+            sentence_sorted_subset(&mut reference, 2);
+            sentence_sorted_subset(&mut resumed, 2);
+        }
+        reference.step(&clock_ref, &empty_active, &mut ledger_ref, &mut rng_ref);
+        resumed.step(&clock_fork, &empty_active, &mut ledger_fork, &mut rng_fork);
+    }
+
+    let total_deaths = reference.world().resource::<VitalStatistics>().total_deaths;
+    assert!(
+        total_deaths > deaths_before_fork,
+        "must record additional deaths after FORK_TICK ({total_deaths} vs {deaths_before_fork})"
+    );
+    assert_eq!(reference.checksum(), resumed.checksum());
+
+    let obs_ref = reference.observables();
+    let obs_res = resumed.observables();
+    let cum_ref = value_of(&obs_ref, "live.cumulative_mean_lifespan");
+    let cum_res = value_of(&obs_res, "live.cumulative_mean_lifespan");
+    assert!(cum_ref > 0.0);
+    assert_eq!(
+        cum_ref.to_bits(),
+        cum_res.to_bits(),
+        "live.cumulative_mean_lifespan must match bit-for-bit across disk save/load fork ({cum_ref} vs {cum_res})"
+    );
+
+    // Draining legacy `live.mean_lifespan` via a second sample preserves `live.cumulative_mean_lifespan`.
+    let obs_ref2 = reference.observables();
+    let obs_res2 = resumed.observables();
+    assert_eq!(value_of(&obs_ref2, "live.mean_lifespan"), 0.0);
+    assert_eq!(value_of(&obs_res2, "live.mean_lifespan"), 0.0);
+    assert_eq!(
+        value_of(&obs_ref2, "live.cumulative_mean_lifespan").to_bits(),
+        cum_ref.to_bits()
+    );
+    assert_eq!(
+        value_of(&obs_res2, "live.cumulative_mean_lifespan").to_bits(),
+        cum_ref.to_bits()
+    );
+}

@@ -101,6 +101,77 @@ fn f058_intervention_active_at_avoids_u64_overflow_for_open_ended_commands() {
 }
 
 #[test]
+fn f058_exotic_intervention_active_at_avoids_u64_overflow() {
+    use anima_engine_lib::core::exotic_energy::{ExoticIntervention, ExoticInterventionKind};
+
+    let open_ended = ExoticIntervention {
+        id: 10,
+        cause_id: 10,
+        kind: ExoticInterventionKind::AddSource,
+        region: Region::Global,
+        start_tick: 100,
+        duration_ticks: u64::MAX,
+        amount: 2.0,
+        curve: Curve::Step,
+    };
+    assert!(!open_ended.active_at(99));
+    assert!(open_ended.active_at(100));
+    assert!(open_ended.active_at(200));
+    assert!(open_ended.active_at(u64::MAX));
+    assert_eq!(open_ended.amount_at(100), 2.0);
+    assert_eq!(open_ended.amount_at(u64::MAX), 2.0);
+
+    let zero_start_max = ExoticIntervention {
+        start_tick: 0,
+        duration_ticks: u64::MAX,
+        ..open_ended.clone()
+    };
+    assert!(!zero_start_max.active_at(u64::MAX));
+
+    let max_start_one = ExoticIntervention {
+        start_tick: u64::MAX,
+        duration_ticks: 1,
+        ..open_ended
+    };
+    assert!(max_start_one.active_at(u64::MAX));
+}
+
+#[test]
+fn f059_toxicity_plume_manifest_rejects_non_positive_radius() {
+    use anima_engine_lib::core::experiment::{validate_intervention, ExperimentError};
+
+    let mk_plume = |radius: f32| InterventionCommand {
+        id: 7,
+        cause_id: 7,
+        kind: InterventionKind::ToxicityPlume {
+            center_x: 10.0,
+            center_y: 10.0,
+            radius,
+            toxicity_level: 1.0,
+            decay_rate: 0.1,
+        },
+        region: Region::Global,
+        start_tick: 1,
+        duration_ticks: 10,
+        intensity: 1.0,
+        signed_negative: false,
+        curve: Curve::Step,
+        reversible: false,
+    };
+
+    for bad_r in [0.0, -2.0] {
+        let err = validate_intervention(&mk_plume(bad_r), 100)
+            .expect_err("non-positive ToxicityPlume radius must fail manifest validation");
+        assert!(
+            matches!(err, ExperimentError::OutOfRange { .. }),
+            "expected OutOfRange for r={bad_r}, got {err:?}"
+        );
+    }
+    validate_intervention(&mk_plume(3.0), 100)
+        .expect("positive ToxicityPlume radius passes validation");
+}
+
+#[test]
 fn f059_region_radius_rejects_non_positive_and_non_finite_radii() {
     let neg = Region::Radius {
         cx: 5.0,
