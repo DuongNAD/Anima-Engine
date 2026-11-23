@@ -1554,15 +1554,20 @@ Trước đó OSS-073, cổng S43 và ứng viên loài AE-S11 bị chặn trên
 (`SpawnOffspringCommand`) không ghi cạnh nào vào tracker (chỉ epoch MAP-Elites gọi `add_reproduction`),
 và id con `cha.thế_hệ` trùng giữa anh em (gốc của F-047). Nay khoá `live.lineage_tracking = 1` của
 adapter headless bật [`core/live_lineage.rs`](../../src-tauri/src/core/live_lineage.rs): founder là root
-`origin_tick = 0`, mỗi ca sinh có id `birth-{run}-{n}` riêng, một cạnh từ cha (`Clone`/`Mutate` theo việc
-genome có thật sự đổi) và `origin_tick`; mỗi ca chết ghi `destruction_tick`. Snapshot mang cả đồ thị lẫn
-con trỏ id (`SavedSimulationState::live_lineage`); save cũ vẫn đọc được. Gate:
+`origin_tick = 0`, mỗi ca sinh có id `birth-{run}-{n}` riêng, một cạnh từ id riêng của cha (`Clone`/`Mutate`
+theo việc genome thân hoặc não có thật sự đổi, so từng bit) và `origin_tick`; mỗi ca chết ghi
+`destruction_tick`. Snapshot mang đồ thị, con trỏ id (`SavedSimulationState::live_lineage`) và id của từng
+cá thể sống (`SerializedAgent::live_id`, khôi phục đúng id đó, không mint lại); save cũ vẫn đọc được. Gate:
 `tests/live_lineage_tests.rs`.
 
-- **Opt-in vì đổi id là đổi quỹ đạo**: `autonomous_reproduction_system` duyệt cha theo thứ tự id. Vắng
-  khoá thì đường cũ giữ nguyên từng bit (checksum trunk và nhánh trùng nhau, số đo trong PR), nên
-  `LIVE_MODEL_VERSION` không đổi. Một manifest **bật** khoá là một quỹ đạo khác; đừng so checksum của nó
-  với lượt chạy không bật.
+- **Ghi phả hệ không đổi quỹ đạo** (ADR-0008 động lực 4, "không phản hồi"): cùng seed và manifest, chạy
+  có khoá và không khoá cho cùng `world_checksum`, cùng số sinh/chết ở mọi mốc đo
+  (`recording_lineage_does_not_change_the_trajectory`, so lượt chạy với lượt chạy, kể cả khi nén chạy).
+  Lý do: `autonomous_reproduction_system` duyệt cha theo `AgentLineageId`, nên id duy nhất **không** ghi
+  vào đó; `AgentLineageId` giữ giá trị cũ `cha.thế_hệ` ở mọi lượt chạy, còn id duy nhất nằm trong bảng phụ
+  của `LiveLineage` theo `Entity`. Bản đầu của PR đã ghi đè `AgentLineageId` và làm lệch quỹ đạo (54 sinh /
+  26 chết với khoá, 53 / 25 không khoá ở tick 2.500); bản sửa loại bỏ điều đó. Khoá vẫn opt-in vì tốn bộ nhớ
+  và một bản sao genotype mỗi ca sinh; `LIVE_MODEL_VERSION` không đổi.
 - **Còn lại:** app desktop chưa đặt khoá (Neo4j chưa có cột cho hai tick); nén vẫn nối đường đơn nhánh,
   nên một chuỗi genotype kiểu Avida theo từng bước dọc line of descent cần thêm tuỳ chọn tắt nén. OSS-073
   nay **làm được** trên quần thể live với đồ thị có thật; giao thức đo của nó vẫn chưa viết.
