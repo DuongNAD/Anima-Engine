@@ -555,6 +555,8 @@ pub fn step_fastscape_sd_dag(
                 iters_used = iter + 1;
                 phi_in.fill(0.0);
 
+                // In-place upstream-to-downstream Gauss-Seidel: donors update `h_next` and push
+                // `phi_in` before node `i` executes, inverting (D + U) cleanly every pass.
                 let mut iter_max_delta = 0.0_f64;
                 let mut iter_worst_cell = 0_usize;
                 for &node_u in dag.order_downstream_to_upstream.iter().rev() {

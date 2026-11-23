@@ -174,6 +174,12 @@ công bố khi policy đã chọn có bằng chứng tối thiểu:
 
 Trước gate đó dùng thuật ngữ “morph”, “ecotype” hoặc “candidate species”.
 
+*Ứng viên, chưa chọn (ghi chú 2026-11-22, từ
+[đánh giá đài quan sát tiến hoá](../research/EVOLUTION_OBSERVATORY_RESEARCH_2026-11-22.md) §2):* cho
+tiêu chí "khoảng cách genotype/phenotype", một ngưỡng có version có thể kết hợp hệ số lưỡng cực và
+dip test của Hartigan trên trục nối hai tâm cụm. Đây chỉ là phương án để xét khi định nghĩa
+`SpeciesClusterRecord`, không phải policy đã chọn.
+
 ### ER10 — Mọi biến quan sát được phải có metadata
 
 `ObservableRegistry` phải khai báo cho từng biến:
