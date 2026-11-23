@@ -357,6 +357,13 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+MAP-D2    = the design amendments for WV2-2-PHYS are approved: A1 (a dipping marginal sedimentary column,
+            with lithology evaluated against a datum advected with uplift), A2 (an S2b paleo-glacial
+            pass), A3 (rift segmentation) and A5 (a continuous cover transition in S3, an adaptation).
+            A4 (G 0.85 -> 0.25) was withdrawn on its source, and the endorheic definitions stay parked.
+            The plan predicts 5-19 waterfalls per seed, below the 20-80 gate on most seeds; a shortfall
+            is reported, never tuned. Recorded in the World v2 design under "Amendments after
+            acceptance". (Owner in chat, 2026-11-23: "Duyệt, làm Step B".)
 MAP-D1    = the World v2 Card 3 gates stay as accepted; the terrain physics is reworked until it meets
             them by process (WV2-2-PHYS: plan first, 1-D column test first). Amending the spec ranges
             was declined. (Owner in chat, 2026-11-23: "làm lại vật lý".)
