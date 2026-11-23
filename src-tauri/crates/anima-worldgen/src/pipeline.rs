@@ -453,7 +453,51 @@ fn run_fluvial_step_advected(
     scratch: &mut FluvialLeanScratch,
     t_elapsed_yr: &mut f64,
     depth: u8,
-) -> Result<(), PipelineError> {
+    hint_k: &mut usize,
+) -> Result<(f64, bool), PipelineError> {
+    if depth == 0 && *hint_k > 1 {
+        let k_init = (*hint_k).clamp(2, 16);
+        let sub_dt = base_params.dt_yr / (k_init as f64);
+        let sub_params = FluvialParams {
+            dt_yr: sub_dt,
+            ..base_params.clone()
+        };
+        let mut worst_dh = 0.0_f64;
+        let mut any_split = false;
+        let mut bumped_k = k_init;
+        for _ in 0..k_init {
+            let mut local_hint = 1_usize;
+            let (dh, split) = run_fluvial_step_advected(
+                lvl_cfg,
+                target_size,
+                cur_bedrock,
+                cur_sediment,
+                uplift_u,
+                lithology_id,
+                precip_for_s2,
+                &sub_params,
+                scratch,
+                t_elapsed_yr,
+                1,
+                &mut local_hint,
+            )?;
+            worst_dh = worst_dh.max(dh);
+            any_split |= split;
+            if local_hint > 1 {
+                bumped_k = bumped_k.max(k_init.saturating_mul(local_hint).min(16));
+            }
+        }
+        if any_split {
+            *hint_k = bumped_k;
+        } else if base_params
+            .max_incision_cap_m
+            .is_some_and(|cap_m| worst_dh <= 0.45 * cap_m)
+        {
+            *hint_k = (k_init / 2).max(1);
+        }
+        return Ok((worst_dh, true));
+    }
+
     update_lithology_advected_in_place(
         lvl_cfg,
         target_size,
@@ -477,12 +521,18 @@ fn run_fluvial_step_advected(
         sea_level_m: Some(crate::SEA_LEVEL_M),
     };
     match erode_fluvial_step_f32_lean(&mut grid, base_params, Some(scratch)) {
-        Ok(_) => {
+        Ok(stats) => {
             *t_elapsed_yr += base_params.dt_yr;
-            Ok(())
+            Ok((stats.max_bedrock_incision_m, false))
         }
-        Err(FluvialError::IncisionCapExceeded { max_dh_m, cap_m }) if depth < 2 => {
-            let k = ((max_dh_m / cap_m).ceil() as usize).clamp(2, 16);
+        Err(FluvialError::IncisionCapExceeded { recommended_k, .. }) if depth < 2 => {
+            let max_k = if depth == 0 { 16 } else { 8 };
+            let k = recommended_k.clamp(2, max_k);
+            if depth == 0 {
+                *hint_k = k;
+            } else {
+                *hint_k = (*hint_k).max(k);
+            }
             let sub_dt = base_params.dt_yr / (k as f64);
             let sub_params = FluvialParams {
                 dt_yr: sub_dt,
@@ -493,8 +543,10 @@ fn run_fluvial_step_advected(
                 },
                 ..base_params.clone()
             };
+            let mut worst_dh = 0.0_f64;
             for _ in 0..k {
-                run_fluvial_step_advected(
+                let mut child_hint = 1_usize;
+                let (dh, _) = run_fluvial_step_advected(
                     lvl_cfg,
                     target_size,
                     cur_bedrock,
@@ -506,9 +558,14 @@ fn run_fluvial_step_advected(
                     scratch,
                     t_elapsed_yr,
                     depth + 1,
+                    &mut child_hint,
                 )?;
+                worst_dh = worst_dh.max(dh);
+                if depth == 0 && child_hint > 1 {
+                    *hint_k = (*hint_k).max(k.saturating_mul(child_hint).min(16));
+                }
             }
-            Ok(())
+            Ok((worst_dh, true))
         }
         Err(e) => Err(e.into()),
     }
@@ -683,6 +740,7 @@ pub fn run_worldgen_to_dir_with_schedule(
             let half1 = n_steps / 2;
             let half2 = n_steps - half1;
             let mut scratch = FluvialLeanScratch::default();
+            let mut fluvial_hint_k = 1_usize;
             for _ in 0..half1 {
                 run_fluvial_step_advected(
                     &lvl_cfg,
@@ -696,6 +754,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &mut scratch,
                     &mut t_elapsed_yr,
                     0,
+                    &mut fluvial_hint_k,
                 )?;
             }
             drop(scratch);
@@ -764,6 +823,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &mut scratch2,
                     &mut t_elapsed_yr,
                     0,
+                    &mut fluvial_hint_k,
                 )?;
             }
             drop(scratch2);
@@ -857,6 +917,7 @@ pub fn run_worldgen_to_dir_with_schedule(
             }
 
             let mut scratch = FluvialLeanScratch::default();
+            let mut fluvial_hint_k = 1_usize;
             for _ in 0..n_steps {
                 run_fluvial_step_advected(
                     &lvl_cfg,
@@ -870,6 +931,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &mut scratch,
                     &mut t_elapsed_yr,
                     0,
+                    &mut fluvial_hint_k,
                 )?;
             }
             if glacial_steps > 0 {

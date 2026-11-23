@@ -97,6 +97,7 @@ pub enum FluvialError {
     IncisionCapExceeded {
         max_dh_m: f64,
         cap_m: f64,
+        recommended_k: usize,
     },
     NonConvergence {
         cell_index: usize,
@@ -123,9 +124,13 @@ impl std::fmt::Display for FluvialError {
             Self::InvalidParameter { name, value } => {
                 write!(f, "invalid fluvial parameter `{name}` = {value}")
             }
-            Self::IncisionCapExceeded { max_dh_m, cap_m } => write!(
+            Self::IncisionCapExceeded {
+                max_dh_m,
+                cap_m,
+                recommended_k,
+            } => write!(
                 f,
-                "Fastscape-SD per-step incision {max_dh_m:.3} m exceeds cap {cap_m:.3} m"
+                "Fastscape-SD per-step incision {max_dh_m:.3} m exceeds cap {cap_m:.3} m (recommended_k={recommended_k})"
             ),
             Self::NonConvergence {
                 cell_index,
@@ -157,6 +162,7 @@ pub struct FluvialStepStats {
     pub max_beta: f64,
     pub max_alpha: f64,
     pub non_finite_count: usize,
+    pub max_bedrock_incision_m: f64,
 }
 
 fn validate_implicit_params(params: &FluvialParams) -> Result<(), FluvialError> {
@@ -371,6 +377,7 @@ pub fn step_fastscape_sd_dag(
             max_beta,
             max_alpha: max_alpha_base,
             non_finite_count: 0,
+            max_bedrock_incision_m: 0.0,
         });
     }
 
@@ -407,6 +414,7 @@ pub fn step_fastscape_sd_dag(
             max_beta,
             max_alpha: max_alpha_base,
             non_finite_count,
+            max_bedrock_incision_m: 0.0,
         });
     }
 
@@ -521,6 +529,7 @@ pub fn step_fastscape_sd_dag(
             max_beta,
             max_alpha: max_alpha_base,
             non_finite_count: 0,
+            max_bedrock_incision_m: 0.0,
         });
     }
 
@@ -690,6 +699,7 @@ pub fn step_fastscape_sd_dag(
                 max_beta,
                 max_alpha: max_alpha_base * scale,
                 non_finite_count: 0,
+                max_bedrock_incision_m: 0.0,
             });
         }
     }
@@ -1068,31 +1078,59 @@ pub fn erode_fluvial_step_f32_lean(
         }
     }
 
-    let check_incision_cap =
-        |grid: &FluvialGridLean<'_>, filled_h: &[f32], d8_dir: &[u8], h_final: &SplitF64| {
-            let Some(cap_m) = params.max_incision_cap_m else {
-                return Ok(());
-            };
-            let mut max_dh_m = 0.0_f64;
-            for i in 0..n {
-                let fixed =
-                    d8_dir[i] >= NO_DIR || grid.sea_level_m.is_some_and(|sl| filled_h[i] <= sl);
-                let hf = h_final.get(i);
-                if fixed || !hf.is_finite() {
-                    continue;
-                }
-                let uplift_m = f64::from(grid.uplift_m_yr[i]) * params.dt_yr;
-                let lifted_surface = f64::from(filled_h[i]) + uplift_m;
-                let inc = (lifted_surface - hf).max(0.0);
-                if inc > max_dh_m {
-                    max_dh_m = inc;
-                }
-            }
-            if max_dh_m > cap_m {
-                return Err(FluvialError::IncisionCapExceeded { max_dh_m, cap_m });
-            }
-            Ok(())
+    let check_incision_cap = |grid: &FluvialGridLean<'_>,
+                              filled_h: &[f32],
+                              d8_dir: &[u8],
+                              alpha_base: &[f32],
+                              h_final: &SplitF64|
+     -> Result<f64, FluvialError> {
+        let Some(cap_m) = params.max_incision_cap_m else {
+            return Ok(0.0);
         };
+        let mut max_dh_m = 0.0_f64;
+        let mut max_k = 1_usize;
+        for i in 0..n {
+            let d = d8_dir[i];
+            let fixed = d >= NO_DIR || grid.sea_level_m.is_some_and(|sl| filled_h[i] <= sl);
+            let hf = h_final.get(i);
+            if fixed || !hf.is_finite() {
+                continue;
+            }
+            let uplift_m = f64::from(grid.uplift_m_yr[i]) * params.dt_yr;
+            let lifted_surface = f64::from(filled_h[i]) + uplift_m;
+            let surf_inc = (lifted_surface - hf).max(0.0);
+            let bed_inc = (surf_inc - f64::from(grid.sediment_s[i])).max(0.0);
+            if bed_inc > max_dh_m {
+                max_dh_m = bed_inc;
+            }
+            if bed_inc > cap_m {
+                let rec = dir_neighbor(i, d, width);
+                let h_rec = h_final.get(rec);
+                let dh_avail =
+                    (lifted_surface - f64::from(grid.sediment_s[i]) - h_rec).max(bed_inc);
+                let al_i = f64::from(alpha_base[i]);
+                let al_eff = if dh_avail > bed_inc + 1e-6 {
+                    (bed_inc / (dh_avail - bed_inc)).min(al_i)
+                } else {
+                    al_i
+                };
+                let k_est = if dh_avail > cap_m + 1e-6 {
+                    (al_eff * (dh_avail / cap_m - 1.0)).ceil()
+                } else {
+                    (bed_inc / cap_m).ceil()
+                };
+                max_k = max_k.max(k_est.clamp(2.0, 16.0) as usize);
+            }
+        }
+        if max_dh_m > cap_m {
+            return Err(FluvialError::IncisionCapExceeded {
+                max_dh_m,
+                cap_m,
+                recommended_k: max_k,
+            });
+        }
+        Ok(max_dh_m)
+    };
 
     let apply_surface =
         |grid: &mut FluvialGridLean<'_>, filled_h: &[f32], d8_dir: &[u8], h_final: &SplitF64| {
@@ -1149,7 +1187,8 @@ pub fn erode_fluvial_step_f32_lean(
                 budget_exhausted: false,
             });
         }
-        check_incision_cap(grid, &s.filled_h, &s.d8_dir, &s.h_next)?;
+        let max_bedrock_incision_m =
+            check_incision_cap(grid, &s.filled_h, &s.d8_dir, &s.alpha_base, &s.h_next)?;
         apply_surface(grid, &s.filled_h, &s.d8_dir, &s.h_next);
         return Ok(FluvialStepStats {
             converged: true,
@@ -1161,6 +1200,7 @@ pub fn erode_fluvial_step_f32_lean(
             max_beta,
             max_alpha: max_alpha_base,
             non_finite_count: 0,
+            max_bedrock_incision_m,
         });
     }
 
@@ -1199,6 +1239,7 @@ pub fn erode_fluvial_step_f32_lean(
             max_beta,
             max_alpha: max_alpha_base,
             non_finite_count,
+            max_bedrock_incision_m: 0.0,
         });
     }
 
@@ -1308,7 +1349,8 @@ pub fn erode_fluvial_step_f32_lean(
     }
 
     if phase_a_converged {
-        check_incision_cap(grid, &s.filled_h, &s.d8_dir, &s.h_next)?;
+        let max_bedrock_incision_m =
+            check_incision_cap(grid, &s.filled_h, &s.d8_dir, &s.alpha_base, &s.h_next)?;
         apply_surface(grid, &s.filled_h, &s.d8_dir, &s.h_next);
         return Ok(FluvialStepStats {
             converged: true,
@@ -1320,6 +1362,7 @@ pub fn erode_fluvial_step_f32_lean(
             max_beta,
             max_alpha: max_alpha_base,
             non_finite_count: 0,
+            max_bedrock_incision_m,
         });
     }
 
@@ -1491,7 +1534,8 @@ pub fn erode_fluvial_step_f32_lean(
         }
 
         if halving_ok {
-            check_incision_cap(grid, &s.filled_h, &s.d8_dir, &s.h_t)?;
+            let max_bedrock_incision_m =
+                check_incision_cap(grid, &s.filled_h, &s.d8_dir, &s.alpha_base, &s.h_t)?;
             apply_surface(grid, &s.filled_h, &s.d8_dir, &s.h_t);
             return Ok(FluvialStepStats {
                 converged: true,
@@ -1503,6 +1547,7 @@ pub fn erode_fluvial_step_f32_lean(
                 max_beta,
                 max_alpha: max_alpha_base * scale,
                 non_finite_count: 0,
+                max_bedrock_incision_m,
             });
         }
     }
@@ -1565,10 +1610,98 @@ mod tests {
         let err = erode_fluvial_step_f32_lean(&mut grid, &params, None)
             .expect_err("steep scarp must trip 25 m incision cap");
         assert!(
-            matches!(err, FluvialError::IncisionCapExceeded { max_dh_m, cap_m } if max_dh_m > cap_m && (cap_m - 25.0).abs() < 1e-9),
+            matches!(
+                err,
+                FluvialError::IncisionCapExceeded {
+                    max_dh_m,
+                    cap_m,
+                    recommended_k
+                } if max_dh_m > cap_m && (cap_m - 25.0).abs() < 1e-9 && (2..=16).contains(&recommended_k)
+            ),
             "unexpected error: {err:?}"
         );
         assert_eq!(bedrock, orig_bedrock);
         assert_eq!(sediment, orig_sediment);
+    }
+
+    #[test]
+    fn incision_cap_ignores_thick_sediment_stripping_and_estimates_concave_k() {
+        let w = 8usize;
+        let h = 8usize;
+        let n = w * h;
+        let mut bedrock = vec![0.0_f32; n];
+        let mut sediment = vec![0.0_f32; n];
+        for r in 0..h {
+            for c in 0..w {
+                if !(r == 0 || r + 1 == h || c == 0 || c + 1 == w) {
+                    bedrock[r * w + c] = 500.0;
+                    sediment[r * w + c] = 120.0 + (c as f32) * 40.0;
+                }
+            }
+        }
+        let uplift = vec![0.0_f32; n];
+        let k = vec![2.2e-5_f32; n];
+        let precip = vec![4.0_f32; n];
+
+        let mut grid_sed = FluvialGridLean {
+            bedrock_h: &mut bedrock,
+            sediment_s: &mut sediment,
+            uplift_m_yr: &uplift,
+            k_erodibility: FluvialErodibility::PerCell(&k),
+            precip_m_yr: &precip,
+            pet_m_yr: None,
+            width: w,
+            height: h,
+            sea_level_m: None,
+        };
+        let params_sed = FluvialParams {
+            dx_m: 10.0,
+            dt_yr: 1_000.0,
+            g_deposition: 0.0,
+            max_incision_cap_m: Some(25.0),
+            ..FluvialParams::default()
+        };
+        let stats_sed = erode_fluvial_step_f32_lean(&mut grid_sed, &params_sed, None)
+            .expect("pure sediment stripping with 0 bedrock incision must not trip bedrock cap");
+        assert!(stats_sed.max_bedrock_incision_m <= 25.0);
+
+        let mut bed_steep = vec![0.0_f32; n];
+        for r in 1..(h - 1) {
+            for c in 1..(w - 1) {
+                bed_steep[r * w + c] = 1_500.0 + (c as f32) * 200.0;
+            }
+        }
+        let mut sed_zero = vec![0.0_f32; n];
+        let mut grid_steep = FluvialGridLean {
+            bedrock_h: &mut bed_steep,
+            sediment_s: &mut sed_zero,
+            uplift_m_yr: &uplift,
+            k_erodibility: FluvialErodibility::PerCell(&k),
+            precip_m_yr: &precip,
+            pet_m_yr: None,
+            width: w,
+            height: h,
+            sea_level_m: None,
+        };
+        let params_steep = FluvialParams {
+            dx_m: 10.0,
+            dt_yr: 80_000.0,
+            g_deposition: 0.85,
+            max_incision_cap_m: Some(25.0),
+            ..FluvialParams::default()
+        };
+        let err = erode_fluvial_step_f32_lean(&mut grid_steep, &params_steep, None)
+            .expect_err("steep high-alpha bedrock step must trigger IncisionCapExceeded");
+        match err {
+            FluvialError::IncisionCapExceeded {
+                max_dh_m,
+                cap_m,
+                recommended_k,
+            } => {
+                assert!(max_dh_m > cap_m);
+                assert!((2..=16).contains(&recommended_k));
+            }
+            other => panic!("expected IncisionCapExceeded, got {other:?}"),
+        }
     }
 }

@@ -339,7 +339,10 @@ fn config_validation_rejects_invalid_bounds() {
     assert!(bad.validate().is_err());
 
     bad = WorldV2Config::for_size(1, 96);
-    assert!(bad.validate().is_err(), "non-power-of-two 96 must fail validate()");
+    assert!(
+        bad.validate().is_err(),
+        "non-power-of-two 96 must fail validate()"
+    );
 
     bad = WorldV2Config::for_size(1, 128);
     bad.target_ocean_fraction = 0.55;
