@@ -167,12 +167,29 @@ impl WorldRecordRecorder {
             .copied()
             .unwrap_or_default();
         let initial_world_checksum = world_checksum(world);
+        let (manifest_fingerprint, law_fingerprint, registry_fingerprint) = world
+            .get_resource::<crate::core::live_experiment::LiveExperimentState>()
+            .map(|state| {
+                (
+                    Some(state.manifest_fingerprint),
+                    Some(state.law_fingerprint),
+                    Some(state.registry_fingerprint),
+                )
+            })
+            .unwrap_or((None, None, None));
         let header = WorldRecordHeader {
             schema_version: super::types::WORLD_RECORD_SCHEMA_VERSION,
+            run_id: format!("run-{seed}"),
+            parent_run_id: None,
+            fork_tick: None,
+            fork_keyframe_hash: None,
+            manifest_fingerprint,
+            law_fingerprint,
+            registry_fingerprint,
             seed,
             world_identity,
             world_artifact_sha256: None,
-            model_version: LIVE_MODEL_VERSION,
+            model_version: LIVE_MODEL_VERSION.to_string(),
             snapshot_schema_version: SCHEMA_VERSION,
             provenance: BuildProvenance::current(),
             platform_class: PlatformClass::current(),
@@ -246,7 +263,10 @@ impl WorldRecordRecorder {
     }
 
     /// Seal any pending ticks up to `last_recorded_tick` when ending a run mid-segment.
-    pub fn flush_segment(&mut self, world: &mut World) -> Result<Option<SignedSegment>, WorldRecordError> {
+    pub fn flush_segment(
+        &mut self,
+        world: &mut World,
+    ) -> Result<Option<SignedSegment>, WorldRecordError> {
         let Some(tick_end) = self.last_recorded_tick else {
             return Ok(None);
         };
@@ -292,6 +312,7 @@ impl WorldRecordRecorder {
             tick_end,
             end_checksum,
             keyframe,
+            keyframe_snapshot_sha256: None,
             inputs,
             events,
             dropped_inputs_since_prev: std::mem::take(&mut self.dropped_inputs_since_prev),
@@ -430,11 +451,8 @@ fn keyframe_from_world(world: &mut World, tick: u64) -> WorldKeyframe {
     let mut prey_count = 0u32;
     let mut energies: Vec<[u32; 6]> = Vec::new();
     {
-        let mut q = world.query_filtered::<(
-            &HomeostaticState,
-            &Position,
-            Option<&Predator>,
-        ), With<Agent>>();
+        let mut q = world
+            .query_filtered::<(&HomeostaticState, &Position, Option<&Predator>), With<Agent>>();
         for (homeo, pos, pred) in q.iter(world) {
             agent_count = agent_count.saturating_add(1);
             if pred.is_some() {
@@ -639,7 +657,9 @@ pub fn record_world_record_tick_system(
                     rem_dehyd -= 1;
                     DeathCauseTag::Dehydration
                 } else if !meta.is_predator
-                    && recorder.prey_combat_hits_scratch.contains(&meta.entity_index)
+                    && recorder
+                        .prey_combat_hits_scratch
+                        .contains(&meta.entity_index)
                 {
                     DeathCauseTag::Predation
                 } else if epoch_advanced {

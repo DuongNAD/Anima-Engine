@@ -1,19 +1,21 @@
 ---
 title: WR1 World Record Format and No-Feedback Gate (ADR-0008 Step H1)
 status: active
+owner: anima-case
+last_reviewed: 2026-11-24
 description: Design and verification specification for the hash-chained Anima World Record v1 format and its end-of-tick zero-feedback ECS recorder.
 ---
 
 # WR1 World Record Format and No-Feedback Gate
 
-Implements step **H1** of [ADR-0008](../decisions/ADR-0008-world-past-and-time.md): a self-describing, hash-chained provenance format for simulation runs (`src-tauri/src/core/world_record/`) paired with a strictly non-intrusive end-of-tick ECS recorder (`record_world_record_tick_system`).
+Implements step **H1** of [ADR-0008](../../decisions/ADR-0008-world-past-and-time.md): a self-describing, hash-chained provenance format for simulation runs (`src-tauri/src/core/world_record/`) paired with a strictly non-intrusive end-of-tick ECS recorder (`record_world_record_tick_system`).
 
 ## 1. Format Summary (Option C: Segmented Hash Chain)
 
 A serialized World Record uses format tag `"anima.world_record"` at `WORLD_RECORD_SCHEMA_VERSION = 1`:
 
 1. **Pinned Header (`WorldRecordHeader`)** — written at genesis before tick `1`:
-   - `seed`, `world_identity`, `world_artifact_sha256`, `model_version` (`LIVE_MODEL_VERSION`), `snapshot_schema_version` (`SCHEMA_VERSION`), `BuildProvenance`, `PlatformClass`, `deterministic`, `initial_world_checksum`, `segment_ticks`, sorted `initial_conditions`, compatibility era links (`era_index`, `prev_era_tail_hash`), and declared `omissions`.
+   - `run_id`, `parent_run_id`, `fork_tick`, `fork_keyframe_hash` (ADR-0008 §2a fork lineage anchoring), `manifest_fingerprint`, `law_fingerprint`, `registry_fingerprint`, `seed`, `world_identity`, `world_artifact_sha256`, `model_version` (`LIVE_MODEL_VERSION`), `snapshot_schema_version` (`SCHEMA_VERSION`), `BuildProvenance`, `PlatformClass { os, arch }`, `deterministic`, `initial_world_checksum`, `segment_ticks`, sorted `initial_conditions`, compatibility era links (`era_index`, `prev_era_tail_hash`), and declared `omissions`.
 2. **Domain-Separated SHA-256 Chain**:
    - `header_hash = SHA-256("anima.world_record.header.v1\0" || canonical(header))`
    - `genesis_anchor = SHA-256("anima.world_record.genesis.v1\0" || [0; 32] || header_hash)`
@@ -24,7 +26,7 @@ A serialized World Record uses format tag `"anima.world_record"` at `WORLD_RECOR
    - Normalizes `-0.0` to `+0.0`.
    - Recursively sorts all JSON object keys in UTF-8 byte order cleanly independent of map iteration order and emits compact UTF-8 JSON using `serde_json` (`float_roundtrip`).
 4. **Segmented Body (`SegmentBody`)**:
-   - `index`, contiguous `[tick_start, tick_end]`, `end_checksum` (bit-exact `world_checksum`), closed-EU `WorldKeyframe`, non-decreasing `inputs` (`Intervention`, `ObserverAction`, `ChronicleNote`), the six ADR-0008 v1 `WorldEvent` variants (`Birth`, `Death` with 5 causes `starvation|dehydration|predation|reclaim|epoch_replacement`, `Kill`, `Migration`, `Chronicle`, `EpochReplacement`), and overflow markers (`dropped_inputs_since_prev`, `dropped_events_since_prev`).
+   - `index`, contiguous `[tick_start, tick_end]`, `end_checksum` (bit-exact `world_checksum`), closed-EU `WorldKeyframe`, optional `keyframe_snapshot_sha256` (always `None` in WR1; reserved for H3 snapshot envelope digests), non-decreasing `inputs` (`Intervention`, `ObserverAction`, `ChronicleNote`), the six ADR-0008 v1 `WorldEvent` variants (`Birth`, `Death` with 5 causes `starvation|dehydration|predation|reclaim|epoch_replacement`, `Kill`, `Migration`, `Chronicle`, `EpochReplacement`), and overflow markers (`dropped_inputs_since_prev`, `dropped_events_since_prev`).
    - Records with `deterministic = false` remain readable and hash-verifiable while `VerificationReport::replayable == false`.
 
 ## 2. Zero-Feedback Architecture

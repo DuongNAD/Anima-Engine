@@ -1,9 +1,7 @@
 //! WR1 format, canonical encoding, bounded overflow, and chain immutability tests (ADR-0008).
 
 use anima_engine_lib::core::causal::CAUSE_OBSERVER;
-use anima_engine_lib::core::intervention::{
-    Curve, InterventionCommand, InterventionKind, Region,
-};
+use anima_engine_lib::core::intervention::{Curve, InterventionCommand, InterventionKind, Region};
 use anima_engine_lib::core::live_experiment::{LIVE_KEYS, LIVE_MODEL_VERSION};
 use anima_engine_lib::core::observer::ObserverAction;
 use anima_engine_lib::core::snapshot::{BuildProvenance, SCHEMA_VERSION};
@@ -17,6 +15,13 @@ use anima_engine_lib::core::world_record::{
 fn sample_header(deterministic: bool) -> WorldRecordHeader {
     WorldRecordHeader {
         schema_version: WORLD_RECORD_SCHEMA_VERSION,
+        run_id: "run-700001".to_string(),
+        parent_run_id: None,
+        fork_tick: None,
+        fork_keyframe_hash: None,
+        manifest_fingerprint: Some(0x1111_2222_3333_4444),
+        law_fingerprint: Some(0x5555_6666_7777_8888),
+        registry_fingerprint: Some(0x9999_AAAA_BBBB_CCCC),
         seed: 700_001,
         world_identity: WorldIdentity {
             seed: 42,
@@ -26,7 +31,7 @@ fn sample_header(deterministic: bool) -> WorldRecordHeader {
             checksum: 0xDEAD_BEEF,
         },
         world_artifact_sha256: Some("a".repeat(64)),
-        model_version: LIVE_MODEL_VERSION,
+        model_version: LIVE_MODEL_VERSION.to_string(),
         snapshot_schema_version: SCHEMA_VERSION,
         provenance: BuildProvenance::current(),
         platform_class: PlatformClass::current(),
@@ -144,6 +149,7 @@ fn build_six_segment_record() -> WorldRecord {
             tick_end,
             end_checksum: 0xAA00_0000 + idx as u32,
             keyframe: sample_keyframe(tick_end, idx + 1, idx),
+            keyframe_snapshot_sha256: None,
             inputs: vec![input],
             events: vec![
                 RecordedEvent {
@@ -170,6 +176,36 @@ fn build_six_segment_record() -> WorldRecord {
 #[test]
 fn wr1_does_not_add_any_live_experiment_keys() {
     assert_eq!(LIVE_KEYS.len(), 31);
+}
+
+#[test]
+fn header_validates_platform_class_and_fork_links() {
+    let hdr = sample_header(true);
+    assert!(!hdr.platform_class.os.is_empty());
+    assert!(!hdr.platform_class.arch.is_empty());
+
+    let mut empty_run = hdr.clone();
+    empty_run.run_id = "   ".to_string();
+    assert!(matches!(
+        WorldRecord::build_empty(empty_run),
+        Err(WorldRecordError::EmptyRunId)
+    ));
+
+    let mut bad_fork = hdr.clone();
+    bad_fork.parent_run_id = Some("run-parent".to_string());
+    bad_fork.fork_tick = None;
+    assert!(matches!(
+        WorldRecord::build_empty(bad_fork),
+        Err(WorldRecordError::InvalidForkLink)
+    ));
+
+    let mut bad_fork_tick = hdr;
+    bad_fork_tick.parent_run_id = None;
+    bad_fork_tick.fork_tick = Some(180);
+    assert!(matches!(
+        WorldRecord::build_empty(bad_fork_tick),
+        Err(WorldRecordError::InvalidForkLink)
+    ));
 }
 
 #[test]
@@ -210,6 +246,7 @@ fn deterministic_false_remains_readable_but_non_replayable() {
         tick_end: 60,
         end_checksum: 1,
         keyframe: sample_keyframe(60, 0, 0),
+        keyframe_snapshot_sha256: None,
         inputs: vec![],
         events: vec![],
         dropped_inputs_since_prev: 0,
@@ -246,6 +283,7 @@ fn canonical_encoding_normalizes_negative_zero_and_rejects_nonfinite_floats() {
         tick_end: 60,
         end_checksum: 0,
         keyframe: sample_keyframe(60, 0, 0),
+        keyframe_snapshot_sha256: None,
         inputs: vec![],
         events: vec![],
         dropped_inputs_since_prev: 0,
@@ -267,6 +305,7 @@ fn overflow_counters_flag_incomplete_record() {
         tick_end: 60,
         end_checksum: 99,
         keyframe: sample_keyframe(60, 0, 0),
+        keyframe_snapshot_sha256: None,
         inputs: vec![],
         events: vec![],
         dropped_inputs_since_prev: 2,
@@ -319,11 +358,12 @@ fn single_byte_flip_in_any_segment_breaks_exact_segment_and_reseal_breaks_next()
         if k + 1 < baseline.segments.len() {
             let mut partial_reseal = baseline.clone();
             partial_reseal.segments[k].body.end_checksum ^= 0x01;
-            partial_reseal.segments[k].hash = anima_engine_lib::core::world_record::compute_segment_hash(
-                &partial_reseal.segments[k].prev_hash,
-                &partial_reseal.segments[k].body,
-            )
-            .unwrap();
+            partial_reseal.segments[k].hash =
+                anima_engine_lib::core::world_record::compute_segment_hash(
+                    &partial_reseal.segments[k].prev_hash,
+                    &partial_reseal.segments[k].body,
+                )
+                .unwrap();
             let err_next = verify_record(&partial_reseal)
                 .expect_err("re-sealing k alone must fail verification at k + 1");
             assert_eq!(
@@ -343,7 +383,10 @@ fn single_byte_flip_in_any_segment_breaks_exact_segment_and_reseal_breaks_next()
     let mut bad_header = baseline.clone();
     bad_header.header.seed += 1;
     let err_hdr = verify_record(&bad_header).expect_err("header flip fails");
-    assert!(matches!(err_hdr, WorldRecordError::HeaderHashMismatch { .. }));
+    assert!(matches!(
+        err_hdr,
+        WorldRecordError::HeaderHashMismatch { .. }
+    ));
 
     // Re-sealing header_hash alone without rewriting segment 0 breaks at index 0.
     bad_header.header_hash =

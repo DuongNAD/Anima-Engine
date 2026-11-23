@@ -110,22 +110,19 @@ pub(crate) mod opt_hex32 {
     }
 }
 
-/// CPU architecture class where the recording binary executed (ADR-0008 cross-arch note).
+/// Host OS and CPU architecture class where the recording binary executed (ADR-0008 §2a).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "arch", content = "label", rename_all = "snake_case")]
-pub enum PlatformClass {
-    X86_64,
-    Aarch64,
-    Other(String),
+pub struct PlatformClass {
+    pub os: String,
+    pub arch: String,
 }
 
 impl PlatformClass {
-    /// Detect the running host architecture class.
+    /// Detect the running host OS and architecture class.
     pub fn current() -> Self {
-        match std::env::consts::ARCH {
-            "x86_64" => Self::X86_64,
-            "aarch64" => Self::Aarch64,
-            other => Self::Other(other.to_string()),
+        Self {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
         }
     }
 }
@@ -134,10 +131,18 @@ impl PlatformClass {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldRecordHeader {
     pub schema_version: u32,
+    pub run_id: String,
+    pub parent_run_id: Option<String>,
+    pub fork_tick: Option<u64>,
+    #[serde(with = "opt_hex32")]
+    pub fork_keyframe_hash: Option<SegmentHash>,
+    pub manifest_fingerprint: Option<u64>,
+    pub law_fingerprint: Option<u64>,
+    pub registry_fingerprint: Option<u64>,
     pub seed: u64,
     pub world_identity: WorldIdentity,
     pub world_artifact_sha256: Option<String>,
-    pub model_version: u32,
+    pub model_version: String,
     pub snapshot_schema_version: u32,
     pub provenance: BuildProvenance,
     pub platform_class: PlatformClass,
@@ -254,6 +259,9 @@ pub struct SegmentBody {
     pub tick_end: u64,
     pub end_checksum: u32,
     pub keyframe: WorldKeyframe,
+    /// Optional SHA-256 of an out-of-band snapshot envelope at `tick_end` (reserved for H3).
+    #[serde(with = "opt_hex32")]
+    pub keyframe_snapshot_sha256: Option<SegmentHash>,
     pub inputs: Vec<RecordedInput>,
     pub events: Vec<RecordedEvent>,
     pub dropped_inputs_since_prev: u64,
@@ -313,6 +321,8 @@ pub enum WorldRecordError {
         expected: u32,
         actual: u32,
     },
+    EmptyRunId,
+    InvalidForkLink,
     InvalidSegmentTicks(u64),
     InvalidEraLink {
         era_index: u32,
@@ -388,6 +398,15 @@ impl fmt::Display for WorldRecordError {
                 write!(
                     f,
                     "unsupported world record schema version {actual}, expected {expected}"
+                )
+            }
+            Self::EmptyRunId => {
+                write!(f, "world record header run_id must be non-empty")
+            }
+            Self::InvalidForkLink => {
+                write!(
+                    f,
+                    "world record header parent_run_id and fork_tick must both be set or both absent"
                 )
             }
             Self::InvalidSegmentTicks(ticks) => {

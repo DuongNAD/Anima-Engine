@@ -170,6 +170,17 @@ pub fn validate_header(header: &WorldRecordHeader) -> Result<(), WorldRecordErro
             actual: header.schema_version,
         });
     }
+    if header.run_id.trim().is_empty() {
+        return Err(WorldRecordError::EmptyRunId);
+    }
+    if header.parent_run_id.is_some() != header.fork_tick.is_some()
+        || header
+            .parent_run_id
+            .as_deref()
+            .is_some_and(|p| p.trim().is_empty())
+    {
+        return Err(WorldRecordError::InvalidForkLink);
+    }
     if header.segment_ticks == 0 {
         return Err(WorldRecordError::InvalidSegmentTicks(header.segment_ticks));
     }
@@ -203,7 +214,10 @@ pub fn genesis_anchor(header_hash: &SegmentHash) -> SegmentHash {
 }
 
 fn validate_segment_floats(body: &SegmentBody) -> Result<(), WorldRecordError> {
-    check_f64(body.keyframe.standing_crop_eu, "body.keyframe.standing_crop_eu")?;
+    check_f64(
+        body.keyframe.standing_crop_eu,
+        "body.keyframe.standing_crop_eu",
+    )?;
     check_f64(body.keyframe.detritus_eu, "body.keyframe.detritus_eu")?;
     check_f64(
         body.keyframe.total_agent_energy_eu,
