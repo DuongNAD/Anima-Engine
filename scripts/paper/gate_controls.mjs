@@ -44,6 +44,7 @@ export const VERDICTS = Object.freeze({
   NOT_RUN_BASELINE_RED: 'NOT RUN (baseline red)',
   NOT_RUN_NO_GATE: 'NOT RUN (no automated gate)',
   NOT_RUN_TIME: 'NOT RUN (time)',
+  NOT_RUN_WINDOWS: 'NOT RUN (not measured on Windows)',
 });
 
 export function parseCliArgs(argv) {
@@ -463,6 +464,15 @@ export function classifyGateResult({ baselineRes, faultRes, matchers = [] }) {
 
   const picked = findMatchingLine(faultRes.output ?? '', matchers, true);
   if (picked.matched) {
+    const baselineLeak = findMatchingLine(baselineRes.output ?? '', matchers, false);
+    if (baselineLeak.matched) {
+      return {
+        verdict: VERDICTS.UNMATCHED_FAILURE,
+        exitCode: faultRes.status,
+        namingLine: `matcher matched clean baseline output: ${baselineLeak.line}`,
+        matched: false,
+      };
+    }
     return {
       verdict: VERDICTS.CATCHES,
       exitCode: faultRes.status,
@@ -505,6 +515,248 @@ function runCheckTestTargetsScript(wt, capturePath, profileArg) {
   };
 }
 
+function unquoteYamlScalar(value) {
+  const s = value.trim();
+  if (
+    s.length >= 2 &&
+    ((s.startsWith('"') && s.endsWith('"') && !s.slice(1, -1).includes('"')) ||
+      (s.startsWith("'") && s.endsWith("'") && !s.slice(1, -1).includes("'")))
+  ) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
+export function extractWorkflowSteps(yamlText) {
+  const lines = String(yamlText ?? '').split(/\r?\n/);
+  const steps = [];
+  let inJobs = false;
+  let currentJob = null;
+  let inSteps = false;
+  let stepIndent = -1;
+  let currentStep = null;
+  let readingBlock = false;
+  let blockKeyIndent = -1;
+  let blockContentIndent = -1;
+  let blockLines = [];
+  let runStartLine = 0;
+
+  const finishBlock = () => {
+    if (!readingBlock || !currentStep) return;
+    while (blockLines.length > 0 && blockLines[blockLines.length - 1] === '') {
+      blockLines.pop();
+    }
+    const nonEmpty = blockLines.filter((l) => l.trim().length > 0);
+    const minIndent =
+      blockContentIndent >= 0
+        ? blockContentIndent
+        : nonEmpty.length > 0
+          ? Math.min(...nonEmpty.map((l) => l.match(/^\s*/)[0].length))
+          : 0;
+    currentStep.run = blockLines.map((l) => (l.length >= minIndent ? l.slice(minIndent) : '')).join('\n');
+    currentStep.runLine = runStartLine;
+    readingBlock = false;
+    blockKeyIndent = -1;
+    blockContentIndent = -1;
+    blockLines = [];
+  };
+
+  const finishStep = () => {
+    finishBlock();
+    if (currentStep) {
+      steps.push(currentStep);
+      currentStep = null;
+    }
+  };
+
+  for (let idx = 0; idx < lines.length; idx += 1) {
+    const rawLine = lines[idx];
+    const lineNo = idx + 1;
+    const trimmed = rawLine.trim();
+    const indent = rawLine.match(/^\s*/)[0].length;
+
+    if (readingBlock) {
+      if (trimmed.length === 0) {
+        blockLines.push('');
+        continue;
+      }
+      if (indent > blockKeyIndent) {
+        if (blockContentIndent < 0) blockContentIndent = indent;
+        blockLines.push(rawLine);
+        continue;
+      }
+      finishBlock();
+    }
+
+    if (trimmed.length === 0 || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    if (indent === 0) {
+      finishStep();
+      inJobs = /^jobs:\s*(?:#.*)?$/.test(trimmed);
+      currentJob = null;
+      inSteps = false;
+      continue;
+    }
+
+    if (!inJobs) continue;
+
+    if (indent === 2 && /^[A-Za-z0-9_-]+:\s*(?:#.*)?$/.test(trimmed)) {
+      finishStep();
+      currentJob = trimmed.split(':')[0];
+      inSteps = false;
+      continue;
+    }
+
+    if (currentJob && indent === 4) {
+      finishStep();
+      inSteps = /^steps:\s*(?:#.*)?$/.test(trimmed);
+      continue;
+    }
+
+    if (!inSteps) continue;
+
+    const dashMatch = /^(\s*)-\s+(.*)$/.exec(rawLine);
+    if (dashMatch && (stepIndent < 0 || dashMatch[1].length <= stepIndent)) {
+      finishStep();
+      stepIndent = dashMatch[1].length;
+      currentStep = {
+        job: currentJob,
+        name: null,
+        workingDirectory: null,
+        run: null,
+        startLine: lineNo,
+        runLine: lineNo,
+      };
+      const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(dashMatch[2]);
+      if (kv) {
+        const [, key, val] = kv;
+        if (key === 'name') currentStep.name = unquoteYamlScalar(val);
+        else if (key === 'working-directory') currentStep.workingDirectory = unquoteYamlScalar(val);
+        else if (key === 'run') {
+          if (/^\|[+-]?$/.test(val.trim())) {
+            readingBlock = true;
+            blockKeyIndent = stepIndent;
+            runStartLine = lineNo + 1;
+          } else {
+            currentStep.run = val.trim();
+            currentStep.runLine = lineNo;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (currentStep && indent === stepIndent + 2) {
+      const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(trimmed);
+      if (!kv) continue;
+      const [, key, val] = kv;
+      if (key === 'name') currentStep.name = unquoteYamlScalar(val);
+      else if (key === 'working-directory') currentStep.workingDirectory = unquoteYamlScalar(val);
+      else if (key === 'run') {
+        if (/^\|[+-]?$/.test(val.trim())) {
+          readingBlock = true;
+          blockKeyIndent = indent;
+          runStartLine = lineNo + 1;
+        } else {
+          currentStep.run = val.trim();
+          currentStep.runLine = lineNo;
+        }
+      }
+    }
+  }
+  finishStep();
+  return steps;
+}
+
+export function getWorkflowStep(wt, relPath, jobId, stepName) {
+  const fullPath = join(wt, relPath);
+  const steps = extractWorkflowSteps(readFileSync(fullPath, 'utf8'));
+  const found = steps.find((s) => s.job === jobId && s.name === stepName && typeof s.run === 'string');
+  if (!found) {
+    throw new Error(`Could not locate workflow step "${stepName}" in ${relPath} (job: ${jobId})`);
+  }
+  return found;
+}
+
+export function formatWorkflowCommandDisplay(runText) {
+  const joinedContinuations = String(runText ?? '').replace(/\\\r?\n\s*/g, ' ');
+  const lines = joinedContinuations
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#') && l !== 'set -o pipefail');
+  let out = '';
+  for (const line of lines) {
+    if (!out) {
+      out = line;
+    } else if (
+      /(?:then|do|else|elif|\|\||&&|\||\{|\()\s*$/.test(out) ||
+      /^(?:then|do|else|elif|fi|done|\||&&|\|\||\})/.test(line)
+    ) {
+      out += ` ${line}`;
+    } else {
+      out += `; ${line}`;
+    }
+  }
+  return out;
+}
+
+function getWorkflowCommandLine(wt, relPath, jobId, stepName) {
+  const step = getWorkflowStep(wt, relPath, jobId, stepName);
+  const shortFile = relPath.split('/').pop();
+  return {
+    source: `${shortFile}:${step.runLine}`,
+    command: formatWorkflowCommandDisplay(step.run),
+    raw: step.run,
+  };
+}
+
+function getFeatureSeparationSlice(wt, sliceKind) {
+  const step = getWorkflowStep(
+    wt,
+    '.github/workflows/ci.yml',
+    'rust',
+    'Default build excludes Neo4j, the WebSocket stack, Burn/WGPU and anima-worldgen',
+  );
+  const lines = step.run.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const idxEngine = lines.findIndex((l) => l.startsWith('engine_leaked='));
+  const idxWorldgen = lines.findIndex((l) => l.startsWith('worldgen_leaked='));
+  if (idxEngine < 0 || idxWorldgen < 0) {
+    throw new Error('Could not parse feature separation sub-checks from ci.yml');
+  }
+  const picked =
+    sliceKind === 'default'
+      ? lines.slice(0, idxEngine)
+      : sliceKind === 'engine'
+        ? lines.slice(idxEngine, idxWorldgen)
+        : lines.slice(idxWorldgen);
+  return {
+    source: `ci.yml:${step.runLine}`,
+    raw: picked.join('\n'),
+    command: picked.join(' && '),
+  };
+}
+
+function getFrontendStepsMatching(wt, pattern) {
+  const steps = extractWorkflowSteps(readFileSync(join(wt, '.github/workflows/ci.yml'), 'utf8'));
+  return steps.filter((s) => s.job === 'frontend' && typeof s.run === 'string' && pattern.test(s.run));
+}
+
+function getFrontendChainCommand(wt, pattern) {
+  const matched = getFrontendStepsMatching(wt, pattern);
+  if (matched.length === 0) {
+    throw new Error(`No matching frontend workflow steps found for ${pattern}`);
+  }
+  return matched.map((s) => formatWorkflowCommandDisplay(s.run)).join(' && ');
+}
+
+function extractProfileFromStep(wt, stepName) {
+  const step = getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', stepName);
+  const match = step.run.match(/--profile(?:=|\s+)([^\s]+)/);
+  return match ? match[1] : null;
+}
+
 const POLICY_TEST_TARGETS = [
   'shared_domain_law_tests',
   'determinism_gate_tests',
@@ -521,12 +773,12 @@ const POLICY_TEST_TARGETS = [
 ];
 
 function extractCiCargoTestFeatures(wt) {
-  const ciText = readFileSync(join(wt, '.github', 'workflows', 'ci.yml'), 'utf8');
-  const match = ciText.match(/^\s*(cargo test\b[^\r\n]*\|\s*tee\s+\.\.\/cargo-test-output\.txt)\s*$/m);
-  if (!match) {
-    throw new Error('Could not locate `cargo test ... | tee ../cargo-test-output.txt` in .github/workflows/ci.yml');
+  const step = getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo test');
+  const cargoLine = step.run.split(/\r?\n/).find((l) => /^\s*cargo test\b/.test(l));
+  if (!cargoLine) {
+    throw new Error('Could not locate `cargo test` line in .github/workflows/ci.yml rust job');
   }
-  const cargoSide = match[1].split('|')[0].split(/\s+--\s+/)[0];
+  const cargoSide = cargoLine.split('|')[0].split(/\s+--\s+/)[0];
   const featMatch = cargoSide.match(/--features(?:=|\s+)([^\s]+)/);
   if (!featMatch) return [];
   return featMatch[1]
@@ -536,16 +788,17 @@ function extractCiCargoTestFeatures(wt) {
 }
 
 function extractCiWorldgenFeatures(wt) {
-  const ciText = readFileSync(join(wt, '.github', 'workflows', 'ci.yml'), 'utf8');
-  const match = ciText.match(
-    /^\s*(cargo test\b[^\r\n]*-p\s+anima-worldgen[^\r\n]*\|\s*tee\s+\.\.\/cargo-test-worldgen-output\.txt)\s*$/m,
+  const step = getWorkflowStep(
+    wt,
+    '.github/workflows/ci.yml',
+    'rust',
+    'cargo test (anima-worldgen CPU reader/generate/bake)',
   );
-  if (!match) {
-    throw new Error(
-      'Could not locate `cargo test -p anima-worldgen ... | tee ../cargo-test-worldgen-output.txt` in .github/workflows/ci.yml',
-    );
+  const cargoLine = step.run.split(/\r?\n/).find((l) => /^\s*cargo test\b/.test(l));
+  if (!cargoLine) {
+    throw new Error('Could not locate `cargo test -p anima-worldgen` line in .github/workflows/ci.yml rust job');
   }
-  const cargoSide = match[1].split('|')[0].split(/\s+--\s+/)[0];
+  const cargoSide = cargoLine.split('|')[0].split(/\s+--\s+/)[0];
   const featMatch = cargoSide.match(/--features(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/);
   if (!featMatch) return [];
   const raw = featMatch[1] || featMatch[2] || featMatch[3] || '';
@@ -693,69 +946,68 @@ function runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, profileArg = 'worldgen-c
 }
 
 export const GATES = [
-  // ---- Expected VACUOUS / CI-omission controls (listed first) -------------------------------
+  // ---- Expected VACUOUS / CI-omission controls (read dynamically from workflow files) -------
   {
     id: 'thread_rng_scan',
-    source: 'hardening.yml:75-76',
-    ciCommand:
-      "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); [ \"$n\" -eq 0 ]",
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'cấm thêm nguồn phi tất định vào src').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'cấm thêm nguồn phi tất định vào src').command,
     faultSummary: 'Add `use rand::thread_rng; let _ = thread_rng();` to `src-tauri/src/main.rs`',
     patch: 'thread_rng_scan.patch',
     cleanKey: 'hardening:thread_rng_scan',
     needsCargo: false,
     run(wt) {
-      return runBash(
-        "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); echo \"thread_rng() literal matches: $n\"; [ \"$n\" -eq 0 ] || { echo \"::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng.\"; exit 1; }",
-        wt,
-      );
+      const script = getWorkflowStep(wt, '.github/workflows/hardening.yml', 'determinism', 'cấm thêm nguồn phi tất định vào src').run;
+      return runBash(script, wt);
     },
-    matchers: [/co \d+ cho goi thread_rng\(\) trong src/, /thread_rng\(\) literal matches/],
+    matchers: [/::error::co [1-9]\d* cho goi thread_rng\(\) trong src/],
   },
   {
     id: 'check_test_targets_unscheduled',
-    source: 'ci.yml:192',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command,
     faultSummary: 'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184`',
     patch: 'check_test_targets_unscheduled.patch',
-    cleanKey: 'check_test_targets:default',
-    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : !ctx.captures.unscheduled),
+    cleanKey: 'check_test_targets:from_ci',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_from_ci : !ctx.captures.unscheduled),
     runClean(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'clean_ci_default');
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, 'clean_ci_from_ci');
     },
     run(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'unscheduled');
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, 'unscheduled');
     },
-    matchers: [/no --profile given/, /test targets:/],
+    matchers: [/profile "desktop" enables "networking", so tests\/adversarial_challenger_tests\.rs must run/],
   },
   {
     id: 'ci_ipc_arg_case',
-    source: 'ci.yml vs package.json:34',
-    ciCommand:
-      'npm run lint && node scripts/eslint_ratchet.mjs && npm run typecheck:tests && npm run test && npm run test:frontend && npm run build && node scripts/check_ipc_reference.mjs',
+    source: 'ci.yml (frontend chain)',
+    ciCommand: getFrontendChainCommand(
+      REPO_ROOT,
+      /(?:check:ipc|npm run lint|eslint_ratchet|typecheck:tests|npm run test\b|npm run test:frontend\b|npm run build|check_ipc_reference)/,
+    ),
     faultSummary:
-      'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts` (`check:ipc` absent from `ci.yml`)',
+      'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts`',
     patch: 'check_ipc_arg_case.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell(
-        'npm run lint && node scripts/eslint_ratchet.mjs && npm run typecheck:tests && npm run test && npm run test:frontend && npm run build && node scripts/check_ipc_reference.mjs',
+      const cmd = getFrontendChainCommand(
         wt,
-        { ...process.env, CI: 'true' },
+        /(?:check:ipc|npm run lint|eslint_ratchet|typecheck:tests|npm run test\b|npm run test:frontend\b|npm run build|check_ipc_reference)/,
       );
+      return runShell(cmd, wt, { ...process.env, CI: 'true' });
     },
-    matchers: [
-      /FAIL\s+|error TS|eslint: [1-9]|AssertionError|timed out/i,
-      /ipc reference check:/,
-    ],
+    matchers: [/FAIL src\/components\/Landscape\/utils\/worldCache\.ts:\d+ invoke\('save_simulation_state', \{ file_path/],
   },
   {
     id: 'ci_licenses_complete',
-    source: 'ci.yml:230-232',
-    ciCommand: 'npm run check:licenses',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').command,
     faultSummary:
       'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/` (`ci.yml` step "current and complete" omits `--require-complete`)',
     patch: 'check_licenses_complete.patch',
     cleanKey: 'npm run check:licenses',
+    windowsOnly: true,
     needsCargo: true,
     needsNodeModules: true,
     runClean(wt) {
@@ -770,29 +1022,27 @@ export const GATES = [
       ensureSafeAnimaCargo();
       return runShell('npm run check:licenses', wt, env);
     },
-    matchers: [/third-party licences check: up to date.*1 unresolved/i, /third-party licences check:/i],
+    matchers: [/third-party licences check: up to date.*\b[1-9]\d* unresolved/i],
   },
   {
     id: 'ci_e3',
-    source: 'ci.yml vs package.json:33',
-    ciCommand: 'npm run check:e2 && npm run test && npm run test:frontend',
+    source: 'ci.yml (frontend E2/E3/Vitest chain)',
+    ciCommand: getFrontendChainCommand(REPO_ROOT, /(?:check:e2|check:e3|npm run test\b|npm run test:frontend\b)/),
     faultSummary:
-      'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json` (`check:e3` absent from `ci.yml`)',
+      'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json`',
     patch: 'check_e3.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:e2 && npm run test && npm run test:frontend', wt, {
-        ...process.env,
-        CI: 'true',
-      });
+      const cmd = getFrontendChainCommand(wt, /(?:check:e2|check:e3|npm run test\b|npm run test:frontend\b)/);
+      return runShell(cmd, wt, { ...process.env, CI: 'true' });
     },
-    matchers: [/effects\.json/, /digest|sha256|mismatch|residual/i, /Test Files\s+\d+ passed/, /verify_e2_artifacts OK/],
+    matchers: [/SHA-256 mismatch for effects\.json/],
   },
 
   // ---- Missing / >30 min gates -------------------------------------------------------------
   {
     id: 'conflict_marker_scan',
-    source: 'CARD M2 (planned, unbuilt)',
+    source: 'CARD M2 (planned, unbuilt on trunk)',
     ciCommand: '(no automated check in ci.yml, hardening.yml, or package.json)',
     faultSummary: 'Conflict-marker scan planned in CARD M2 without implementation',
     patch: null,
@@ -810,6 +1060,7 @@ export const GATES = [
       'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/`',
     patch: 'check_licenses_complete.patch',
     cleanKey: 'npm run check:licenses-complete',
+    windowsOnly: true,
     needsCargo: true,
     needsNodeModules: true,
     runClean(wt) {
@@ -824,14 +1075,14 @@ export const GATES = [
       ensureSafeAnimaCargo();
       return runShell('npm run check:licenses-complete', wt, env);
     },
-    matchers: [/distributed component\(s\) have no obtainable licence text/i, /UNRESOLVED\.md/],
+    matchers: [/distributed component\(s\) have no obtainable licence text/i],
   },
 
   // ---- Gates > 30 min per fault (runtime measured once on clean tree) -----------------------
   {
     id: 'cargo_test_desktop_full',
-    source: 'ci.yml:184',
-    ciCommand: 'cargo test --features desktop -- --nocapture 2>&1 | tee ../cargo-test-output.txt',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo test').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo test').command,
     faultSummary: 'Full all-target desktop test run per fault exceeds 30 min budget (targeted suites below cover faults)',
     patch: null,
     staticResult: {
@@ -843,8 +1094,8 @@ export const GATES = [
   },
   {
     id: 'hardening_stability_5x',
-    source: 'hardening.yml:52,59-62',
-    ciCommand: 'for i in 1 2 3 4 5; do RAYON_NUM_THREADS=1 cargo test --release --quiet; done',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'kiểm ổn định (5 lần)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'kiểm ổn định (5 lần)').command,
     faultSummary: '5x sequential full release test runs per fault exceed 30 min budget',
     patch: null,
     staticResult: {
@@ -858,158 +1109,130 @@ export const GATES = [
   // ---- Rust CI & hardening gates ------------------------------------------------------------
   {
     id: 'thread_rng_scan_crates',
-    source: 'hardening.yml:75-76',
-    ciCommand:
-      "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); [ \"$n\" -eq 0 ]",
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'cấm thêm nguồn phi tất định vào src').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'cấm thêm nguồn phi tất định vào src').command,
     faultSummary: 'Add `let _ = rand::thread_rng();` to `src-tauri/crates/anima-worldgen/src/lib.rs`',
     patch: 'thread_rng_scan_crates.patch',
     cleanKey: 'hardening:thread_rng_scan',
     needsCargo: false,
     run(wt) {
-      return runBash(
-        "n=$(grep -rn 'rand::thread_rng()' src-tauri/src src-tauri/crates --include='*.rs' | grep -vc ':[[:space:]]*//' || true); echo \"thread_rng() literal matches: $n\"; [ \"$n\" -eq 0 ] || { echo \"::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng.\"; exit 1; }",
-        wt,
-      );
+      const script = getWorkflowStep(wt, '.github/workflows/hardening.yml', 'determinism', 'cấm thêm nguồn phi tất định vào src').run;
+      return runBash(script, wt);
     },
-    matchers: [/co \d+ cho goi thread_rng\(\) trong src/, /thread_rng\(\) literal matches/],
+    matchers: [/::error::co [1-9]\d* cho goi thread_rng\(\) trong src/],
   },
   {
     id: 'cargo_fmt',
-    source: 'ci.yml:92',
-    ciCommand: 'cargo fmt --check',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo fmt --check').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo fmt --check').command,
     faultSummary: 'Misformat `anima_engine_lib::run( );` in `src-tauri/src/main.rs`',
     patch: 'cargo_fmt.patch',
     needsCargo: true,
     run(wt) {
-      return runShell('cargo fmt --check', join(wt, 'src-tauri'), cargoEnv());
+      return runShell(getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo fmt --check').run, join(wt, 'src-tauri'), cargoEnv());
     },
-    matchers: [/Diff in .*main\.rs/i, /anima_engine_lib::run/],
+    matchers: [/Diff in .*main\.rs/i, /anima_engine_lib::run\(\s+\)/],
   },
   {
     id: 'cargo_audit',
-    source: 'ci.yml:107',
-    ciCommand: 'cargo audit',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo audit').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo audit').command,
     faultSummary: 'Remove `RUSTSEC-2026-0367` exemption from `src-tauri/.cargo/audit.toml`',
     patch: 'cargo_audit.patch',
     needsCargo: true,
     run(wt) {
-      return runShell('cargo audit', join(wt, 'src-tauri'), cargoEnv());
+      return runShell(getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo audit').run, join(wt, 'src-tauri'), cargoEnv());
     },
-    matchers: [/RUSTSEC-2026-0367/, /ID:\s+RUSTSEC-2026-0367/],
+    matchers: [/ID:\s+RUSTSEC-2026-0367/],
   },
   {
     id: 'cargo_deny',
-    source: 'ci.yml:122',
-    ciCommand: 'cargo deny check',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo deny check').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo deny check').command,
     faultSummary: 'Drop `"MIT"` from `licenses.allow` in `src-tauri/deny.toml`',
     patch: 'cargo_deny.patch',
     needsCargo: true,
     run(wt) {
-      return runShell('cargo deny check', join(wt, 'src-tauri'), cargoEnv());
+      return runShell(getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo deny check').run, join(wt, 'src-tauri'), cargoEnv());
     },
-    matchers: [/failed to satisfy license requirements/, /MIT/, /licenses FAILED/],
+    matchers: [/error\[rejected\]: failed to satisfy license requirements/, /licenses FAILED/],
   },
   {
     id: 'cargo_clippy_desktop',
-    source: 'ci.yml:126',
-    ciCommand: 'cargo clippy --all-targets --features desktop -- -D warnings',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo clippy --all-targets -D warnings').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo clippy --all-targets -D warnings').command,
     faultSummary: 'Add `let unused_m2_fault = 1usize;` in `src-tauri/src/main.rs`',
     patch: 'cargo_clippy_desktop.patch',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo clippy --all-targets --features desktop -- -D warnings',
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo clippy --all-targets -D warnings').run,
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
     },
-    matchers: [/unused_m2_fault/, /unused variable/],
+    matchers: [/unused variable:\s*`unused_m2_fault`/],
   },
   {
     id: 'cargo_clippy_worldgen',
-    source: 'ci.yml:128-130',
-    ciCommand: 'cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo clippy (anima-worldgen CPU reader/generate/bake)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo clippy (anima-worldgen CPU reader/generate/bake)').command,
     faultSummary:
       'Call disallowed `elevation_m.sin()` in `src-tauri/crates/anima-worldgen/src/lib.rs` (deterministic math ban)',
     patch: 'cargo_clippy_worldgen.patch',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings',
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo clippy (anima-worldgen CPU reader/generate/bake)').run,
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
     },
-    matchers: [/disallowed method `f32::sin`|disallowed_methods/, /use libm::sinf/],
+    matchers: [/disallowed method `f32::sin`/],
   },
   {
     id: 'feature_separation',
-    source: 'ci.yml:139-142',
-    ciCommand:
-      "cargo clippy --all-targets --no-default-features -- -D warnings && leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu) v' || true); test \"$leaked\" -eq 0",
+    source: getFeatureSeparationSlice(REPO_ROOT, 'default').source,
+    ciCommand: getFeatureSeparationSlice(REPO_ROOT, 'default').command,
     faultSummary: 'Make `tokio-tungstenite` non-optional in `src-tauri/Cargo.toml`',
     patch: 'feature_separation.patch',
     needsCargo: true,
     run(wt) {
-      const tauriDir = join(wt, 'src-tauri');
-      const env = cargoEnv();
-      const clippyRes = runShell(
-        'cargo clippy --all-targets --no-default-features -- -D warnings',
-        tauriDir,
-        env,
-      );
-      if (clippyRes.status !== 0) {
-        return clippyRes;
-      }
-      ensureSafeAnimaCargo();
-      return runBash(
-        "leaked=$(cargo tree --no-default-features -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu) v' || true); echo \"gated crates present in --no-default-features workspace tree: $leaked\"; test \"$leaked\" -eq 0",
-        tauriDir,
-        env,
-      );
+      const slice = getFeatureSeparationSlice(wt, 'default');
+      return runBash(`set -e\n${slice.raw}`, join(wt, 'src-tauri'), cargoEnv());
     },
-    matchers: [/gated crates present in --no-default-features workspace tree:/],
+    matchers: [/gated crates present in --no-default-features workspace tree:\s*[1-9]\d*/],
   },
   {
     id: 'feature_separation_engine',
-    source: 'ci.yml:143-145',
-    ciCommand:
-      "engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu|anima-worldgen) v' || true); test \"$engine_leaked\" -eq 0",
+    source: getFeatureSeparationSlice(REPO_ROOT, 'engine').source,
+    ciCommand: getFeatureSeparationSlice(REPO_ROOT, 'engine').command,
     faultSummary: 'Add `anima-worldgen = { path = "crates/anima-worldgen" }` to `src-tauri/Cargo.toml`',
     patch: 'feature_separation_engine.patch',
     needsCargo: true,
     run(wt) {
-      const tauriDir = join(wt, 'src-tauri');
-      return runBash(
-        "engine_leaked=$(cargo tree -p anima-engine -e normal --prefix none | grep -cE '^(neo4rs|tokio-tungstenite|burn-wgpu|naga|zstd-sys|wgpu(-[a-z0-9-]+)?|ktx2|meshopt|bc7enc[a-z0-9_]*|cubecl-wgpu|anima-worldgen) v' || true); echo \"gated crates present in default anima-engine tree: $engine_leaked\"; test \"$engine_leaked\" -eq 0",
-        tauriDir,
-        cargoEnv(),
-      );
+      const slice = getFeatureSeparationSlice(wt, 'engine');
+      return runBash(`set -e\n${slice.raw}`, join(wt, 'src-tauri'), cargoEnv());
     },
-    matchers: [/gated crates present in default anima-engine tree:/],
+    matchers: [/gated crates present in default anima-engine tree:\s*[1-9]\d*/],
   },
   {
     id: 'feature_separation_worldgen',
-    source: 'ci.yml:146-148',
-    ciCommand:
-      "worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu(-[a-z0-9-]+)?) v' || true); test \"$worldgen_leaked\" -eq 0",
+    source: getFeatureSeparationSlice(REPO_ROOT, 'worldgen').source,
+    ciCommand: getFeatureSeparationSlice(REPO_ROOT, 'worldgen').command,
     faultSummary: 'Add `bevy_ecs = "0.13.0"` to `src-tauri/crates/anima-worldgen/Cargo.toml`',
     patch: 'feature_separation_worldgen.patch',
     needsCargo: true,
     run(wt) {
-      const tauriDir = join(wt, 'src-tauri');
-      return runBash(
-        "worldgen_leaked=$(cargo tree -p anima-worldgen --features reader,generate,bake -e normal --prefix none | grep -cE '^(bevy_ecs|tauri|tauri-[a-z0-9_-]+|wgpu(-[a-z0-9-]+)?) v' || true); echo \"forbidden engine/GPU crates present in anima-worldgen tree: $worldgen_leaked\"; test \"$worldgen_leaked\" -eq 0",
-        tauriDir,
-        cargoEnv(),
-      );
+      const slice = getFeatureSeparationSlice(wt, 'worldgen');
+      return runBash(`set -e\n${slice.raw}`, join(wt, 'src-tauri'), cargoEnv());
     },
-    matchers: [/forbidden engine\/GPU crates present in anima-worldgen tree:/],
+    matchers: [/forbidden engine\/GPU crates present in anima-worldgen tree:\s*[1-9]\d*/],
   },
   {
     id: 'ts_rs_parity',
-    source: 'ci.yml:154-158',
-    ciCommand: 'cargo test --lib export_bindings && git diff --exit-code -- ../src/types/generated',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'TypeScript IPC bindings match the Rust structs').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'TypeScript IPC bindings match the Rust structs').command,
     faultSummary: 'Add `#[ts(rename = "x_m2_fault")]` to `SegmentState::x` in `simulation_state.rs`',
     patch: 'ts_rs_parity.patch',
     needsCargo: true,
@@ -1022,39 +1245,45 @@ export const GATES = [
       }
       return runShell('git --no-pager diff --exit-code -- ../src/types/generated', tauriDir, env);
     },
-    matchers: [/x_m2_fault/, /SegmentState\.ts/],
+    matchers: [/x_m2_fault/],
   },
   {
     id: 'check_test_targets_empty',
-    source: 'ci.yml:192 (policy)',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command,
     faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/tests/shared_domain_law_tests.rs`',
     patch: 'check_test_targets_empty.patch',
-    cleanKey: 'check_test_targets:default',
-    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : true),
+    cleanKey: 'check_test_targets:from_ci',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_from_ci : true),
     runClean(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'clean_ci_default');
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, 'clean_ci_from_ci');
     },
     run(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, null);
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, null);
     },
-    matchers: [/compiled but ran zero tests/, /shared_domain_law_tests\.rs/],
+    matchers: [/test target "tests\/shared_domain_law_tests\.rs" compiled but ran zero tests/],
   },
   {
     id: 'check_test_targets_ignored',
-    source: 'ci.yml:192 (policy)',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command,
     faultSummary: 'Add `#[ignore]` to `the_engine_reads_the_domain_crates_values_for_the_time_laws`',
     patch: 'check_test_targets_ignored.patch',
-    cleanKey: 'check_test_targets:default',
-    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : true),
+    cleanKey: 'check_test_targets:from_ci',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_from_ci : true),
     runClean(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'clean_ci_default');
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, 'clean_ci_from_ci');
     },
     run(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, null);
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, null);
     },
-    matchers: [/is #\[ignore\]d and is not in IGNORED_TESTS/, /the_engine_reads_the_domain_crates_values_for_the_time_laws/],
+    matchers: [
+      /test "the_engine_reads_the_domain_crates_values_for_the_time_laws" \(tests\/shared_domain_law_tests\.rs\) is #\[ignore\]d and is not in IGNORED_TESTS/,
+    ],
   },
   {
     id: 'check_test_targets_unscheduled_profile',
@@ -1063,71 +1292,72 @@ export const GATES = [
     faultSummary:
       'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184` (checked with `--profile desktop`)',
     patch: 'check_test_targets_unscheduled.patch',
-    cleanKey: 'check_test_targets:desktop',
-    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_default : !ctx.captures.unscheduled),
+    cleanKey: 'check_test_targets:from_ci',
+    needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_from_ci : !ctx.captures.unscheduled),
     runClean(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'clean_ci_default');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'clean_ci_from_ci');
     },
     run(wt, tmpBase, ctx) {
       return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'unscheduled');
     },
-    matchers: [/profile "desktop" enables "networking", so tests\/.* must run/, /must run — but it is absent/],
+    matchers: [/profile "desktop" enables "networking", so tests\/adversarial_challenger_tests\.rs must run/],
   },
   {
     id: 'cargo_test_worldgen',
-    source: 'ci.yml:194-199',
-    ciCommand: 'cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo test (anima-worldgen CPU reader/generate/bake)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'cargo test (anima-worldgen CPU reader/generate/bake)').command,
     faultSummary: 'Invert `LITHOLOGY_CLASS_COUNT` assertion (`6 -> 99`) in `src-tauri/crates/anima-worldgen/src/lib.rs`',
     patch: 'cargo_test_worldgen.patch',
     needsCargo: true,
     run(wt) {
+      const feats = extractCiWorldgenFeatures(wt).join(',');
       return runShell(
-        'cargo test -p anima-worldgen --features "reader,generate,bake" -- --nocapture',
+        `cargo test -p anima-worldgen --features "${feats}" -- --nocapture`,
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
     },
-    matchers: [/elevation_normalization_anchors_match_v3_vertical_scale/, /assertion `left == right` failed/i],
+    matchers: [/test tests::elevation_normalization_anchors_match_v3_vertical_scale \.\.\. FAILED/],
   },
   {
     id: 'check_test_targets_worldgen_unscheduled',
-    source: 'ci.yml:201-203',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-worldgen-output.txt --profile worldgen-cpu',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No anima-worldgen test target ran zero tests').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No anima-worldgen test target ran zero tests').command,
     faultSummary: 'Drop `generate,bake` features from `cargo test -p anima-worldgen` in `.github/workflows/ci.yml:199`',
     patch: 'check_test_targets_worldgen_unscheduled.patch',
     cleanKey: 'check_test_targets:worldgen-cpu',
     needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_worldgen : true),
     runClean(wt, tmpBase, ctx) {
-      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', 'clean_worldgen');
+      const profile = extractProfileFromStep(wt, 'No anima-worldgen test target ran zero tests');
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, profile, 'clean_worldgen');
     },
     run(wt, tmpBase, ctx) {
-      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', null);
+      const profile = extractProfileFromStep(wt, 'No anima-worldgen test target ran zero tests');
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, profile, null);
     },
-    matchers: [/profile "worldgen-cpu" enables "generate", so tests\/.* must run/, /must run — but it is absent/],
+    matchers: [/profile "worldgen-cpu" enables "generate", so tests\/wv2_1a_tectonic_tests\.rs must run/],
   },
   {
     id: 'check_test_targets_worldgen_empty',
-    source: 'ci.yml:201-203',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-worldgen-output.txt --profile worldgen-cpu',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No anima-worldgen test target ran zero tests').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No anima-worldgen test target ran zero tests').command,
     faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/crates/anima-worldgen/tests/wv2_1a_tectonic_tests.rs`',
     patch: 'check_test_targets_worldgen_empty.patch',
     cleanKey: 'check_test_targets:worldgen-cpu',
     needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_worldgen : true),
     runClean(wt, tmpBase, ctx) {
-      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', 'clean_worldgen');
+      const profile = extractProfileFromStep(wt, 'No anima-worldgen test target ran zero tests');
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, profile, 'clean_worldgen');
     },
     run(wt, tmpBase, ctx) {
-      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, 'worldgen-cpu', null);
+      const profile = extractProfileFromStep(wt, 'No anima-worldgen test target ran zero tests');
+      return runWorldgenTestTargetsFromCi(wt, tmpBase, ctx, profile, null);
     },
-    matchers: [
-      /compiled but ran zero tests/,
-      /ran zero tests under profile "worldgen-cpu"/,
-      /wv2_1a_tectonic_tests\.rs/,
-    ],
+    matchers: [/test target "tests\/wv2_1a_tectonic_tests\.rs" compiled but ran zero tests/],
   },
   {
     id: 'feature_gated_targets',
-    source: 'ci.yml:184 (feature_gated_targets_tests)',
+    source: 'ci.yml (cargo test -> feature_gated_targets_tests)',
     ciCommand: 'cargo test --test feature_gated_targets_tests',
     faultSummary:
       'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` in `src-tauri/Cargo.toml`',
@@ -1140,11 +1370,11 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/networking_m2_typo/, /migration_tests/, /test .* FAILED/],
+    matchers: [/test target `migration_tests` requires feature `networking_m2_typo`/],
   },
   {
     id: 'schedule_ambiguity_simrng',
-    source: 'CARD M2 (ci.yml:184)',
+    source: 'CARD M2 (ci.yml -> schedule_ambiguity_tests)',
     ciCommand: 'cargo test --test schedule_ambiguity_tests',
     faultSummary: 'Put `(spawn_food_system, seed_dropping_system)` in parallel in `simulation_schedule.rs`',
     patch: 'schedule_ambiguity_simrng.patch',
@@ -1157,11 +1387,11 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/ResMut<SimRng>/, /spawn_food_system/, /schedule ambiguity|conflicting access/i],
+    matchers: [/`ResMut<SimRng>` serialises draws, it does not order them/, /SIMRNG .*spawn_food_system.*seed_dropping_system/],
   },
   {
     id: 'schedule_ambiguity_energy',
-    source: 'CARD M2 (ci.yml:184)',
+    source: 'CARD M2 (ci.yml -> schedule_ambiguity_tests)',
     ciCommand: 'cargo test --test schedule_ambiguity_tests',
     faultSummary: 'Put `(combat_system, metabolic_decay_system)` in parallel in `simulation_schedule.rs`',
     patch: 'schedule_ambiguity_energy.patch',
@@ -1174,11 +1404,11 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/combat_system.*metabolic_decay_system|metabolic_decay_system.*combat_system/, /ambiguity/i],
+    matchers: [/ENERGY combat_system <-> metabolic_decay_system/],
   },
   {
     id: 'zero_alloc',
-    source: 'CARD M2 (ci.yml:184)',
+    source: 'CARD M2 (ci.yml -> emit_zero_alloc_tests)',
     ciCommand: 'cargo test --test emit_zero_alloc_tests',
     faultSummary: 'Allocate `Vec::<u8>::with_capacity(64)` in `refresh_tick_payload` (`emit.rs`)',
     patch: 'zero_alloc.patch',
@@ -1190,11 +1420,11 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/allocated/, /zero-allocation|0 bytes/, /test .* FAILED/],
+    matchers: [/test emit_path_is_allocation_free \.\.\. FAILED/],
   },
   {
     id: 'closed_eu',
-    source: 'CARD M2 (ci.yml:184)',
+    source: 'CARD M2 (ci.yml -> energy_conservation_tests)',
     ciCommand: 'cargo test --test energy_conservation_tests',
     faultSummary: 'Inject `+ 1.0` EU per entity in `metabolic_decay_system` (`world_systems.rs`)',
     patch: 'closed_eu.patch',
@@ -1206,15 +1436,11 @@ export const GATES = [
         { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '1000' },
       );
     },
-    matchers: [
-      /closed EU drifted|changed the closed total|moved the closed total/i,
-      /assertion .*failed/i,
-      /test .* FAILED/,
-    ],
+    matchers: [/eating food changed the closed total by|closed EU drifted|moved the closed total/i],
   },
   {
     id: 'live_experiment_fork',
-    source: 'CARD M2 (ci.yml:184)',
+    source: 'CARD M2 (ci.yml -> live_experiment_tests)',
     ciCommand: 'cargo test --test live_experiment_tests',
     faultSummary:
       'Pass control `manifest.interventions` instead of `effective_treatment.interventions` in `checkpoint_fork_with_exotic` (`experiment_runner/fork.rs`)',
@@ -1228,11 +1454,11 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/the treatment factor must change the branch/, /fork|branch|treatment/i, /test .* FAILED/],
+    matchers: [/the treatment factor must change the branch/],
   },
   {
     id: 'live_experiment_saveload',
-    source: 'CARD M2 (ci.yml:184)',
+    source: 'CARD M2 (ci.yml -> live_experiment_tests)',
     ciCommand: 'cargo test --test live_experiment_tests',
     faultSummary: 'Reset `sim_rng_pos` to `0` on restore in `restore_energy_state` (`simulation_state.rs`)',
     patch: 'live_experiment_saveload.patch',
@@ -1248,13 +1474,11 @@ export const GATES = [
     matchers: [
       /a live run resumed from a checkpoint diverged/,
       /a control branch forked at tick 60 diverged/,
-      /assertion .*failed/i,
-      /test .* FAILED/,
     ],
   },
   {
     id: 'determinism_golden_hash',
-    source: 'hardening.yml:68',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'golden hash tất định').source,
     ciCommand: 'cargo test --release --test determinism_tests',
     faultSummary: 'Perturb `SimRng::for_world(world_identity.seed.wrapping_add(1))` in `core/ecs.rs`',
     patch: 'determinism_golden_hash.patch',
@@ -1266,75 +1490,84 @@ export const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/world_hash doi/, /assertion `left == right` failed/i, /test .* FAILED/],
+    matchers: [/world_hash doi/],
   },
   {
     id: 'check_licenses',
-    source: 'ci.yml:232',
-    ciCommand: 'npm run check:licenses',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').command,
     faultSummary: 'Flip 1 hex char in `sourceSha256` inside `licensing/third-party-index.json`',
     patch: 'check_licenses.patch',
     cleanKey: 'npm run check:licenses',
+    windowsOnly: true,
     needsCargo: true,
     needsNodeModules: true,
     run(wt) {
       return runShell('npm run check:licenses', wt, cargoEnv());
     },
-    matchers: [/differs|stale|out of date/i, /adler2|sha256/i, /third-party/i],
+    matchers: [/sourceSha256.*differs|third-party-index\.json is out of date|sha256.*mismatch/i],
   },
   {
     id: 'check_sbom',
-    source: 'ci.yml:237',
-    ciCommand: 'npm run check:sbom',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'SBOM is current with the shipped dependency graph').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'SBOM is current with the shipped dependency graph').command,
     faultSummary: 'Change `metadata.component.name` to `anima-engine-m2-fault` in `sbom.cdx.json`',
     patch: 'check_sbom.patch',
+    windowsOnly: true,
     needsCargo: true,
     needsNodeModules: true,
     run(wt) {
       return runShell('npm run check:sbom', wt, cargoEnv());
     },
-    matchers: [/differs|out of date|sbom|gen:sbom/i],
+    matchers: [/sbom\.cdx\.json is out of date/i],
   },
   {
     id: 'check_sbom_schema',
-    source: 'ci.yml:246',
-    ciCommand: 'npm run check:sbom-schema',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'SBOM validates against the official CycloneDX 1.5 schema').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'SBOM validates against the official CycloneDX 1.5 schema').command,
     faultSummary: 'Add `metadata.timestamp` disallowed by CycloneDX 1.5 strict check in `sbom.cdx.json`',
     patch: 'check_sbom_schema.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:sbom-schema', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'SBOM validates against the official CycloneDX 1.5 schema').run,
+        wt,
+      );
     },
-    matchers: [/timestamp/, /schema|CycloneDX/i],
+    matchers: [/metadata\.timestamp is present; the SBOM is generated without one/],
   },
   {
     id: 'check_notice',
-    source: 'ci.yml:251',
-    ciCommand: 'npm run check:notice',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'NOTICE is current with the shipped dependency graph').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'NOTICE is current with the shipped dependency graph').command,
     faultSummary: 'Delete `- **Rust — ... crates.**` bullet from `NOTICE`',
     patch: 'check_notice.patch',
+    windowsOnly: true,
     needsCargo: true,
     needsNodeModules: true,
     run(wt) {
       return runShell('npm run check:notice', wt, cargoEnv());
     },
-    matchers: [/NOTICE/, /differs|gen:notice|stale/i],
+    matchers: [/NOTICE is out of date with the dependency graph/i],
   },
   {
     id: 'check_flora_footprint',
-    source: 'ci.yml:256',
-    ciCommand: 'npm run check:flora-footprint',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Declared flora footprints match the real geometry').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Declared flora footprints match the real geometry').command,
     faultSummary: 'Change `FLORA_FOOTPRINT_UNIT_RADIUS[FloraType.Pine]` to `0.99` in `floraClearance.ts`',
     patch: 'check_flora_footprint.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:flora-footprint', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'Declared flora footprints match the real geometry').run,
+        wt,
+      );
     },
-    matchers: [/Pine|unit radius|mismatch|differs|expected|0\.99/i],
+    matchers: [/Pine declared 0\.9900 measured/],
   },
   {
     id: 'verify_dataflow',
-    source: 'ci.yml:263-264',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Module dependency graph matches dataflow.json').source,
     ciCommand:
       'cargo modules dependencies --lib --no-externs --package anima-engine > ../dataflow-truth.dot && python3 ../scripts/verify_dataflow.py ../dataflow.json ../dataflow-truth.dot 1',
     faultSummary: 'Insert invented `physics -> commands` edge into `dataflow.json`',
@@ -1370,271 +1603,341 @@ export const GATES = [
         output: `${pyRes.stdout || ''}\n${pyRes.stderr || ''}`,
       };
     },
-    matchers: [/physics\s*->\s*commands/, /invented|unverified|extra/i],
+    matchers: [/physics\s*->\s*commands/],
   },
 
   // ---- Frontend, Hygiene, Docs & Policy Gates ----------------------------------------------
   {
     id: 'check_npm_audit',
-    source: 'ci.yml:301',
-    ciCommand: 'node scripts/check_npm_audit.mjs',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm audit, root and tests (policy in scripts/npm_audit_policy.mjs)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm audit, root and tests (policy in scripts/npm_audit_policy.mjs)').command,
     faultSummary: 'Add stale withdrawn exemption `GHSA-fc5q-39xc-vjpf` to `scripts/npm_audit_policy.mjs`',
     patch: 'check_npm_audit.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('node scripts/check_npm_audit.mjs', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm audit, root and tests (policy in scripts/npm_audit_policy.mjs)').run,
+        wt,
+      );
     },
-    matchers: [/GHSA-fc5q-39xc-vjpf/, /stale/i],
+    matchers: [/policy entry GHSA-fc5q-39xc-vjpf .* matches no advisory/],
   },
   {
     id: 'check_text_hygiene',
-    source: 'ci.yml:312',
-    ciCommand: 'npm run check:text-hygiene',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'No raw control bytes in tracked source').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'No raw control bytes in tracked source').command,
     faultSummary: 'Embed NUL byte `\\x00` inside `scripts/npm_audit_policy.mjs` via binary patch',
     patch: 'check_text_hygiene.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:text-hygiene', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'No raw control bytes in tracked source').run,
+        wt,
+      );
     },
-    matchers: [/npm_audit_policy\.mjs/, /control byte|U\+0000/i],
+    matchers: [/scripts\/npm_audit_policy\.mjs: control byte\(s\)/],
   },
   {
     id: 'check_root_hygiene',
-    source: 'ci.yml:318',
-    ciCommand: 'npm run check:root-hygiene',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Repository root holds only reviewed entries').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Repository root holds only reviewed entries').command,
     faultSummary: 'Add unreviewed `unreviewed_m2_fault.txt` at repository root',
     patch: 'check_root_hygiene.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:root-hygiene', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'Repository root holds only reviewed entries').run,
+        wt,
+      );
     },
-    matchers: [/unreviewed_m2_fault\.txt/, /allow-list|not in root_allowlist/i],
+    matchers: [/unreviewed_m2_fault\.txt: at the repository root but not in scripts\/root_allowlist\.json/],
   },
   {
     id: 'check_e2',
-    source: 'ci.yml:322',
-    ciCommand: 'npm run check:e2',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'E2 artifacts match the committed preregistration').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'E2 artifacts match the committed preregistration').command,
     faultSummary: 'Alter `control_mean` in `artifacts/experiments/e2-evolved-brain-default/effects.json`',
     patch: 'check_e2.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:e2', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'E2 artifacts match the committed preregistration').run,
+        wt,
+      );
     },
-    matchers: [/effects\.json/, /digest|sha256|mismatch/i],
+    matchers: [/FAIL analysis: effects\.json hashes to/],
   },
   {
     id: 'check_e3',
-    source: 'package.json:33',
-    ciCommand: 'npm run check:e3',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'E3 artifacts match the committed preregistration').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'E3 artifacts match the committed preregistration').command,
     faultSummary:
       'Alter `residual` for seed `731001` in `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json`',
     patch: 'check_e3.patch',
     needsNodeModules: false,
     run(wt) {
-      return runShell('npm run check:e3', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'E3 artifacts match the committed preregistration').run,
+        wt,
+      );
     },
-    matchers: [/SHA-256 mismatch for effects\.json/, /effects\.json/, /residual|mismatch/i],
+    matchers: [/SHA-256 mismatch for effects\.json/],
   },
   {
     id: 'npm_lint',
-    source: 'ci.yml:326',
-    ciCommand: 'npm run lint',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run lint').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run lint').command,
     faultSummary: 'Add empty statement `if (Boolean(1)) {}` to `src/main.tsx`',
     patch: 'npm_lint.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run lint', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run lint').run,
+        wt,
+      );
     },
-    matchers: [/no-empty/, /Empty block statement/i],
+    matchers: [/Empty block statement\s+no-empty/],
   },
   {
     id: 'eslint_ratchet',
-    source: 'ci.yml:330',
-    ciCommand: 'node scripts/eslint_ratchet.mjs',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'ESLint warning ratchet').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'ESLint warning ratchet').command,
     faultSummary: 'Add `export const _m2AnyFault: any = 1;` to `src/main.tsx`',
     patch: 'eslint_ratchet.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('node scripts/eslint_ratchet.mjs', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'ESLint warning ratchet').run,
+        wt,
+      );
     },
-    matchers: [/warning\(s\)|ceiling/i, /no-explicit-any/, /ESLint/i],
+    matchers: [/eslint: \d+ errors, [1-9]\d* warnings/, /no-explicit-any/],
   },
   {
     id: 'typecheck_tests',
-    source: 'ci.yml:343',
-    ciCommand: 'npm run typecheck:tests',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Typecheck the tests/ package').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Typecheck the tests/ package').command,
     faultSummary: "Add `export const _m2TypeFault: number = 'bad';` to `tests/frontend/mapManifestEvidence.test.ts`",
     patch: 'typecheck_tests.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run typecheck:tests', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'Typecheck the tests/ package').run,
+        wt,
+      );
     },
-    matchers: [/_m2TypeFault/, /TS2322/],
+    matchers: [/mapManifestEvidence\.test\.ts\(\d+,\d+\): error TS2322:/],
   },
   {
     id: 'vitest_src',
-    source: 'ci.yml:347',
-    ciCommand: 'npm run test',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run test (src suite)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run test (src suite)').command,
     faultSummary: 'Break `FLORA_COLLIDER_BASE_RADIUS` assertion in `src/__tests__/floraClearance.test.ts`',
     patch: 'vitest_src.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run test', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run test (src suite)').run,
+        wt,
+      );
     },
-    matchers: [/FAIL\s+src\/__tests__\/floraClearance\.test\.ts/, /AssertionError/],
+    matchers: [/FAIL\s+src\/__tests__\/floraClearance\.test\.ts/],
   },
   {
     id: 'vitest_tests',
-    source: 'ci.yml:351',
-    ciCommand: 'npm run test:frontend',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run test:frontend (tests/ suite)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run test:frontend (tests/ suite)').command,
     faultSummary: 'Invert `expect(res.ok).toBe(false)` in `tests/frontend/mapManifestEvidence.test.ts`',
     patch: 'vitest_tests.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run test:frontend', wt, { ...process.env, CI: 'true' });
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run test:frontend (tests/ suite)').run,
+        wt,
+        { ...process.env, CI: 'true' },
+      );
     },
-    matchers: [/FAIL\s+frontend\/mapManifestEvidence\.test\.ts/, /AssertionError/],
+    matchers: [/FAIL\s+frontend\/mapManifestEvidence\.test\.ts/],
   },
   {
     id: 'npm_build',
-    source: 'ci.yml:355',
-    ciCommand: 'npm run build',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run build').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run build').command,
     faultSummary: "Add `export const _m2BuildFault: number = 'bad';` to `src/main.tsx`",
     patch: 'npm_build.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run build', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run build').run,
+        wt,
+      );
     },
-    matchers: [/_m2BuildFault/, /TS2322/],
+    matchers: [/src\/main\.tsx\(\d+,\d+\): error TS2322:/],
   },
   {
     id: 'check_bundle_closure',
-    source: 'ci.yml:373',
-    ciCommand: 'npm run build && npm run check:bundle-closure',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'The committed npm distribution boundary matches a fresh build').source,
+    ciCommand: `npm run build && ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'The committed npm distribution boundary matches a fresh build').command}`,
     faultSummary: 'Import dev-only `ajv` into `src/main.tsx` so bundle closure shifts',
     patch: 'check_bundle_closure.patch',
     needsNodeModules: true,
     run(wt) {
-      const buildRes = runShell('npm run build', wt);
+      const buildRes = runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run build').run,
+        wt,
+      );
       if (buildRes.status !== 0) {
         return buildRes;
       }
-      return runShell('npm run check:bundle-closure', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'The committed npm distribution boundary matches a fresh build').run,
+        wt,
+      );
     },
-    matchers: [/bundle-closure\.json differs/, /\+.*"ajv"/],
+    matchers: [/licensing\/bundle-closure\.json differs from the committed copy/],
   },
   {
     id: 'check_csp',
-    source: 'ci.yml:377',
-    ciCommand: 'npm run build && npm run check:csp',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'CSP compatibility of the shipped artifacts').source,
+    ciCommand: `npm run build && ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'CSP compatibility of the shipped artifacts').command}`,
     faultSummary: 'Add external `<script src="https://example.com/m2-fault.js"></script>` to `index.html`',
     patch: 'check_csp.patch',
     needsNodeModules: true,
     run(wt) {
-      const buildRes = runShell('npm run build', wt);
+      const buildRes = runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run build').run,
+        wt,
+      );
       if (buildRes.status !== 0) {
         return buildRes;
       }
-      return runShell('npm run check:csp', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'CSP compatibility of the shipped artifacts').run,
+        wt,
+      );
     },
-    matchers: [/example\.com\/m2-fault\.js/, /CSP|script-src|external/i],
+    matchers: [/loads an external origin.*example\.com\/m2-fault\.js/],
   },
   {
     id: 'check_bundle',
-    source: 'ci.yml:385',
-    ciCommand: 'npm run build && npm run check:bundle',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Bundle budget and route split').source,
+    ciCommand: `npm run build && ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Bundle budget and route split').command}`,
     faultSummary: 'Eagerly import `three` into dashboard root `src/App.tsx`',
     patch: 'check_bundle.patch',
     needsNodeModules: true,
     run(wt) {
-      const buildRes = runShell('npm run build', wt);
+      const buildRes = runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run build').run,
+        wt,
+      );
       if (buildRes.status !== 0) {
         return buildRes;
       }
-      return runShell('npm run check:bundle', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'Bundle budget and route split').run,
+        wt,
+      );
     },
     matchers: [
-      /^- .*statically loads the three\.js chunk/,
-      /^- .*(?:budget|KiB|exceeds|three)/i,
-      /bundle budget FAILED/,
+      /the 2D dashboard \(index\.html\) statically loads the three\.js chunk/,
+      /defineProperty is .*budget \d+ KiB/,
+      /bundle budget FAILED:/,
     ],
   },
   {
     id: 'check_e2e_specs',
-    source: 'ci.yml:426',
-    ciCommand: 'node scripts/check_e2e_specs.mjs',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'E2E spec list matches what test:e2e schedules').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'E2E spec list matches what test:e2e schedules').command,
     faultSummary: 'Narrow `tests/package.json` `test:e2e` script to `e2e/console_hygiene.spec.ts`',
     patch: 'check_e2e_specs.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('node scripts/check_e2e_specs.mjs', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'E2E spec list matches what test:e2e schedules').run,
+        wt,
+      );
     },
-    matchers: [/missing from|policy|scheduled/i, /tier1_features|rw_budget/i],
+    matchers: [/SPEC MISSING FROM RUN:.*ipc_contract\.spec\.ts/],
   },
   {
     id: 'playwright_e2e',
-    source: 'ci.yml:430',
-    ciCommand: 'npm run test:e2e',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run test:e2e (Playwright)').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'npm run test:e2e (Playwright)').command,
     faultSummary: 'Change `expect(owned.length).toBe(0)` to `.toBe(999)` in `tests/e2e/console_hygiene.spec.ts`',
     patch: 'playwright_e2e.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run test:e2e', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'npm run test:e2e (Playwright)').run,
+        wt,
+      );
     },
-    matchers: [/Anima-owned console output/, /console_hygiene\.spec\.ts/, /Expected: 999/],
+    matchers: [/Error: Anima-owned console output on the dashboard:/, /Expected: 999/],
   },
   {
     id: 'check_docs_links',
-    source: 'ci.yml:442',
-    ciCommand: 'node scripts/check_docs_links.mjs',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Docs link check').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Docs link check').command,
     faultSummary: 'Append broken markdown link labeled `m2-broken` targeting `./m2-missing-target.md` to `docs/README.md`',
     patch: 'check_docs_links.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('node scripts/check_docs_links.mjs', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'Docs link check').run,
+        wt,
+      );
     },
-    matchers: [/m2-missing-target\.md/, /broken link/i],
+    matchers: [/docs\/README\.md:\d+: broken link -> \.\/m2-missing-target\.md/],
   },
   {
     id: 'check_docs_metadata',
-    source: 'ci.yml:448',
-    ciCommand: 'node scripts/check_docs_metadata.mjs',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Docs metadata check').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Docs metadata check').command,
     faultSummary: 'Set `status: invalid-m2` in `docs/README.md` front matter',
     patch: 'check_docs_metadata.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('node scripts/check_docs_metadata.mjs', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'Docs metadata check').run,
+        wt,
+      );
     },
-    matchers: [/invalid-m2/, /docs\/README\.md/],
+    matchers: [/docs\/README\.md: status "invalid-m2" not in/],
   },
   {
     id: 'check_ipc_reference',
-    source: 'ci.yml:453',
-    ciCommand: 'node scripts/check_ipc_reference.mjs',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'IPC reference check').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'IPC reference check').command,
     faultSummary: 'Insert nonexistent `m2_ghost_cmd` row in `docs/reference/IPC_CONTRACT.md`',
     patch: 'check_ipc_reference.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('node scripts/check_ipc_reference.mjs', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'IPC reference check').run,
+        wt,
+      );
     },
-    matchers: [/m2_ghost_cmd/],
+    matchers: [/command `m2_ghost_cmd` is documented but not in the code/],
   },
   {
     id: 'check_ipc_arg_case',
-    source: 'package.json:34',
-    ciCommand: 'npm run check:ipc',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Frontend invoke argument case matches Rust tauri commands').source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'frontend', 'Frontend invoke argument case matches Rust tauri commands').command,
     faultSummary:
       'Add `invoke("save_simulation_state", { file_path })` (snake_case) helper in `src/components/Landscape/utils/worldCache.ts`',
     patch: 'check_ipc_arg_case.patch',
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:ipc', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'frontend', 'Frontend invoke argument case matches Rust tauri commands').run,
+        wt,
+      );
     },
-    matchers: [/file_path/, /worldCache\.ts/],
+    matchers: [/FAIL src\/components\/Landscape\/utils\/worldCache\.ts:\d+ invoke\('save_simulation_state', \{ file_path/],
   },
   {
     id: 'check_map_vision_manifest',
-    source: 'package.json:23 (ci.yml:351)',
+    source: 'package.json:23 (ci.yml -> vitest tests/)',
     ciCommand: 'npm run check:map-vision-manifest',
     faultSummary: 'Set `seaLevel: 0.99` in `animal-map.manifest.json`',
     patch: 'check_map_vision_manifest.patch',
@@ -1642,7 +1945,7 @@ export const GATES = [
     run(wt) {
       return runShell('npm run check:map-vision-manifest', wt);
     },
-    matchers: [/seaLevel|animal-map\.manifest\.json|differs|stale|mismatch|out of date|Regenerate/i],
+    matchers: [/animal-map manifest is stale/],
   },
   {
     id: 'verify_upstream_licenses',
@@ -1654,19 +1957,22 @@ export const GATES = [
     run(wt) {
       return runShell('npm run verify:upstream-licenses', wt);
     },
-    matchers: [/manifest says/, /ts-rs/, /sha256 is/],
+    matchers: [/sources\[0\] \(github\.com\/Aleph-Alpha\/ts-rs.*sha256 is/],
   },
   {
     id: 'compare_checksums_self_test',
-    source: 'determinism-matrix.yml:113',
-    ciCommand: 'node scripts/paper/compare_checksums.mjs --self-test',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/determinism-matrix.yml', 'compare', "The compare script's negative controls").source,
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/determinism-matrix.yml', 'compare', "The compare script's negative controls").command,
     faultSummary: 'Force `checksumAgrees = true` in `scripts/paper/compare_checksums.mjs`',
     patch: 'compare_checksums_self_test.patch',
     needsNodeModules: false,
     run(wt) {
-      return runShell('node scripts/paper/compare_checksums.mjs --self-test', wt);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/determinism-matrix.yml', 'compare', "The compare script's negative controls").run,
+        wt,
+      );
     },
-    matchers: [/FAIL\s+a checksum difference/i, /self-test: \d+ control\(s\) failed/],
+    matchers: [/FAIL\s+a checksum difference is named at its tick/],
   },
 ];
 
@@ -1702,6 +2008,22 @@ export function evaluateGate(gate, ctx = { captures: {}, tempFilesToClean: [], c
       exitCode: gate.staticResult.exitCode,
       namingLine: gate.staticResult.namingLine,
       verdict: gate.staticResult.verdict,
+      baselineExitCode: null,
+      matched: false,
+      elapsedSecs: 0,
+    };
+  }
+
+  if (gate.windowsOnly && (deps.platform ?? process.platform) !== 'win32' && !deps.runClean && !deps.runFault) {
+    return {
+      id: gate.id,
+      source: gate.source,
+      ciCommand: gate.ciCommand,
+      fault: gate.faultSummary,
+      exitCode: '—',
+      namingLine:
+        'not measured on Windows (licensing/SBOM/NOTICE track the Windows CI dependency graph at ci.yml:210-213)',
+      verdict: VERDICTS.NOT_RUN_WINDOWS,
       baselineExitCode: null,
       matched: false,
       elapsedSecs: 0,
@@ -1762,6 +2084,7 @@ export function sortAndSummarizeResults(results) {
     catches: ordered.filter((r) => r.verdict === VERDICTS.CATCHES).length,
     notRunNoGate: ordered.filter((r) => r.verdict === VERDICTS.NOT_RUN_NO_GATE).length,
     notRunTime: ordered.filter((r) => r.verdict === VERDICTS.NOT_RUN_TIME).length,
+    notRunWindows: ordered.filter((r) => r.verdict === VERDICTS.NOT_RUN_WINDOWS).length,
     notRunBaselineRed: ordered.filter((r) => r.verdict.startsWith('NOT RUN (baseline red')).length,
   };
   return { ordered, counts };
@@ -1771,7 +2094,7 @@ export function formatMarkdownTable({ ordered, counts }) {
   const lines = [
     `SUMMARY total=${counts.total} VACUOUS=${counts.vacuous} UNMATCHED_FAILURE=${counts.unmatchedFailure} CATCHES=${counts.catches} ` +
       `NOT_RUN_NO_GATE=${counts.notRunNoGate} NOT_RUN_TIME=${counts.notRunTime} ` +
-      `NOT_RUN_BASELINE_RED=${counts.notRunBaselineRed}`,
+      `NOT_RUN_WINDOWS=${counts.notRunWindows} NOT_RUN_BASELINE_RED=${counts.notRunBaselineRed}`,
     '| gate | CI command | fault | exit code | naming line (verbatim) | verdict |',
     '|---|---|---|---|---|---|',
   ];
@@ -1783,7 +2106,48 @@ export function formatMarkdownTable({ ordered, counts }) {
   return lines.join('\n');
 }
 
-export function validateGateRegistry(gates = GATES, { faultsDir = FAULTS_DIR } = {}) {
+export const CLEAN_BASELINE_SAMPLES = Object.freeze([
+  'ok',
+  'MIT',
+  'Apache-2.0 OR MIT',
+  'NOTICE',
+  'NOTICE is up to date with the dependency graph',
+  'ESLint',
+  'eslint: 0 errors, 0 warnings (baseline 0)',
+  'AssertionError',
+  'test unrelated_other_test ... FAILED',
+  'test targets: 56, empty: 0',
+  'Test Files  12 passed (12)',
+  'Tests  42 passed (42)',
+  'verify_e2_artifacts OK',
+  'verify_e3_artifacts OK (/tmp/e3)',
+  'thread_rng() literal matches: 0',
+  'gated crates present in --no-default-features workspace tree: 0',
+  'gated crates present in default anima-engine tree: 0',
+  'forbidden engine/GPU crates present in anima-worldgen tree: 0',
+  'third-party licences check: up to date',
+  'sbom.cdx.json is up to date',
+  'ipc reference check: 36 commands, 7 events, 0 differences',
+  'ipc arg case: 36 tauri commands, 39 invoke call sites, 15 argument keys checked',
+  'docs link check: 1643 relative links + 97 same-page anchors in 243 files, 0 broken',
+  'docs metadata check: 181 files, 0 errors, 0 overdue reviews',
+  'text hygiene: 1136 tracked text file(s), no raw control bytes',
+  'root hygiene: 64 root entries, all listed in scripts/root_allowlist.json; self-test 4 controls ok',
+  'entry index.html 12 static chunk(s), 3D renderer: no',
+  'OK — every chunk within budget, total 180.0/550 KiB',
+  'test tests::elevation_normalization_anchors_match_v3_vertical_scale ... ok',
+  'test emit_path_is_allocation_free ... ok',
+  'Pine declared 0.5500 measured 0.5500',
+  'animal-map manifest is up to date',
+  'e2e spec policy: 6 specs scheduled',
+  'compare_checksums: 2 self-test controls ok',
+  'world_hash ok',
+]);
+
+export function validateGateRegistry(
+  gates = GATES,
+  { faultsDir = FAULTS_DIR, cleanSamples = CLEAN_BASELINE_SAMPLES, cleanOutputs = {} } = {},
+) {
   const problems = [];
   const seenIds = new Set();
   const referencedPatches = new Set();
@@ -1818,11 +2182,20 @@ export function validateGateRegistry(gates = GATES, { faultsDir = FAULTS_DIR } =
     if (!Array.isArray(gate.matchers) || gate.matchers.length === 0) {
       problems.push(`${gate.id}: missing non-empty matchers array`);
     } else {
+      const gateCleanLines = [
+        ...cleanSamples,
+        ...normalizeOutputLines(cleanOutputs[gate.id] ?? '', false).lines,
+      ];
       for (const m of gate.matchers) {
         if (!(m instanceof RegExp)) {
           problems.push(`${gate.id}: matcher is not a RegExp`);
         } else if (m.global) {
           problems.push(`${gate.id}: matcher ${m} must not carry /g flag`);
+        } else {
+          const hit = gateCleanLines.find((line) => m.test(line));
+          if (hit) {
+            problems.push(`${gate.id}: matcher ${m} matches clean-baseline line ${JSON.stringify(hit)}`);
+          }
         }
       }
     }
@@ -1968,12 +2341,23 @@ export function runSelfTest() {
     }
   }
 
-  // 4. Registry & patch completeness
+  // 4. Registry, clean-baseline matcher rejection & patch completeness
   {
     controls += 1;
     const regProblems = validateGateRegistry(GATES, { faultsDir: FAULTS_DIR });
     if (regProblems.length > 0) {
       failures.push(`registry validation failed: ${regProblems.join('; ')}`);
+    }
+  }
+  {
+    controls += 1;
+    const leakRes = classifyGateResult({
+      baselineRes: { status: 0, output: 'Test Files  12 passed (12)' },
+      faultRes: { status: 1, output: 'Test Files  12 passed (12)\nFAIL unrelated' },
+      matchers: [/Test Files\s+\d+ passed/],
+    });
+    if (leakRes.verdict !== VERDICTS.UNMATCHED_FAILURE || leakRes.matched) {
+      failures.push(`clean-baseline matcher leak control failed: ${JSON.stringify(leakRes)}`);
     }
   }
 

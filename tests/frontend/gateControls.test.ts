@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error -- gate_controls.mjs has no .d.mts declaration
-import { FAULTS_DIR, GATES, REPO_ROOT, VERDICTS, classifyGateResult, cleanupStaleWorktree, defaultCleanKey, evaluateGate, findMatchingLine, formatMarkdownTable, parseCliArgs, runSelfTest, sortAndSummarizeResults, unlinkNodeModules, validateGateRegistry } from '../../scripts/paper/gate_controls.mjs';
+import { FAULTS_DIR, GATES, REPO_ROOT, VERDICTS, classifyGateResult, cleanupStaleWorktree, defaultCleanKey, evaluateGate, extractWorkflowSteps, findMatchingLine, formatMarkdownTable, getWorkflowStep, parseCliArgs, runSelfTest, sortAndSummarizeResults, unlinkNodeModules, validateGateRegistry } from '../../scripts/paper/gate_controls.mjs';
 
 interface GateRecord {
   id: string;
@@ -13,8 +13,10 @@ interface GateRecord {
   faultSummary: string;
   patch: string | null;
   cleanKey?: string;
+  windowsOnly?: boolean;
   needsCargo?: boolean;
   needsNodeModules?: boolean;
+  run?: (wt: string) => { status: number; output: string };
   runClean?: () => { status: number; output: string };
   matchers?: RegExp[];
   staticResult?: {
@@ -378,6 +380,7 @@ describe('gate_controls — clean-tree baseline, matcher-verified CATCHES, & reg
       catches: 1,
       notRunNoGate: 0,
       notRunTime: 1,
+      notRunWindows: 0,
       notRunBaselineRed: 1,
     });
 
@@ -439,5 +442,113 @@ describe('gate_controls — clean-tree baseline, matcher-verified CATCHES, & reg
     });
     expect(out).toContain('cargo_clippy_worldgen');
     expect(out).toContain('feature_separation_engine');
+  });
+
+  it('extracts CI workflow steps dynamically from ci.yml and hardening.yml', () => {
+    const ciSteps = extractWorkflowSteps(
+      readFileSync(join(REPO_ROOT, '.github', 'workflows', 'ci.yml'), 'utf8'),
+    ) as Array<{ job: string; name: string | null; run: string | null }>;
+    expect(ciSteps.some((s) => s.job === 'frontend' && s.run?.includes('npm run check:ipc'))).toBe(true);
+    expect(ciSteps.some((s) => s.job === 'frontend' && s.run?.includes('npm run check:e3'))).toBe(true);
+
+    const rngStep = getWorkflowStep(
+      REPO_ROOT,
+      '.github/workflows/hardening.yml',
+      'determinism',
+      'cấm thêm nguồn phi tất định vào src',
+    ) as { run: string };
+    expect(rngStep.run).toContain('ThreadRng');
+    expect(rngStep.run).toContain('src-tauri/crates');
+  });
+
+  it('validateGateRegistry rejects broad matchers and clean-baseline leaks', () => {
+    const tmpDir = mkdtempSync(join(os.tmpdir(), 'gate-controls-broad-'));
+    try {
+      const patchName = 'sample.patch';
+      writeFileSync(join(tmpDir, patchName), '', 'utf8');
+      const broadMatchers = [
+        /MIT/,
+        /test .* FAILED/,
+        /NOTICE/,
+        /ESLint/i,
+        /AssertionError/,
+        /test targets:/,
+        /Test Files\s+\d+ passed/,
+      ];
+      for (const badMatcher of broadMatchers) {
+        const problems = validateGateRegistry(
+          [
+            {
+              id: 'bad_broad_gate',
+              source: 'test',
+              ciCommand: 'cmd',
+              faultSummary: 'fault',
+              patch: patchName,
+              matchers: [badMatcher],
+              run: () => ({ status: 1, output: 'x' }),
+            },
+          ],
+          { faultsDir: tmpDir },
+        ) as string[];
+        expect(
+          problems.some((p) => p.includes('matches clean-baseline line')),
+          `expected clean-baseline rejection for ${String(badMatcher)}, got ${JSON.stringify(problems)}`,
+        ).toBe(true);
+      }
+
+      const customCleanProblems = validateGateRegistry(
+        [
+          {
+            id: 'custom_clean_leak',
+            source: 'test',
+            ciCommand: 'cmd',
+            faultSummary: 'fault',
+            patch: patchName,
+            matchers: [/unique_warning_only_in_clean/],
+            run: () => ({ status: 1, output: 'unique_warning_only_in_clean' }),
+          },
+        ],
+        {
+          faultsDir: tmpDir,
+          cleanOutputs: { custom_clean_leak: 'warning: unique_warning_only_in_clean' },
+        },
+      ) as string[];
+      expect(customCleanProblems.some((p) => p.includes('matches clean-baseline line'))).toBe(true);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('classifyGateResult refuses CATCHES when a matcher matches clean baseline output', () => {
+    const res = classifyGateResult({
+      baselineRes: { status: 0, output: 'MIT\nclean check ok' },
+      faultRes: { status: 1, output: 'MIT\nrejected license' },
+      matchers: [/MIT/],
+    }) as ClassificationResult;
+
+    expect(res.verdict).toBe(VERDICTS.UNMATCHED_FAILURE);
+    expect(res.matched).toBe(false);
+    expect(res.namingLine).toContain('matcher matched clean baseline output');
+  });
+
+  it('evaluateGate marks windowsOnly gates as not measured on Windows on non-Windows hosts', () => {
+    const winGate: GateRecord = {
+      id: 'win_only_compliance',
+      source: 'ci.yml',
+      ciCommand: 'npm run check:licenses',
+      faultSummary: 'license fault',
+      patch: 'check_licenses.patch',
+      windowsOnly: true,
+      matchers: [/differs/],
+    };
+    const res = evaluateGate(
+      winGate,
+      { captures: {}, tempFilesToClean: [], cleanCache: new Map<string, unknown>() },
+      { platform: 'darwin' },
+    ) as { verdict: string; exitCode: string | number; namingLine: string };
+
+    expect(res.verdict).toBe(VERDICTS.NOT_RUN_WINDOWS);
+    expect(res.exitCode).toBe('—');
+    expect(res.namingLine).toContain('not measured on Windows');
   });
 });
