@@ -5,7 +5,7 @@ title: Design — World v2, the offline deterministic world generator (WV2-D, ac
 description: Accepted design for Map v2 phase P1. A Rust workspace crate anima-worldgen generates a 40.96 km tropical coastal massif (reference the Sierra Nevada de Santa Marta) with tectonic uplift, coupled Fastscape-SD erosion, priority-flood routing, regional climate and an explicit ELA, writes a committed 256² simulation world plus an index of baked viewer tiles, and is split into eight cards WV2-1a to WV2-7 with gates G-SHAPE, G-COMP v2 and G-SIM.
 status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-11-20
+last_reviewed: 2026-11-23
 ---
 
 > **Status (lead, 2026-11-20).** Accepted after four independent review rounds (r1–r3 FAIL, r4 PASS WITH
@@ -17,6 +17,37 @@ last_reviewed: 2026-11-20
 > credited to Hoyos et al. 2019 [50] and [51], or relabels them as design values; WV2-6 adds a
 > `bundle.resources` entry for the staged tiles. Line anchors below were read at trunk `1ef4f0d`/`cc40f11f`;
 > re-read the symbols before editing (one known stale anchor: `build.rs:33` is now `build.rs:38`).
+
+## Amendments after acceptance
+
+### MAP-D2 (2026-11-23): WV2-2-PHYS terrain-physics rework
+
+Owner decision in chat: "Duyệt, làm Step B". It applies to the plan in the card note
+`docs/ai/planning/2026-11-23-wv2-2.md` (on branch `mac/wv2-2`, PR #199) at `593482cb`, reviewed by the lead in
+hub verdicts 24 and 25. The Card 3 gates and the waterfall detector are unchanged (MAP-D1), and so is
+every section below that this list does not name.
+
+**Why the amendments were needed.** A 1-D column test (WV2-2-PHYS Step 0) found two things. Lithology
+frozen at absolute elevation never forms a caprock step. A structural datum advected with uplift,
+`z_c = z_c0 + U·t`, with lithology re-evaluated each step, does form one at n = 1 (Perne et al. 2017).
+The lead re-ran the test script and it reproduced exactly.
+
+| ID | Section | Change | Basis |
+|---|---|---|---|
+| A1 | §2.2 S1 item 3 | Caprock is no longer a band of absolute elevation. A non-repeating marginal column (Río Negro sandstone / Cogollo limestone / La Luna shale / upper caprock sandstone) dips 4° away from the massif spine, with the upper caprock preserved on the plateau. Lithology is evaluated against the advected datum and never bilinearly upsampled. | Formation identities are cited in the card note. Thicknesses 150/350/150/100 m, the dip, z_base = 650 m and A_fold = 45 m are model rationale, not sourced. Measured at t = 0: caprock fraction within [0.09, 0.21] on 17/17 seeds (mean 0.139). |
+| A2 | §2.2 S2 and S8 | New coarse-level (512² and 1024²) S2b paleo-glacial pass: ELA 4,100 m, b0 = 0.005 /yr, K_g = 1e-4 with alpha_g = 1, 20 kyr, moraine sills from mass-conserving deposition. | Mark et al. 2005; MacGregor et al. 2000; Herman & Braun 2008 |
+| A3 | §2.2 S1 item 2 | The rift trough is segmented along strike (L_seg = 15 km, relay ramps). | Jackson & White 1989 |
+| A5 | §2.2 S3 | The binary switch to 34° scree when `sediment_s > 0.05 m` is replaced by a continuous blend α_eff = α_scree + (α_rock − α_scree)·exp(−H/H*), with H* = 1 m. | Bedrock-exposure term of Campforts et al. 2020 and Shobe et al. 2017, applied here as an **adaptation** to talus repose (not a published talus law) |
+| — | §2.2 S2 multigrid schedule | 512² 80 × 1,000 yr, 1024² 40 × 1,000 yr, 2048² 25 × 200 yr, 4096² 40 × 100 yr, set so a caprock lip re-forms after upsampling (Step 0, experiment B). | Step 0 |
+| — | §2.3 runtime | The 4096² generation is estimated at about 11–14 min on a Mac M5, against this document's analytical 10–18 s. The baseline already measured 351 s. | Recorded deviation; RSS stays ≤ 1.2 GB |
+
+**Not amended.**
+- G stays 0.85. A proposal to lower it to 0.25 was withdrawn: its cited source (Guérit et al. 2019) reports G > 0.4 for about two-thirds of the natural landscapes it measured.
+- The endorheic definitions (§2.2.5 runoff, §4.1 humid threshold) are parked with the lead.
+
+**Expected outcome, stated before implementation.** With G = 0.85, the card predicts 5–19 waterfalls per
+seed (median about 10–14), below the Card 3 range of 20–80 on most seeds. If that holds, it is reported
+as a gate failure, not fixed by tuning.
 
 # World v2 Design (`A21 / WV2-D — Revision 4`)
 
