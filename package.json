@@ -31,6 +31,7 @@
     "check:flora-footprint": "node scripts/check_flora_footprint.mjs",
     "check:e2": "node scripts/verify_e2_artifacts.mjs",
     "check:e3": "node scripts/verify_e3_artifacts.mjs",
+    "check:e3b": "node scripts/verify_e3b_artifacts.mjs",
     "check:ipc": "node scripts/check_ipc_arg_case.mjs",
     "check:docs": "node scripts/check_docs_links.mjs && node scripts/check_docs_metadata.mjs && node scripts/check_ipc_reference.mjs",
     "check:doc-commands": "node scripts/check_doc_commands.mjs",
