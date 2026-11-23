@@ -685,10 +685,34 @@ pub fn run_branch_tree<M: ExperimentModel>(
     let mut checkpoint_cache: HashMap<(BranchNodeId, u64), CheckpointEntry<M::Snapshot>> =
         HashMap::new();
     let mut node_results: HashMap<BranchNodeId, BranchNodeResult> = HashMap::new();
+    let mut effective_interventions: HashMap<BranchNodeId, Vec<InterventionCommand>> =
+        HashMap::new();
+    let mut effective_exotic: HashMap<BranchNodeId, Vec<ExoticIntervention>> = HashMap::new();
 
     for spec in nodes_order {
         let node_id = spec.id;
         let fork_ticks = child_fork_points[&node_id].clone();
+
+        let (mut combined_interventions, mut combined_exotic) = match spec.parent_id {
+            None => (
+                manifest.base_manifest.interventions.clone(),
+                manifest.base_manifest.exotic_interventions.clone(),
+            ),
+            Some(parent_id) => (
+                effective_interventions
+                    .get(&parent_id)
+                    .cloned()
+                    .unwrap_or_else(|| manifest.base_manifest.interventions.clone()),
+                effective_exotic
+                    .get(&parent_id)
+                    .cloned()
+                    .unwrap_or_else(|| manifest.base_manifest.exotic_interventions.clone()),
+            ),
+        };
+        combined_interventions.extend(spec.interventions.clone());
+        combined_exotic.extend(spec.exotic_interventions.clone());
+        effective_interventions.insert(node_id, combined_interventions.clone());
+        effective_exotic.insert(node_id, combined_exotic.clone());
 
         // 1. Initialize model and RNG stream
         let (
@@ -705,7 +729,7 @@ pub fn run_branch_tree<M: ExperimentModel>(
                 let model = M::from_manifest(
                     &manifest.base_manifest.laws,
                     &manifest.base_manifest.initial_conditions,
-                    &manifest.base_manifest.exotic_interventions,
+                    &combined_exotic,
                     base_seed,
                     grid,
                     spec.duration_ticks,
@@ -728,10 +752,32 @@ pub fn run_branch_tree<M: ExperimentModel>(
                 })?;
 
                 let mut model = M::from_snapshot(&entry.snapshot)?;
-                if !spec.exotic_interventions.is_empty() {
-                    let mut combined_forcings = manifest.base_manifest.exotic_interventions.clone();
-                    combined_forcings.extend(spec.exotic_interventions.clone());
-                    model.reconfigure_forcings(&combined_forcings, spec.duration_ticks)?;
+                if !combined_exotic.is_empty() {
+                    for c in &spec.exotic_interventions {
+                        c.validate(spec.duration_ticks).map_err(|reason| {
+                            ExperimentError::InvalidExoticIntervention { id: c.id, reason }
+                        })?;
+                    }
+                    let mut seen_ids = HashSet::new();
+                    for c in &combined_exotic {
+                        if !seen_ids.insert(c.id) {
+                            return Err(ExperimentError::InvalidExoticIntervention {
+                                id: c.id,
+                                reason: format!("duplicate exotic forcing id {}", c.id),
+                            });
+                        }
+                    }
+                    let ancestor_exotic = effective_exotic
+                        .get(&parent_id)
+                        .map(Vec::as_slice)
+                        .unwrap_or(&manifest.base_manifest.exotic_interventions);
+                    let mut scoped_exotic: Vec<ExoticIntervention> = ancestor_exotic
+                        .iter()
+                        .filter(|f| f.validate(spec.duration_ticks).is_ok())
+                        .cloned()
+                        .collect();
+                    scoped_exotic.extend(spec.exotic_interventions.iter().cloned());
+                    model.reconfigure_forcings(&scoped_exotic, spec.duration_ticks)?;
                 }
 
                 let (rng, resolved_seed) = match spec.seed_strategy {
@@ -774,9 +820,7 @@ pub fn run_branch_tree<M: ExperimentModel>(
             );
         }
 
-        // Combine base interventions and node-specific interventions
-        let mut combined_interventions = manifest.base_manifest.interventions.clone();
-        combined_interventions.extend(spec.interventions.clone());
+        // Accumulate ancestor and node-specific interventions
         let queue = InterventionQueue::new(combined_interventions);
 
         let mut series = Vec::new();

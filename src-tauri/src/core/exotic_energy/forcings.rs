@@ -57,7 +57,7 @@ impl ExoticIntervention {
 
     /// Whether this forcing is active at `tick`.
     pub fn active_at(&self, tick: u64) -> bool {
-        tick >= self.start_tick && tick < self.start_tick + self.effective_duration()
+        tick >= self.start_tick && (tick - self.start_tick) < self.effective_duration()
     }
 
     /// The (non-negative) magnitude applied at `tick`, following the ramp curve; `0` outside the

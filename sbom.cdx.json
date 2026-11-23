@@ -2655,9 +2655,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/cookie@0.18.1",
+      "bom-ref": "pkg:cargo/cookie@0.18.3",
       "name": "cookie",
-      "version": "0.18.1",
+      "version": "0.18.3",
       "description": "HTTP cookie parsing and cookie jar management. Supports signed and private\n(encrypted, authenticated) jars.\n",
       "scope": "required",
       "licenses": [
@@ -2665,7 +2665,7 @@
           "expression": "MIT OR Apache-2.0"
         }
       ],
-      "purl": "pkg:cargo/cookie@0.18.1",
+      "purl": "pkg:cargo/cookie@0.18.3",
       "externalReferences": [
         {
           "type": "vcs",
@@ -18048,7 +18048,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/cookie@0.18.1",
+      "ref": "pkg:cargo/cookie@0.18.3",
       "dependsOn": [
         "pkg:cargo/time@0.3.54"
       ]
@@ -20543,7 +20543,7 @@
     {
       "ref": "pkg:cargo/tauri-runtime@2.11.3",
       "dependsOn": [
-        "pkg:cargo/cookie@0.18.1",
+        "pkg:cargo/cookie@0.18.3",
         "pkg:cargo/dpi@0.1.2",
         "pkg:cargo/http@1.4.2",
         "pkg:cargo/raw-window-handle@0.6.2",
@@ -20595,7 +20595,7 @@
       "dependsOn": [
         "pkg:cargo/anyhow@1.0.104",
         "pkg:cargo/bytes@1.12.1",
-        "pkg:cargo/cookie@0.18.1",
+        "pkg:cargo/cookie@0.18.3",
         "pkg:cargo/dirs@6.0.0",
         "pkg:cargo/dunce@1.0.5",
         "pkg:cargo/getrandom@0.3.4",
@@ -21396,7 +21396,7 @@
       "ref": "pkg:cargo/wry@0.55.1",
       "dependsOn": [
         "pkg:cargo/base64@0.22.1",
-        "pkg:cargo/cookie@0.18.1",
+        "pkg:cargo/cookie@0.18.3",
         "pkg:cargo/crossbeam-channel@0.5.16",
         "pkg:cargo/dirs@6.0.0",
         "pkg:cargo/dom_query@0.27.0",
@@ -21712,5 +21712,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:56860b8f-dbed-51dd-b687-2eca7cf1f332"
+  "serialNumber": "urn:uuid:d064b0bb-56aa-54cb-b5e4-99845bf57393"
 }

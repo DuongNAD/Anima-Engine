@@ -162,16 +162,45 @@ impl DimensionSpec {
 
     /// Map a normalized unit coordinate $u \in [0, 1)$ into the parameter domain.
     pub fn map_normalized(&self, u: f64) -> f64 {
-        let u = u.clamp(0.0, 1.0 - 1e-15);
         match self {
-            DimensionSpec::Continuous { min, max } => min + u * (max - min),
-            DimensionSpec::Logarithmic { min, max } => min * (max / min).powf(u),
+            DimensionSpec::Continuous { min, max } => {
+                if !u.is_finite() || u <= 0.0 || min >= max {
+                    *min
+                } else if u >= 1.0 {
+                    *max
+                } else {
+                    let span = max - min;
+                    if span.is_finite() {
+                        (min + u * span).clamp(*min, *max)
+                    } else {
+                        (min * (1.0 - u) + max * u).clamp(*min, *max)
+                    }
+                }
+            }
+            DimensionSpec::Logarithmic { min, max } => {
+                if !u.is_finite() || u <= 0.0 || min >= max {
+                    *min
+                } else if u >= 1.0 {
+                    *max
+                } else {
+                    let ratio = max / min;
+                    if ratio.is_finite() {
+                        (*min * ratio.powf(u)).clamp(*min, *max)
+                    } else {
+                        (min.ln() + u * (max.ln() - min.ln()))
+                            .exp()
+                            .clamp(*min, *max)
+                    }
+                }
+            }
             DimensionSpec::IntegerRange { min, max, step } => {
+                let u = u.clamp(0.0, 1.0 - 1e-15);
                 let count = (((max - min) / step).max(0) as usize) + 1;
                 let idx = ((u * count as f64).floor() as usize).min(count - 1);
                 (*min + (idx as i64) * step) as f64
             }
             DimensionSpec::Discrete { values } => {
+                let u = u.clamp(0.0, 1.0 - 1e-15);
                 let idx = ((u * values.len() as f64).floor() as usize).min(values.len() - 1);
                 values[idx]
             }
@@ -182,26 +211,73 @@ impl DimensionSpec {
     pub fn grid_values(&self, default_points_per_dim: usize) -> Vec<f64> {
         match self {
             DimensionSpec::Continuous { min, max } => {
-                if default_points_per_dim <= 1 || (min - max).abs() < 1e-15 {
+                let scale = min.abs().max(max.abs());
+                if default_points_per_dim <= 1
+                    || min >= max
+                    || (max - min) <= 4.0 * f64::EPSILON * scale
+                {
                     vec![*min]
                 } else {
+                    let last = default_points_per_dim - 1;
+                    let denom = last as f64;
+                    let span = max - min;
                     (0..default_points_per_dim)
                         .map(|i| {
-                            min + (i as f64) * (max - min) / ((default_points_per_dim - 1) as f64)
+                            if i == 0 {
+                                *min
+                            } else if i == last {
+                                *max
+                            } else {
+                                let t = (i as f64) / denom;
+                                if span.is_finite() {
+                                    (min + t * span).clamp(*min, *max)
+                                } else {
+                                    (min * (1.0 - t) + max * t).clamp(*min, *max)
+                                }
+                            }
                         })
                         .collect()
                 }
             }
             DimensionSpec::Logarithmic { min, max } => {
-                if default_points_per_dim <= 1 || (min - max).abs() < 1e-15 {
+                let scale = min.abs().max(max.abs());
+                if default_points_per_dim <= 1
+                    || min >= max
+                    || (max - min) <= 4.0 * f64::EPSILON * scale
+                {
                     vec![*min]
                 } else {
+                    let last = default_points_per_dim - 1;
+                    let denom = last as f64;
                     let ratio = max / min;
-                    (0..default_points_per_dim)
-                        .map(|i| {
-                            min * ratio.powf((i as f64) / ((default_points_per_dim - 1) as f64))
-                        })
-                        .collect()
+                    if ratio.is_finite() {
+                        (0..default_points_per_dim)
+                            .map(|i| {
+                                if i == 0 {
+                                    *min
+                                } else if i == last {
+                                    *max
+                                } else {
+                                    (*min * ratio.powf((i as f64) / denom)).clamp(*min, *max)
+                                }
+                            })
+                            .collect()
+                    } else {
+                        let ln_min = min.ln();
+                        let ln_span = max.ln() - ln_min;
+                        (0..default_points_per_dim)
+                            .map(|i| {
+                                if i == 0 {
+                                    *min
+                                } else if i == last {
+                                    *max
+                                } else {
+                                    let t = (i as f64) / denom;
+                                    (ln_min + t * ln_span).exp().clamp(*min, *max)
+                                }
+                            })
+                            .collect()
+                    }
                 }
             }
             DimensionSpec::IntegerRange { min, max, step } => {
@@ -564,44 +640,48 @@ impl SobolSequence {
     }
 }
 
+/// Primitive polynomials and initial direction numbers (`m_i`) for Sobol dimensions 2..=32,
+/// verbatim from Stephen Joe and Frances Y. Kuo, "Constructing Sobol sequences with better
+/// two-dimensional projections", SIAM J. Sci. Comput. 30(5), 2635-2654 (2008),
+/// direction-number file `new-joe-kuo-6.21201` (as bundled in
+/// `scipy.stats._sobol_direction_numbers.npz`).
+/// Formula: P(x) = x^s + a_1 x^{s-1} + ... + 1
+pub(crate) const SOBOL_POLY_TABLE: [(usize, u32, &[u32]); 31] = [
+    (1, 0, &[1]),
+    (2, 1, &[1, 3]),
+    (3, 1, &[1, 3, 1]),
+    (3, 2, &[1, 1, 1]),
+    (4, 1, &[1, 1, 3, 3]),
+    (4, 4, &[1, 3, 5, 13]),
+    (5, 2, &[1, 1, 5, 5, 17]),
+    (5, 4, &[1, 1, 5, 5, 5]),
+    (5, 7, &[1, 1, 7, 11, 19]),
+    (5, 11, &[1, 1, 5, 1, 1]),
+    (5, 13, &[1, 1, 1, 3, 11]),
+    (5, 14, &[1, 3, 5, 5, 31]),
+    (6, 1, &[1, 3, 3, 9, 7, 49]),
+    (6, 13, &[1, 1, 1, 15, 21, 21]),
+    (6, 16, &[1, 3, 1, 13, 27, 49]),
+    (6, 19, &[1, 1, 1, 15, 7, 5]),
+    (6, 22, &[1, 3, 1, 15, 13, 25]),
+    (6, 25, &[1, 1, 5, 5, 19, 61]),
+    (7, 1, &[1, 3, 7, 11, 23, 15, 103]),
+    (7, 4, &[1, 3, 7, 13, 13, 15, 69]),
+    (7, 7, &[1, 1, 3, 13, 7, 35, 63]),
+    (7, 8, &[1, 3, 5, 9, 1, 25, 53]),
+    (7, 14, &[1, 3, 1, 13, 9, 35, 107]),
+    (7, 19, &[1, 3, 1, 5, 27, 61, 31]),
+    (7, 21, &[1, 1, 5, 11, 19, 41, 61]),
+    (7, 28, &[1, 3, 5, 3, 3, 13, 69]),
+    (7, 31, &[1, 1, 7, 13, 1, 19, 1]),
+    (7, 32, &[1, 3, 7, 5, 13, 19, 59]),
+    (7, 37, &[1, 1, 3, 9, 25, 29, 41]),
+    (7, 41, &[1, 3, 5, 13, 23, 1, 55]),
+    (7, 42, &[1, 3, 7, 3, 13, 59, 17]),
+];
+
 /// Helper to generate direction numbers for $D$ dimensions using primitive polynomials.
 fn generate_sobol_direction_numbers(dimensions: usize) -> Vec<[u32; 32]> {
-    // Primitive polynomials table: (degree s, polynomial integer a, initial m_i values)
-    // Formula: P(x) = x^s + a_1 x^{s-1} + ... + 1
-    const SOBOL_POLY_TABLE: [(usize, u32, &[u32]); 31] = [
-        (1, 0, &[1]),
-        (2, 1, &[1, 3]),
-        (3, 1, &[1, 3, 1]),
-        (3, 2, &[1, 1, 1]),
-        (4, 1, &[1, 1, 3, 3]),
-        (4, 4, &[1, 3, 5, 13]),
-        (4, 7, &[1, 1, 5, 5]),
-        (5, 2, &[1, 1, 7, 11, 19]),
-        (5, 4, &[1, 1, 5, 1, 1]),
-        (5, 7, &[1, 1, 1, 3, 11]),
-        (5, 11, &[1, 3, 5, 5, 9]),
-        (5, 13, &[1, 1, 1, 9, 23]),
-        (5, 14, &[1, 3, 7, 13, 29]),
-        (6, 1, &[1, 1, 5, 11, 27, 43]),
-        (6, 4, &[1, 3, 1, 17, 41, 61]),
-        (6, 7, &[1, 1, 1, 5, 45, 23]),
-        (6, 11, &[1, 3, 3, 9, 7, 49]),
-        (6, 13, &[1, 1, 1, 13, 21, 35]),
-        (6, 16, &[1, 1, 7, 3, 35, 19]),
-        (6, 19, &[1, 3, 1, 13, 25, 41]),
-        (6, 22, &[1, 1, 3, 17, 33, 1]),
-        (6, 25, &[1, 3, 3, 3, 9, 61]),
-        (6, 28, &[1, 1, 7, 15, 29, 3]),
-        (6, 31, &[1, 3, 5, 9, 39, 45]),
-        (7, 1, &[1, 1, 3, 7, 23, 47, 95]),
-        (7, 4, &[1, 3, 7, 1, 19, 49, 109]),
-        (7, 7, &[1, 1, 1, 1, 11, 23, 117]),
-        (7, 8, &[1, 3, 5, 9, 1, 33, 21]),
-        (7, 14, &[1, 1, 7, 13, 25, 5, 87]),
-        (7, 19, &[1, 3, 1, 11, 57, 125, 33]),
-        (7, 21, &[1, 1, 5, 21, 61, 89, 9]),
-    ];
-
     let mut dir_nums = Vec::with_capacity(dimensions);
 
     // Dimension 0: v_{0, i} = 1 << (32 - (i + 1))
@@ -747,27 +827,68 @@ pub fn pearson_correlation(x: &[f64], y: &[f64]) -> Option<f64> {
     if x.len() != y.len() || x.len() < 2 {
         return None;
     }
+    if x.iter().any(|v| !v.is_finite()) || y.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let x0 = x[0];
+    let y0 = y[0];
+    if x.iter().all(|&v| v == x0) || y.iter().all(|&v| v == y0) {
+        return None; // Exact zero variance
+    }
+
+    let max_abs_x = x.iter().fold(0.0f64, |acc, &v| acc.max(v.abs()));
+    let max_abs_y = y.iter().fold(0.0f64, |acc, &v| acc.max(v.abs()));
+    let inv_scale_x = (max_abs_x > 1e150).then(|| 1.0 / max_abs_x);
+    let inv_scale_y = (max_abs_y > 1e150).then(|| 1.0 / max_abs_y);
+    let sx = |v: f64| match inv_scale_x {
+        Some(s) => v * s,
+        None => v,
+    };
+    let sy = |v: f64| match inv_scale_y {
+        Some(s) => v * s,
+        None => v,
+    };
+
+    let x0_s = sx(x0);
+    let y0_s = sy(y0);
     let n = x.len() as f64;
-    let mean_x = x.iter().sum::<f64>() / n;
-    let mean_y = y.iter().sum::<f64>() / n;
-
-    let mut var_x = 0.0;
-    let mut var_y = 0.0;
-    let mut cov_xy = 0.0;
-
-    for (xi, yi) in x.iter().zip(y.iter()) {
-        let dx = xi - mean_x;
-        let dy = yi - mean_y;
-        var_x += dx * dx;
-        var_y += dy * dy;
-        cov_xy += dx * dy;
+    let mean_dx0 = x.iter().map(|&v| sx(v) - x0_s).sum::<f64>() / n;
+    let mean_dy0 = y.iter().map(|&v| sy(v) - y0_s).sum::<f64>() / n;
+    if !mean_dx0.is_finite() || !mean_dy0.is_finite() {
+        return None;
     }
 
-    if var_x <= 1e-15 || var_y <= 1e-15 {
-        return None; // Zero variance
+    let mut max_dx = 0.0f64;
+    let mut max_dy = 0.0f64;
+    for (&xi, &yi) in x.iter().zip(y.iter()) {
+        let dx = (sx(xi) - x0_s) - mean_dx0;
+        let dy = (sy(yi) - y0_s) - mean_dy0;
+        if !dx.is_finite() || !dy.is_finite() {
+            return None;
+        }
+        max_dx = max_dx.max(dx.abs());
+        max_dy = max_dy.max(dy.abs());
+    }
+    if max_dx == 0.0 || max_dy == 0.0 || !max_dx.is_finite() || !max_dy.is_finite() {
+        return None;
     }
 
-    let r = cov_xy / (var_x.sqrt() * var_y.sqrt());
+    let mut var_x = 0.0f64;
+    let mut var_y = 0.0f64;
+    let mut cov_xy = 0.0f64;
+    for (&xi, &yi) in x.iter().zip(y.iter()) {
+        let ux = ((sx(xi) - x0_s) - mean_dx0) / max_dx;
+        let uy = ((sy(yi) - y0_s) - mean_dy0) / max_dy;
+        var_x += ux * ux;
+        var_y += uy * uy;
+        cov_xy += ux * uy;
+    }
+
+    let denom = var_x.sqrt() * var_y.sqrt();
+    if denom == 0.0 || !denom.is_finite() {
+        return None;
+    }
+    let r = cov_xy / denom;
     if r.is_finite() {
         Some(r.clamp(-1.0, 1.0))
     } else {
@@ -971,4 +1092,270 @@ pub fn run_sweep<M: ExperimentModel>(
         points,
         failure_records,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gf2_poly_mod_x_pow_k(k: u32, poly: u32, s: usize) -> u32 {
+        // Compute x^k mod poly over GF(2) by repeated squaring/shifting.
+        let mut res = 1u32;
+        let mask = 1u32 << s;
+        for _ in 0..k {
+            res <<= 1;
+            if (res & mask) != 0 {
+                res ^= poly;
+            }
+        }
+        res
+    }
+
+    fn is_gf2_primitive(s: usize, a: u32) -> bool {
+        let poly = (1u32 << s) | (a << 1) | 1u32;
+        // Check irreducibility over GF(2) via trial division by non-constant polynomials of degree <= s/2.
+        let max_div_deg = s / 2;
+        for d in 1..=max_div_deg {
+            let lo = 1u32 << d;
+            let hi = 1u32 << (d + 1);
+            for div in lo..hi {
+                let mut rem = poly;
+                for bit in (d..=s).rev() {
+                    if (rem & (1u32 << bit)) != 0 {
+                        rem ^= div << (bit - d);
+                    }
+                }
+                if rem == 0 {
+                    return false;
+                }
+            }
+        }
+        let order = (1u32 << s) - 1;
+        if gf2_poly_mod_x_pow_k(order, poly, s) != 1 {
+            return false;
+        }
+        for k in 1..order {
+            if order.is_multiple_of(k) && gf2_poly_mod_x_pow_k(k, poly, s) == 1 {
+                return false;
+            }
+        }
+        true
+    }
+
+    #[test]
+    fn sobol_poly_table_entries_are_primitive_and_within_bounds() {
+        assert_eq!(SOBOL_POLY_TABLE.len(), MAX_SWEEP_DIMENSIONS - 1);
+        let mut seen_polys = Vec::new();
+        for (idx, &(s, a, init_m)) in SOBOL_POLY_TABLE.iter().enumerate() {
+            assert!((1..=7).contains(&s), "entry {idx}: unexpected degree {s}");
+            assert!(
+                a < (1u32 << (s.saturating_sub(1))),
+                "entry {idx}: a={a} out of range for s={s}"
+            );
+            assert!(
+                is_gf2_primitive(s, a),
+                "entry {idx} (sobol_dim={}): s={s}, a={a} is not GF(2)-primitive",
+                idx + 1
+            );
+            let poly = (1u32 << s) | (a << 1) | 1u32;
+            assert!(
+                !seen_polys.contains(&poly),
+                "entry {idx}: duplicate polynomial {poly:#x}"
+            );
+            seen_polys.push(poly);
+
+            assert_eq!(
+                init_m.len(),
+                s,
+                "entry {idx}: expected {s} initial m values, got {}",
+                init_m.len()
+            );
+            for (i, &m_i) in init_m.iter().enumerate() {
+                let upper = 1u32 << (i + 1);
+                assert!(
+                    m_i >= 1 && m_i < upper && (m_i & 1) == 1,
+                    "entry {idx}: init_m[{i}]={m_i} must be odd in [1, {upper})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pearson_correlation_is_scale_invariant_and_rejects_constants_and_non_finite() {
+        assert_eq!(
+            pearson_correlation(&[0.1, 0.1, 0.1], &[1.0, 2.0, 3.0]),
+            None
+        );
+        assert_eq!(pearson_correlation(&[1.0, f64::NAN], &[1.0, 2.0]), None);
+        assert_eq!(pearson_correlation(&[1.0], &[2.0]), None);
+
+        let r_tiny = pearson_correlation(&[1e-250, 2e-250, 3e-250], &[2e-250, 4e-250, 6e-250])
+            .expect("tiny positive scale correlates");
+        assert!((r_tiny - 1.0).abs() < 1e-12);
+
+        let r_huge = pearson_correlation(&[1e200, 2e200, 3e200], &[6e200, 4e200, 2e200])
+            .expect("huge scale anti-correlates");
+        assert!((r_huge + 1.0).abs() < 1e-12);
+
+        let r_sym = pearson_correlation(&[-1e308, 0.0, 1e308], &[-1e308, 0.0, 1e308])
+            .expect("symmetric 1e308 span correlates without overflow");
+        assert!((r_sym - 1.0).abs() < 1e-12, "got {r_sym}");
+
+        let r_offset = pearson_correlation(
+            &[
+                1e9 + 2.0_f64.powi(-20),
+                1e9 + 2.0 * 2.0_f64.powi(-20),
+                1e9 + 3.0 * 2.0_f64.powi(-20),
+            ],
+            &[2.0, 4.0, 6.0],
+        )
+        .expect("large-offset small-delta preserves precision");
+        assert!((r_offset - 1.0).abs() < 1e-12, "got {r_offset}");
+    }
+
+    #[test]
+    fn grid_values_handles_extreme_ratios_and_degenerate_ranges() {
+        let wide_log = DimensionSpec::Logarithmic {
+            min: 1e-200,
+            max: 1e200,
+        };
+        let vals = wide_log.grid_values(5);
+        assert_eq!(vals.len(), 5);
+        assert_eq!(vals[0], 1e-200);
+        assert_eq!(vals[4], 1e200);
+        assert!(vals
+            .iter()
+            .all(|v| v.is_finite() && *v >= 1e-200 && *v <= 1e200));
+        assert!(vals.windows(2).all(|w| w[0] < w[1]));
+
+        let wide_cont = DimensionSpec::Continuous {
+            min: -1e308,
+            max: 1e308,
+        };
+        let cvals = wide_cont.grid_values(5);
+        assert_eq!(cvals.len(), 5);
+        assert_eq!(cvals[0], -1e308);
+        assert_eq!(cvals[2], 0.0);
+        assert_eq!(cvals[4], 1e308);
+        assert!(cvals.iter().all(|v| v.is_finite()));
+        assert!(cvals.windows(2).all(|w| w[0] < w[1]));
+        assert_eq!(wide_cont.map_normalized(0.5), 0.0);
+
+        let tiny_cont = DimensionSpec::Continuous {
+            min: 1e-18,
+            max: 1e-16,
+        };
+        assert_eq!(tiny_cont.grid_values(5).len(), 5);
+
+        let degenerate = DimensionSpec::Continuous { min: 3.5, max: 3.5 };
+        assert_eq!(degenerate.grid_values(5), vec![3.5]);
+    }
+
+    #[test]
+    fn map_normalized_and_sampling_handle_extreme_log_and_continuous_spans() {
+        use crate::core::experiment::{
+            InitialConditionSet, ObserverPolicy, WorldIdentity, WorldLawSet,
+            MANIFEST_SCHEMA_VERSION,
+        };
+
+        let wide_log = DimensionSpec::Logarithmic {
+            min: 1e-200,
+            max: 1e200,
+        };
+        for u in [0.0, 0.1, 0.5, 0.999, 1.0] {
+            let mapped = wide_log.map_normalized(u);
+            assert!(
+                mapped.is_finite() && (1e-200..=1e200).contains(&mapped),
+                "u={u} mapped out of range: {mapped}"
+            );
+        }
+        assert_eq!(wide_log.map_normalized(0.0), 1e-200);
+        assert!((wide_log.map_normalized(0.5) - 1.0).abs() < 1e-12);
+        assert_eq!(wide_log.map_normalized(1.0), 1e200);
+        for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(wide_log.map_normalized(non_finite), 1e-200);
+        }
+
+        let wide_cont = DimensionSpec::Continuous {
+            min: -1e308,
+            max: 1e308,
+        };
+        assert_eq!(wide_cont.map_normalized(0.0), -1e308);
+        assert_eq!(wide_cont.map_normalized(0.5), 0.0);
+        assert_eq!(wide_cont.map_normalized(1.0), 1e308);
+        for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(wide_cont.map_normalized(non_finite), -1e308);
+        }
+
+        let base_manifest = ExperimentManifest {
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            experiment_id: "unit-wide-sweep".into(),
+            name: "Unit Wide Sweep".into(),
+            observer: ObserverPolicy::default(),
+            world_identity: WorldIdentity {
+                seed: 1,
+                generator_version: 20,
+                width: 16,
+                height: 16,
+                checksum: 1,
+            },
+            laws: WorldLawSet::baseline(),
+            initial_conditions: InitialConditionSet::new(vec![("plants".into(), 10.0)]),
+            interventions: Vec::new(),
+            seeds: vec![1],
+            duration_ticks: 10,
+            sample_period: 5,
+            observable_ids: vec!["plants".into()],
+            exotic_interventions: Vec::new(),
+        };
+
+        for sampling in [
+            SamplingStrategy::Sobol {
+                num_samples: 16,
+                offset: 0,
+            },
+            SamplingStrategy::LatinHypercube {
+                num_samples: 16,
+                seed: Some(0x5EED),
+                centered: false,
+            },
+        ] {
+            let manifest = SweepManifest {
+                schema_version: SWEEP_SCHEMA_VERSION,
+                sweep_id: "wide-log-sampling".into(),
+                name: "Wide Log Sampling".into(),
+                base_manifest: base_manifest.clone(),
+                parameters: vec![
+                    ParameterDim {
+                        name: "wide_log".into(),
+                        target: SweepTarget::InitialCondition("plants".into()),
+                        spec: wide_log.clone(),
+                    },
+                    ParameterDim {
+                        name: "wide_cont".into(),
+                        target: SweepTarget::InitialCondition("precip".into()),
+                        spec: wide_cont.clone(),
+                    },
+                ],
+                sampling,
+                max_threads: None,
+            };
+            let (_names, matrix) = manifest
+                .generate_sample_matrix()
+                .expect("sample matrix generates cleanly");
+            assert_eq!(matrix.len(), 16);
+            for row in &matrix {
+                assert!(
+                    row[0].is_finite() && (1e-200..=1e200).contains(&row[0]),
+                    "log sample out of bounds: {}",
+                    row[0]
+                );
+                assert!(
+                    row[1].is_finite() && (-1e308..=1e308).contains(&row[1]),
+                    "continuous sample out of bounds: {}",
+                    row[1]
+                );
+            }
+        }
+    }
 }

@@ -108,11 +108,14 @@ fn find_nearest_point(pos: Vec3, candidates: &[Vec3]) -> Option<(Vec3, f32)> {
 fn select_prey_grass_target(
     pos: Vec3,
     grass: &GrassContext<'_>,
-    food_cache: &[Vec3],
+    walkable_food_cache: &[Vec3],
 ) -> Option<Vec3> {
+    if !pos.is_finite() {
+        return None;
+    }
     let field = grass.field;
-    let nearest_food = find_nearest_point(pos, food_cache);
-    // Priority 2: local Food item inside the local scan radius wins over pasture grass.
+    let nearest_food = find_nearest_point(pos, walkable_food_cache);
+    // Priority 2: local walkable Food item inside the local scan radius wins over pasture grass.
     if let Some((food_pos, food_d2)) = nearest_food {
         if food_d2 <= grass.local_food_radius_sq {
             return Some(food_pos);
@@ -208,7 +211,7 @@ pub fn steering_drive_system(
     prey_query: Query<(&Position, &HomeostaticState), (With<Agent>, With<Prey>)>,
     food_query: Query<&Position, With<Food>>,
     oscillators: Query<&CpgOscillator>,
-    mut caches: Local<(Vec<Vec3>, Vec<Vec3>, Vec<Vec3>)>,
+    mut caches: Local<(Vec<Vec3>, Vec<Vec3>, Vec<Vec3>, Vec<Vec3>)>,
 ) {
     let Some(policy) = policy.filter(|p| p.enabled) else {
         return;
@@ -249,7 +252,7 @@ pub fn steering_drive_system(
         None
     };
 
-    let (prey_cache, food_cache, lake_cache) = &mut *caches;
+    let (prey_cache, food_cache, walkable_food_cache, lake_cache) = &mut *caches;
     lake_cache.clear();
     if policy.thirst_steering {
         for (pos, lake) in lake_query.iter() {
@@ -265,8 +268,19 @@ pub fn steering_drive_system(
         }
     }
     food_cache.clear();
-    for pos in food_query.iter() {
-        food_cache.push(pos.0);
+    walkable_food_cache.clear();
+    if let Some(grass) = grass_ctx.as_ref() {
+        for pos in food_query.iter() {
+            let p = pos.0;
+            food_cache.push(p);
+            if p.is_finite() && grass.is_walkable(p) {
+                walkable_food_cache.push(p);
+            }
+        }
+    } else {
+        for pos in food_query.iter() {
+            food_cache.push(pos.0);
+        }
     }
 
     for (pos, homeo, predator, prey, children, mut inertia) in agents.iter_mut() {
@@ -286,7 +300,7 @@ pub fn steering_drive_system(
         // non-thirsty Prey when GrassSteeringPolicy::enabled is true.
         let selected = if !steering_to_water && predator.is_none() && prey.is_some() {
             if let Some(grass) = grass_ctx.as_ref() {
-                select_prey_grass_target(pos.0, grass, food_cache)
+                select_prey_grass_target(pos.0, grass, walkable_food_cache)
                     .map(|target| (target, pos.0.distance_squared(target)))
             } else {
                 find_nearest_point(pos.0, food_cache)

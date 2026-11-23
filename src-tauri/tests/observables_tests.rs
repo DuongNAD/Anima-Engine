@@ -1,6 +1,6 @@
 //! Observable gates — feature `ecological-selection`, branch O.
 //!
-//! - **Wiring** — all ids (legacy 12 + extended 15) emit in stable order, all finite.
+//! - **Wiring** — all ids (legacy 12 + extended 16) emit in stable order, all finite.
 //! - **OB-S01** — `live.shannon` / `live.simpson` match the panel's own index math on the same
 //!   abundances.
 //! - **OB-S02** — variance separates populations an identical mean cannot.
@@ -85,6 +85,14 @@ fn every_registered_id_emits_exactly_once_in_stable_order() {
             anima_engine_lib::core::experiment::Aggregation::Instant
         );
     }
+    let cum_lifespan_spec = reg
+        .get("live.cumulative_mean_lifespan")
+        .expect("live.cumulative_mean_lifespan registered");
+    assert_eq!(cum_lifespan_spec.unit, "ticks");
+    assert_eq!(
+        cum_lifespan_spec.aggregation,
+        anima_engine_lib::core::experiment::Aggregation::Instant
+    );
 }
 
 #[test]
@@ -260,7 +268,11 @@ fn death_observables_are_refused_when_the_run_declares_no_death_rule() {
     let cfg_off =
         anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(&off)
             .expect("valid");
-    for id in ["live.deaths", "live.mean_lifespan"] {
+    for id in [
+        "live.deaths",
+        "live.mean_lifespan",
+        "live.cumulative_mean_lifespan",
+    ] {
         let err = cfg_off
             .ensure_observables_supported(&[id.to_string()])
             .expect_err("death observables without a death rule must fail preflight");
@@ -280,6 +292,7 @@ fn death_observables_are_refused_when_the_run_declares_no_death_rule() {
         .ensure_observables_supported(&[
             "live.deaths".to_string(),
             "live.mean_lifespan".to_string(),
+            "live.cumulative_mean_lifespan".to_string(),
             "live.shannon".to_string(),
         ])
         .expect("with a declared death rule the death observables are legal");
@@ -375,4 +388,240 @@ fn turnover_is_visible_to_the_new_observables_and_invisible_to_the_legacy_semant
             "{id} claims turnover semantics it does not have"
         );
     }
+}
+
+#[test]
+fn cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zero_deaths() {
+    let mut a = adapter(&mortality_manifest_initials(true));
+
+    // Before any deaths, `live.cumulative_mean_lifespan` emits finite 0.0.
+    endow_healthy(&mut a, 500.0, 500.0);
+    a.run_schedule_once();
+    let initial_obs = a.observables();
+    assert_eq!(value_of(&initial_obs, "live.deaths"), 0.0);
+    assert_eq!(value_of(&initial_obs, "live.mean_lifespan"), 0.0);
+    assert_eq!(value_of(&initial_obs, "live.cumulative_mean_lifespan"), 0.0);
+
+    // Run 4 healthy ticks, then sentence 3 agents to die at tick ~6.
+    for _ in 0..4u32 {
+        a.run_schedule_once();
+    }
+    let first_wave_entities: Vec<Entity> = {
+        use anima_engine_lib::ai::hrrl::HomeostaticState;
+        use anima_engine_lib::core::ecs::Agent;
+        let mut world = a.world();
+        let mut q = world.query_filtered::<(Entity, &mut HomeostaticState), With<Agent>>();
+        let mut picked = Vec::new();
+        for (entity, mut homeo) in q.iter_mut(&mut world) {
+            if picked.len() < 3 {
+                homeo.hydration = 0.0;
+                homeo.dehydrating_ticks = Some(2);
+                picked.push(entity);
+            }
+        }
+        picked
+    };
+    assert_eq!(first_wave_entities.len(), 3);
+    a.run_schedule_once();
+
+    let wave1 = a.observables();
+    let w1_deaths = value_of(&wave1, "live.deaths");
+    let w1_mean = value_of(&wave1, "live.mean_lifespan");
+    let w1_cum = value_of(&wave1, "live.cumulative_mean_lifespan");
+    assert_eq!(w1_deaths, 3.0);
+    assert!(w1_mean > 0.0);
+    assert!((w1_cum - w1_mean).abs() < 1e-6);
+
+    // Sampling again drains `live.mean_lifespan` to 0.0, while `live.cumulative_mean_lifespan`
+    // retains the exact [0, tick] cumulative mean!
+    let after_drain = a.observables();
+    assert_eq!(value_of(&after_drain, "live.deaths"), 0.0);
+    assert_eq!(value_of(&after_drain, "live.mean_lifespan"), 0.0);
+    assert_eq!(
+        value_of(&after_drain, "live.cumulative_mean_lifespan").to_bits(),
+        w1_cum.to_bits()
+    );
+
+    // Run 10 more healthy ticks, then sentence the remaining 3 agents to die at a longer lifespan.
+    for _ in 0..10u32 {
+        a.run_schedule_once();
+    }
+    sentence_to_death(&mut a, 2);
+    a.run_schedule_once();
+
+    let wave2 = a.observables();
+    let w2_deaths = value_of(&wave2, "live.deaths");
+    let w2_mean = value_of(&wave2, "live.mean_lifespan");
+    let w2_cum = value_of(&wave2, "live.cumulative_mean_lifespan");
+    assert_eq!(w2_deaths, 3.0);
+    assert!(w2_mean > w1_mean);
+    let expected_cum = (w1_deaths * w1_mean + w2_deaths * w2_mean) / (w1_deaths + w2_deaths);
+    assert!(
+        (w2_cum - expected_cum).abs() < 1e-5,
+        "cumulative mean {w2_cum} must equal death-weighted mean {expected_cum}"
+    );
+
+    // Sampling again after all agents are dead still preserves cumulative_mean_lifespan.
+    let final_drain = a.observables();
+    assert_eq!(value_of(&final_drain, "live.mean_lifespan"), 0.0);
+    assert_eq!(
+        value_of(&final_drain, "live.cumulative_mean_lifespan").to_bits(),
+        w2_cum.to_bits()
+    );
+
+    // Preflight accepts `live.cumulative_mean_lifespan` under `live.drift_control = 1.0`.
+    let mut drift_init = mortality_manifest_initials(true);
+    drift_init.values.push(("live.reproduction".into(), 1.0));
+    drift_init.values.push(("live.drift_control".into(), 1.0));
+    let drift_cfg =
+        anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(
+            &drift_init,
+        )
+        .expect("valid drift config");
+    drift_cfg
+        .ensure_observables_supported(&["live.cumulative_mean_lifespan".to_string()])
+        .expect("drift_control = 1.0 with mortality = 1.0 supports live.cumulative_mean_lifespan");
+}
+
+#[test]
+fn cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork() {
+    use anima_engine_lib::ai::hrrl::HomeostaticState;
+    use anima_engine_lib::core::agent_systems::AgentLineageId;
+    use anima_engine_lib::core::causal::CausalLedger;
+    use anima_engine_lib::core::ecs::Agent;
+    use anima_engine_lib::core::experiment::WorldLawSet;
+    use anima_engine_lib::core::intervention::InterventionCommand;
+    use anima_engine_lib::core::live_experiment::LiveSnapshot;
+    use anima_engine_lib::core::resources::VitalStatistics;
+    use anima_engine_lib::core::sim_clock::SimClock;
+    use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
+    use rand::SeedableRng;
+
+    struct TempDirCleanup(std::path::PathBuf);
+    impl Drop for TempDirCleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    let sentence_sorted_subset = |a: &mut LiveExperimentAdapter, count: usize| {
+        let mut world = a.world();
+        let mut q = world.query_filtered::<(Entity, &AgentLineageId), With<Agent>>();
+        let mut candidates: Vec<(String, Entity)> =
+            q.iter(&world).map(|(e, id)| (id.0.clone(), e)).collect();
+        candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+        for (_, entity) in candidates.into_iter().take(count) {
+            if let Some(mut homeo) = world.get_mut::<HomeostaticState>(entity) {
+                homeo.hydration = 0.0;
+                homeo.dehydrating_ticks = Some(2);
+            }
+        }
+    };
+
+    const TOTAL_TICKS: u64 = 40;
+    const FORK_TICK: u64 = 20;
+    let laws = WorldLawSet::baseline();
+    let mut init = mortality_manifest_initials(true);
+    init.values.push(("live.reproduction".into(), 1.0));
+    init.values.push(("live.locomotion".into(), 1.0));
+    init.values.push(("live.drive_floor".into(), 0.5));
+
+    // Uninterrupted arm: 0 -> TOTAL_TICKS with identical death events before and after FORK_TICK.
+    let mut reference =
+        LiveExperimentAdapter::from_manifest(&laws, &init, &[], SEED, (16, 16), TOTAL_TICKS)
+            .expect("reference builds");
+    endow_healthy(&mut reference, 500.0, 500.0);
+    let mut rng_ref = rand::rngs::StdRng::seed_from_u64(SEED);
+    let mut clock_ref = SimClock::new();
+    let mut ledger_ref = CausalLedger::new();
+
+    // Forked arm: 0 -> FORK_TICK -> disk checkpoint -> restore -> FORK_TICK..TOTAL_TICKS.
+    let mut prefix =
+        LiveExperimentAdapter::from_manifest(&laws, &init, &[], SEED, (16, 16), TOTAL_TICKS)
+            .expect("prefix builds");
+    endow_healthy(&mut prefix, 500.0, 500.0);
+    let mut rng_fork = rand::rngs::StdRng::seed_from_u64(SEED);
+    let mut clock_fork = SimClock::new();
+    let mut ledger_fork = CausalLedger::new();
+
+    let empty_active: Vec<&InterventionCommand> = Vec::new();
+    for tick in 1..=FORK_TICK {
+        let t_ref = clock_ref.advance();
+        let t_fork = clock_fork.advance();
+        assert_eq!(t_ref, tick);
+        assert_eq!(t_fork, tick);
+        if tick == 10 {
+            sentence_sorted_subset(&mut reference, 2);
+            sentence_sorted_subset(&mut prefix, 2);
+        }
+        reference.step(&clock_ref, &empty_active, &mut ledger_ref, &mut rng_ref);
+        prefix.step(&clock_fork, &empty_active, &mut ledger_fork, &mut rng_fork);
+    }
+
+    let deaths_before_fork = reference.world().resource::<VitalStatistics>().total_deaths;
+    assert!(
+        deaths_before_fork >= 2,
+        "must record deaths before FORK_TICK, got {deaths_before_fork}"
+    );
+
+    let dir = std::env::temp_dir().join(format!("anima_f053_fork_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create checkpoint temp dir");
+    let _cleanup = TempDirCleanup(dir.clone());
+    let path = dir.join("checkpoint.json");
+    let snap = prefix.snapshot();
+    let envelope = SnapshotEnvelope::seal(snap.saved).expect("seal snapshot");
+    snapshot::write_atomic(&path, &envelope).expect("write checkpoint atomically");
+    let saved = snapshot::read(&path).expect("read checkpoint from disk");
+    let mut resumed = LiveExperimentAdapter::from_snapshot(&LiveSnapshot {
+        saved,
+        config: snap.config,
+        seed: snap.seed,
+    })
+    .expect("resume from disk snapshot succeeds");
+
+    for tick in (FORK_TICK + 1)..=TOTAL_TICKS {
+        let t_ref = clock_ref.advance();
+        let t_fork = clock_fork.advance();
+        assert_eq!(t_ref, tick);
+        assert_eq!(t_fork, tick);
+        if tick == 30 {
+            sentence_sorted_subset(&mut reference, 2);
+            sentence_sorted_subset(&mut resumed, 2);
+        }
+        reference.step(&clock_ref, &empty_active, &mut ledger_ref, &mut rng_ref);
+        resumed.step(&clock_fork, &empty_active, &mut ledger_fork, &mut rng_fork);
+    }
+
+    let total_deaths = reference.world().resource::<VitalStatistics>().total_deaths;
+    assert!(
+        total_deaths > deaths_before_fork,
+        "must record additional deaths after FORK_TICK ({total_deaths} vs {deaths_before_fork})"
+    );
+    assert_eq!(reference.checksum(), resumed.checksum());
+
+    let obs_ref = reference.observables();
+    let obs_res = resumed.observables();
+    let cum_ref = value_of(&obs_ref, "live.cumulative_mean_lifespan");
+    let cum_res = value_of(&obs_res, "live.cumulative_mean_lifespan");
+    assert!(cum_ref > 0.0);
+    assert_eq!(
+        cum_ref.to_bits(),
+        cum_res.to_bits(),
+        "live.cumulative_mean_lifespan must match bit-for-bit across disk save/load fork ({cum_ref} vs {cum_res})"
+    );
+
+    // Draining legacy `live.mean_lifespan` via a second sample preserves `live.cumulative_mean_lifespan`.
+    let obs_ref2 = reference.observables();
+    let obs_res2 = resumed.observables();
+    assert_eq!(value_of(&obs_ref2, "live.mean_lifespan"), 0.0);
+    assert_eq!(value_of(&obs_res2, "live.mean_lifespan"), 0.0);
+    assert_eq!(
+        value_of(&obs_ref2, "live.cumulative_mean_lifespan").to_bits(),
+        cum_ref.to_bits()
+    );
+    assert_eq!(
+        value_of(&obs_res2, "live.cumulative_mean_lifespan").to_bits(),
+        cum_ref.to_bits()
+    );
 }

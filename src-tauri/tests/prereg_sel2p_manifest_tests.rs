@@ -225,9 +225,18 @@ fn baseline_ref_differs_from_smoke_selected_only_in_prey_cap_scale_and_seeds() {
 
 #[test]
 fn drift_arm_omits_cause_split_observables_and_smoke_manifests_are_blind_to_body_mass() {
+    // SEL2-P preregistration was frozen when `all_live_observable_ids()` held 27 ids (12 legacy +
+    // 15 extended); slice `[..27]` so additive post-registration observables (such as F053-FIX's
+    // `live.cumulative_mean_lifespan`) do not invalidate the committed SEL2-P manifests.
+    const EMITTED_AT_REGISTRATION: usize = 27;
     let all_emitted = all_live_observable_ids();
-    let expected_confirm: Vec<&str> = all_emitted
-        .into_iter()
+    assert!(
+        all_emitted.len() >= EMITTED_AT_REGISTRATION,
+        "live observable count regressed below {EMITTED_AT_REGISTRATION}"
+    );
+    let expected_confirm: Vec<&str> = all_emitted[..EMITTED_AT_REGISTRATION]
+        .iter()
+        .copied()
         .filter(|id| *id != "live.deaths_starvation" && *id != "live.deaths_dehydration")
         .collect();
     assert!(expected_confirm.contains(&"live.mean_energy_integral"));

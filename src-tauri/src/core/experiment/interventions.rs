@@ -138,6 +138,14 @@ pub fn validate_intervention(
                     field: format!("intervention {} toxicity plume parameters", cmd.id),
                 });
             }
+            if *radius <= 0.0 {
+                return Err(ExperimentError::OutOfRange {
+                    field: format!("intervention {} toxicity plume radius", cmd.id),
+                    value: *radius as f64,
+                    min: f64::MIN_POSITIVE,
+                    max: f64::from(f32::MAX),
+                });
+            }
         }
         crate::core::intervention::InterventionKind::PathogenTransmission {
             transmission_rate,
