@@ -11,8 +11,9 @@
 
 use anima_worldgen::caves::CaveNetwork;
 use anima_worldgen::config::WorldV2Config;
-use anima_worldgen::lakes_falls::LakesFallsConfig;
+use anima_worldgen::lakes_falls::{LakeClassification, LakesFallsConfig};
 use anima_worldgen::pipeline::{read_bin_f32, read_bin_u8, read_bin_u8x4, run_worldgen_to_dir};
+use anima_worldgen::tectonic::LithologyClass;
 use anima_worldgen::{BiomeId, WaterKind};
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
@@ -224,10 +225,8 @@ fn verify_1024_rayon_invariance() {
     let m_b = pool_4.install(|| run_worldgen_to_dir(&cfg, g_b.path()).expect("1024 4t b"));
     let m_1t = pool_1.install(|| run_worldgen_to_dir(&cfg, g_1t.path()).expect("1024 1t"));
 
-    assert_eq!(m_a.world_sha256, m_b.world_sha256);
-    assert_eq!(m_a.world_sha256, m_1t.world_sha256);
-    assert_eq!(m_a.layers, m_1t.layers);
-    assert_eq!(m_a.cave_network_sha256, m_1t.cave_network_sha256);
+    assert_eq!(m_a, m_b);
+    assert_eq!(m_a, m_1t);
 
     let c_a = std::fs::read(g_a.path().join("cave_network.bin")).unwrap();
     let c_1t = std::fs::read(g_1t.path().join("cave_network.bin")).unwrap();
@@ -246,27 +245,327 @@ fn verify_1024_rayon_invariance() {
 
 fn verify_4096_full_pipeline() {
     let t0 = Instant::now();
-    let guard = TempDirGuard::new("4096_full");
+    let g_a = TempDirGuard::new("4096_full_a");
+    let g_b = TempDirGuard::new("4096_full_b");
     let cfg = WorldV2Config::for_size(0x5756_3201, 4096);
-    let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 4096");
-    assert_eq!(meta.width, 4096);
-    assert_eq!(meta.height, 4096);
-    assert_eq!(meta.layers.len(), 29);
-    for layer in &meta.layers {
-        let fmeta = std::fs::metadata(guard.path().join(&layer.filename)).expect("layer exists");
+    let m_a = run_worldgen_to_dir(&cfg, g_a.path()).expect("pipeline 4096 run A");
+    let m_b = run_worldgen_to_dir(&cfg, g_b.path()).expect("pipeline 4096 run B");
+    assert_eq!(m_a.width, 4096);
+    assert_eq!(m_a.height, 4096);
+    assert_eq!(m_a.layers.len(), 29);
+    for layer in &m_a.layers {
+        let fmeta = std::fs::metadata(g_a.path().join(&layer.filename)).expect("layer exists");
         assert_eq!(fmeta.len(), layer.byte_len);
     }
-    let cave_bytes =
-        std::fs::read(guard.path().join("cave_network.bin")).expect("cave_network.bin");
-    let net = CaveNetwork::from_bytes(&cave_bytes).expect("valid ANMC v1");
-    assert!((30..=48).contains(&net.entrances.len()));
-    assert_eq!(meta.stats.severed_humid_spillways, 0);
-    assert_eq!(meta.stats.unmodeled_micro_pits, 0);
-    assert_eq!(meta.stats.endorheic_humid_fraction, 0.0);
+    let cave_a = std::fs::read(g_a.path().join("cave_network.bin")).expect("cave_network.bin A");
+    let cave_b = std::fs::read(g_b.path().join("cave_network.bin")).expect("cave_network.bin B");
+    assert_eq!(
+        m_a, m_b,
+        "4096^2 metadata must be identical across two runs"
+    );
+    assert_eq!(
+        cave_a, cave_b,
+        "4096^2 cave_network.bin must be byte-identical"
+    );
+    let net = CaveNetwork::from_bytes(&cave_a).expect("valid ANMC v1");
+    drop(g_b);
+    drop(cave_b);
+    drop(cave_a);
+
+    let n = 4096_usize * 4096_usize;
+    let lith = read_bin_u8(&g_a.path().join("lithology_id.bin"), n).expect("lithology_id");
+    let caprock_bad = m_a
+        .waterfalls
+        .iter()
+        .filter(|wf| lith[wf.lip_cell as usize] != LithologyClass::SandstoneCaprock as u8)
+        .count();
+    drop(lith);
+
+    let wk = read_bin_u8(&g_a.path().join("water_kind.bin"), n).expect("water_kind");
+    let wf_base_bad = m_a
+        .waterfalls
+        .iter()
+        .filter(|wf| wk[wf.base_cell as usize] != WaterKind::Waterfall as u8)
+        .count();
+    drop(wk);
+
+    let min_sp = LakesFallsConfig::default().waterfall_min_spacing_m;
+    let mut min_drop = f32::INFINITY;
+    let mut min_plunge = f32::INFINITY;
+    let mut min_spacing = f32::INFINITY;
+    for (i, wf) in m_a.waterfalls.iter().enumerate() {
+        if wf.drop_m < min_drop {
+            min_drop = wf.drop_m;
+        }
+        if wf.plunge_depth_m < min_plunge {
+            min_plunge = wf.plunge_depth_m;
+        }
+        for other in &m_a.waterfalls[(i + 1)..] {
+            let d = libm::hypotf(wf.x_m - other.x_m, wf.z_m - other.z_m);
+            if d < min_spacing {
+                min_spacing = d;
+            }
+        }
+    }
+
+    let large_lakes = m_a.basins.iter().filter(|b| b.area_m2 > 100_000.0).count();
+    let paramo_lakes = m_a
+        .basins
+        .iter()
+        .filter(|b| b.mean_elev_m > 3_300.0)
+        .count();
+    let caldera_or_trough = m_a
+        .basins
+        .iter()
+        .filter(|b| {
+            b.classification == LakeClassification::CalderaOrTrough
+                || b.max_wall_slope_deg > 25.0
+                || b.elongation > 3.5
+        })
+        .count();
+    let small_paramo_ponds = m_a
+        .basins
+        .iter()
+        .filter(|b| b.mean_elev_m > 3_300.0 && b.area_m2 < 100_000.0)
+        .count();
+
+    let total_h = read_bin_f32(&g_a.path().join("total_h_m.bin"), n).expect("total_h");
+    let ela = read_bin_f32(&g_a.path().join("ela_m.bin"), n).expect("ela_m");
+    let glac = read_bin_f32(&g_a.path().join("glacier_h_m.bin"), n).expect("glacier_h_m");
+    let dom = read_bin_u8(&g_a.path().join("dominant_biome.bin"), n).expect("dominant_biome");
+    let mut ela_min = f32::INFINITY;
+    let mut ela_max = f32::NEG_INFINITY;
+    let mut sub_ela_violations = 0_usize;
+    for i in 0..n {
+        let e = ela[i];
+        if e < ela_min {
+            ela_min = e;
+        }
+        if e > ela_max {
+            ela_max = e;
+        }
+        if total_h[i] < e
+            && (glac[i] > 0.0 || dom[i] == BiomeId::Snow as u8 || dom[i] == BiomeId::Glacier as u8)
+        {
+            sub_ela_violations += 1;
+        }
+    }
+    drop(total_h);
+    drop(ela);
+    drop(glac);
+    drop(dom);
+
+    let ids = read_bin_u8x4(&g_a.path().join("biome_ids.bin"), n).expect("biome_ids");
+    let wts = read_bin_u8x4(&g_a.path().join("biome_weights.bin"), n).expect("biome_weights");
+    let mut weight_sum_bad = 0_usize;
+    let mut forbidden_top4 = 0_usize;
+    for (id4, w4) in ids.iter().zip(wts.iter()) {
+        if w4.iter().map(|&w| u16::from(w)).sum::<u16>() != 255 {
+            weight_sum_bad += 1;
+        }
+        if id4.contains(&(BiomeId::Chaparral as u8)) || id4.contains(&(BiomeId::Steppe as u8)) {
+            forbidden_top4 += 1;
+        }
+    }
+    drop(ids);
+    drop(wts);
+
+    let dune = read_bin_f32(&g_a.path().join("dune_h_m.bin"), n).expect("dune_h_m");
+    let dune_cells = dune.iter().filter(|&&d| d > 0.0).count();
+    drop(dune);
+
+    println!(
+        "=== 4096^2 REPORT (seed=0x{:x}, elapsed={:.2}s) ===",
+        cfg.seed,
+        t0.elapsed().as_secs_f64()
+    );
+    println!("world_sha256_a:       {}", m_a.world_sha256);
+    println!("world_sha256_b:       {}", m_b.world_sha256);
+    println!("cave_network_sha256:  {}", m_a.cave_network_sha256);
+    println!("ocean_fraction:       {:.6}", m_a.stats.ocean_fraction);
+    println!(
+        "waterfalls:           count={}, min_drop={:.3}, min_plunge={:.3}, min_spacing={:.3}, caprock_bad={}, base_bad={}",
+        m_a.waterfalls.len(),
+        min_drop,
+        min_plunge,
+        min_spacing,
+        caprock_bad,
+        wf_base_bad
+    );
+    println!(
+        "lakes_c3:             lake_surface_fraction={:.6}, large_lakes={}, paramo_lakes={}, caldera_or_trough={}, small_paramo_ponds={}, severed_humid_spillways={}, unmodeled_micro_pits={}, endorheic_humid_fraction={:.6}, endorheic_land_fraction={:.6}",
+        m_a.stats.lake_surface_fraction,
+        large_lakes,
+        paramo_lakes,
+        caldera_or_trough,
+        small_paramo_ponds,
+        m_a.stats.severed_humid_spillways,
+        m_a.stats.unmodeled_micro_pits,
+        m_a.stats.endorheic_humid_fraction,
+        m_a.stats.endorheic_land_fraction
+    );
+    println!(
+        "rivers_caves:         river_surface_fraction={:.6}, cave_entrance_count={} (ANMC={})",
+        m_a.stats.river_surface_fraction,
+        m_a.stats.cave_entrance_count,
+        net.entrances.len()
+    );
+    println!(
+        "biomes_c1_c2:         ecotone_fraction={:.6}, non_cliff_jump_fraction={:.6}, chaparral={}, steppe={}, weight_sum_bad={}, forbidden_top4={}, dune_cells={}",
+        m_a.stats.ecotone_fraction,
+        m_a.stats.non_cliff_jump_fraction,
+        m_a.stats.biome_counts[BiomeId::Chaparral as usize],
+        m_a.stats.biome_counts[BiomeId::Steppe as usize],
+        weight_sum_bad,
+        forbidden_top4,
+        dune_cells
+    );
+    println!(
+        "ela_nival:            ela_min={:.2}, ela_max={:.2}, sub_ela_violations={}",
+        ela_min, ela_max, sub_ela_violations
+    );
+    for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
+        println!(
+            "  biome {:<11} count={}",
+            format!("{b:?}"),
+            m_a.stats.biome_counts[b as usize]
+        );
+    }
+
+    let mut violations: Vec<String> = Vec::new();
+    if !(0.40..=0.50).contains(&m_a.stats.ocean_fraction) {
+        violations.push(format!(
+            "ocean_fraction={} outside [0.40, 0.50]",
+            m_a.stats.ocean_fraction
+        ));
+    }
+    if !(20..=80).contains(&m_a.waterfalls.len()) {
+        violations.push(format!(
+            "waterfall_count={} outside 20..=80",
+            m_a.waterfalls.len()
+        ));
+    }
+    if !m_a.waterfalls.is_empty() && min_drop < 12.0 {
+        violations.push(format!("min_drop={min_drop} < 12.0"));
+    }
+    if !m_a.waterfalls.is_empty() && min_plunge <= 0.0 {
+        violations.push(format!("min_plunge={min_plunge} <= 0.0"));
+    }
+    if m_a.waterfalls.len() >= 2 && min_spacing < min_sp - 1e-2 {
+        violations.push(format!("min_spacing={min_spacing} < {min_sp}"));
+    }
+    if caprock_bad > 0 {
+        violations.push(format!("caprock_bad={caprock_bad} > 0"));
+    }
+    if wf_base_bad > 0 {
+        violations.push(format!("wf_base_bad={wf_base_bad} > 0"));
+    }
+    if !(0.008..=0.045).contains(&m_a.stats.lake_surface_fraction) {
+        violations.push(format!(
+            "lake_surface_fraction={} outside [0.008, 0.045]",
+            m_a.stats.lake_surface_fraction
+        ));
+    }
+    if large_lakes < 5 {
+        violations.push(format!("large_lakes={large_lakes} < 5"));
+    }
+    if paramo_lakes < 1 {
+        violations.push(format!("paramo_lakes={paramo_lakes} < 1"));
+    }
+    if caldera_or_trough < 1 {
+        violations.push(format!("caldera_or_trough={caldera_or_trough} < 1"));
+    }
+    if small_paramo_ponds < 10 {
+        violations.push(format!("small_paramo_ponds={small_paramo_ponds} < 10"));
+    }
+    if m_a.stats.severed_humid_spillways != 0 {
+        violations.push(format!(
+            "severed_humid_spillways={} != 0",
+            m_a.stats.severed_humid_spillways
+        ));
+    }
+    if m_a.stats.unmodeled_micro_pits != 0 {
+        violations.push(format!(
+            "unmodeled_micro_pits={} != 0",
+            m_a.stats.unmodeled_micro_pits
+        ));
+    }
+    if m_a.stats.endorheic_humid_fraction != 0.0 {
+        violations.push(format!(
+            "endorheic_humid_fraction={} != 0.0",
+            m_a.stats.endorheic_humid_fraction
+        ));
+    }
+    if m_a.stats.endorheic_land_fraction > 0.10 {
+        violations.push(format!(
+            "endorheic_land_fraction={} > 0.10",
+            m_a.stats.endorheic_land_fraction
+        ));
+    }
+    if !(0.0005..=0.0030).contains(&m_a.stats.river_surface_fraction) {
+        violations.push(format!(
+            "river_surface_fraction={} outside [0.0005, 0.0030]",
+            m_a.stats.river_surface_fraction
+        ));
+    }
+    if !(30..=48).contains(&net.entrances.len()) {
+        violations.push(format!(
+            "cave_entrance_count={} outside [30, 48]",
+            net.entrances.len()
+        ));
+    }
+    for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
+        let cnt = m_a.stats.biome_counts[b as usize];
+        if cnt < 2_500 {
+            violations.push(format!("biome {b:?} count={cnt} < 2500"));
+        }
+    }
+    if m_a.stats.biome_counts[BiomeId::Chaparral as usize] != 0 {
+        violations.push(format!(
+            "Chaparral count={} != 0",
+            m_a.stats.biome_counts[BiomeId::Chaparral as usize]
+        ));
+    }
+    if m_a.stats.biome_counts[BiomeId::Steppe as usize] != 0 {
+        violations.push(format!(
+            "Steppe count={} != 0",
+            m_a.stats.biome_counts[BiomeId::Steppe as usize]
+        ));
+    }
+    if weight_sum_bad != 0 {
+        violations.push(format!("weight_sum_bad={weight_sum_bad} != 0"));
+    }
+    if forbidden_top4 != 0 {
+        violations.push(format!("forbidden_top4={forbidden_top4} != 0"));
+    }
+    if !(0.15..=0.55).contains(&m_a.stats.ecotone_fraction) {
+        violations.push(format!(
+            "ecotone_fraction={} outside [0.15, 0.55]",
+            m_a.stats.ecotone_fraction
+        ));
+    }
+    if m_a.stats.non_cliff_jump_fraction >= 0.03 {
+        violations.push(format!(
+            "non_cliff_jump_fraction={} >= 0.03",
+            m_a.stats.non_cliff_jump_fraction
+        ));
+    }
+    if sub_ela_violations != 0 {
+        violations.push(format!("sub_ela_violations={sub_ela_violations} != 0"));
+    }
+    if dune_cells == 0 {
+        violations.push("dune_cells=0".to_owned());
+    }
+
+    assert!(
+        violations.is_empty(),
+        "4096^2 Card 3 invariant failure(s):\n  - {}",
+        violations.join("\n  - ")
+    );
     println!(
         "PASS full_4096 (world_sha256={}, waterfalls={}, caves={}) in {:.2}s",
-        meta.world_sha256,
-        meta.stats.waterfall_count,
+        m_a.world_sha256,
+        m_a.stats.waterfall_count,
         net.entrances.len(),
         t0.elapsed().as_secs_f64()
     );
@@ -274,10 +573,13 @@ fn verify_4096_full_pipeline() {
 
 fn main() {
     let include_4096 = std::env::args().any(|a| a == "--include-4096");
-    verify_card3_1024_sweep();
-    verify_biome_512_sweep();
-    verify_1024_rayon_invariance();
-    if include_4096 {
+    let only_4096 = std::env::args().any(|a| a == "--only-4096");
+    if !only_4096 {
+        verify_card3_1024_sweep();
+        verify_biome_512_sweep();
+        verify_1024_rayon_invariance();
+    }
+    if include_4096 || only_4096 {
         verify_4096_full_pipeline();
     }
 }

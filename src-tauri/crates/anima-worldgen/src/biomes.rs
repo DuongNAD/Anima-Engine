@@ -4,7 +4,9 @@
 //! and `slope <= 42°`, `moraine_debris`, and leeward Werner (1995) aeolian dunes (`~12°` stoss /
 //! `32–34°` slip face).
 
+use crate::rng::stage_rng;
 use crate::{BiomeId, WaterKind, BIOME_COUNT};
+use rand::Rng;
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -42,6 +44,10 @@ pub struct BiomeConfig {
     pub wind_dir: (f32, f32),
     /// Deterministic seed for stateless micro-ecotone warp and dune phase.
     pub seed: u64,
+    /// Schema tag passed into deterministic [`stage_rng`] derivation.
+    pub schema_tag: String,
+    /// Optional target grid size so multi-resolution runs share [`stage_rng`] seed derivation.
+    pub params_grid_size: Option<u32>,
 }
 
 impl Default for BiomeConfig {
@@ -56,6 +62,8 @@ impl Default for BiomeConfig {
             softmax_sharpness: 2.96,
             wind_dir: (1.0, 0.0),
             seed: 0x0057_5632_2026_1120,
+            schema_tag: "ANMW3-SNSM-v1".to_owned(),
+            params_grid_size: None,
         }
     }
 }
@@ -361,6 +369,13 @@ pub fn classify_biomes(
     let mut dune_h_m = vec![0.0_f32; n];
 
     let inv_dx2 = 1.0 / (cfg.dx_m * cfg.dx_m);
+    let rng_w = cfg.params_grid_size.unwrap_or(w as u32);
+    let rng_h = cfg.params_grid_size.unwrap_or(h as u32);
+    let mut biome_rng = stage_rng(cfg.seed, rng_w, rng_h, &cfg.schema_tag, "S8-BIOME");
+    let dune_seed: u64 = biome_rng.gen();
+    let warp_seed_1: u64 = biome_rng.gen();
+    let warp_seed_2: u64 = biome_rng.gen();
+    let warp_seed_3: u64 = biome_rng.gen();
 
     biome_ids
         .par_chunks_mut(w)
@@ -457,8 +472,8 @@ pub fn classify_biomes(
                             let lambda = 100.0_f32;
                             let h_peak = 16.0_f32;
                             let phi_crest = 0.75_f32; // stoss: 16/75 -> 12.0 deg; slip: 16/25 -> 32.6 deg
-                            let warp_s = 0.22
-                                * quintic_noise_2d(cfg.seed ^ 0xD04E, x_m / 240.0, z_m / 240.0);
+                            let warp_s =
+                                0.22 * quintic_noise_2d(dune_seed, x_m / 240.0, z_m / 240.0);
                             let s_coord = (x_m * w_ux + z_m * w_uz) / lambda + warp_s;
                             let phi = s_coord - libm::floorf(s_coord);
                             let h_raw = if phi < phi_crest {
@@ -513,9 +528,9 @@ pub fn classify_biomes(
                     let wl1 = 240.0_f32.max(8.0 * cfg.dx_m);
                     let wl2 = 110.0_f32.max(5.5 * cfg.dx_m);
                     let wl3 = 180.0_f32.max(7.0 * cfg.dx_m);
-                    let n1 = quintic_noise_2d(cfg.seed ^ 0xEC01, x_m / wl1, z_m / wl1);
-                    let n2 = quintic_noise_2d(cfg.seed ^ 0xEC02, x_m / wl2, z_m / wl2);
-                    let n3 = quintic_noise_2d(cfg.seed ^ 0xEC03, x_m / wl3, z_m / wl3);
+                    let n1 = quintic_noise_2d(warp_seed_1, x_m / wl1, z_m / wl1);
+                    let n2 = quintic_noise_2d(warp_seed_2, x_m / wl2, z_m / wl2);
+                    let n3 = quintic_noise_2d(warp_seed_3, x_m / wl3, z_m / wl3);
                     let h_w = h_m + warp_scale * (75.0 * n1 + 35.0 * n2);
                     let t_w = t_c - 0.0063 * (warp_scale * (75.0 * n1 + 35.0 * n2)) + 0.7 * n3;
                     let p_w = (p_m + warp_scale * 0.14 * n1).max(0.15);
@@ -549,11 +564,6 @@ pub fn classify_biomes(
                         + input.talus_frac[r * w + c_lt]
                         + input.talus_frac[r * w + c_rt])
                         / 6.0;
-                    // Compensate sub-grid micro-relief/moisture averaging on both ultra-fine
-                    // (`< 40 m`) and coarse (`> 40 m`, e.g. `512^2` @ `80 m`) grids while remaining
-                    // bit-identical at `1024^2` (`40 m`).
-                    let fine_grid_frac = (1.0 - cfg.dx_m / 40.0).clamp(0.0, 1.0);
-                    let coarse_grid_frac = ((cfg.dx_m - 40.0) / 40.0).clamp(0.0, 1.0);
                     let twi_eff = twi_soft + 1.55 * libm::logf((40.0_f32 / cfg.dx_m).max(1.0));
 
                     let mut ll = [f32::NEG_INFINITY; BIOME_COUNT];
@@ -730,21 +740,12 @@ pub fn classify_biomes(
                             + gauss_ll(t_w, 4.2, 3.0)
                             + gate_ll(al_gate);
 
-                        // 13. Bog (high-páramo cushion peatlands & gentle wet hollows 2,450..4,380 m).
-                        let coarse_wet_bog = coarse_grid_frac
-                            * smoothstep_c2(0.34, 0.56, moist_w)
-                            * smoothstep_c2(2_620.0, 3_050.0, h_w);
-                        let bg_gate = smoothstep_c2(2_450.0, 2_800.0, h_w)
-                            * smoothstep_c2(4_380.0, 4_020.0, h_w)
-                            * smoothstep_c2(
-                                36.0 + 3.0 * fine_grid_frac + 6.5 * coarse_wet_bog,
-                                22.0,
-                                slope_deg,
-                            )
-                            * smoothstep_c2(0.24 - 0.03 * fine_grid_frac, 0.36, moist_w);
+                        // 13. Bog (high-páramo cushion peatlands & gentle wet hollows, LD-5 3,300..4,800 m).
+                        let bg_gate = smoothstep_c2(3_300.0, 3_550.0, h_w)
+                            * smoothstep_c2(4_800.0, 4_450.0, h_w)
+                            * smoothstep_c2(36.0, 22.0, slope_deg)
+                            * smoothstep_c2(0.24, 0.36, moist_w);
                         ll[BiomeId::Bog as usize] = 4.52
-                            + 0.35 * fine_grid_frac
-                            + 0.90 * coarse_wet_bog
                             + 1.35 * smoothstep_c2(3.6, 6.6, twi_eff)
                             + 0.70 * smoothstep_c2(0.30, 0.50, moist_w)
                             + gate_ll(bg_gate);
@@ -1180,7 +1181,12 @@ mod tests {
                 .zip(sed.iter())
                 .map(|(&b, &s)| b + s)
                 .collect();
-            let s6_in = LakesFallsInput::from_hydrology(&hydro, &clim.precip_m_yr, &clim.pet_m_yr);
+            let s6_in = LakesFallsInput::from_hydrology(
+                &hydro,
+                &clim.precip_m_yr,
+                &clim.pet_m_yr,
+                &tect.lithology_id,
+            );
             let s6_cfg = LakesFallsConfig {
                 dx_m,
                 ..LakesFallsConfig::default()

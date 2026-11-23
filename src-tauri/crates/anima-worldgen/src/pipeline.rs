@@ -21,9 +21,7 @@ use crate::lakes_falls::{
     generate_lakes_and_waterfalls, LakeBasinRecord, LakesFallsConfig, LakesFallsError,
     LakesFallsInput, WaterfallRecord,
 };
-use crate::tectonic::{
-    generate_fine_s1_aux, generate_uplift_for_target, refine_fine_s1_knickpoints,
-};
+use crate::tectonic::{generate_fine_s1_aux, generate_uplift_for_target};
 use crate::{BiomeId, WaterKind, BIOME_COUNT};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -438,17 +436,65 @@ fn upsert_layer(layers: &mut Vec<LayerMeta>, meta: LayerMeta) {
     }
 }
 
-/// Runs the complete deterministic multigrid World v2 pipeline (`S1 -> S9`) and writes raw
-/// little-endian stage buffers, `cave_network.bin`, and `raw_meta.json` directly into `out_dir`.
+/// Runs the complete deterministic multigrid World v2 pipeline (`S1 -> S9`) using the default
+/// multigrid schedule and writes raw little-endian stage buffers, `cave_network.bin`, and
+/// `raw_meta.json` directly into `out_dir`.
 pub fn run_worldgen_to_dir(
     cfg: &WorldV2Config,
     out_dir: &Path,
 ) -> Result<RawWorldMeta, PipelineError> {
+    let schedule = compute_multigrid_schedule(cfg.grid_size);
+    run_worldgen_to_dir_with_schedule(cfg, out_dir, &schedule)
+}
+
+/// Runs the complete deterministic multigrid World v2 pipeline (`S1 -> S9`) using a caller-supplied
+/// multigrid schedule `[(grid_size, s2_steps), ...]` and writes raw stage buffers to `out_dir`.
+pub fn run_worldgen_to_dir_with_schedule(
+    cfg: &WorldV2Config,
+    out_dir: &Path,
+    schedule: &[(u32, usize)],
+) -> Result<RawWorldMeta, PipelineError> {
     cfg.validate()?;
+    if schedule.is_empty() {
+        return Err(PipelineError {
+            message: "multigrid schedule must not be empty".to_owned(),
+        });
+    }
+    let mut prev_lvl = 0_u32;
+    for &(lvl_u32, n_steps) in schedule {
+        if lvl_u32 < 64 || !lvl_u32.is_power_of_two() {
+            return Err(PipelineError {
+                message: format!(
+                    "multigrid schedule level size {lvl_u32} must be a power of two >= 64"
+                ),
+            });
+        }
+        if lvl_u32 <= prev_lvl {
+            return Err(PipelineError {
+                message: format!(
+                    "multigrid schedule level sizes must strictly increase ({prev_lvl} -> {lvl_u32})"
+                ),
+            });
+        }
+        if n_steps == 0 {
+            return Err(PipelineError {
+                message: format!("multigrid schedule level {lvl_u32} must have steps > 0"),
+            });
+        }
+        prev_lvl = lvl_u32;
+    }
+    if prev_lvl != cfg.grid_size {
+        return Err(PipelineError {
+            message: format!(
+                "multigrid schedule final size {prev_lvl} must match cfg.grid_size {}",
+                cfg.grid_size
+            ),
+        });
+    }
+
     std::fs::create_dir_all(out_dir)?;
 
     let target_size = cfg.grid_size;
-    let schedule = compute_multigrid_schedule(target_size);
 
     // -------------------------------------------------------------------------
     // Multigrid S1 + S2/S3 with 2-pass S7 coupling
@@ -481,11 +527,7 @@ pub fn run_worldgen_to_dir(
             drop(cur_sediment);
             cur_sediment = up_sed;
 
-            let (uu, mut lid) = generate_fine_s1_aux(&lvl_cfg, &cur_bedrock, target_size)?;
-            if lvl_u32 >= 1024 {
-                refine_fine_s1_knickpoints(&lvl_cfg, &mut cur_bedrock, &mut lid, target_size);
-            }
-            (uu, lid)
+            generate_fine_s1_aux(&lvl_cfg, &cur_bedrock, target_size)?
         };
         cur_size = lvl;
         for u in &mut uplift_u {
@@ -525,7 +567,7 @@ pub fn run_worldgen_to_dir(
 
         let mut precip_for_s2: Vec<f32>;
         let talus_frac_out = if schedule.len() == 1 {
-            let clim_cfg = ClimateConfig::for_world(&lvl_cfg);
+            let clim_cfg = ClimateConfig::for_world_with_target(&lvl_cfg, target_size);
             let total_tmp: Vec<f32> = cur_bedrock
                 .iter()
                 .zip(cur_sediment.iter())
@@ -633,8 +675,8 @@ pub fn run_worldgen_to_dir(
             drop(scratch2);
             Vec::new()
         } else {
-            if lvl_u32 == 512 {
-                let clim_cfg = ClimateConfig::for_world(&lvl_cfg);
+            if level_idx == 0 {
+                let clim_cfg = ClimateConfig::for_world_with_target(&lvl_cfg, target_size);
                 let total_tmp: Vec<f32> = cur_bedrock
                     .iter()
                     .zip(cur_sediment.iter())
@@ -643,8 +685,8 @@ pub fn run_worldgen_to_dir(
                 let clim1 = compute_climate(&total_tmp, lvl, lvl, None, &clim_cfg)?;
                 drop(total_tmp);
                 precip_for_s2 = clim1.precip_m_yr;
-            } else if lvl_u32 == 1024 {
-                let clim_cfg = ClimateConfig::for_world(&lvl_cfg);
+            } else if level_idx == 1 {
+                let clim_cfg = ClimateConfig::for_world_with_target(&lvl_cfg, target_size);
                 let total_tmp: Vec<f32> = cur_bedrock
                     .iter()
                     .zip(cur_sediment.iter())
@@ -688,7 +730,7 @@ pub fn run_worldgen_to_dir(
             } else if let Some((cw, ref cp)) = cached_clim_precip {
                 precip_for_s2 = upsample_bilinear(cp, cw, cw, lvl, lvl);
             } else {
-                let clim_cfg = ClimateConfig::for_world(&lvl_cfg);
+                let clim_cfg = ClimateConfig::for_world_with_target(&lvl_cfg, target_size);
                 let total_tmp: Vec<f32> = cur_bedrock
                     .iter()
                     .zip(cur_sediment.iter())
@@ -817,7 +859,7 @@ pub fn run_worldgen_to_dir(
             // S7 Pass 1 at target N^2 (`total_h` = 64 MiB -> peak ~452 MiB)
             // -----------------------------------------------------------------
             let target_dx = cfg.cell_size_m();
-            let clim_cfg = ClimateConfig::for_world(cfg);
+            let clim_cfg = ClimateConfig::for_world_with_target(cfg, target_size);
             let clim1 = compute_climate(&total_h, lvl, lvl, None, &clim_cfg)?;
             let wind_azimuth_rad = clim1.wind_azimuth_rad;
             upsert_layer(
@@ -1030,10 +1072,11 @@ pub fn run_worldgen_to_dir(
             let mut total_h = bedrock_h;
 
             // -----------------------------------------------------------------
-            // S6 Lakes & Waterfalls (reload precip + pet -> peak ~784 MiB)
+            // S6 Lakes & Waterfalls (reload precip + pet + lithology_id -> peak ~800 MiB)
             // -----------------------------------------------------------------
             let precip_m_yr = read_bin_f32(&out_dir.join("precip_m_yr.bin"), lvl_n)?;
             let pet_m_yr = read_bin_f32(&out_dir.join("pet_m_yr.bin"), lvl_n)?;
+            let lithology_id = read_bin_u8(&out_dir.join("lithology_id.bin"), lvl_n)?;
             let s6_in = LakesFallsInput {
                 width: lvl,
                 height: lvl,
@@ -1042,6 +1085,7 @@ pub fn run_worldgen_to_dir(
                 discharge_q_m3_s: &hydro.discharge_q_m3_s,
                 river_w_m: &hydro.river_w_m,
                 is_channel: &hydro.is_channel,
+                lithology_id: &lithology_id,
             };
             let s6_cfg = LakesFallsConfig {
                 dx_m: target_dx,
@@ -1139,8 +1183,7 @@ pub fn run_worldgen_to_dir(
             );
 
             // Compute C4 river_surface_fraction before dropping hydro.is_channel.
-            // Include active S5 channels (`rw >= 0.5`) plus S4-widened meander/delta river
-            // surfaces (`!is_ch && wk == River`).
+            // Count only active S5 channel cells (`is_ch && rw >= 0.5`).
             let mut river_amt_sum = 0.0_f64;
             for ((&wk, &is_ch), &rw) in water_kind
                 .iter()
@@ -1155,9 +1198,6 @@ pub fn run_worldgen_to_dir(
                 }
                 if is_ch && rw >= 0.5 {
                     river_amt_sum += f64::from((rw / target_dx).clamp(0.0, 1.0));
-                } else if !is_ch && wk == WaterKind::River as u8 {
-                    river_amt_sum +=
-                        f64::from((rw.max(0.8 * target_dx) / target_dx).clamp(0.0, 1.0));
                 }
             }
             let river_surface_fraction = (river_amt_sum / (lvl_n as f64)) as f32;
@@ -1176,7 +1216,6 @@ pub fn run_worldgen_to_dir(
             let ela_m = read_bin_f32(&out_dir.join("ela_m.bin"), lvl_n)?;
             let alluvial_mask = read_bin_f32(&out_dir.join("alluvial_mask.bin"), lvl_n)?;
             let talus_frac = read_bin_f32(&out_dir.join("talus_frac.bin"), lvl_n)?;
-            let lithology_id = read_bin_u8(&out_dir.join("lithology_id.bin"), lvl_n)?;
 
             let b_in = BiomeInput {
                 width: lvl,
@@ -1198,6 +1237,8 @@ pub fn run_worldgen_to_dir(
                 dx_m: target_dx,
                 wind_dir: (libm::cosf(wind_azimuth_rad), libm::sinf(wind_azimuth_rad)),
                 seed: cfg.seed,
+                schema_tag: cfg.schema_tag.clone(),
+                params_grid_size: Some(target_size),
                 ..BiomeConfig::default()
             };
             let bf = classify_biomes(&b_in, &b_cfg)?;

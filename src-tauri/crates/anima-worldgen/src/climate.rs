@@ -30,6 +30,8 @@ impl std::error::Error for ClimateError {}
 pub struct ClimateConfig {
     pub seed: u64,
     pub schema_tag: String,
+    /// Optional target-resolution grid size so coarse multigrid levels share the target RNG seed.
+    pub params_grid_size: Option<u32>,
     /// Full-grid cell spacing in metres (`10.0` at `4096^2`).
     pub dx_m: f32,
     pub sea_level_m: f32,
@@ -68,6 +70,7 @@ impl Default for ClimateConfig {
         Self {
             seed: 0x0057_5632_2026_1120,
             schema_tag: "ANMW3-SNSM-v1".to_owned(),
+            params_grid_size: None,
             dx_m: 10.0,
             sea_level_m: SEA_LEVEL_M,
             latitude_deg: 11.0,
@@ -92,9 +95,16 @@ impl ClimateConfig {
     /// Creates a [`ClimateConfig`] bound to a [`WorldV2Config`].
     #[must_use]
     pub fn for_world(cfg: &WorldV2Config) -> Self {
+        Self::for_world_with_target(cfg, cfg.grid_size)
+    }
+
+    /// Creates a [`ClimateConfig`] bound to `cfg` while pinning RNG domain separation to `target_size`.
+    #[must_use]
+    pub fn for_world_with_target(cfg: &WorldV2Config, target_size: u32) -> Self {
         Self {
             seed: cfg.seed,
             schema_tag: cfg.schema_tag.clone(),
+            params_grid_size: Some(target_size),
             dx_m: cfg.cell_size_m(),
             ..Self::default()
         }
@@ -105,6 +115,11 @@ impl ClimateConfig {
         let err = |msg: &str| ClimateError {
             message: msg.to_owned(),
         };
+        if let Some(sz) = self.params_grid_size {
+            if sz == 0 {
+                return Err(err("params_grid_size must be > 0"));
+            }
+        }
         if !self.dx_m.is_finite() || self.dx_m <= 0.0 {
             return Err(err("dx_m must be finite and > 0"));
         }
@@ -415,13 +430,9 @@ pub fn compute_climate(
         }
     }
 
-    let mut rng = stage_rng(
-        cfg.seed,
-        width as u32,
-        height as u32,
-        &cfg.schema_tag,
-        "S7-CLIM",
-    );
+    let rng_w = cfg.params_grid_size.unwrap_or(width as u32);
+    let rng_h = cfg.params_grid_size.unwrap_or(height as u32);
+    let mut rng = stage_rng(cfg.seed, rng_w, rng_h, &cfg.schema_tag, "S7-CLIM");
     // Single regional onshore wind azimuth in [-14 deg, +14 deg] Eastward (u_x > 0.97).
     let wind_azimuth_rad: f32 = rng.gen_range(-0.24_f32..0.24_f32);
     let u0_x = libm::cosf(wind_azimuth_rad);
@@ -1242,5 +1253,27 @@ mod tests {
             100.0
         )
         .is_err());
+    }
+
+    #[test]
+    fn wind_azimuth_is_invariant_across_multigrid_level_sizes() {
+        let target_cfg = WorldV2Config::for_size(0x5756_3201, 4096);
+        let mut expected_bits: Option<u32> = None;
+        for &sz in &[64_u32, 128, 256] {
+            let mut lvl_cfg = target_cfg.clone();
+            lvl_cfg.grid_size = sz;
+            let clim_cfg = ClimateConfig::for_world_with_target(&lvl_cfg, 4096);
+            let n = sz as usize;
+            let elev = vec![100.0_f32; n * n];
+            let clim = compute_climate(&elev, n, n, None, &clim_cfg).expect("climate");
+            match expected_bits {
+                None => expected_bits = Some(clim.wind_azimuth_rad.to_bits()),
+                Some(prev) => assert_eq!(
+                    clim.wind_azimuth_rad.to_bits(),
+                    prev,
+                    "wind_azimuth_rad drifted at grid size {sz}"
+                ),
+            }
+        }
     }
 }

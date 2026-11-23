@@ -94,7 +94,7 @@ impl Default for DepositionConfig {
             delta_max_mouths: 4,
             paramo_min_elev_m: 3_300.0,
             paramo_max_slope: 0.035,
-            target_micro_ponds: 18,
+            target_micro_ponds: 0,
         }
     }
 }
@@ -238,30 +238,6 @@ fn steepest_downstream(
         }
     }
     best_nb
-}
-
-fn local_slope_tan(
-    bedrock_h: &[f32],
-    sediment_s: &[f32],
-    w: usize,
-    h: usize,
-    r: usize,
-    c: usize,
-    dx: f32,
-) -> f32 {
-    let c_lo = c.saturating_sub(1);
-    let c_hi = (c + 1).min(w - 1);
-    let r_lo = r.saturating_sub(1);
-    let r_hi = (r + 1).min(h - 1);
-    let dx_span = ((c_hi - c_lo).max(1) as f32) * dx;
-    let dz_span = ((r_hi - r_lo).max(1) as f32) * dx;
-    let hx = (total_elev(bedrock_h, sediment_s, r * w + c_hi)
-        - total_elev(bedrock_h, sediment_s, r * w + c_lo))
-        / dx_span;
-    let hz = (total_elev(bedrock_h, sediment_s, r_hi * w + c)
-        - total_elev(bedrock_h, sediment_s, r_lo * w + c))
-        / dz_span;
-    libm::hypotf(hx, hz)
 }
 
 struct DiskStamp {
@@ -1112,122 +1088,6 @@ pub fn apply_deposition(
         }
     }
 
-    // -------------------------------------------------------------------------
-    // 4. Upland Flat-Slope Braided Micro-Ponds (`AER-08`, > 3,300 m, S < 0.035)
-    // -------------------------------------------------------------------------
-    let mut pond_rng = stage_rng(cfg.seed, w as u32, h as u32, &cfg.schema_tag, "S4-POND");
-    let mut upland_cands: Vec<u32> = Vec::new();
-    for r in 3..(h - 3) {
-        for c in 3..(w - 3) {
-            let idx = r * w + c;
-            let e = total_elev(bedrock_h, sediment_s, idx);
-            if e <= cfg.paramo_min_elev_m || water_kind[idx] != WaterKind::None as u8 {
-                continue;
-            }
-            let s = local_slope_tan(bedrock_h, sediment_s, w, h, r, c, cfg.dx_m);
-            if s < cfg.paramo_max_slope {
-                upland_cands.push(idx as u32);
-            }
-        }
-    }
-
-    let mut micro_pond_count = 0usize;
-    let mut pond_centers: Vec<(usize, usize)> = Vec::new();
-    if !upland_cands.is_empty() {
-        // Adapt minimum spacing so small synthetic test grids still place >= 10 ponds.
-        let min_sp_cells =
-            ((upland_cands.len() as f32 / (cfg.target_micro_ponds.max(1) as f32 * 2.5)).sqrt())
-                .clamp(3.0, 10.0);
-        let min_sp_sq = min_sp_cells * min_sp_cells;
-
-        // Deterministic stride shuffle using pond_rng.
-        let cand_len = upland_cands.len();
-        for i in 0..cand_len.min(cfg.target_micro_ponds * 20) {
-            if micro_pond_count >= cfg.target_micro_ponds {
-                break;
-            }
-            let pick = pond_rng.gen_range(0..cand_len);
-            let idx = upland_cands[(pick + i) % cand_len] as usize;
-            let pr = idx / w;
-            let pc = idx % w;
-            let too_close = pond_centers.iter().any(|&(ar, ac)| {
-                let dr = pr as f32 - ar as f32;
-                let dc = pc as f32 - ac as f32;
-                dr * dr + dc * dc < min_sp_sq
-            });
-            if too_close {
-                continue;
-            }
-            let rad = pond_rng.gen_range(1.6_f32..2.8_f32);
-            let phase = pond_rng.gen_range(0.0_f32..std::f32::consts::TAU);
-            let depth = pond_rng.gen_range(0.85_f32..1.75_f32);
-            let r_lim = (rad + 2.0).ceil() as isize;
-
-            let mut interior: Vec<(usize, f32)> = Vec::new();
-            let mut min_rim_e = f32::INFINITY;
-            for dr in -r_lim..=r_lim {
-                for dc in -r_lim..=r_lim {
-                    let nr = pr as isize + dr;
-                    let nc = pc as isize + dc;
-                    if nr < 1 || nc < 1 || nr >= (h - 1) as isize || nc >= (w - 1) as isize {
-                        continue;
-                    }
-                    let dist = libm::hypotf(dr as f32, dc as f32);
-                    let theta = libm::atan2f(dr as f32, dc as f32);
-                    let r_eff = rad
-                        * (1.0
-                            + 0.25 * libm::sinf(3.0 * theta + phase)
-                            + 0.12 * libm::cosf(5.0 * theta - phase));
-                    let nb = nr as usize * w + nc as usize;
-                    if dist <= r_eff {
-                        interior.push((nb, dist / r_eff.max(0.5)));
-                    } else if dist <= r_eff + 1.5 {
-                        min_rim_e = min_rim_e.min(total_elev(bedrock_h, sediment_s, nb));
-                    }
-                }
-            }
-            if interior.len() < 4 || !min_rim_e.is_finite() {
-                continue;
-            }
-            let pond_water_h = min_rim_e - 0.05;
-            for (nb, frac) in interior {
-                let target_bed = min_rim_e - 0.65 - (depth - 0.65).max(0.2) * (1.0 - 0.5 * frac);
-                let cur_e = total_elev(bedrock_h, sediment_s, nb);
-                if cur_e > target_bed {
-                    let cut = cur_e - target_bed;
-                    if sediment_s[nb] >= cut {
-                        sediment_s[nb] -= cut;
-                    } else {
-                        let rem = cut - sediment_s[nb].max(0.0);
-                        sediment_s[nb] = 0.0;
-                        bedrock_h[nb] -= rem;
-                    }
-                }
-                water_kind[nb] = WaterKind::FreshwaterLake as u8;
-                water_h_m[nb] = pond_water_h;
-            }
-            // Link to previous nearby pond with shallow anastomosing braid.
-            if let Some(&(prev_r, prev_c)) = pond_centers.last() {
-                let d_prev = libm::hypotf(pr as f32 - prev_r as f32, pc as f32 - prev_c as f32);
-                if d_prev <= 20.0 {
-                    let steps = d_prev.ceil() as usize;
-                    for s in 1..steps {
-                        let t = s as f32 / steps as f32;
-                        let lr = (prev_r as f32 + t * (pr as f32 - prev_r as f32)).round() as usize;
-                        let lc = (prev_c as f32 + t * (pc as f32 - prev_c as f32)).round() as usize;
-                        let nb = lr * w + lc;
-                        if water_kind[nb] == WaterKind::None as u8 {
-                            water_kind[nb] = WaterKind::River as u8;
-                            water_h_m[nb] = total_elev(bedrock_h, sediment_s, nb) + 0.2;
-                        }
-                    }
-                }
-            }
-            pond_centers.push((pr, pc));
-            micro_pond_count += 1;
-        }
-    }
-
     Ok(DepositionField {
         width: w,
         height: h,
@@ -1238,7 +1098,7 @@ pub fn apply_deposition(
         meander_reach_count,
         oxbow_count,
         delta_count,
-        micro_pond_count,
+        micro_pond_count: 0,
     })
 }
 
@@ -1620,7 +1480,7 @@ mod tests {
     }
 
     #[test]
-    fn upland_braided_micro_ponds_above_3300m() {
+    fn deposition_does_not_stamp_synthetic_upland_micro_ponds() {
         let n = 64;
         let dx_m = 10.0_f32;
         let mut bedrock = vec![3_600.0_f32; n * n];
@@ -1654,9 +1514,9 @@ mod tests {
         };
         let cfg = DepositionConfig {
             dx_m,
-            target_micro_ponds: 16,
             ..DepositionConfig::default()
         };
+        assert_eq!(cfg.target_micro_ponds, 0);
         let field = apply_deposition(
             &mut bedrock,
             &mut sed,
@@ -1665,18 +1525,15 @@ mod tests {
             &input,
             &cfg,
         )
-        .expect("ponds");
+        .expect("deposition");
 
-        assert!(
-            field.micro_pond_count >= 10,
-            "expected >= 10 upland micro-ponds"
-        );
-        assert!(water_kind.contains(&(WaterKind::FreshwaterLake as u8)));
+        assert_eq!(field.micro_pond_count, 0);
+        assert!(!water_kind.contains(&(WaterKind::FreshwaterLake as u8)));
     }
 
     #[test]
-    fn s4_to_s6_chain_preserves_coherent_ponds_and_step4_cutoff_scrolls() {
-        // 1. Upland micro-ponds chained from S4 -> S6 leave zero FreshwaterLake cells with lake_id == 0.
+    fn s4_to_s6_chain_preserves_coherent_basins_and_step4_cutoff_scrolls() {
+        // 1. Pre-existing upland depression chained from S4 -> S6 leaves zero FreshwaterLake cells with lake_id == 0.
         let n = 64;
         let dx_m = 10.0_f32;
         let mut bedrock = vec![0.0_f32; n * n];
@@ -1697,7 +1554,9 @@ mod tests {
                     bedrock[idx] = -5.0;
                     sed[idx] = 0.0;
                 } else {
-                    bedrock[idx] = 3_550.0 + c as f32 * 0.08;
+                    let d = libm::hypotf(r as f32 - 32.0, c as f32 - 32.0);
+                    bedrock[idx] =
+                        3_560.0 + c as f32 * 0.08 - 18.0 * libm::expf(-(d / 7.0) * (d / 7.0));
                 }
                 water_h[idx] = bedrock[idx] + sed[idx];
             }
@@ -1715,7 +1574,6 @@ mod tests {
         };
         let s4_cfg = DepositionConfig {
             dx_m,
-            target_micro_ponds: 8,
             ..DepositionConfig::default()
         };
         let s4 = apply_deposition(
@@ -1726,8 +1584,8 @@ mod tests {
             &s4_in,
             &s4_cfg,
         )
-        .expect("s4 ponds");
-        assert!(s4.micro_pond_count >= 4);
+        .expect("s4");
+        assert_eq!(s4.micro_pond_count, 0);
 
         let mut total_e: Vec<f32> = bedrock
             .iter()
@@ -1736,6 +1594,7 @@ mod tests {
             .collect();
         let precip = vec![2.2_f32; n * n];
         let pet = vec![0.6_f32; n * n];
+        let lith = vec![crate::tectonic::LithologyClass::GraniteCrystalline as u8; n * n];
         let s6_in = crate::lakes_falls::LakesFallsInput {
             width: n,
             height: n,
@@ -1744,6 +1603,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let s6 = crate::lakes_falls::generate_lakes_and_waterfalls(
             &mut total_e,

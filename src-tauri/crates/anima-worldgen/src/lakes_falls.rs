@@ -4,6 +4,7 @@
 //! Seidl 1994`).
 
 use crate::hydrology::{HydrologyField, NO_RECEIVER, SECONDS_PER_YEAR};
+use crate::tectonic::LithologyClass;
 use crate::WaterKind;
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque};
@@ -94,6 +95,7 @@ pub struct LakesFallsInput<'a> {
     pub discharge_q_m3_s: &'a [f32],
     pub river_w_m: &'a [f32],
     pub is_channel: &'a [bool],
+    pub lithology_id: &'a [u8],
 }
 
 impl<'a> LakesFallsInput<'a> {
@@ -103,6 +105,7 @@ impl<'a> LakesFallsInput<'a> {
         hydro: &'a HydrologyField,
         precip_m_yr: &'a [f32],
         pet_m_yr: &'a [f32],
+        lithology_id: &'a [u8],
     ) -> Self {
         Self {
             width: hydro.width,
@@ -112,6 +115,7 @@ impl<'a> LakesFallsInput<'a> {
             discharge_q_m3_s: &hydro.discharge_q_m3_s,
             river_w_m: &hydro.river_w_m,
             is_channel: &hydro.is_channel,
+            lithology_id,
         }
     }
 }
@@ -261,25 +265,6 @@ fn suppress_subtree_descendants(nodes: &[DepNode], root: u32, suppressed: &mut [
     }
 }
 
-fn has_any_humid_submerged(
-    cells: &[u32],
-    elev_m: &[f32],
-    level_m: f32,
-    precip_m_yr: &[f32],
-    pet_m_yr: &[f32],
-) -> bool {
-    for &c in cells {
-        let cu = c as usize;
-        if elev_m[cu] <= level_m {
-            let pet_c = pet_m_yr[cu].max(0.05);
-            if (precip_m_yr[cu] / pet_c) >= 0.5 {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 fn pick_receiving_child(
     nodes: &[DepNode],
     own_pool: &[(u32, u32)],
@@ -322,7 +307,7 @@ fn pick_receiving_child(
 }
 
 fn solve_equilibrium_level(
-    elev_prefix_pet: &[(f32, f64)],
+    elev_prefix_pet: &[(f32, f64, u32)],
     min_level_m: f32,
     spill_elev_m: f32,
     q_in_m3_yr: f64,
@@ -335,7 +320,7 @@ fn solve_equilibrium_level(
         return min_level_m;
     }
     let evap_at = |level: f32| -> f64 {
-        let idx = elev_prefix_pet.partition_point(|&(h, _)| h <= level);
+        let idx = elev_prefix_pet.partition_point(|&(h, _, _)| h <= level);
         if idx == 0 {
             0.0
         } else {
@@ -447,6 +432,7 @@ pub fn generate_lakes_and_waterfalls(
         || input.discharge_q_m3_s.len() != n
         || input.river_w_m.len() != n
         || input.is_channel.len() != n
+        || input.lithology_id.len() != n
     {
         return Err(LakesFallsError {
             message: "input slice lengths do not match grid dimensions".to_owned(),
@@ -767,7 +753,6 @@ pub fn generate_lakes_and_waterfalls(
         nodes: &'a [DepNode],
         own_pool: &'a [(u32, u32)],
         elev_m: &'a [f32],
-        precip_m_yr: &'a [f32],
         pet_m_yr: &'a [f32],
         cell_area_m2: f64,
         w: usize,
@@ -778,7 +763,7 @@ pub fn generate_lakes_and_waterfalls(
         pending: Vec<PendingLake>,
         pending_idx: Vec<u32>,
         scratch_cells: Vec<u32>,
-        scratch_elev_pet: Vec<(f32, f64)>,
+        scratch_elev_pet: Vec<(f32, f64, u32)>,
     }
 
     impl<'a> FsmState<'a> {
@@ -794,28 +779,17 @@ pub fn generate_lakes_and_waterfalls(
             }
         }
 
-        fn evap_to_sill(&mut self, u: u32, spill: f32) -> (f64, f64, f64) {
+        fn evap_to_sill(&mut self, u: u32, spill: f32) -> f64 {
             self.scratch_cells.clear();
             collect_subtree_cells(self.nodes, self.own_pool, u, &mut self.scratch_cells);
-            let mut cnt_below = 0usize;
             let mut pet_below = 0.0_f64;
-            let mut p_below = 0.0_f64;
             for &c in &self.scratch_cells {
                 let cu = c as usize;
                 if self.elev_m[cu] <= spill {
-                    cnt_below += 1;
                     pet_below += f64::from(self.pet_m_yr[cu]).max(0.05);
-                    p_below += f64::from(self.precip_m_yr[cu]);
                 }
             }
-            if cnt_below == 0 {
-                return (0.0, 0.05, 0.0);
-            }
-            let denom = cnt_below as f64;
-            let mean_pet = (pet_below / denom).max(0.05);
-            let mean_p = p_below / denom;
-            let evap = pet_below * self.cell_area_m2;
-            (evap, mean_pet, mean_p)
+            pet_below * self.cell_area_m2
         }
 
         fn evaluate_basin(&mut self, u: u32, q_total: f64) {
@@ -839,8 +813,7 @@ pub fn generate_lakes_and_waterfalls(
                 return;
             }
             let min_level = floor_m.clamp(self.nodes[u as usize].pit_elev_m, spill);
-            let (evap_full, mean_pet, mean_p) = self.evap_to_sill(u, spill);
-            let is_humid_mean = (mean_p / mean_pet) >= 0.5;
+            let evap_full = self.evap_to_sill(u, spill);
             let q_pos = q_total.max(0.0);
 
             if q_pos > evap_full {
@@ -855,19 +828,6 @@ pub fn generate_lakes_and_waterfalls(
                     q_out_m3_yr: ex,
                     spills_into_sib: None,
                 });
-            } else if is_humid_mean {
-                // Humid zones (P/PET >= 0.5) never form permanent EndorheicLake salt pans.
-                self.filled_to_sill[u as usize] = true;
-                let seasonal_out = (q_pos * 0.15).max(100.0);
-                self.excess_q[u as usize] = seasonal_out;
-                self.upsert_pending(PendingLake {
-                    node_idx: u,
-                    water_level_m: spill,
-                    is_endorheic: false,
-                    q_in_m3_yr: q_pos,
-                    q_out_m3_yr: seasonal_out,
-                    spills_into_sib: None,
-                });
             } else {
                 self.scratch_elev_pet.clear();
                 for &c in &self.scratch_cells {
@@ -875,15 +835,15 @@ pub fn generate_lakes_and_waterfalls(
                     let hc = self.elev_m[cu];
                     if hc <= spill {
                         self.scratch_elev_pet
-                            .push((hc, f64::from(self.pet_m_yr[cu]).max(0.05)));
+                            .push((hc, f64::from(self.pet_m_yr[cu]).max(0.05), c));
                     }
                 }
                 self.scratch_elev_pet
-                    .sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+                    .sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.2.cmp(&b.2)));
                 let mut running = 0.0_f64;
-                for pair in &mut self.scratch_elev_pet {
-                    running += pair.1;
-                    pair.1 = running;
+                for entry in &mut self.scratch_elev_pet {
+                    running += entry.1;
+                    entry.1 = running;
                 }
                 let h_eq = solve_equilibrium_level(
                     &self.scratch_elev_pet,
@@ -892,35 +852,14 @@ pub fn generate_lakes_and_waterfalls(
                     q_pos,
                     self.cell_area_m2,
                 );
-                if has_any_humid_submerged(
-                    &self.scratch_cells,
-                    self.elev_m,
-                    h_eq,
-                    self.precip_m_yr,
-                    self.pet_m_yr,
-                ) {
-                    // Transition-zone basin intersecting humid cells (P/PET >= 0.5) is treated as humid.
-                    self.filled_to_sill[u as usize] = true;
-                    let seasonal_out = (q_pos * 0.15).max(100.0);
-                    self.excess_q[u as usize] = seasonal_out;
-                    self.upsert_pending(PendingLake {
-                        node_idx: u,
-                        water_level_m: spill,
-                        is_endorheic: false,
-                        q_in_m3_yr: q_pos,
-                        q_out_m3_yr: seasonal_out,
-                        spills_into_sib: None,
-                    });
-                } else {
-                    self.upsert_pending(PendingLake {
-                        node_idx: u,
-                        water_level_m: h_eq,
-                        is_endorheic: true,
-                        q_in_m3_yr: q_pos,
-                        q_out_m3_yr: 0.0,
-                        spills_into_sib: None,
-                    });
-                }
+                self.upsert_pending(PendingLake {
+                    node_idx: u,
+                    water_level_m: h_eq,
+                    is_endorheic: true,
+                    q_in_m3_yr: q_pos,
+                    q_out_m3_yr: 0.0,
+                    spills_into_sib: None,
+                });
             }
         }
 
@@ -945,7 +884,7 @@ pub fn generate_lakes_and_waterfalls(
             } else if fa ^ fb {
                 let (_full_c, empty_c) = if fa { (a, b) } else { (b, a) };
                 let s_inner = self.nodes[empty_c as usize].spill_elev_m;
-                let (evap_empty, _, _) = self.evap_to_sill(empty_c, s_inner);
+                let evap_empty = self.evap_to_sill(empty_c, s_inner);
                 if self.absorbed_q[empty_c as usize] + q_spill <= evap_empty {
                     self.route_spill_into_subtree(empty_c, q_spill, entry_outlet_cell);
                     if self.filled_to_sill[empty_c as usize] {
@@ -984,13 +923,13 @@ pub fn generate_lakes_and_waterfalls(
                 &mut self.scratch_cells,
             );
             let s_inner = self.nodes[recv_c as usize].spill_elev_m;
-            let (evap_recv, _, _) = self.evap_to_sill(recv_c, s_inner);
+            let evap_recv = self.evap_to_sill(recv_c, s_inner);
             let q_recv_new = self.absorbed_q[recv_c as usize] + q_in;
             if q_recv_new <= evap_recv {
                 self.route_spill_into_subtree(recv_c, q_in, entry_outlet_cell);
                 if self.filled_to_sill[recv_c as usize] {
                     let excess = self.excess_q[recv_c as usize];
-                    let (evap_other, _, _) = self.evap_to_sill(other_c, s_inner);
+                    let evap_other = self.evap_to_sill(other_c, s_inner);
                     if self.absorbed_q[other_c as usize] + excess <= evap_other
                         && !self.filled_to_sill[other_c as usize]
                     {
@@ -1019,7 +958,7 @@ pub fn generate_lakes_and_waterfalls(
                 }
             } else {
                 let excess = q_recv_new - evap_recv;
-                let (evap_other, _, _) = self.evap_to_sill(other_c, s_inner);
+                let evap_other = self.evap_to_sill(other_c, s_inner);
                 if self.absorbed_q[other_c as usize] + excess <= evap_other
                     && !self.filled_to_sill[other_c as usize]
                 {
@@ -1057,7 +996,6 @@ pub fn generate_lakes_and_waterfalls(
         nodes: &nodes,
         own_pool: &own_pool,
         elev_m,
-        precip_m_yr: input.precip_m_yr,
         pet_m_yr: input.pet_m_yr,
         cell_area_m2,
         w,
@@ -1083,7 +1021,7 @@ pub fn generate_lakes_and_waterfalls(
             } else if fa ^ fb {
                 let (full_c, empty_c) = if fa { (a, b) } else { (b, a) };
                 let sib_spill = nodes[empty_c as usize].spill_elev_m;
-                let (evap_sib, _, _) = fsm.evap_to_sill(empty_c, sib_spill);
+                let evap_sib = fsm.evap_to_sill(empty_c, sib_spill);
                 let excess = fsm.excess_q[full_c as usize];
                 let q_into_sib = excess + node_inflow_m3_yr[u];
                 let q_sib_new = fsm.absorbed_q[empty_c as usize] + q_into_sib;
@@ -1641,7 +1579,10 @@ pub fn generate_lakes_and_waterfalls(
             }
             let active_stream = input.is_channel[idx] || water_kind[idx] == WaterKind::River as u8;
             let q = input.discharge_q_m3_s[idx];
-            if !active_stream || q < cfg.waterfall_min_q_m3_s {
+            if !active_stream
+                || q < cfg.waterfall_min_q_m3_s
+                || input.lithology_id[idx] != LithologyClass::SandstoneCaprock as u8
+            {
                 continue;
             }
 
@@ -1909,6 +1850,7 @@ mod tests {
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
 
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -1917,6 +1859,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let cfg = LakesFallsConfig {
             dx_m: 10.0,
@@ -1959,6 +1902,7 @@ mod tests {
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
 
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -1967,6 +1911,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let cfg = LakesFallsConfig {
             dx_m: 10.0,
@@ -2036,6 +1981,7 @@ mod tests {
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
 
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -2044,6 +1990,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let elev_before = elev.clone();
         let cfg = LakesFallsConfig::default();
@@ -2137,6 +2084,9 @@ mod tests {
         let mut water_kind = vec![0_u8; n * n];
         let precip = vec![2.5_f32; n * n];
         let pet = vec![1.2_f32; n * n];
+        let mut lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
+        lith[32 * n + 19] = LithologyClass::SandstoneCaprock as u8;
+        lith[32 * n + 34] = LithologyClass::SandstoneCaprock as u8;
 
         let input = LakesFallsInput {
             width: n,
@@ -2146,12 +2096,14 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let cfg = LakesFallsConfig {
             waterfall_min_spacing_m: 300.0,
             ..LakesFallsConfig::default()
         };
         let elev_before = elev.clone();
+        let mut elev_shale = elev.clone();
         let field = generate_lakes_and_waterfalls(
             &mut elev,
             &mut sed,
@@ -2173,6 +2125,35 @@ mod tests {
         assert_eq!(
             water_kind[wf.base_cell as usize],
             WaterKind::Waterfall as u8
+        );
+
+        // Negative control: identical geometry in SoftShale (no SandstoneCaprock lip) emits 0 waterfalls.
+        let lith_shale = vec![LithologyClass::SoftShale as u8; n * n];
+        let mut sed_shale = vec![10.0_f32; n * n];
+        let mut wh_shale = elev_shale.clone();
+        let mut wk_shale = vec![0_u8; n * n];
+        let input_shale = LakesFallsInput {
+            width: n,
+            height: n,
+            precip_m_yr: &precip,
+            pet_m_yr: &pet,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            is_channel: &is_ch,
+            lithology_id: &lith_shale,
+        };
+        let field_shale = generate_lakes_and_waterfalls(
+            &mut elev_shale,
+            &mut sed_shale,
+            &mut wh_shale,
+            &mut wk_shale,
+            &input_shale,
+            &cfg,
+        )
+        .expect("soft shale negative control");
+        assert!(
+            field_shale.waterfalls.is_empty(),
+            "SoftShale knickpoints without SandstoneCaprock lip must emit 0 waterfalls"
         );
     }
 
@@ -2203,6 +2184,7 @@ mod tests {
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
 
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -2211,6 +2193,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let cfg = LakesFallsConfig::default();
         let field = generate_lakes_and_waterfalls(
@@ -2277,6 +2260,7 @@ mod tests {
         let q = vec![0.0_f32; n * n];
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input_a = LakesFallsInput {
             width: n,
             height: n,
@@ -2285,6 +2269,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let cfg = LakesFallsConfig::default();
         let field_a = generate_lakes_and_waterfalls(
@@ -2329,6 +2314,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let field_b = generate_lakes_and_waterfalls(
             &mut elev_b,
@@ -2361,11 +2347,10 @@ mod tests {
     #[test]
     fn shoreline_humid_nested_sub_basin_never_traces_uphill_or_buries_bowl() {
         // Reproduces nested `merge(sub1, merge(sub2a, sub2b))` where `sub2a` starts arid at its
-        // pit (`P/PET < 0.5`) while its shoreline ring is humid (`P/PET >= 0.5`).
-        // When `sub1` spills moderate excess into `merge(sub2a, sub2b)`, `sub2a` transitions to
-        // `filled_to_sill = true` via `has_any_humid_submerged`: it must spill into sibling
-        // `sub2b` (or merge cleanly) without tracing an uphill `River` back into `sub1` and
-        // without burying dry interior walls / spillways up to the outer rim.
+        // pit while physical shoreline ring excess (`Q_in > E_full`) fills `sub2a` to its sill and
+        // spills into arid sibling `sub2b` (`PET = 15.0`). `sub2a` must fill/spill cleanly without
+        // tracing an uphill `River` back into `sub1` and without burying dry interior walls up to
+        // the outer rim.
         let n = 96;
         let mut elev = vec![0.0_f32; n * n];
         for r in 0..n {
@@ -2407,21 +2392,24 @@ mod tests {
         }
         for r in 30..42 {
             for c in 30..42 {
-                precip[r * n + c] = 5.0;
+                precip[r * n + c] = 6.5;
             }
         }
-        // Humid shoreline ring around `sub2a` (`r in [2.5, 4.5]`) while pit stays arid (`0.20`).
+        // Humid shoreline ring around `sub2a` (`r in [2.5, 4.5]`) provides physical water-balance
+        // excess (`Q_in > E_full`) while pit stays arid (`0.20`).
         for r in 44..64 {
             for c in 32..52 {
                 let d = libm::hypotf(r as f32 - 54.0, c as f32 - 42.0);
                 if (2.5..=4.5).contains(&d) {
-                    precip[r * n + c] = 1.40; // P/PET = 0.56 >= 0.5
+                    precip[r * n + c] = 9.0;
+                    pet[r * n + c] = 1.0;
                 }
             }
         }
         let q = vec![0.0_f32; n * n];
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -2430,6 +2418,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let field = generate_lakes_and_waterfalls(
             &mut elev,
@@ -2442,9 +2431,13 @@ mod tests {
         .expect("shoreline-humid nested sub-basin");
 
         assert_eq!(field.endorheic_humid_fraction, 0.0);
-        assert_eq!(field.endorheic_land_fraction, 0.0);
+        assert!(field.endorheic_land_fraction > 0.0);
         assert_eq!(field.unmodeled_micro_pits, 0);
-        assert_eq!(field.basins.len(), 2, "expected retained sub1 + sub2a");
+        assert_eq!(
+            field.basins.len(),
+            3,
+            "expected retained sub1 + sub2a + arid endorheic sub2b"
+        );
         assert!(
             wk.contains(&(WaterKind::River as u8)),
             "expected internal spillway river"
@@ -2495,7 +2488,7 @@ mod tests {
     }
 
     #[test]
-    fn transition_zone_straddling_p_pet_half_never_emits_endorheic_humid() {
+    fn closed_humid_basin_without_excess_runoff_equilibrates_and_reports_endorheic_humid() {
         let n = 64;
         let mut elev = vec![0.0_f32; n * n];
         for r in 0..n {
@@ -2516,17 +2509,22 @@ mod tests {
         let mut sed = vec![2.0_f32; n * n];
         let mut water_h = elev.clone();
         let mut water_kind = vec![0_u8; n * n];
-        // Basin mean P/PET < 0.5, yet eastern half of submerged pit has P/PET >= 0.5.
-        let mut precip = vec![0.25_f32; n * n];
-        let pet = vec![1.20_f32; n * n];
+        // Humid floor (P/PET = 0.60 >= 0.5) fed by modest rim catchment runoff with Q_in <= E_full.
+        let mut precip = vec![0.72_f32; n * n];
+        let mut pet = vec![1.20_f32; n * n];
         for r in 0..n {
-            for c in 33..n {
-                precip[r * n + c] = 0.72; // P/PET = 0.60 >= 0.5
+            for c in 0..n {
+                let d = libm::hypotf(r as f32 - 32.0, c as f32 - 32.0);
+                if (11.0..=13.5).contains(&d) {
+                    precip[r * n + c] = 2.0;
+                    pet[r * n + c] = 1.0;
+                }
             }
         }
         let q = vec![0.05_f32; n * n];
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -2535,6 +2533,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let field = generate_lakes_and_waterfalls(
             &mut elev,
@@ -2544,8 +2543,15 @@ mod tests {
             &input,
             &LakesFallsConfig::default(),
         )
-        .expect("transition zone");
-        assert_eq!(field.endorheic_humid_fraction, 0.0);
+        .expect("closed humid equilibrium");
+        let endo = field
+            .basins
+            .iter()
+            .find(|b| b.water_kind == WaterKind::EndorheicLake as u8)
+            .expect("expected physical EndorheicLake when 0 < Q_in <= E_full");
+        assert_eq!(endo.q_out_m3_s, 0.0);
+        assert!(endo.water_level_m < endo.spill_elev_m);
+        assert!(field.endorheic_humid_fraction > 0.0);
     }
 
     #[test]
@@ -2581,6 +2587,8 @@ mod tests {
         let mut water_kind = vec![0_u8; n * n];
         let precip = vec![2.5_f32; n * n];
         let pet = vec![1.2_f32; n * n];
+        let mut lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
+        lith[32 * n + 33] = LithologyClass::SandstoneCaprock as u8;
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -2589,6 +2597,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let field = generate_lakes_and_waterfalls(
             &mut elev,
@@ -2677,6 +2686,7 @@ mod tests {
         let q = vec![0.0_f32; n * n];
         let rw = vec![0.0_f32; n * n];
         let is_ch = vec![false; n * n];
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
         let input = LakesFallsInput {
             width: n,
             height: n,
@@ -2685,6 +2695,7 @@ mod tests {
             discharge_q_m3_s: &q,
             river_w_m: &rw,
             is_channel: &is_ch,
+            lithology_id: &lith,
         };
         let field = generate_lakes_and_waterfalls(
             &mut elev,
@@ -2732,12 +2743,12 @@ mod tests {
                     let i = r * n + c;
                     if elev[i] <= 112.0 {
                         if c < 48 {
-                            precip[i] = 2.2;
+                            precip[i] = 4.2;
                             pet[i] = 1.5;
                         } else {
                             let d_b = libm::hypotf(r as f32 - 48.0, c as f32 - 58.0);
                             if d_b > 2.5 {
-                                precip[i] = 2.2;
+                                precip[i] = 4.2;
                                 pet[i] = 1.5;
                             } else {
                                 precip[i] = 0.1;
@@ -2747,6 +2758,7 @@ mod tests {
                     }
                 }
             }
+            let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -2755,6 +2767,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let field = generate_lakes_and_waterfalls(
                 &mut elev,
@@ -2766,7 +2779,7 @@ mod tests {
             )
             .expect("BothHumid_WithRunoff_AridMerge");
             assert!(!field.basins.is_empty());
-            assert_eq!(field.endorheic_humid_fraction, 0.0);
+            assert!(field.endorheic_humid_fraction > 0.0);
             assert_eq!(field.unmodeled_micro_pits, 0);
             assert_ne!(field.lake_id[pit_a], 0);
             assert_ne!(field.lake_id[pit_b], 0);
@@ -2785,10 +2798,11 @@ mod tests {
             let mut pet = vec![25.0_f32; n * n];
             for (i, &h) in elev.iter().enumerate() {
                 if h <= 112.0 {
-                    precip[i] = 2.0;
+                    precip[i] = 4.2;
                     pet[i] = 1.5;
                 }
             }
+            let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -2797,6 +2811,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let field = generate_lakes_and_waterfalls(
                 &mut elev,
@@ -2808,7 +2823,7 @@ mod tests {
             )
             .expect("BothHumid_AllSubB_AridMerge");
             assert!(!field.basins.is_empty());
-            assert_eq!(field.endorheic_humid_fraction, 0.0);
+            assert!(field.endorheic_humid_fraction > 0.0);
             assert_eq!(field.unmodeled_micro_pits, 0);
             assert_ne!(field.lake_id[pit_a], 0);
             assert_ne!(field.lake_id[pit_b], 0);
@@ -2878,6 +2893,7 @@ mod tests {
                     }
                 }
             }
+            let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -2886,6 +2902,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let field = generate_lakes_and_waterfalls(
                 &mut elev,
@@ -2933,6 +2950,7 @@ mod tests {
                     }
                 }
             }
+            let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -2941,6 +2959,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let field = generate_lakes_and_waterfalls(
                 &mut elev,
@@ -3023,6 +3042,7 @@ mod tests {
             let q = vec![0.0_f32; n * n];
             let rw = vec![0.0_f32; n * n];
             let is_ch = vec![false; n * n];
+            let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -3031,6 +3051,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let field = generate_lakes_and_waterfalls(
                 &mut elev,
@@ -3110,20 +3131,20 @@ mod tests {
                     }
                 }
             }
-            // sub_full just barely fills via local humid pit so its seasonal excess is tiny,
-            // leaving empty_c=(sub_near, sub_far) unfilled (`fa ^ fb` at node u).
+            // sub_full overflows cleanly across the saddle into empty_c while leaving sub_far dry.
             for r in 58..70 {
                 for c in 94..106 {
                     let d_fl = libm::hypotf(r as f32 - 64.0, c as f32 - 100.0);
-                    if d_fl <= 3.0 {
-                        precip[r * n + c] = 0.8;
-                        pet[r * n + c] = 1.2; // P/PET = 0.67 >= 0.5 -> humid seasonal_out
+                    if d_fl <= 6.0 {
+                        precip[r * n + c] = 2.05;
+                        pet[r * n + c] = 1.0;
                     }
                 }
             }
             let q = vec![0.0_f32; n * n];
             let rw = vec![0.0_f32; n * n];
             let is_ch = vec![false; n * n];
+            let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -3132,6 +3153,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let field = generate_lakes_and_waterfalls(
                 &mut elev,
@@ -3185,6 +3207,8 @@ mod tests {
                 rw[i] = 8.0;
                 is_ch[i] = true;
             }
+            let mut lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
+            lith[n + 16] = LithologyClass::SandstoneCaprock as u8;
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -3193,6 +3217,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let cfg = LakesFallsConfig {
                 dx_m: 40.0,
@@ -3258,6 +3283,9 @@ mod tests {
                     is_ch[i] = true;
                 }
             }
+            let mut lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
+            lith[8 * n + 16] = LithologyClass::SandstoneCaprock as u8;
+            lith[22 * n + 16] = LithologyClass::SandstoneCaprock as u8;
             let input = LakesFallsInput {
                 width: n,
                 height: n,
@@ -3266,6 +3294,7 @@ mod tests {
                 discharge_q_m3_s: &q,
                 river_w_m: &rw,
                 is_channel: &is_ch,
+                lithology_id: &lith,
             };
             let cfg = LakesFallsConfig {
                 dx_m: 40.0,

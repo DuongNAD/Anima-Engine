@@ -11,7 +11,8 @@ use anima_worldgen::lakes_falls::{
     generate_lakes_and_waterfalls, LakeClassification, LakesFallsConfig, LakesFallsInput,
 };
 use anima_worldgen::pipeline::{
-    read_bin_f32, read_bin_u8, read_bin_u8x4, run_worldgen_to_dir, RawWorldMeta,
+    read_bin_f32, read_bin_u8, read_bin_u8x4, run_worldgen_to_dir,
+    run_worldgen_to_dir_with_schedule, RawWorldMeta,
 };
 use anima_worldgen::tectonic::generate_uplift;
 use anima_worldgen::{BiomeId, WaterKind, WORLD_EXTENT_M};
@@ -405,7 +406,8 @@ fn fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity() {
     let mut sed = vec![0.0_f32; n * n];
     let mut wh = hydro.water_h_m.clone();
     let mut wk = vec![WaterKind::None as u8; n * n];
-    let s6_in = LakesFallsInput::from_hydrology(&hydro, &p_in, &pet);
+    let lith = vec![anima_worldgen::tectonic::LithologyClass::GraniteCrystalline as u8; n * n];
+    let s6_in = LakesFallsInput::from_hydrology(&hydro, &p_in, &pet, &lith);
     let s6_arid = generate_lakes_and_waterfalls(
         &mut elev,
         &mut sed,
@@ -435,10 +437,11 @@ fn fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity() {
 }
 
 #[test]
-fn knickpoint_waterfalls_20_to_80_with_plunge_pools() {
+fn coarse_512_relaxed_run_knickpoint_waterfalls_with_plunge_pools() {
     let guard = TempDirGuard::new("waterfalls");
     let size = 512_u32;
     let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, size);
+    // Uses `pipeline.rs` coarse-grid relaxation (`waterfall_max_run_m` = `3.65 * 80 m = 292 m` at `512^2`).
     let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 512");
     assert!(
         (20..=80).contains(&meta.waterfalls.len()),
@@ -580,7 +583,8 @@ fn negative_control_disabled_fill_spill_merge_severs_humid_spillways() {
     let mut sed_on = vec![0.0_f32; n * n];
     let mut wh_on = hydro.water_h_m.clone();
     let mut wk_on = vec![WaterKind::None as u8; n * n];
-    let s6_in = LakesFallsInput::from_hydrology(&hydro, &precip, &pet);
+    let lith = vec![anima_worldgen::tectonic::LithologyClass::GraniteCrystalline as u8; n * n];
+    let s6_in = LakesFallsInput::from_hydrology(&hydro, &precip, &pet, &lith);
     let res_on = generate_lakes_and_waterfalls(
         &mut elev_on,
         &mut sed_on,
@@ -870,10 +874,8 @@ fn pipeline_sha256_repeatability_and_rayon_thread_invariance() {
     let m_b = pool_4.install(|| run_worldgen_to_dir(&cfg, g_b.path()).expect("256 4t b"));
     let m_1t = pool_1.install(|| run_worldgen_to_dir(&cfg, g_1t.path()).expect("256 1t"));
 
-    assert_eq!(m_a.world_sha256, m_b.world_sha256);
-    assert_eq!(m_a.world_sha256, m_1t.world_sha256);
-    assert_eq!(m_a.layers, m_1t.layers);
-    assert_eq!(m_a.cave_network_sha256, m_1t.cave_network_sha256);
+    assert_eq!(m_a, m_b);
+    assert_eq!(m_a, m_1t);
 
     let c_a = std::fs::read(g_a.path().join("cave_network.bin")).unwrap();
     let c_1t = std::fs::read(g_1t.path().join("cave_network.bin")).unwrap();
@@ -882,6 +884,29 @@ fn pipeline_sha256_repeatability_and_rayon_thread_invariance() {
     let cfg2 = WorldV2Config::for_size(0x2026_1120, 256);
     let m_other = pool_4.install(|| run_worldgen_to_dir(&cfg2, g_other.path()).expect("256 seed2"));
     assert_ne!(m_a.world_sha256, m_other.world_sha256);
+}
+
+#[test]
+fn multigrid_two_level_upsampling_and_rayon_invariance() {
+    let g_4t = TempDirGuard::new("256_mg_4t");
+    let g_1t = TempDirGuard::new("256_mg_1t");
+
+    let cfg = WorldV2Config::for_size(0x5756_3201, 256);
+    let schedule = [(128_u32, 20_usize), (256_u32, 15_usize)];
+    let pool_4 = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+    let pool_1 = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+
+    let m_4t = pool_4
+        .install(|| run_worldgen_to_dir_with_schedule(&cfg, g_4t.path(), &schedule))
+        .expect("256 multigrid 4t");
+    let m_1t = pool_1
+        .install(|| run_worldgen_to_dir_with_schedule(&cfg, g_1t.path(), &schedule))
+        .expect("256 multigrid 1t");
+
+    assert_eq!(m_4t, m_1t);
+    let c_4t = std::fs::read(g_4t.path().join("cave_network.bin")).unwrap();
+    let c_1t = std::fs::read(g_1t.path().join("cave_network.bin")).unwrap();
+    assert_eq!(c_4t, c_1t);
 }
 
 #[test]
