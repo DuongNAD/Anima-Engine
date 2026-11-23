@@ -139,6 +139,21 @@ pub struct ReclaimAndDespawnAgentCommand {
 
 impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
     fn apply(self, world: &mut World) {
+        // `live.lineage_tracking` (F-066): stamp the death on the lineage node before the body is
+        // gone. The node is found by entity in `LiveLineage`'s side table, never through a
+        // component, so recording reads nothing the schedule reads. A root that is already gone
+        // (a second despawn of one agent in a flush) is not a second death. Absent resource = one
+        // presence test, nothing else (the zero-allocation gate).
+        if world.contains_resource::<crate::core::live_lineage::LiveLineage>()
+            && world.get_entity(self.root).is_some()
+        {
+            if let Some(mut live) =
+                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
+            {
+                live.record_death(self.root);
+            }
+        }
+
         // Zero the reserve as it is banked, so the transfer is exact and there is no reserve left
         // for anything to double-count even in principle.
         let reclaimed = match world.get_mut::<HomeostaticState>(self.root) {
@@ -255,6 +270,12 @@ impl bevy_ecs::system::Command for HibernateAgentCommand {
             store.0.push(record);
         }
 
+        // `live.lineage_tracking` (F-066): ngủ đông không phải cái chết — node vẫn mở, id
+        // đã nằm trong `snapshot.live_id` và quay lại qua `WakeAgentCommand`.
+        if let Some(mut live) = world.get_resource_mut::<crate::core::live_lineage::LiveLineage>() {
+            live.detach(self.root);
+        }
+
         // 5. Despawn tức thời (không phải Commands deferred) — không hệ thống
         //    nào trong tick này còn thấy một thân đã bị bank rồi.
         let mut doomed: Vec<Entity> = Vec::new();
@@ -342,6 +363,15 @@ impl bevy_ecs::system::Command for WakeAgentCommand {
                 return;
             }
         };
+
+        // `live.lineage_tracking` (F-066): cùng một cá thể, cùng id — gắn lại, không mint (D01).
+        if let Some(id) = record.agent.live_id.clone() {
+            if let Some(mut live) =
+                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
+            {
+                live.attach(root, id);
+            }
+        }
 
         // 4. Hoàn reserve vào thân vừa dựng — cùng sync point với việc trừ ngăn
         //    dormant ở bước 2. Census tick này trở đi đếm EU này ở `animals`.
@@ -473,11 +503,36 @@ pub struct SpawnOffspringCommand {
     pub starting_energy: f32,
     pub energy_target: f32,
     pub brain: Option<std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype>>,
+    /// What the birth did to the inherited genome: `Mutate` when the body or the brain genome was
+    /// changed, `Clone` when the child is an exact copy. Read only by the opt-in live lineage path
+    /// ([`crate::core::live_lineage`]), which labels the birth edge with it.
+    pub relation_type: crate::evolution::lineage::RelationType,
 }
 
 impl bevy_ecs::system::Command for SpawnOffspringCommand {
     fn apply(self, world: &mut World) {
         let entity = decode_genotype(world, &self.genotype, self.initial_pos, self.initial_rot);
+
+        // `live.lineage_tracking` (F-066): give the child a unique id and a node with an edge from
+        // its parent's own id, all inside `LiveLineage`. `self.lineage_id` — the legacy
+        // `parent.generation`, shared by siblings — is NOT replaced: `autonomous_reproduction_system`
+        // sorts parents by it, so changing it would change the trajectory (ADR-0008 driver 4).
+        // Recording touches no component, draw or entity id. With the resource absent this is one
+        // presence test, no allocation and no draw (the zero-allocation gate on this command).
+        if world.contains_resource::<crate::core::live_lineage::LiveLineage>() {
+            let genotype = self.genotype.clone();
+            if let Some(mut live) =
+                world.get_resource_mut::<crate::core::live_lineage::LiveLineage>()
+            {
+                live.record_birth(
+                    entity,
+                    self.parent_entity,
+                    self.generation,
+                    genotype,
+                    self.relation_type,
+                );
+            }
+        }
 
         let (vx, vz) = match world.get_resource_mut::<crate::core::resources::SimRng>() {
             Some(mut rng) => {
@@ -1102,25 +1157,40 @@ fn execute_reproduction_birth(
 
     // Mutate child morphology with declared mutation probability
     let mut child_genotype = parent_genotype.clone();
+    // The reporting variant draws exactly what `mutate_genotype` draws (it is the same function);
+    // its answer — did the body actually change, compared bit for bit — only labels the lineage
+    // edge.
+    let mut body_mutated = false;
     if let (Some(ref mut rng_res), Some(ref mut node_id_res)) =
         (sim_rng.as_mut(), next_node_id.as_mut())
     {
         let r = rng_res.rng();
-        let _ = crate::evolution::mutation::mutate_genotype(
+        body_mutated = crate::evolution::mutation::mutate_genotype_reporting(
             &mut child_genotype,
             &mut node_id_res.0,
             mutation_rate,
             r,
-        );
+        )
+        .unwrap_or(false);
     }
 
     // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
+    let mut brain_mutated = false;
     let child_brain = if let (Some(brain_geno_arc), Some(ref mut rng_res), true) =
         (parent_brain_genotype, sim_rng.as_mut(), mutation_rate > 0.0)
     {
         let mut brain_geno = (**brain_geno_arc).clone();
         let r = rng_res.rng();
         let _ = crate::evolution::brain_genotype::mutate_brain(&mut brain_geno, 0.05, 0.02, r);
+        // Each weight is perturbed with its own probability, so a pass can leave every one as it
+        // was. Compare bits rather than trusting the rate: the edge label says what happened.
+        // A read-only zip, no allocation.
+        brain_mutated = brain_geno.weights.len() != brain_geno_arc.weights.len()
+            || brain_geno
+                .weights
+                .iter()
+                .zip(&brain_geno_arc.weights)
+                .any(|(child, parent)| child.to_bits() != parent.to_bits());
         Some(Arc::new(brain_geno))
     } else {
         parent_brain_genotype.cloned()
@@ -1149,6 +1219,11 @@ fn execute_reproduction_birth(
         starting_energy: child_endowment,
         energy_target: parent_energy_target,
         brain: child_brain,
+        relation_type: if body_mutated || brain_mutated {
+            crate::evolution::lineage::RelationType::Mutate
+        } else {
+            crate::evolution::lineage::RelationType::Clone
+        },
     });
     true
 }

@@ -69,6 +69,8 @@ fn lineage_node(id: &str, generation: u32) -> LineageNode {
         generation,
         genotype: None,
         cumulative_mutations: None,
+        origin_tick: None,
+        destruction_tick: None,
     }
 }
 

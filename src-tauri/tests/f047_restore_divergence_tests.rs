@@ -885,6 +885,7 @@ fn sibling_agent_fixture(
         segments: Vec::new(),
         brain: None,
         sex: None,
+        live_id: None,
     }
 }
 
