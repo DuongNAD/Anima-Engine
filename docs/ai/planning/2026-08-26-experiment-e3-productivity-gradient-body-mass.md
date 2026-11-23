@@ -227,3 +227,4 @@ Thứ tự là bắt buộc. Cả WP-2 (b1) và (b2) đều đạt chặt chẽ 
 2026-11-20 amendment (SEL2P2-PREP): new live key live.grass_steering registered as default-absent (0 = legacy); E3 runs are unaffected.
 2026-11-20 amendment (FOUNDER-LAYOUT): new live key live.founder_layout registered as default-absent (0 = legacy); E3 runs are unaffected.
 2026-11-23 amendment (F-066): new live key live.lineage_tracking registered as default-absent (0 = legacy); E3 runs are unaffected.
+2026-11-23 amendment (FOUNDER-2SEG): new live key live.founder_genotype registered as default-absent (0 = legacy); E3 runs are unaffected.

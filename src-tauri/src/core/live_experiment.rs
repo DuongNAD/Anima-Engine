@@ -101,6 +101,17 @@ pub const FOUNDER_MIN_SPACING: f32 = 2.0;
 const FOUNDER_LAYOUT_LINE: u8 = 0;
 const FOUNDER_LAYOUT_GRID: u8 = 1;
 const FOUNDER_LAYOUT_SCATTER: u8 = 2;
+/// Card FOUNDER-2SEG (D5 option (b)): opt-in genesis founder morphology (`0.0`/absent = legacy
+/// 3-segment founder with nodes `[0, 1, 2]` and masses `[1.5, 1.0, 0.8]`, bit-identical to pre-card
+/// runs; `1.0` = declared 2-segment founder minus tail leaf: nodes `[0, 1]` with masses
+/// `[1.5, 1.0]`, edge `0 -> 1`, `joint_anchor = (1, 0, 0)`, `joint_axis = (0, 0, 1)`).
+///
+/// Note on [`crate::evolution::mutation::mutate_genotype`] operator 4: structural node removal
+/// requires `nodes.len() > 2`, so structural mutations on the 2-segment founder can only add
+/// segments. Development occurs once at genesis; restore preserves saved genotypes verbatim.
+pub const LIVE_KEY_FOUNDER_GENOTYPE: &str = "live.founder_genotype";
+const FOUNDER_GENOTYPE_LEGACY_3SEG: u8 = 0;
+const FOUNDER_GENOTYPE_2SEG: u8 = 1;
 /// Fraction of founders that are predators, in `[0, 1]`.
 pub const LIVE_KEY_PREDATOR_FRACTION: &str = "live.predator_fraction";
 /// Trees placed at genesis.
@@ -266,9 +277,10 @@ pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 pub const LIVE_KEY_LINEAGE_TRACKING: &str = "live.lineage_tracking";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 30] = [
+pub const LIVE_KEYS: [&str; 31] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_FOUNDER_LAYOUT,
+    LIVE_KEY_FOUNDER_GENOTYPE,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
@@ -308,6 +320,10 @@ pub struct LiveWorldConfig {
     /// from [`crate::core::resources::sim_stream::LIVE_GENESIS_FOUNDERS`]).
     #[serde(default)]
     pub founder_layout: u8,
+    /// Card FOUNDER-2SEG: genesis founder morphology (`0` = legacy 3-segment founder, `1` = declared
+    /// 2-segment founder minus tail leaf).
+    #[serde(default)]
+    pub founder_genotype: u8,
     pub predator_fraction: f64,
     pub trees: usize,
     pub lakes: usize,
@@ -434,6 +450,7 @@ impl Default for LiveWorldConfig {
         Self {
             founders: 10,
             founder_layout: 0,
+            founder_genotype: FOUNDER_GENOTYPE_LEGACY_3SEG,
             predator_fraction: 0.3,
             trees: 8,
             lakes: 2,
@@ -500,6 +517,18 @@ impl LiveWorldConfig {
                             value: other,
                             min: 0.0,
                             max: 2.0,
+                        })
+                    }
+                },
+                LIVE_KEY_FOUNDER_GENOTYPE => match *value {
+                    0.0 => config.founder_genotype = FOUNDER_GENOTYPE_LEGACY_3SEG,
+                    1.0 => config.founder_genotype = FOUNDER_GENOTYPE_2SEG,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
                         })
                     }
                 },
@@ -3015,7 +3044,11 @@ fn genesis(
     validate_founder_land_capacity(config, terrain_map.as_ref())?;
 
     let mut genotype = MorphologyGenotype::new();
-    for (id, mass) in [(0u32, 1.5f32), (1, 1.0), (2, 0.8)] {
+    let (nodes, edges): (&[(u32, f32)], &[(u32, u32)]) = match config.founder_genotype {
+        FOUNDER_GENOTYPE_2SEG => (&[(0, 1.5), (1, 1.0)], &[(0, 1)]),
+        _ => (&[(0, 1.5), (1, 1.0), (2, 0.8)], &[(0, 1), (1, 2)]),
+    };
+    for &(id, mass) in nodes {
         genotype.add_node(MorphologyNode {
             id,
             length: 1.0,
@@ -3023,7 +3056,7 @@ fn genesis(
             mass,
         });
     }
-    for (source_node, target_node) in [(0u32, 1u32), (1, 2)] {
+    for &(source_node, target_node) in edges {
         genotype.add_edge(MorphologyEdge {
             source_node,
             target_node,

@@ -68,7 +68,7 @@ fn expected_lattice_positions(n: usize, bounds: MapBounds) -> Vec<(f32, f32)> {
 #[test]
 fn key_is_registered_validated_and_refused_with_zero_lakes() {
     assert_eq!(LIVE_KEY_LAKE_LAYOUT, "live.lake_layout");
-    assert_eq!(LIVE_KEYS.len(), 30);
+    assert_eq!(LIVE_KEYS.len(), 31);
     assert!(LIVE_KEYS.contains(&LIVE_KEY_LAKE_LAYOUT));
     assert_eq!(LiveWorldConfig::default().lake_layout, 0);
 
