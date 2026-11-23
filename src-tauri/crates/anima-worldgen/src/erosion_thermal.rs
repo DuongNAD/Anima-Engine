@@ -112,6 +112,26 @@ pub fn relax_thermal_and_hillslope(
     )
 }
 
+/// Roughness length scale `H* = 1.0 m` for continuous bare-rock cover exposure `exp(-H / H*)`
+/// (Campforts et al. 2020 Eqs. 3-4; Shobe et al. 2017 Table 1).
+const COVER_H_STAR_M: f64 = 1.0;
+
+/// Amendment A5: Continuous `exp(-H / H*)` cover-thickness repose transition replacing the binary
+/// `sediment_s > 0.05` switch (`libm::tan` / `libm::exp` only, zero extra heap allocation).
+#[must_use]
+#[inline]
+pub fn effective_repose_slope(lithology_id: u8, sed_thickness_m: f64) -> f64 {
+    let alpha_rock = f64::from(lithology_repose_deg(lithology_id, false));
+    let alpha_scree = f64::from(lithology_repose_deg(0, true));
+    let h_sed = sed_thickness_m.max(0.0);
+    let alpha_eff = if h_sed <= 0.0 {
+        alpha_rock
+    } else {
+        alpha_scree + (alpha_rock - alpha_scree) * libm::exp(-h_sed / COVER_H_STAR_M)
+    };
+    libm::tan(alpha_eff * (std::f64::consts::PI / 180.0))
+}
+
 /// Variant of [`relax_thermal_and_hillslope`] that reuses caller-provided `f64` half-buffers
 /// (`sed_lo`, `sed_hi`, `total_lo`, `total_hi`) when their lengths match the band split, avoiding
 /// `256 MiB` of temporary `f64` allocations at `4096^2` inside the S2+S3 loop.
@@ -203,29 +223,35 @@ pub fn relax_thermal_and_hillslope_with_scratch(
         f64::from(params.diffusivity_d.max(0.0)) * f64::from(params.dt_yr.max(0.0)) / (dx * dx);
     let talus_gain = f64::from(params.talus_rate.clamp(0.0, 0.8));
 
-    // 7-entry LUT replacing `repose_slope: Vec<f64>` (`128 MiB` -> `56 bytes`).
-    let repose_lut: [f64; 7] = [
+    // Immutable pre-step view of `sediment_s` (`0` extra heap bytes, `-2 MiB` vs `has_sed_bits`,
+    // race-free across Rayon bands) driving the continuous `exp(-H / H*)` cover transition (`A5`).
+    let sed_init: &[f32] = sediment_s;
+    let rock_slope_lut: [f64; 6] = [
         f64::from(deg_to_slope(lithology_repose_deg(0, false))),
         f64::from(deg_to_slope(lithology_repose_deg(1, false))),
         f64::from(deg_to_slope(lithology_repose_deg(2, false))),
         f64::from(deg_to_slope(lithology_repose_deg(3, false))),
         f64::from(deg_to_slope(lithology_repose_deg(4, false))),
         f64::from(deg_to_slope(lithology_repose_deg(5, false))),
-        f64::from(deg_to_slope(lithology_repose_deg(0, true))),
     ];
-    let word_count = (n + 63) >> 6;
-    let mut has_sed_bits = vec![0_u64; word_count];
-    for (i, &s) in sed_lo.iter().chain(sed_hi.iter()).enumerate() {
-        if s > 0.05 {
-            has_sed_bits[i >> 6] |= 1_u64 << (i & 63);
-        }
-    }
+    let rock_deg_lut: [f64; 6] = [
+        f64::from(lithology_repose_deg(0, false)),
+        f64::from(lithology_repose_deg(1, false)),
+        f64::from(lithology_repose_deg(2, false)),
+        f64::from(lithology_repose_deg(3, false)),
+        f64::from(lithology_repose_deg(4, false)),
+        f64::from(lithology_repose_deg(5, false)),
+    ];
+    let alpha_scree_deg = f64::from(lithology_repose_deg(0, true));
     let repose_at = |idx: usize| -> f64 {
-        let has_sed = (has_sed_bits[idx >> 6] & (1_u64 << (idx & 63))) != 0;
-        if has_sed {
-            repose_lut[6]
+        let lith_idx = (lithology_id[idx] as usize).min(5);
+        let h_sed = f64::from(sed_init[idx]).max(0.0);
+        if h_sed <= 0.0 {
+            rock_slope_lut[lith_idx]
         } else {
-            repose_lut[(lithology_id[idx] as usize).min(5)]
+            let alpha_eff = alpha_scree_deg
+                + (rock_deg_lut[lith_idx] - alpha_scree_deg) * libm::exp(-h_sed / COVER_H_STAR_M);
+            libm::tan(alpha_eff * (std::f64::consts::PI / 180.0))
         }
     };
 
@@ -355,7 +381,6 @@ pub fn relax_thermal_and_hillslope_with_scratch(
             },
         );
     }
-    drop(has_sed_bits);
     drop(halos_top);
     drop(halos_bot);
 
@@ -461,5 +486,64 @@ pub fn relax_thermal_and_hillslope_with_scratch(
         rel_mass_error,
         max_slope_deg_after,
         non_cliff_spikes_over_75_deg,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a5_cover_transition_preserves_thin_caprock_lips_and_relaxes_thick_talus() {
+        let w = 24usize;
+        let run_case = |init_sed: f32| -> (f32, f64) {
+            let mut bedrock = vec![0.0_f32; w * w];
+            for r in 0..w {
+                for c in 12..w {
+                    bedrock[r * w + c] = 80.0;
+                }
+            }
+            let mut sed = vec![init_sed; w * w];
+            let mut talus = vec![0.0_f32; w * w];
+            let lith = vec![1_u8; w * w]; // SandstoneCaprock (`65 deg` rock, `34 deg` scree)
+            let stats = relax_thermal_and_hillslope(
+                &mut bedrock,
+                &mut sed,
+                &mut talus,
+                &lith,
+                w,
+                w,
+                &ThermalHillslopeParams {
+                    dx_m: 10.0,
+                    diffusivity_d: 0.0,
+                    talus_rate: 0.65,
+                    substeps: 400,
+                    ..ThermalHillslopeParams::default()
+                },
+            );
+            let row = w / 2;
+            let mut max_deg = 0.0_f32;
+            for c in 0..(w - 1) {
+                let ha = bedrock[row * w + c] + sed[row * w + c];
+                let hb = bedrock[row * w + c + 1] + sed[row * w + c + 1];
+                max_deg = max_deg.max(slope_to_deg((hb - ha).abs() / 10.0));
+            }
+            (max_deg, stats.rel_mass_error)
+        };
+
+        // Thin sediment veneer H=0.06m keeps alpha_eff ~ 63.2 deg instead of jumping to 34 deg scree.
+        let (thin_deg, thin_err) = run_case(0.06);
+        // Thick cover H=4.0m relaxes toward alpha_scree + 0.57 deg = 34.57 deg.
+        let (thick_deg, thick_err) = run_case(4.0);
+
+        assert!(thin_err < 1e-6 && thick_err < 1e-6);
+        assert!(
+            thin_deg > 58.0,
+            "thin caprock veneer (H=0.06 m) should preserve steep face > 58 deg, got {thin_deg:.2}"
+        );
+        assert!(
+            thick_deg < 39.0,
+            "thick talus cover (H=4.0 m) should relax toward scree < 39 deg, got {thick_deg:.2}"
+        );
     }
 }

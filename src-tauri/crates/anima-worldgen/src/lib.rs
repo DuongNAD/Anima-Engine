@@ -21,6 +21,8 @@ pub mod deposition;
 #[cfg(feature = "generate")]
 pub mod erosion_fluvial;
 #[cfg(feature = "generate")]
+pub mod erosion_glacial;
+#[cfg(feature = "generate")]
 pub mod erosion_thermal;
 #[cfg(feature = "generate")]
 pub mod hydrology;
