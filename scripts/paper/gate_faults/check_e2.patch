@@ -1,0 +1,13 @@
+diff --git a/artifacts/experiments/e2-evolved-brain-default/effects.json b/artifacts/experiments/e2-evolved-brain-default/effects.json
+index e0ee9ed..6799fdb 100644
+--- a/artifacts/experiments/e2-evolved-brain-default/effects.json
++++ b/artifacts/experiments/e2-evolved-brain-default/effects.json
+@@ -27,7 +27,7 @@
+       "between_seed_variance_of_deltas": 0.0,
+       "ci95_high": 0.0,
+       "ci95_low": 0.0,
+-      "control_mean": 10.0,
++      "control_mean": 99.0,
+       "materiality": {
+         "abs_delta_at_least_5pc_of_control_mean": false,
+         "abs_dz_at_least_0_8": false,

@@ -1,0 +1,54 @@
+name: docs-commands
+
+on:
+  schedule:
+    # Weekly (Sunday 04:00 UTC)
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-commands-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  doc-commands:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Show Rust toolchain
+        working-directory: src-tauri
+        run: |
+          rustc --version --verbose
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          add-rust-environment-hash-key: false
+          key: toolchain-${{ hashFiles('rust-toolchain.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ecological-selection' }}
+
+      - name: Install Linux Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+
+      - name: Run doc-test commands in tutorials and how-to
+        run: npm run check:doc-commands

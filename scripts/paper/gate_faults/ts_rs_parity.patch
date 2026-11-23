@@ -1,0 +1,14 @@
+diff --git a/src-tauri/src/core/simulation_state.rs b/src-tauri/src/core/simulation_state.rs
+index 4b37cfb..5bd7ad1 100644
+--- a/src-tauri/src/core/simulation_state.rs
++++ b/src-tauri/src/core/simulation_state.rs
+@@ -28,7 +28,8 @@ pub struct SegmentState {
+     /// the instance from the gene-derived shape instead of a fixed sphere.
+     pub length: f32,
+     pub radius: f32,
+-    pub x: f32,
++    #[ts(rename = "x_m2_fault")]
++    pub x: f32,
+     pub y: f32,
+     pub z: f32,
+     pub yaw: f32,

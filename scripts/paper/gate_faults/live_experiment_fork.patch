@@ -1,0 +1,13 @@
+diff --git a/src-tauri/src/core/experiment_runner/fork.rs b/src-tauri/src/core/experiment_runner/fork.rs
+index d814f13..85cf790 100644
+--- a/src-tauri/src/core/experiment_runner/fork.rs
++++ b/src-tauri/src/core/experiment_runner/fork.rs
+@@ -475,7 +475,7 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
+     )?;
+     let treatment = continue_branch(
+         format!("{treatment_base_id}#treatment@{fork_tick}"),
+-        effective_treatment.interventions.clone(),
++        manifest.interventions.clone(),
+         &effective_treatment.exotic_interventions,
+         treatment_fp,
+     )?;

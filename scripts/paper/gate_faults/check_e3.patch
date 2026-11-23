@@ -1,0 +1,13 @@
+diff --git a/artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json b/artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json
+index e32afda..77646db 100644
+--- a/artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json
++++ b/artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/effects.json
+@@ -6,7 +6,7 @@
+       "delta_s_minus_u": -0.11284896613919053,
+       "delta_t_minus_s": 0.15802467252001406,
+       "delta_t_minus_u": 0.045175706380823535,
+-      "residual": 0.0,
++      "residual": 0.123,
+       "seed": 731001,
+       "treatment_gradient": 0.15802467252001406
+     },

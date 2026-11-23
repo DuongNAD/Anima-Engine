@@ -1,0 +1,13 @@
+diff --git a/src-tauri/src/core/world_systems.rs b/src-tauri/src/core/world_systems.rs
+index ff7ad62..1c68802 100644
+--- a/src-tauri/src/core/world_systems.rs
++++ b/src-tauri/src/core/world_systems.rs
+@@ -174,7 +174,7 @@ pub fn metabolic_decay_system(
+         let decay = total_cost * dt;
+         let before = homeo.energy;
+         homeo.energy = (homeo.energy - decay).max(0.0);
+-        respired += (before - homeo.energy) as f64; // actual energy removed (floored at 0)
++        respired += (before - homeo.energy) as f64 + 1.0; // M2 fault: create 1 EU on respired pool
+ 
+         // Starvation and thirst bookkeeping (feature ecological-selection, branch M; split by
+         // F-044): two streaks of consecutive ticks at the bottom, one per resource, counted here

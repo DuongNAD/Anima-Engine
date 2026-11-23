@@ -13,6 +13,7 @@ Mỗi file là kết quả của một thẻ M, ghi đúng như đo được, k�
 | Tài liệu | Thẻ | Câu hỏi |
 |---|---|---|
 | [`determinism_matrix.md`](determinism_matrix.md) | M1 | Cùng seed và manifest có cho cùng thế giới trên Windows, Linux và macOS không? |
+| [`gate_controls.md`](gate_controls.md) | M2 | Mỗi cổng kiểm tra tự động có thực sự đỏ lên và gọi đúng tên lỗi khi tiêm lỗi tương ứng hay vượt xanh một cách rỗng? |
 | [`scaling.md`](scaling.md) | M3 | Chi phí mỗi tick của lịch trình live thật (`LiveExperimentAdapter` / `build_tick_schedule`) tăng thế nào theo số lượng agent (`10` → `5.000`) ở cấu hình `--release`? |
 | [`eu_residual.md`](eu_residual.md) | M4 | Sổ cái năng lượng đóng (`live.closed_eu_total`) có bảo toàn EU trên mọi tổ hợp cờ chính sách và mọi `InterventionKind` không? |
 | [`incidents.md`](incidents.md) | P1 | Những sự cố nào đã được ghi nhận trong repo khi một gate thoát mã 0 dù có sai sót? (kèm [`incidents.csv`](incidents.csv)) |

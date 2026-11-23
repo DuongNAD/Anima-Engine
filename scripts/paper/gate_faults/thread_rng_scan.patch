@@ -1,0 +1,12 @@
+diff --git a/src-tauri/src/main.rs b/src-tauri/src/main.rs
+index 7c3606e..603a146 100644
+--- a/src-tauri/src/main.rs
++++ b/src-tauri/src/main.rs
+@@ -1,5 +1,7 @@
+ #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+ 
+ fn main() {
++    use rand::thread_rng;
++    let _ = thread_rng();
+     anima_engine_lib::run();
+ }

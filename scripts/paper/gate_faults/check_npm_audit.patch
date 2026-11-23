@@ -1,0 +1,12 @@
+diff --git a/scripts/npm_audit_policy.mjs b/scripts/npm_audit_policy.mjs
+index 72e3919..fb4e1b4 100644
+--- a/scripts/npm_audit_policy.mjs
++++ b/scripts/npm_audit_policy.mjs
+@@ -22,6 +22,7 @@
+  * only. `advisory` is the GHSA id, the last path segment of the advisory URL `npm audit` prints.
+  */
+ export const DEV_ONLY_EXEMPTIONS = [
++  { advisory: 'GHSA-fc5q-39xc-vjpf', package: 'picomatch', reason: 'stale negative control' },
+   // Empty since 2026-11-19. The last entry, GHSA-fc5q-39xc-vjpf (picomatch ReDoS), was removed
+   // when GitHub withdrew that advisory (withdrawn_at 2026-11-18T15:38:56Z): `npm audit` stopped
+   // reporting it, and rule 3 failed the gate on the stale entry.

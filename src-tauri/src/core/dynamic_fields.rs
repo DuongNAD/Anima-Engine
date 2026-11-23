@@ -440,8 +440,10 @@ impl DynamicFields {
                         let room = (NITROGEN_CAP - before).max(0.0);
                         let absorbed = add.min(room);
                         self.soil_nitrogen[i] = before + absorbed;
-                        self.cum_nutrient_added += add as f64; // full input = declared source
-                        self.cum_nutrient_leached += (add - absorbed) as f64; // excess = declared sink
+                        let actual_absorbed = (self.soil_nitrogen[i] as f64) - (before as f64);
+                        let add_f64 = add as f64;
+                        self.cum_nutrient_added += add_f64; // full input = declared source
+                        self.cum_nutrient_leached += add_f64 - actual_absorbed; // excess = declared sink
                     }
                 }
             }

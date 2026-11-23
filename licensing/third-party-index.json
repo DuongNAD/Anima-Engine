@@ -2745,9 +2745,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/cookie@0.18.1",
+      "purl": "pkg:cargo/cookie@0.18.3",
       "name": "cookie",
-      "version": "0.18.1",
+      "version": "0.18.3",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -2760,7 +2760,7 @@
           "id": "T0051",
           "filename": "LICENSE-APACHE",
           "origin": "installed",
-          "provenance": "cargo-registry:cookie-0.18.1/LICENSE-APACHE",
+          "provenance": "cargo-registry:cookie-0.18.3/LICENSE-APACHE",
           "sourceSha256": "2773e20df8f4c52a026b5b578c7f2457341f5aa3fb6612fd87e1d2e1bd8f48ad",
           "sourceBytes": 10863,
           "textSha256": "2773e20df8f4c52a026b5b578c7f2457341f5aa3fb6612fd87e1d2e1bd8f48ad"
@@ -2769,7 +2769,7 @@
           "id": "T0280",
           "filename": "LICENSE-MIT",
           "origin": "installed",
-          "provenance": "cargo-registry:cookie-0.18.1/LICENSE-MIT",
+          "provenance": "cargo-registry:cookie-0.18.3/LICENSE-MIT",
           "sourceSha256": "f28420c1906af38be726cd7842798f0194b27c41d6051c0d1e9ee348b8a4a0ea",
           "sourceBytes": 1091,
           "textSha256": "f28420c1906af38be726cd7842798f0194b27c41d6051c0d1e9ee348b8a4a0ea"

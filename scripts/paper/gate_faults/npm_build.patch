@@ -1,0 +1,10 @@
+diff --git a/src/main.tsx b/src/main.tsx
+index d08166a..58b4adc 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -12,3 +12,5 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+   </React.StrictMode>
+ );
+ 
++
++export const _m2BuildFault: number = 'bad';

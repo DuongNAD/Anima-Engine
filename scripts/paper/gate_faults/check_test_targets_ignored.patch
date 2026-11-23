@@ -1,0 +1,12 @@
+diff --git a/src-tauri/tests/shared_domain_law_tests.rs b/src-tauri/tests/shared_domain_law_tests.rs
+index c100a3e..a400626 100644
+--- a/src-tauri/tests/shared_domain_law_tests.rs
++++ b/src-tauri/tests/shared_domain_law_tests.rs
+@@ -24,6 +24,7 @@ use anima_engine_lib::core::sim_rules::{TICKS_PER_YEAR, TICK_HZ};
+ ///
+ /// Closing that gap is [`no_engine_module_redeclares_a_law_the_domain_crate_owns`], below.
+ #[test]
++#[ignore]
+ fn the_engine_reads_the_domain_crates_values_for_the_time_laws() {
+     assert_eq!(TICK_HZ, anima_domain::laws::TICK_HZ);
+     assert_eq!(TICKS_PER_YEAR, anima_domain::laws::TICKS_PER_YEAR);
