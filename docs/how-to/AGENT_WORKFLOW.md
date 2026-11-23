@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-23
 review_cycle: monthly
 ---
 
@@ -295,6 +295,20 @@ QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the 
 QD-LEAD   = the coordinating (lead) session may itself merge a pull request it has verified, once
             both required checks are green at the verified head; worker agents still never merge (owner
             in chat, 2026-11-18: "Bạn đc phép tự merge và hoàn thiện dự án")
+QD-OFFQ   = work done on 2026-11-21..22 without a queue slot (DOC1-DOC8, P1 incidents, the conflict-marker
+            gate, the R5 findings fixes F-055..F-065 and F053-FIX) is kept and finished through its
+            open draft PRs; DOC8 (#208) is rewritten to the card's size (extract marked blocks, run
+            them, fail on zero blocks and on "running 0 tests", report doc:line). M2 keeps #196 as
+            the base; the owner closes #188 after #196 merges. No new PR or branch from anima-mac
+            until the lead has verdicts on its open drafts (owner in chat, 2026-11-23: "Duyệt theo
+            đề xuất", lead review of 2026-11-23)
+QD-DOCLANG= QD-SCOPE's "public docs in English" stands: tutorials, how-to and explanation pages are
+            written in English. A Vietnamese version may be kept next to the English one as a
+            translation, never instead of it (owner in chat, 2026-11-23: "Duyệt theo đề xuất")
+QD-VIAB1C = VIAB-1 continues as registered, without a re-run after the F-055/F-057 fixes, provided no
+            VIAB-1 family enables live.grass_steering and live.land_mask together (the only
+            combination F-055 changes). If one does, that family stops and the lead decides (owner in
+            chat, 2026-11-23: "Duyệt theo đề xuất")
 QD-C2     = utf8-chars 3.0.7 (no licence file; the one row in licensing/UNRESOLVED.md): ask upstream
             and defer, and R1c merges as is. Upstream: A1-Triard/utf8-chars issue #4 and pull request #5
             (licence files). Fallback: if no utf8-chars release with licence texts exists when release
@@ -476,6 +490,31 @@ R5-AUTH   =
   [[bench]] entry only), one new doc docs/paper/data/scaling.md, and its row in
   docs/paper/data/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for
   exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23, "Duyệt theo đề xuất" on the lead's review): for the R5 findings
+  fixes (PR #200, F-055..F-065 and F053-FIX) only, you may write to the 17 files that PR already
+  touches: FINDINGS.md, src-tauri/crates/anima-domain/src/intervention.rs,
+  src-tauri/src/commands/simulation.rs, src-tauri/src/core/{branch_tree.rs, dynamic_fields.rs,
+  experiment/observables.rs, live_experiment.rs, locomotion.rs, simulation_loop.rs, sweeps.rs,
+  terrain_navigation.rs}, src-tauri/src/evolution/newick.rs, and src-tauri/tests/{
+  domain_and_fields_hardening_tests.rs, observables_tests.rs, post_194_hardening_audit_tests.rs,
+  prereg_sel2p_manifest_tests.rs, scientific_pipeline_hardening_tests.rs}, plus
+  src-tauri/src/core/experiment/interventions.rs (manifest check radius > 0) and
+  src-tauri/src/core/exotic_energy/forcings.rs (checked add), both named in the 2026-11-23
+  verdict. F-064 may move to its own PR with the same paths. This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23): for F-066 (PR #207, lead) only, the 28 files that PR touches
+  (live lineage tracking under src-tauri/src/core and src-tauri/src/evolution, their tests, the
+  pinned LIVE_KEYS counts, and the E3 preregistration fixture's key list). This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23): for card WV2-2 (PR #199) only: src-tauri/crates/anima-worldgen/**
+  (src, src/bin and tests), src-tauri/Cargo.lock, scripts/test_target_policy.mjs, and one card note
+  docs/ai/planning/2026-11-2x-wv2-2.md. This overrides AGENTS.md's read-only declaration and BLOCK 0
+  R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23): for the conflict-marker gate (PR #210) and card P1 (PR #211)
+  only, in addition to each card's own paths: .github/workflows/ci.yml (one step in the Frontend job
+  for #210; the Frontend checkout's fetch-depth for #211), package.json (one script for #210), and
+  each PR's single test file under tests/frontend/. This overrides AGENTS.md's read-only
+  declaration and BLOCK 0 R5 for exactly these paths and no others.
 CURRENT WAVE = 2
 ```
 
