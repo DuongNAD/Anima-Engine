@@ -111,9 +111,6 @@ export function collectDocTestBlocks(dirs = [], cwd = process.cwd()) {
     blocks.push(...res.blocks);
     errors.push(...res.errors);
   }
-  if (errors.length === 0 && blocks.length === 0) {
-    errors.push({ file: '', line: 0, message: 'check_doc_commands: 0 <!-- doc-test --> blocks found; failing closed' });
-  }
   return { files, blocks, errors };
 }
 
@@ -167,6 +164,7 @@ export function runStaticChecks(blocks, repoRoot) {
 
 export function runDocCommands(blocks, { cwd = process.cwd(), env = {} } = {}) {
   const executed = [];
+  if (blocks.length === 0) return { ok: false, message: 'check_doc_commands: 0 <!-- doc-test --> blocks found; failing closed', executed };
   for (const b of blocks) {
     const res = spawnSync('bash', ['-eo', 'pipefail', '-c', `exec 2>&1\n${b.script}`], {
       cwd,
@@ -210,6 +208,10 @@ function main() {
   }
   if (scan.errors.length > 0) { scan.errors.forEach((e) => console.error(e.message)); process.exit(1); }
   if (opts.staticOnly) {
+    if (scan.blocks.length === 0) {
+      console.log('check_doc_commands: 0 blocks; nothing to check');
+      return;
+    }
     const errs = runStaticChecks(scan.blocks, cwd);
     if (errs.length > 0) { errs.forEach((e) => console.error(e)); process.exit(1); }
     console.log(`check_doc_commands: static ok (${scan.blocks.length} block(s) in ${scan.files.length} file(s))`);

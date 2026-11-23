@@ -123,7 +123,7 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
     ]);
   });
 
-  it('orders markdown files ASCII-sorted per directory and fails closed when 0 blocks exist', () => {
+  it('orders markdown files ASCII-sorted per directory, fails closed on 0 blocks in execution mode, and passes --static on 0 blocks', () => {
     const tmp = makeTempDir();
     try {
       mkdirSync(join(tmp.dir, 'tutorials'), { recursive: true });
@@ -141,28 +141,30 @@ describe('check_doc_commands — extraction, ordering, 0-block & 0-test failure,
         'how-to/B.md',
       ]);
 
+      const scanZero = collectDocTestBlocks(['tutorials', 'how-to'], tmp.dir) as {
+        blocks: ExtractedBlock[];
+        errors: ParseError[];
+      };
+      expect(scanZero.blocks).toEqual([]);
+      expect(scanZero.errors).toEqual([]);
+
       const cliRes = spawnSync(process.execPath, [SCRIPT_PATH, '--dir', 'tutorials', '--dir', 'how-to', '--cwd', tmp.dir], {
         encoding: 'utf8',
       });
       expect(cliRes.status).toBe(1);
       expect(cliRes.stderr).toContain('0 <!-- doc-test --> blocks found');
 
+      const apiRes = runDocCommands([], { cwd: tmp.dir }) as RunResult;
+      expect(apiRes.ok).toBe(false);
+      expect(apiRes.message).toContain('0 <!-- doc-test --> blocks found');
+
       const staticRes = spawnSync(
         process.execPath,
         [SCRIPT_PATH, '--dir', 'tutorials', '--dir', 'how-to', '--cwd', tmp.dir, '--static'],
         { encoding: 'utf8' },
       );
-      expect(staticRes.status).toBe(1);
-      expect(staticRes.stderr).toContain('0 <!-- doc-test --> blocks found');
-
-      const scanZero = collectDocTestBlocks(['tutorials', 'how-to'], tmp.dir) as {
-        blocks: ExtractedBlock[];
-        errors: ParseError[];
-      };
-      expect(scanZero.blocks).toEqual([]);
-      expect(scanZero.errors.map((e) => e.message)).toEqual([
-        'check_doc_commands: 0 <!-- doc-test --> blocks found; failing closed',
-      ]);
+      expect(staticRes.status).toBe(0);
+      expect(staticRes.stdout).toContain('0 blocks; nothing to check');
 
       // Missing default directory exits cleanly with status 1 and no uncaught stack trace.
       const emptyCwd = makeTempDir('anima-doc8-empty-cwd-');
