@@ -1,0 +1,10 @@
+[package]
+name = "viab1_probe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anima-engine = { path = "D:/teamwork_projects/anima-wt/viab1/src-tauri" }
+rayon = "1.10.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
