@@ -144,7 +144,7 @@ Controlled separately from confirmatory Holm FWER (`decision_effect: none` on `H
 | **R3** Attrition & contrast rules | Locked (`D3`) | `VIAB-1b`: `0/12` (`0%`) extinct in `U, S, T` (`80%` UB `12.55%` arm, `4.37%` pooled `0/36`) -> **complete-pair `H1 (T-S)` primary** (`pi_LL >= 0.85, n_LL >= 7`); **`H2, H3` complete-pair primary + Lee (2009) bounds sensitivity + separate `RMST`** |
 | **R4** SESOI & achieved MDE | Locked (`D4`) | **SESOI $= \pm\ln(1.5) = \pm 0.405465$** on $\bar{L}$ (`[0.667x, 1.500x]` variance ratio); **pre-registered achieved MDE $= 0.5 \cdot \hat{\sigma}_L$**; `d_z`/`r_c`/`lnCVR`/mean diff secondary only |
 | **R5** Blind non-mass nuisance params | Concrete (`VIAB-1b`) | Strictly non-mass fields from `e3b_fg1_g4_fl1.json` & `e3b_fg1_g4_fl1_mut0.json` (`98054ba2`, `880001..=880012`, `0` `trait_mass`) |
-| **R6** Sample size arithmetic | Locked (`D4`) | **$N = 64$ seed triples (`192` runs)**; exact `80%` Holm-1 MDE `0.4139 * sigma_L`; **`0.5 * sigma_L` gives `93.50%` power**; gives `>= 80%` superiority at `ln(1.5)` up to `sigma_L = 0.9796` and `>= 80%` TOST up to `sigma_L = 1.0966` |
+| **R6** Sample size arithmetic | Locked (`D4`) | **$N = 64$ seed triples (`192` runs)**; exact `80%` Holm-1 MDE `0.4139 * sigma_L`; **`0.5 * sigma_L` gives `93.50%` superiority power over zero** (`>= 80%` superiority at `ln(1.5)` up to `sigma_L = 0.9796`; `>= 80%` TOST up to `sigma_L = 1.0966`; strict R10 `supports` is `~50%` at `ln(1.5)` and `99.8%` at `ln(2.0)`) |
 | **R6b** Monte Carlo on `L` & `ln(1.5)` | Executed (`N_rep = 5,000`) | Re-run via `python -I` (`Appendix A`) across blind `sigma_L in [0.40, 1.10]`, Gaussian & `t_5`, `V1..V5` attrition, Lee bounds, and separate RMST |
 | **R7** Minimum exact $p$ vs $\alpha/3$ | Concrete | Floor $n \ge 7$ ($2/2^7 = 0.015625 < 0.016667$); at `N = 64`, $2/2^{64} = 1.08 \times 10^{-19}$; at 85% validity floor ($n = 55$), $5.55 \times 10^{-17}$ |
 | **R8** Full paired effect-size bundle | Concrete (`YES`) | Primary $\bar{L}$ (95% & 90% $t$-CI) + `eps = 5e-5` check; secondary $d_z$, $r_c$ (**corrected `0.5205` / `0.7421`**), HL + 95% BCa CI, `lnCVR`, mean diff, `% > 0`, mediator |
@@ -190,7 +190,7 @@ Per Owner decision **`D3`**:
 ### R4 — Pre-Specified SESOI & Achieved MDE Benchmark (`D4`)
 
 - **Locked SESOI:** **$\pm \ln(1.5) = \pm 0.405465$** on paired $\bar{L}$ (corresponding to variance ratios `1.500x` or `0.667x`). Values inside `(-0.405465, +0.405465)` confirmed by TOST (`90%` CI strictly inside bounds) establish practical equivalence (`equivalent_to_zero`).
-- **Pre-registered achieved MDE formula:** Because $\sigma_L = \text{SD}(L_i)$ cannot be inspected pre-freeze (`QD-VIAB`), E3b pre-registers the achieved MDE benchmark **`0.5 * sigma_hat_L`** alongside observed `80%` MDE (`0.4139 * sigma_hat_L` at $N = 64, \alpha/3 = 0.016667$). Note from `§3 R6` that **$0.5 \cdot \sigma_L \le \ln(1.5) \iff \sigma_L \le 0.8109$**, which simultaneously guarantees **`93.50%`** superiority power at the SESOI!
+- **Pre-registered achieved MDE formula:** Because $\sigma_L = \text{SD}(L_i)$ cannot be inspected pre-freeze (`QD-VIAB`), E3b pre-registers the achieved MDE benchmark **`0.5 * sigma_hat_L`** alongside observed `80%` MDE (`0.4139 * sigma_hat_L` at $N = 64, \alpha/3 = 0.016667$). Note from `§3 R6` that **$0.5 \cdot \sigma_L \le \ln(1.5) \iff \sigma_L \le 0.8109$**, which gives **`93.50%`** superiority power over zero at $\Delta_L = \ln(1.5)$ (with strict R10 `supports` at `~50%` on the exact $\ln(1.5)$ boundary and `99.8%` at $\ln(2.0)$).
 - **Secondary effect sizes only:** $d_z$, matched-pairs $r_c$ (**corrected calibration `d_z = 0.50 -> r_c = 0.5205`, `d_z = 0.80 -> r_c = 0.7421`**), Hodges–Lehmann with BCa, `lnCVR`, and raw mean differences remain strictly secondary / exploratory.
 
 ### R5 — Blind Non-Mass Nuisance Parameters (`VIAB-1b`, Trunk `98054ba2`)
@@ -217,16 +217,18 @@ All values below are recomputed strictly from `artifacts/experiments/viab1b-foun
 Because `trait_mass_var` is blind pre-freeze, `sigma_L = SD(L_i)` is unknown. At locked **`N = 64`** (`df = 63`, Holm step-1 $\alpha/3 = 0.016667$, TOST $\alpha_{\text{TOST}} = 0.05$, $\text{SESOI} = \pm\ln(1.5) = \pm 0.405465$):
 
 - **Exact 80% MDE (non-central paired-$t$):** `0.4139 * sigma_L` (`d_z = 0.4139` gives `0.8000` power at $\alpha/3$).
-- **Pre-registered achieved MDE benchmark:** **`0.5 * sigma_L`**, which corresponds to exact paired-$t$ Holm-1 power **`0.9350`** (`> 0.90`).
+- **Pre-registered achieved MDE benchmark:** **`0.5 * sigma_L`**, which corresponds to exact paired-$t$ Holm-1 **superiority power over zero** of **`0.9350`** (`> 0.90`).
 - **Blind `sigma_L` operating envelope at `N = 64` (`L` scale, exact analytical curves):**
-  - Superiority at $\Delta_L = \ln(1.5)$ clears **`>= 0.90`** for all $\sigma_L \le 0.8623$ and **`>= 0.80`** for all **$\sigma_L \le 0.9796$**.
+  - Superiority over zero at $\Delta_L = \ln(1.5)$ clears **`>= 0.90`** for all $\sigma_L \le 0.8623$ and **`>= 0.80`** for all **$\sigma_L \le 0.9796$**.
   - Achieved MDE benchmark satisfies **`0.5 * sigma_L <= ln(1.5)`** for all **$\sigma_L \le 0.8109$** ($\ln(1.5)/0.5 = 0.810930$).
   - TOST equivalence power at $\Delta_L = 0$ clears **`>= 0.95`** for $\sigma_L \le 0.892$, **`>= 0.88`** at $\sigma_L = 1.00$, and **`>= 0.80`** up to **$\sigma_L = 1.0966$**.
-- **Pair survival reserve (`N = 64`):** Even at the conservative `0/36` pooled 80% UB extinction rate (`4.37%` independent), mean `n_LL = 58.50` keeps `P(pi_LL >= 0.85) = 0.9582` and superiority power at `Delta = ln(1.5)` (`sigma_L = 0.8109`) at **`0.9070` (`t`) / `0.8914` (Wilcoxon)** (`> 0.89`). Under `VIAB-1b`'s observed `0/12`, `P(pi_LL >= 0.85) = 1.0000` (`n_LL = 64`, power **`0.9356`**).
+- **Pair survival reserve (`N = 64`):** Even at the conservative `0/36` pooled 80% UB extinction rate (`4.37%` independent), mean `n_LL = 58.50` keeps `P(pi_LL >= 0.85) = 0.9582` and superiority power over zero at `Delta = ln(1.5)` (`sigma_L = 0.8109`) at **`0.9070` (`t`) / `0.8914` (Wilcoxon)** (`> 0.89`). Under `VIAB-1b`'s observed `0/12`, `P(pi_LL >= 0.85) = 1.0000` (`n_LL = 64`, superiority power over zero **`0.9356`**).
+
+> **Power scope note (`R6` / `R6b`):** The headline powers **`93.50%`** (`R6` analytical) and **`0.9356`** (`R6b` `V1` Monte Carlo) at $\Delta_L = \ln(1.5), \sigma_L = 0.8109$ are for **superiority over zero** ($p < \alpha/3$ with $\bar{L} > 0$), **not** for the `R10` `supports` verdict: when the true effect equals the SESOI ($\Delta_L = \ln(1.5)$), `R10` labels about **49–50%** of runs `supports` (and **97.6–99.8%** once $\Delta_L = \ln(2.0)$).
 
 ### R6b — Re-Run Monte Carlo Verification for `L_i` and `SESOI = ±ln(1.5)` (`python -I`, `Appendix A`)
 
-Executed via `python -I` (`SeedSequence(2026112302)`, `N_rep = 5,000`, binomial `MCSE <= 0.0071`, `0` `'trait_mass'` substrings asserted via `--viab1b-cell e3b_fg1_g4_fl1.json`; runtime `6.53 s`).
+Executed via `python -I` (`SeedSequence(2026112302)`, `N_rep = 5,000`, binomial `MCSE <= 0.0071`, `0` `'trait_mass'` substrings asserted via `--viab1b-cell e3b_fg1_g4_fl1.json`; runtime `7.12 s`). Note that `93.56%` (`t` power at `Delta = ln(1.5)`, `sigma_L = 0.8109`) measures **superiority over zero**, whereas `R10` labels **`~49–50%`** of runs `supports` at the exact `ln(1.5)` boundary (`99.80%` at `Delta = ln(2.0)`).
 
 #### 1. Blind $\sigma_L$ Sweep at Locked `N = 64` (Gaussian vs. Heavy-Tailed Student-$t_5$, Unit Variance)
 
