@@ -178,21 +178,38 @@ fn sech2(t: f64) -> f64 {
     1.0 / (c * c)
 }
 
+const STRAT_Z_BASE_M: f64 = 650.0;
+const STRAT_DIP_DEG: f64 = 4.0;
+const STRAT_FOLD_AMP_M: f64 = 45.0;
+/// Minimum stratigraphic bed thickness (`Upper Caprock`, `T_min = 100 m`), bounding `S2` step incision (`<= 25 m`).
+pub const STRAT_MIN_BED_THICKNESS_M: f64 = 100.0;
+const RIFT_SEGMENT_LEN_M: f64 = 15_000.0;
+
 #[derive(Debug, Clone, Copy)]
-struct CellEval {
-    raw_h_m: f64,
-    uplift: f64,
+struct CellStratGeom {
+    fbm_broad: f64,
     in_volcano: bool,
     in_plateau: bool,
-    in_karst: bool,
     near_rift: bool,
     ridge_core_dist: f64,
     coast_dist: f64,
 }
 
-fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> CellEval {
+#[derive(Debug, Clone, Copy)]
+struct CellEval {
+    raw_h_m: f64,
+    uplift: f64,
+    strat: CellStratGeom,
+}
+
+#[inline]
+fn eval_cell_strat_and_envelope(
+    u: f64,
+    v: f64,
+    p: &TectonicParams,
+    cfg: &WorldV2Config,
+) -> (CellStratGeom, f64, f64, f64, f64, f64, f64) {
     let fbm_broad = fbm_4(p.seed_u64, u * 4.5, v * 4.5);
-    let fbm_detail = fbm_4(p.seed_u64 ^ 0xA5A5_5A5A_1234_ABCD, u * 14.0, v * 14.0);
 
     // Rotated regional strike coordinates centered on massif spine.
     let sin_r = libm::sin(p.ridge_angle_rad);
@@ -209,21 +226,7 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
         + 0.03 * fbm_broad;
     let d_coast = u_rot - coast_line;
 
-    // Asymmetric continental margin: shallow coastal shelf (`0..-22 m` for DeltaRCM delta progradation)
-    // dropping to abyssal depths offshore; flat coastal floodplain (`slope ~ 0.0023 < 0.004`,
-    // `0..+4.3 m` preserving Beach + S4 meanders) on `d_coast in 0..0.045`, then smooth inland ramp.
-    let shelf_and_margin = if d_coast < 0.0 {
-        let shelf_drop = 1_400.0 * d_coast.max(-0.015);
-        let slope_drop = -1_420.0 * libm::tanh((-d_coast - 0.010).max(0.0) / 0.14);
-        shelf_drop + slope_drop
-    } else {
-        let plain_ramp = 95.0 * d_coast.min(0.045);
-        let inland_ramp = 260.0 * libm::tanh((d_coast - 0.042).max(0.0) / 0.16);
-        plain_ramp + inland_ramp
-    };
-
     // 2. Active coastal mountain spine (`sech^2` with steep oceanward flank, peaking > 5,200 m).
-    // Smoothly tapered on `d_coast < 0.042` so the coastal floodplain (`d_coast <= 0.040`) stays flat.
     let ridge_center_u = coast_line + 0.22 + p.ridge_bend * libm::cos(v_rot * 3.1 + p.phase_x);
     let dv_ridge = (v_rot - 0.52) / 0.34;
     let along_crest_envelope = libm::exp(-0.55 * dv_ridge * dv_ridge);
@@ -242,27 +245,21 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
             + 450.0 * along_crest_envelope * sech2((v_rot - 0.5) / 0.4)
             + 260.0 * crest_spine);
 
-    // 3. Normal-fault structural rift trough obliquely cutting the inland/foreland margin,
-    //    with a closed inner graben basin (`LAK-03`) bounded by horst sills.
+    // 3. Normal-fault structural rift trough segmented at L_seg = 15.0 km (`Jackson & White 1989`, p. 16),
+    //    forming en-echelon grabens separated by a relay-ramp horst sill.
     let rift_u = (u - p.rift_offset_u) * libm::cos(p.rift_angle_rad)
         + (v - 0.48) * libm::sin(p.rift_angle_rad);
     let rift_v = -(u - p.rift_offset_u) * libm::sin(p.rift_angle_rad)
         + (v - 0.48) * libm::cos(p.rift_angle_rad);
-    let rift_len = libm::exp(-((rift_v / 0.24) * (rift_v / 0.24)));
-    let rift_graben = libm::exp(-((rift_v / 0.15) * (rift_v / 0.15)));
-    let rift_sill = 132.0
-        * sech2(rift_u / 0.055)
-        * (libm::exp(-(((rift_v - 0.19) / 0.05) * ((rift_v - 0.19) / 0.05)))
-            + libm::exp(-(((rift_v + 0.19) / 0.05) * ((rift_v + 0.19) / 0.05))));
-    let rift_drop = if d_coast > 0.08 {
-        -305.0 * sech2(rift_u / 0.030) * rift_len - 155.0 * sech2(rift_u / 0.034) * rift_graben
-            + rift_sill
-    } else {
-        0.0
-    };
-    let near_rift = rift_len > 0.45 && libm::fabs(rift_u) < 0.045;
+    let l_seg_norm = RIFT_SEGMENT_LEN_M / f64::from(cfg.extent_m).max(1.0);
+    let inv_half_w = 1.0 / (0.36 * l_seg_norm);
+    let dv_seg1 = (rift_v + 0.5 * l_seg_norm) * inv_half_w;
+    let dv_seg2 = (rift_v - 0.5 * l_seg_norm) * inv_half_w;
+    let seg1 = sech2((rift_u + 0.012) / 0.032) * libm::exp(-(dv_seg1 * dv_seg1));
+    let seg2 = sech2((rift_u - 0.012) / 0.032) * libm::exp(-(dv_seg2 * dv_seg2));
+    let near_rift = (seg1 > 0.30 || seg2 > 0.30) && libm::fabs(rift_u) < 0.055;
 
-    // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland, ~14% area).
+    // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland).
     let du_plat = (u - p.plateau_u) / 0.268;
     let dv_plat = (v - p.plateau_v) / 0.278;
     let r_plat = libm::hypot(du_plat, dv_plat);
@@ -270,14 +267,78 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     let land_gate = 1.0 / (1.0 + libm::exp(-(d_coast - 0.06) * 35.0));
     let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_400.0) / 300.0));
     let plateau_blend = plateau_mask * land_gate * core_gate;
+
+    // 5. Volcanic stratocone footprint (`BasaltVolcanic`).
+    let r_volc = libm::hypot(u - p.volcano_u, v - p.volcano_v);
+    let in_volcano = r_volc < 0.085;
+
+    let strat = CellStratGeom {
+        fbm_broad,
+        in_volcano,
+        in_plateau: plateau_blend > 0.35 && !in_volcano,
+        near_rift,
+        ridge_core_dist: libm::fabs(d_ridge),
+        coast_dist: d_coast,
+    };
+    (
+        strat,
+        massif_h,
+        massif_uplift,
+        plateau_blend,
+        rift_u,
+        rift_v,
+        r_volc,
+    )
+}
+
+fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> CellEval {
+    let (strat, massif_h, massif_uplift, plateau_blend, rift_u, rift_v, r_volc) =
+        eval_cell_strat_and_envelope(u, v, p, cfg);
+    let d_coast = strat.coast_dist;
+    let fbm_detail = fbm_4(p.seed_u64 ^ 0xA5A5_5A5A_1234_ABCD, u * 14.0, v * 14.0);
+
+    // Asymmetric continental margin: shallow coastal shelf (`0..-22 m` for DeltaRCM delta progradation)
+    // dropping to abyssal depths offshore; flat coastal floodplain (`slope ~ 0.0023 < 0.004`,
+    // `0..+4.3 m` preserving Beach + S4 meanders) on `d_coast in 0..0.045`, then smooth inland ramp.
+    let shelf_and_margin = if d_coast < 0.0 {
+        let shelf_drop = 1_400.0 * d_coast.max(-0.015);
+        let slope_drop = -1_420.0 * libm::tanh((-d_coast - 0.010).max(0.0) / 0.14);
+        shelf_drop + slope_drop
+    } else {
+        let plain_ramp = 95.0 * d_coast.min(0.045);
+        let inland_ramp = 260.0 * libm::tanh((d_coast - 0.042).max(0.0) / 0.16);
+        plain_ramp + inland_ramp
+    };
+
+    // Segmented normal-fault grabens + relay-ramp horst sill (`L_seg = 15.0 km`).
+    let l_seg_norm = RIFT_SEGMENT_LEN_M / f64::from(cfg.extent_m).max(1.0);
+    let inv_half_w = 1.0 / (0.36 * l_seg_norm);
+    let dv_seg1 = (rift_v + 0.5 * l_seg_norm) * inv_half_w;
+    let dv_seg2 = (rift_v - 0.5 * l_seg_norm) * inv_half_w;
+    let seg1 = sech2((rift_u + 0.012) / 0.032) * libm::exp(-(dv_seg1 * dv_seg1));
+    let seg2 = sech2((rift_u - 0.012) / 0.032) * libm::exp(-(dv_seg2 * dv_seg2));
+    let t_relay = rift_v / 0.055;
+    let t_tip_pos = (rift_v - l_seg_norm) / 0.055;
+    let t_tip_neg = (rift_v + l_seg_norm) / 0.055;
+    let relay_sill = 145.0
+        * sech2(rift_u / 0.058)
+        * (libm::exp(-(t_relay * t_relay))
+            + libm::exp(-(t_tip_pos * t_tip_pos))
+            + libm::exp(-(t_tip_neg * t_tip_neg)));
+    let rift_drop = if d_coast > 0.08 {
+        -380.0 * (seg1 + seg2) + relay_sill
+    } else {
+        0.0
+    };
+
     let caprock_target_m = 0.52 * f64::from(cfg.caprock_min_m + cfg.caprock_max_m) + 120.0;
 
     // 5. Volcanic stratocone & collapsed caldera crater rim (`BasaltVolcanic`).
-    let r_volc = libm::hypot(u - p.volcano_u, v - p.volcano_v);
-    let cone = f64::from(cfg.volcano_relief_m) * libm::exp(-((r_volc / 0.068) * (r_volc / 0.068)));
-    let caldera = -460.0 * libm::exp(-((r_volc / 0.018) * (r_volc / 0.018)));
+    let t_cone = r_volc / 0.068;
+    let t_cald = r_volc / 0.018;
+    let cone = f64::from(cfg.volcano_relief_m) * libm::exp(-(t_cone * t_cone));
+    let caldera = -460.0 * libm::exp(-(t_cald * t_cald));
     let volcano_h = cone + caldera;
-    let in_volcano = r_volc < 0.085;
 
     // 6. Compose base surface + plateau + volcanic cone without hand-placed lakes or staircases.
     let base_surface = shelf_and_margin + massif_h;
@@ -305,38 +366,52 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
         + if d_coast > 0.0 { 120.0 } else { 0.0 })
     .max(0.0);
 
-    let karst_band = libm::sin(u * 11.0 + v * 7.0 + 2.2 * fbm_broad);
-    let in_karst = d_coast > 0.04 && !in_volcano && karst_band > 0.15;
-
     CellEval {
         raw_h_m,
         uplift,
-        in_volcano,
-        in_plateau: plateau_blend > 0.35 && !in_volcano,
-        in_karst,
-        near_rift,
-        ridge_core_dist: libm::fabs(d_ridge),
-        coast_dist: d_coast,
+        strat,
     }
 }
 
-fn assign_lithology(h_m: f32, eval: &CellEval, cfg: &WorldV2Config) -> LithologyClass {
-    if eval.in_volcano && h_m > 300.0 {
+/// Amendment A1: Flanking SNSM / Cesar-Ranchería Mesozoic-Paleogene stratigraphic column
+/// with advected basal structural datum `z_c(x, y, t) = z_c0(x, y) + U(x, y) * t_elapsed`.
+#[inline]
+fn assign_lithology_advected(
+    h_m: f32,
+    geom: &CellStratGeom,
+    uplift_m_yr: f64,
+    t_elapsed_yr: f64,
+    extent_m: f64,
+) -> LithologyClass {
+    if geom.in_volcano && h_m > 300.0 {
         return LithologyClass::BasaltVolcanic;
     }
-    if eval.in_plateau && h_m >= cfg.caprock_min_m && h_m <= cfg.caprock_max_m * 1.35 {
-        return LithologyClass::SandstoneCaprock;
-    }
-    if h_m < 140.0 || eval.coast_dist < 0.02 || (eval.near_rift && h_m < 420.0) {
+    if h_m < 140.0 || geom.coast_dist < 0.02 || (geom.near_rift && h_m < 420.0) {
         return LithologyClass::UnconsolidatedAlluvium;
     }
-    if h_m > 2_300.0 || eval.ridge_core_dist < 0.06 {
+    if h_m > 2_300.0 || geom.ridge_core_dist < 0.06 {
         return LithologyClass::GraniteCrystalline;
     }
-    if eval.in_karst {
-        return LithologyClass::SolubleLimestone;
+
+    let d_massif_m = geom.ridge_core_dist * extent_m;
+    let m_dip = libm::tan(STRAT_DIP_DEG * (std::f64::consts::PI / 180.0));
+    let z_c0 = STRAT_Z_BASE_M - m_dip * d_massif_m + STRAT_FOLD_AMP_M * geom.fbm_broad;
+    let z_c = z_c0 + uplift_m_yr * t_elapsed_yr;
+    let z_rel = f64::from(h_m) - z_c;
+
+    if z_rel < 0.0 {
+        LithologyClass::SoftShale
+    } else if z_rel < 150.0 {
+        LithologyClass::SandstoneCaprock
+    } else if z_rel < 500.0 {
+        LithologyClass::SolubleLimestone
+    } else if z_rel < 650.0 {
+        LithologyClass::SoftShale
+    } else if z_rel < 750.0 || geom.in_plateau {
+        LithologyClass::SandstoneCaprock
+    } else {
+        LithologyClass::SoftShale
     }
-    LithologyClass::SoftShale
 }
 
 /// Calibrates a uniform scalar height shift so `(raw_h + shift) < 0` matches `target_ocean_fraction`.
@@ -425,6 +500,7 @@ pub fn generate_uplift_for_target(
     let mut lithology_id = vec![0_u8; n];
     let mut stratum_k = vec![0.0_f32; n];
 
+    let extent_m = f64::from(cfg.extent_m);
     bedrock_h
         .par_chunks_mut(w)
         .zip(uplift_u.par_chunks_mut(w))
@@ -437,7 +513,7 @@ pub fn generate_uplift_for_target(
                 let u = col as f64 / denom_x;
                 let ev = eval_cell_raw(u, v, &params, cfg);
                 let elev = soft_bound_elevation(ev.raw_h_m + shift, cfg.elev_min_m, cfg.elev_max_m);
-                let class = assign_lithology(elev, &ev, cfg);
+                let class = assign_lithology_advected(elev, &ev.strat, 0.0, 0.0, extent_m);
                 bh[col] = elev;
                 uu[col] = ev.uplift as f32;
                 lid[col] = class as u8;
@@ -457,11 +533,23 @@ pub fn generate_uplift_for_target(
 }
 
 /// Evaluates fine-grid `(uplift_u, lithology_id)` directly from an upsampled `fine_bedrock_h`
-/// without allocating `raw_h`, `bedrock_h`, or `stratum_k` (`80 MiB` total @ `4096^2`).
+/// at initial time `t_elapsed_yr = 0.0` (`80 MiB` total @ `4096^2`).
 pub fn generate_fine_s1_aux(
     cfg: &WorldV2Config,
     fine_bedrock_h: &[f32],
     params_grid_size: u32,
+) -> Result<(Vec<f32>, Vec<u8>), ConfigError> {
+    generate_fine_s1_aux_at_time(cfg, fine_bedrock_h, params_grid_size, 0.0, 0.0)
+}
+
+/// Evaluates fine-grid `(raw uplift_u, advected lithology_id)` from `fine_bedrock_h` at `t_elapsed_yr`
+/// using `uplift_m_yr_scale` for the rock-advection term `U * t_elapsed_yr`.
+pub fn generate_fine_s1_aux_at_time(
+    cfg: &WorldV2Config,
+    fine_bedrock_h: &[f32],
+    params_grid_size: u32,
+    uplift_m_yr_scale: f64,
+    t_elapsed_yr: f64,
 ) -> Result<(Vec<f32>, Vec<u8>), ConfigError> {
     cfg.validate()?;
     let w = cfg.grid_size as usize;
@@ -480,6 +568,7 @@ pub fn generate_fine_s1_aux(
     let params = TectonicParams::from_config_with_grid_size(cfg, params_grid_size);
     let denom_x = (w - 1) as f64;
     let denom_z = (h - 1) as f64;
+    let extent_m = f64::from(cfg.extent_m);
 
     let mut uplift_u = vec![0.0_f32; n];
     let mut lithology_id = vec![0_u8; n];
@@ -493,9 +582,17 @@ pub fn generate_fine_s1_aux(
             let v = row as f64 / denom_z;
             for col in 0..w {
                 let u = col as f64 / denom_x;
-                let ev = eval_cell_raw(u, v, &params, cfg);
-                let class = assign_lithology(bh[col], &ev, cfg);
-                uu[col] = ev.uplift as f32;
+                let (strat, massif_h, massif_uplift, plateau_blend, _, _, _) =
+                    eval_cell_strat_and_envelope(u, v, &params, cfg);
+                let _ = massif_h;
+                let uplift_raw = (f64::from(cfg.massif_uplift_amplitude) * massif_uplift
+                    + 350.0 * plateau_blend
+                    + if strat.coast_dist > 0.0 { 120.0 } else { 0.0 })
+                .max(0.0);
+                let u_m_yr = uplift_raw * uplift_m_yr_scale;
+                let class =
+                    assign_lithology_advected(bh[col], &strat, u_m_yr, t_elapsed_yr, extent_m);
+                uu[col] = uplift_raw as f32;
                 lid[col] = class as u8;
                 debug_assert!((lid[col] as usize) < LITHOLOGY_CLASS_COUNT);
             }
@@ -504,10 +601,71 @@ pub fn generate_fine_s1_aux(
     Ok((uplift_u, lithology_id))
 }
 
+/// Zero-allocation in-place advected stratigraphy update at cumulative time `t_elapsed_yr`.
+///
+/// Evaluates `z_c(x, y, t) = z_c0(x, y) + U(x, y) * t_elapsed_yr` analytically using only the
+/// precomputed `bedrock_h` and `uplift_m_yr` slices (`0 MiB` extra RAM, deterministic across threads).
+pub fn update_lithology_advected_in_place(
+    cfg: &WorldV2Config,
+    params_grid_size: u32,
+    bedrock_h: &[f32],
+    uplift_m_yr: &[f32],
+    t_elapsed_yr: f64,
+    lithology_id: &mut [u8],
+) -> Result<(), ConfigError> {
+    cfg.validate()?;
+    let w = cfg.grid_size as usize;
+    let h = cfg.grid_size as usize;
+    let n = w * h;
+    if bedrock_h.len() != n || uplift_m_yr.len() != n || lithology_id.len() != n {
+        return Err(ConfigError {
+            message: format!(
+                "slice lengths ({}, {}, {}) must match {}x{}={n}",
+                bedrock_h.len(),
+                uplift_m_yr.len(),
+                lithology_id.len(),
+                w,
+                h
+            ),
+        });
+    }
+    let params = TectonicParams::from_config_with_grid_size(cfg, params_grid_size);
+    let denom_x = (w - 1) as f64;
+    let denom_z = (h - 1) as f64;
+    let extent_m = f64::from(cfg.extent_m);
+
+    lithology_id
+        .par_chunks_mut(w)
+        .zip(bedrock_h.par_chunks(w))
+        .zip(uplift_m_yr.par_chunks(w))
+        .enumerate()
+        .for_each(|(row, ((lid, bh), uu))| {
+            let v = row as f64 / denom_z;
+            for col in 0..w {
+                let u = col as f64 / denom_x;
+                let (strat, _, _, _, _, _, _) = eval_cell_strat_and_envelope(u, v, &params, cfg);
+                let class = assign_lithology_advected(
+                    bh[col],
+                    &strat,
+                    f64::from(uu[col]),
+                    t_elapsed_yr,
+                    extent_m,
+                );
+                lid[col] = class as u8;
+            }
+        });
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::soft_bound_elevation;
+    use super::{
+        generate_uplift, soft_bound_elevation, update_lithology_advected_in_place, LithologyClass,
+    };
+    use crate::config::WorldV2Config;
     use crate::{ELEV_MAX_M, ELEV_MIN_M};
+    use rayon::ThreadPoolBuilder;
 
     #[test]
     fn soft_bound_elevation_is_strictly_monotone_and_unpinned() {
@@ -538,6 +696,113 @@ mod tests {
             );
             assert_eq!(y < 0.0, raw < 0.0, "sea-level sign mismatch at {raw}");
             prev = y;
+        }
+    }
+
+    #[test]
+    fn advected_lithology_migrates_with_uplift_and_matches_initial_bit_for_bit() {
+        let cfg = WorldV2Config::for_size(0x5756_3201, 256);
+        let field = generate_uplift(&cfg).expect("S1 256");
+        let u_phys: Vec<f32> = field.uplift_u.iter().map(|&u| u * 1.0e-6).collect();
+        let mut lith_0 = vec![0_u8; field.bedrock_h.len()];
+        let mut lith_1t = vec![0_u8; field.bedrock_h.len()];
+        let mut lith_later = vec![0_u8; field.bedrock_h.len()];
+
+        update_lithology_advected_in_place(&cfg, 256, &field.bedrock_h, &u_phys, 0.0, &mut lith_0)
+            .expect("update t=0");
+        assert_eq!(lith_0, field.lithology_id);
+
+        let pool_1 = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+        pool_1.install(|| {
+            update_lithology_advected_in_place(
+                &cfg,
+                256,
+                &field.bedrock_h,
+                &u_phys,
+                200_000.0,
+                &mut lith_1t,
+            )
+            .expect("update t=200k 1t");
+        });
+        update_lithology_advected_in_place(
+            &cfg,
+            256,
+            &field.bedrock_h,
+            &u_phys,
+            200_000.0,
+            &mut lith_later,
+        )
+        .expect("update t=200k mt");
+        assert_eq!(lith_1t, lith_later);
+
+        // Upward datum advection `z_c = z_c0 + U * t` must shift stratigraphic beds relative to fixed `h`
+        // (exposing underlying beds: e.g. Río Negro sandstone -> basal SoftShale, Cogollo -> Río Negro).
+        let shifted = lith_0
+            .iter()
+            .zip(lith_later.iter())
+            .filter(|(&a, &b)| a != b)
+            .count();
+        assert!(
+            shifted >= 200,
+            "expected >= 200 cells to transition beds over 200 kyr advection, got {shifted}"
+        );
+        let rio_negro_to_basal_shale = lith_0
+            .iter()
+            .zip(lith_later.iter())
+            .filter(|(&a, &b)| {
+                a == LithologyClass::SandstoneCaprock as u8 && b == LithologyClass::SoftShale as u8
+            })
+            .count();
+        let limestone_to_sandstone = lith_0
+            .iter()
+            .zip(lith_later.iter())
+            .filter(|(&a, &b)| {
+                a == LithologyClass::SolubleLimestone as u8
+                    && b == LithologyClass::SandstoneCaprock as u8
+            })
+            .count();
+        assert!(
+            rio_negro_to_basal_shale > 0 && limestone_to_sandstone > 0,
+            "expected strictly down-section unroofing transitions (cap->shale={rio_negro_to_basal_shale}, lime->cap={limestone_to_sandstone})"
+        );
+    }
+
+    #[test]
+    fn a1_caprock_fraction_meets_wv2_1b_band_across_all_17_seeds() {
+        let mut seeds = vec![
+            57_563_201_u64,
+            0x5756_3201,
+            42,
+            1337,
+            314_159,
+            2027,
+            8191,
+            10_022,
+            777_777,
+            888_888,
+            1_234_567,
+            20_261_122,
+            11,
+            99,
+            7777,
+            539_365_664,
+            0xDEAD_BEEF,
+        ];
+        seeds.sort_unstable();
+        seeds.dedup();
+        for seed in seeds {
+            let cfg = WorldV2Config::for_size(seed, 256);
+            let f = generate_uplift(&cfg).expect("S1 256");
+            let cap = f
+                .lithology_id
+                .iter()
+                .filter(|&&c| c == LithologyClass::SandstoneCaprock as u8)
+                .count() as f64
+                / f.lithology_id.len() as f64;
+            assert!(
+                (0.09..=0.21).contains(&cap),
+                "seed={seed}: A1 caprock_frac={cap:.4} outside [0.09, 0.21]"
+            );
         }
     }
 }
