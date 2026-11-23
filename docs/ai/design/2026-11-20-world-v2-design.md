@@ -223,6 +223,7 @@ Today, the WebView generates `2048²` worlds via `src/components/Landscape/utils
   - `node_count × 20` bytes: `(x_m: f32, y_m: f32, z_m: f32, radius_m: f32, light_decay: f32)`.
   - `edge_count × 12` bytes: `(from_idx: u32, to_idx: u32, passage_kind: u8, pad: [u8; 3])`.
   - `entrance_count × 20` bytes: `(node_idx: u32, mouth_kind: u8, realm_status: u8 /* 1 = decorative_until_underground_adr */, pad: [u8; 2], yaw_rad: f32, elevation_m: f32, clearance_m: f32)`.
+- **Candidate for a future underground-realm ADR (not decided, not part of `WV2-2`):** the graph could later carry cave energy pools fed by surface detritus seeping down from the cells above each node, moving EU between pools that join `closed_total_eu` rather than creating any. See [`QD_REALMS_HABITATS_RESEARCH_2026-11-22.md`](../../research/QD_REALMS_HABITATS_RESEARCH_2026-11-22.md) §3.
 
 ### 2.3 Algorithm Cost Basis & Runtime Estimates (`2048²`, `4096²`, `8192²`)
 

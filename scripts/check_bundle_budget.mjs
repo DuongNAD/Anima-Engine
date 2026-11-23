@@ -23,10 +23,10 @@
 // Usage: node scripts/check_bundle_budget.mjs [distDir]
 
 import { readdirSync, statSync, existsSync, readFileSync } from 'node:fs';
-import { join, relative, basename } from 'node:path';
+import { join, relative, basename, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const ROOT = process.cwd();
-const DIST = process.argv[2] ?? join(ROOT, 'dist');
 const KIB = 1024;
 
 /**
@@ -96,126 +96,246 @@ const CHUNK_BUDGET_KIB = {
  */
 const TOTAL_BUDGET_KIB = 2006;
 
-if (!existsSync(DIST)) {
-  console.error(`missing ${relative(ROOT, DIST)} — run \`npm run build\` first.`);
-  process.exit(2);
-}
-
-const assets = join(DIST, 'assets');
-if (!existsSync(assets)) {
-  console.error(`missing ${relative(ROOT, assets)} — the build output looks wrong.`);
-  process.exit(2);
-}
-
-const files = readdirSync(assets)
-  .filter((f) => f.endsWith('.js'))
-  .map((f) => {
-    const full = join(assets, f);
-    const kib = statSync(full).size / KIB;
-    // Strip Vite's `-<hash>.js` suffix to get the stable chunk name.
-    const name = basename(f).replace(/-[A-Za-z0-9_-]{6,}\.js$/, '');
-    return { file: f, name, kib };
-  })
-  .sort((a, b) => b.kib - a.kib);
-
-if (files.length === 0) {
-  console.error(`no .js in ${relative(ROOT, assets)} — the build output looks wrong.`);
-  process.exit(2);
-}
-
-const failures = [];
-let total = 0;
-
-for (const f of files) {
-  total += f.kib;
-  const budget = CHUNK_BUDGET_KIB[f.name] ?? CHUNK_BUDGET_KIB.default;
-  const explicit = f.name in CHUNK_BUDGET_KIB;
-  if (f.kib > budget) {
-    failures.push(
-      `${f.name} is ${f.kib.toFixed(1)} KiB, budget ${budget} KiB` +
-        (explicit ? '' : ' (the `default` budget — a new chunk this large needs its own entry)'),
-    );
-  }
-}
-
-if (total > TOTAL_BUDGET_KIB) {
-  failures.push(`total shipped JS is ${total.toFixed(1)} KiB, budget ${TOTAL_BUDGET_KIB} KiB`);
-}
-
-// ---- the split, checked as behaviour rather than as a number ----------------------------------
-//
-// A byte ceiling around the 836 KiB three.js/react-three-fiber chunk is regression protection and
-// nothing more: it would still pass on the day someone adds `import * as THREE from 'three'` to
-// `App.tsx` and doubles what the 2D dashboard downloads, because the chunk's own size would not
-// change. The property that matters is *which route pays for it*.
-//
-// Measured against the built output, 2026-07-27, with `vite preview` and a real browser:
-//
-//   /                 17 JS files fetched — react-three-fiber chunk: NOT fetched
-//   /landscape.html    9 JS files fetched — react-three-fiber chunk: fetched
-//
-// So the chunk is already a route boundary, which is the correct architectural answer here: it is
-// the three.js runtime, every consumer of it needs all of it, and the only page that renders 3D is
-// the only page that loads it. Splitting three.js internally is tree-shaking, which rolldown
-// already does; splitting r3f from three would produce two chunks that are always fetched together.
-//
-// The remaining 836 KiB is three.js itself, and it is honestly still 836 KiB — that debt is scored,
-// not resolved. What this gate adds is that the debt cannot silently spread to the dashboard.
-const ENTRY_HTML = {
+export const ENTRY_HTML = {
   'index.html': '2D dashboard',
   'landscape.html': 'landscape scene',
   'map2.html': 'map 2 scene',
 };
 /** Chunks that must never be reachable from the dashboard entry's static preload graph. */
-const THREE_D_CHUNK = /^react-three-fiber/;
+export const THREE_D_CHUNK = /^react-three-fiber/;
+/**
+ * Signature tokens emitted by `three` (`window.__THREE__ = REVISION` and unmangled `THREE.*`
+ * identifiers/warnings), avoiding false positives on PixiJS's `WebGLRenderer`/`Matrix4` or Vite's
+ * lazy-preload filename strings.
+ */
+export const THREE_D_CONTENT = /__THREE__\b|\bTHREE\.[A-Z][A-Za-z0-9_]+\b/;
 
-for (const [file, label] of Object.entries(ENTRY_HTML)) {
-  const p = join(DIST, file);
-  if (!existsSync(p)) {
-    failures.push(`${file} is missing from dist/ — was the build run?`);
-    continue;
+const STATIC_ESM_IMPORT_RE =
+  /(?:^|[;}\n])\s*import\s*(?:[^('"`;]+?\s*from\s*)?["']\.\/([^"']+\.js)["']/g;
+
+export function hasThreeJsSignature(jsSource) {
+  return THREE_D_CONTENT.test(jsSource);
+}
+
+export function extractHtmlJsRefs(html) {
+  return [...html.matchAll(/(?:src|href)="\/?assets\/([^"]+\.js)"/g)].map((m) => m[1]);
+}
+
+export function collectStaticChunkClosure(entryChunks, assetsDir) {
+  const visited = new Set();
+  const queue = [...entryChunks];
+  const chunks = [];
+
+  while (queue.length > 0) {
+    const file = queue.shift();
+    if (!file || visited.has(file)) continue;
+    visited.add(file);
+
+    const fullPath = join(assetsDir, file);
+    if (!existsSync(fullPath)) {
+      chunks.push({ file, content: '', missing: true });
+      continue;
+    }
+
+    const content = readFileSync(fullPath, 'utf8');
+    chunks.push({ file, content, missing: false });
+
+    STATIC_ESM_IMPORT_RE.lastIndex = 0;
+    let match;
+    while ((match = STATIC_ESM_IMPORT_RE.exec(content)) !== null) {
+      const dep = match[1];
+      if (!visited.has(dep)) {
+        queue.push(dep);
+      }
+    }
   }
-  const html = readFileSync(p, 'utf8');
-  const referenced = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)].map((m) => m[1]);
-  const loadsThreeD = referenced.some((n) => THREE_D_CHUNK.test(n));
 
-  if (file === 'index.html' && loadsThreeD) {
-    failures.push(
-      `the ${label} (${file}) statically loads the three.js chunk. It renders 2D only; something ` +
-        `now imports three (or react-three-fiber) at module scope from the dashboard entry. Import ` +
-        `it lazily, or the dashboard pays 836 KiB for a renderer it does not use.`,
+  return chunks;
+}
+
+export function checkBundleBudget(distDir = join(ROOT, 'dist')) {
+  if (!existsSync(distDir)) {
+    return {
+      ok: false,
+      exitCode: 2,
+      error: `missing ${relative(ROOT, distDir)} — run \`npm run build\` first.`,
+      files: [],
+      totalKib: 0,
+      entryReports: [],
+      failures: [],
+    };
+  }
+
+  const assets = join(distDir, 'assets');
+  if (!existsSync(assets)) {
+    return {
+      ok: false,
+      exitCode: 2,
+      error: `missing ${relative(ROOT, assets)} — the build output looks wrong.`,
+      files: [],
+      totalKib: 0,
+      entryReports: [],
+      failures: [],
+    };
+  }
+
+  const files = readdirSync(assets)
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => {
+      const full = join(assets, f);
+      const kib = statSync(full).size / KIB;
+      // Strip Vite's `-<hash>.js` suffix to get the stable chunk name.
+      const name = basename(f).replace(/-[A-Za-z0-9_-]{6,}\.js$/, '');
+      return { file: f, name, kib };
+    })
+    .sort((a, b) => b.kib - a.kib);
+
+  if (files.length === 0) {
+    return {
+      ok: false,
+      exitCode: 2,
+      error: `no .js in ${relative(ROOT, assets)} — the build output looks wrong.`,
+      files: [],
+      totalKib: 0,
+      entryReports: [],
+      failures: [],
+    };
+  }
+
+  const failures = [];
+  let totalKib = 0;
+
+  for (const f of files) {
+    totalKib += f.kib;
+    const budget = CHUNK_BUDGET_KIB[f.name] ?? CHUNK_BUDGET_KIB.default;
+    const explicit = f.name in CHUNK_BUDGET_KIB;
+    if (f.kib > budget) {
+      failures.push(
+        `${f.name} is ${f.kib.toFixed(1)} KiB, budget ${budget} KiB` +
+          (explicit ? '' : ' (the `default` budget — a new chunk this large needs its own entry)'),
+      );
+    }
+  }
+
+  if (totalKib > TOTAL_BUDGET_KIB) {
+    failures.push(`total shipped JS is ${totalKib.toFixed(1)} KiB, budget ${TOTAL_BUDGET_KIB} KiB`);
+  }
+
+  // ---- the split, checked as behaviour rather than as a number ----------------------------------
+  //
+  // A byte ceiling around the 836 KiB three.js/react-three-fiber chunk is regression protection and
+  // nothing more: it would still pass on the day someone adds `import * as THREE from 'three'` to
+  // `App.tsx` and doubles what the 2D dashboard downloads, because the chunk's own size would not
+  // change. The property that matters is *which route pays for it*.
+  //
+  // Measured against the built output, 2026-07-27, with `vite preview` and a real browser:
+  //
+  //   /                 17 JS files fetched — react-three-fiber chunk: NOT fetched
+  //   /landscape.html    9 JS files fetched — react-three-fiber chunk: fetched
+  //
+  // So the chunk is already a route boundary, which is the correct architectural answer here: it is
+  // the three.js runtime, every consumer of it needs all of it, and the only page that renders 3D is
+  // the only page that loads it. Splitting three.js internally is tree-shaking, which rolldown
+  // already does; splitting r3f from three would produce two chunks that are always fetched together.
+  //
+  // The remaining 836 KiB is three.js itself, and it is honestly still 836 KiB — that debt is scored,
+  // not resolved. What this gate adds is that the debt cannot silently spread to the dashboard.
+  const entryReports = [];
+
+  for (const [file, label] of Object.entries(ENTRY_HTML)) {
+    const p = join(distDir, file);
+    if (!existsSync(p)) {
+      failures.push(`${file} is missing from dist/ — was the build run?`);
+      entryReports.push({
+        file,
+        label,
+        referenced: [],
+        reachable: [],
+        loadsThreeD: false,
+        missing: true,
+      });
+      continue;
+    }
+    const html = readFileSync(p, 'utf8');
+    const referenced = extractHtmlJsRefs(html);
+    const reachable = collectStaticChunkClosure(referenced, assets);
+    const loadsThreeD = reachable.some(
+      (chunk) => THREE_D_CHUNK.test(chunk.file) || hasThreeJsSignature(chunk.content),
+    );
+
+    if (file === 'index.html' && loadsThreeD) {
+      failures.push(
+        `the ${label} (${file}) statically loads the three.js chunk. It renders 2D only; something ` +
+          `now imports three (or react-three-fiber) at module scope from the dashboard entry. Import ` +
+          `it lazily, or the dashboard pays 836 KiB for a renderer it does not use.`,
+      );
+    }
+    if ((file === 'landscape.html' || file === 'map2.html') && !loadsThreeD) {
+      // The other direction, so the check above cannot pass because the chunk stopped existing.
+      failures.push(
+        `the ${label} (${file}) does not reference the three.js chunk. Either the 3D scene stopped ` +
+          `loading its renderer, or the chunk was renamed and this gate is now vacuous.`,
+      );
+    }
+    entryReports.push({
+      file,
+      label,
+      referenced,
+      reachable,
+      loadsThreeD,
+      missing: false,
+    });
+  }
+
+  return {
+    ok: failures.length === 0,
+    exitCode: failures.length > 0 ? 1 : 0,
+    files,
+    totalKib,
+    entryReports,
+    failures,
+  };
+}
+
+function main() {
+  const distDir = process.argv[2] ?? join(ROOT, 'dist');
+  const result = checkBundleBudget(distDir);
+
+  if (result.exitCode === 2) {
+    console.error(result.error);
+    process.exit(2);
+  }
+
+  for (const r of result.entryReports) {
+    if (r.missing) continue;
+    console.log(
+      `  entry ${r.file.padEnd(16)} ${String(r.referenced.length).padStart(3)} static chunk(s), ` +
+        `3D renderer: ${r.loadsThreeD ? 'yes' : 'no'}`,
     );
   }
-  if ((file === 'landscape.html' || file === 'map2.html') && !loadsThreeD) {
-    // The other direction, so the check above cannot pass because the chunk stopped existing.
-    failures.push(
-      `the ${label} (${file}) does not reference the three.js chunk. Either the 3D scene stopped ` +
-        `loading its renderer, or the chunk was renamed and this gate is now vacuous.`,
-    );
+
+  const width = Math.max(...result.files.map((f) => f.name.length));
+  console.log(`bundle budget — ${result.files.length} chunk(s), ${result.totalKib.toFixed(1)} KiB total\n`);
+  for (const f of result.files.slice(0, 12)) {
+    const budget = CHUNK_BUDGET_KIB[f.name] ?? CHUNK_BUDGET_KIB.default;
+    const pct = ((f.kib / budget) * 100).toFixed(0);
+    const flag = f.kib > budget ? 'OVER' : '    ';
+    console.log(`  ${flag} ${f.name.padEnd(width)}  ${f.kib.toFixed(1).padStart(8)} KiB  ${pct.padStart(4)}% of ${budget}`);
   }
-  console.log(
-    `  entry ${file.padEnd(16)} ${String(referenced.length).padStart(3)} static chunk(s), ` +
-      `3D renderer: ${loadsThreeD ? 'yes' : 'no'}`,
-  );
+
+  if (result.failures.length > 0) {
+    console.error(`\nbundle budget FAILED:\n`);
+    for (const f of result.failures) console.error(`  - ${f}`);
+    console.error(
+      `\nRaising a budget is a decision, not a fix. If the growth is intended, raise the number in ` +
+        `scripts/check_bundle_budget.mjs in the same commit that causes it, and say why.`,
+    );
+    process.exit(1);
+  }
+
+  console.log(`\nOK — every chunk within budget, total ${result.totalKib.toFixed(1)}/${TOTAL_BUDGET_KIB} KiB`);
 }
 
-const width = Math.max(...files.map((f) => f.name.length));
-console.log(`bundle budget — ${files.length} chunk(s), ${total.toFixed(1)} KiB total\n`);
-for (const f of files.slice(0, 12)) {
-  const budget = CHUNK_BUDGET_KIB[f.name] ?? CHUNK_BUDGET_KIB.default;
-  const pct = ((f.kib / budget) * 100).toFixed(0);
-  const flag = f.kib > budget ? 'OVER' : '    ';
-  console.log(`  ${flag} ${f.name.padEnd(width)}  ${f.kib.toFixed(1).padStart(8)} KiB  ${pct.padStart(4)}% of ${budget}`);
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main();
 }
-
-if (failures.length > 0) {
-  console.error(`\nbundle budget FAILED:\n`);
-  for (const f of failures) console.error(`  - ${f}`);
-  console.error(
-    `\nRaising a budget is a decision, not a fix. If the growth is intended, raise the number in ` +
-      `scripts/check_bundle_budget.mjs in the same commit that causes it, and say why.`,
-  );
-  process.exit(1);
-}
-
-console.log(`\nOK — every chunk within budget, total ${total.toFixed(1)}/${TOTAL_BUDGET_KIB} KiB`);
