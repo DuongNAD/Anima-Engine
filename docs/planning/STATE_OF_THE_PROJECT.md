@@ -1566,6 +1566,11 @@ con trỏ id (`SavedSimulationState::live_lineage`); save cũ vẫn đọc đư�
 - **Còn lại:** app desktop chưa đặt khoá (Neo4j chưa có cột cho hai tick); nén vẫn nối đường đơn nhánh,
   nên một chuỗi genotype kiểu Avida theo từng bước dọc line of descent cần thêm tuỳ chọn tắt nén. OSS-073
   nay **làm được** trên quần thể live với đồ thị có thật; giao thức đo của nó vẫn chưa viết.
+- **Lỗ thứ hai, vẫn mở** (rà soát 2026-11-22, [ghi chú](../research/OPEN_ENDEDNESS_LINEAGE_SPECIES_RESEARCH_2026-11-22.md)):
+  `compact` giữ **số** đột biến qua chuỗi một con (`SimplifiedEdge.mutations`) nhưng giải phóng genotype
+  trung gian, nên phân loại đột biến có lợi / trung tính / có hại kiểu Avida cần nhật ký diff đột biến theo
+  cạnh hoặc ghim tổ tiên. Chưa có thẻ; đây là ghi nhận, không phải quyết định. (Lỗ thứ nhất của ghi chú đó,
+  ca sinh live không vào tracker, chính là F-066 ở trên.)
 
 **Hai cái bẫy đã trả giá rồi, đừng đạp lại:**
 
