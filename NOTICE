@@ -187,7 +187,7 @@ authorised on 2026-11-19; the expression listed below is still the one the compo
 - etcetera 0.11.0 — https://github.com/lunacookies/etcetera
 - fdeflate 0.3.7 — https://github.com/image-rs/fdeflate
 - flate2 1.1.9 — https://github.com/rust-lang/flate2-rs
-- form_urlencoded 1.2.2 — https://github.com/servo/rust-url
+- form_urlencoded 1.2.3 — https://github.com/servo/rust-url
 - futures 0.3.33 — https://github.com/rust-lang/futures-rs
 - futures-channel 0.3.33 — https://github.com/rust-lang/futures-rs
 - futures-core 0.3.33 — https://github.com/rust-lang/futures-rs
@@ -333,7 +333,7 @@ authorised on 2026-11-19; the expression listed below is still the one the compo
 - unicode-xid 0.2.6 — https://github.com/unicode-rs/unicode-xid
 - unsynn 0.3.0 — https://seed.pipapo.org/nodes/seed.pipapo.org/rad:z39WbeupErKS8TwbDS5yU8eZSa3C
 - ureq 2.12.1 — https://github.com/algesten/ureq
-- url 2.5.8 — https://github.com/servo/rust-url
+- url 2.5.9 — https://github.com/servo/rust-url
 - utf-8 0.7.6 — https://github.com/SimonSapin/rust-utf8
 - utf8-chars 3.0.7 — https://github.com/A1-Triard/utf8-chars
 - variadics_please 2.0.0 — https://github.com/bevyengine/variadics_please

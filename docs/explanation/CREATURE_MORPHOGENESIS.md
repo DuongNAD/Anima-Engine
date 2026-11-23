@@ -193,6 +193,12 @@ so sánh hai phía, không phải suy medium từ ô rồi kiểm lại chính �
 *Trạng thái mã:* `LocomotionMedium` chưa tồn tại. Sáu giá trị trên mới chỉ được liệt kê ở trang này;
 hợp đồng phác `HabitatPreference { medium, elevation_range }` mà không liệt kê biến thể.
 
+*Ứng viên chi phí (chưa quyết định):* hai số hạng có thể đi cùng medium, cả hai cộng vào `total_cost`
+trong `metabolic_decay_system` như `cognition_cost`, không bao giờ trừ riêng: chi phí bảo dưỡng giác
+quan (mắt tốn nhiều hơn râu hay thụ thể hoá học, để chọn lọc tự đào thải mắt trong bóng tối) và ngân
+sách khối lượng cơ bay cho `Aerial`, cố định lúc sinh. Nguồn và giới hạn: xem
+[`QD_REALMS_HABITATS_RESEARCH_2026-11-22.md`](../research/QD_REALMS_HABITATS_RESEARCH_2026-11-22.md).
+
 ### Pigment
 
 Pigment gene tạo màu cơ sở. Developmental slope có thể tác động nhẹ theo cue. Màu
