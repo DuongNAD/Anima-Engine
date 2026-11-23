@@ -10,26 +10,26 @@ last_reviewed: 2026-11-23
 
 # Protocol — `NR-SPIKE`: Native Renderer Comparative Benchmark & `ADR-0011` Decision Protocol (Map v2 Phase P2)
 
-> **Status: `proposed` (documents only — awaiting Lead verification & Owner approval before writing any spike code).**
+> **Status: `proposed` (documents only — awaiting Lead verification & Owner approval before writing any spike code or installing external tools).**
 > - **Zero spike code exists or is added by this PR:** No Rust, TypeScript, WGSL, GDScript, `Cargo.toml`, or fixture changes are made here; per [Map v2 Requirements §4 P2](../requirements/2026-11-20-feature-map-v2.md), **spike code is never merged** (only measurement notes and `ADR-0011`).
 > - **`ADR-0011` does not yet exist:** `docs/decisions/` currently ends at [ADR-0010](../../decisions/ADR-0010-pinned-world-artifact.md). All architectural preferences or cost estimates in the [Native Renderer Research Note](../../research/NATIVE_RENDERER_WGPU_TAURI_BAKING_RESEARCH_2026-11-22.md) are **explicitly marked `[HYPOTHESIS TO TEST]`** below, never treated as measured facts or pre-decided choices.
-> - **Accepted World v2 & Map v2 contracts stay locked:** Low-tier rendering uses baked lighting and impostors with **no shadow maps (`req :109`)**, and World v2 texture baking retains **`Block PSNR >= 42 dB, SSIM >= 0.996`** ([World v2 Design `WV2-D`](../design/2026-11-20-world-v2-design.md)).
+> - **Accepted Gates vs. `PROPOSED — OWNER DECISION NR-D1..NR-D7`:** Every threshold/budget defined in [Map v2 Requirements](../requirements/2026-11-20-feature-map-v2.md) or [World v2 Design (`WV2-D`)](../design/2026-11-20-world-v2-design.md) stays locked as an **ACCEPTED** hard gate. Every *new* ceiling, rubric weight, selection margin, tie-breaker, or local tool installation introduced by this protocol is explicitly labelled **`PROPOSED — OWNER DECISION NR-D<n>`** (collected in [`§9`](#9-owner-decision-summary-nr-d1nr-d7)) and is **not enforced or installed until the Owner approves it**.
 
 ---
 
 ## 0. Scope, Provenance & Preserved Contracts
 
-### 0.1 Authoritative Inputs & Observed Trunk Pins (`e576350fc`)
+### 0.1 Authoritative Inputs & Observed Trunk Pins (`c0ce44b2`)
 
 | Source | Role | Pin / Status on `origin/feat/ecological-selection` |
 |---|---|---|
-| [Map v2 Requirements](../requirements/2026-11-20-feature-map-v2.md) | Hard gates (`G-REF`, `G-PERF`, `G-SIM`), `§3b` frame budgets, `§4` Phase P2 mandate, `§6` Honesty rule | `accepted` (`e576350fc`) |
-| [World v2 Design (`WV2-D`)](../design/2026-11-20-world-v2-design.md) | `4096²` tile pack format (`ANMW v3`, `260×260` guttered tiles), `bc7enc_rdo` + KTX2, `Block PSNR >= 42 dB, SSIM >= 0.996` (`WV2-5`), `G-SIM` | `accepted` (`e576350fc`) |
-| [Map v2 G-REF Reference Board](../design/2026-11-20-map-v2-reference-board.md) | 53 CC0/PD visual benchmarks across 13 biome/coastal/water categories | `accepted` (`e576350fc`) |
-| [Native Renderer Research Note](../../research/NATIVE_RENDERER_WGPU_TAURI_BAKING_RESEARCH_2026-11-22.md) | Architecture deep-dive for candidate `(a)` & offline baking hypotheses (`[HYPOTHESIS TO TEST]` only) | `proposed` (`e576350fc`) |
-| [Readable World Plan](2026-11-16-feature-readable-world.md) | Existing Three.js baseline tiers (`qualityTiers.ts`), `1,000 × 3`-segment creatures, canonical views | `active` (`e576350fc`) |
+| [Map v2 Requirements](../requirements/2026-11-20-feature-map-v2.md) | Hard gates (`G-REF`, `G-PERF`, `G-SIM`), `§3b` frame budgets, `§4` Phase P2 mandate, `§6` Honesty rule | `accepted` (`c0ce44b2`) |
+| [World v2 Design (`WV2-D`)](../design/2026-11-20-world-v2-design.md) | `4096²` tile pack format (`ANMW v3`, `260×260` guttered tiles), `bc7enc_rdo` + KTX2, `Block PSNR >= 42 dB, SSIM >= 0.996` (`WV2-5`), `G-SIM` | `accepted` (`c0ce44b2`) |
+| [Map v2 G-REF Reference Board](../design/2026-11-20-map-v2-reference-board.md) | 53 CC0/PD visual benchmarks across 13 biome/coastal/water categories | `accepted` (`c0ce44b2`) |
+| [Native Renderer Research Note](../../research/NATIVE_RENDERER_WGPU_TAURI_BAKING_RESEARCH_2026-11-22.md) | Architecture deep-dive for candidate `(a)` & offline baking hypotheses (`[HYPOTHESIS TO TEST]` only) | `proposed` (`c0ce44b2`) |
+| [Readable World Plan](2026-11-16-feature-readable-world.md) | Existing Three.js baseline tiers (`qualityTiers.ts`), `1,000 × 3`-segment creatures, canonical views | `active` (`c0ce44b2`) |
 | [ADR-0008](../../decisions/ADR-0008-world-past-and-time.md), [ADR-0009](../../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md), [ADR-0010](../../decisions/ADR-0010-pinned-world-artifact.md) | Trajectory era discipline, `burn 0.22.1` + `wgpu 30.0.2` stream isolation, pinned world artifact contract | `accepted` / `proposed` (`ADR-0009`) |
-| `src-tauri/Cargo.lock` & `.github/workflows/ci.yml` | Verified pins at `e576350fc`: `tauri 2.11.5`, `wry 0.55.1`, `tao 0.35.3`, `wgpu 30.0.2`, `naga 30.0.2`, `bevy_ecs 0.13.2`, `burn 0.22.1`, `raw-window-handle 0.6.2`, `libm 0.2.16`, `glam 0.25.0` | Inspected at `e576350fc` |
+| `src-tauri/Cargo.lock` & `.github/workflows/ci.yml` | Verified pins at `c0ce44b2`: `tauri 2.11.5`, `wry 0.55.1`, `tao 0.35.3`, `wgpu 30.0.2`, `naga 30.0.2`, `bevy_ecs 0.13.2`, `burn 0.22.1`, `raw-window-handle 0.6.2`, `libm 0.2.16`, `glam 0.25.0` | Inspected at `c0ce44b2` |
 
 ### 0.2 Preserved Requirements That Spike Candidates Must Not Drop
 
@@ -61,7 +61,7 @@ All three candidates **`(a)`**, **`(b)`**, and **`(c)`** MUST render the **exact
 | Parameter | **Low Tier** (`Dell Iris Xe` & `RTX 5060 Ti` baseline) | **High Tier** (`RTX 5060 Ti` only) | Source Rule |
 |---|---|---|---|
 | Display / Window Size | `1920 × 1080` physical window (`scale = 1.0`, fullscreen-borderless or fixed client `1920×1080`) | `1920 × 1080` physical window | Standardizes desktop pixel load across RTX and Dell FHD panel |
-| Internal 3D Resolution | `1280 × 720` (`0.67×` scale), upscaled to `1920 × 1080` (default candidate temporal/spatial upscale; DRS floor `0.50×` allowed **only** if logged) | `1920 × 1080` (`1.0×` native internal) | `Map v2 §3b` (`720p` upscaled on Low), research §2.1 |
+| Internal 3D Resolution | `1280 × 720` (`0.67×` scale), upscaled to `1920 × 1080` (default candidate temporal/spatial upscale; diagnostic DRS fallback down to `0.50×` logged separately if needed for `H-NR-01`, never disguised as `0.67×`) | `1920 × 1080` (`1.0×` native internal) | `Map v2 §3b` (`720p` upscaled on Low), research §2.1 |
 | Real-Time Shadow Maps / CSM | **OFF (`0` cascades, `0` shadow passes — hard requirement)** | **ON** (`3` cascades, `2048²`, percentage/PCF) | **`Map v2 §3b` line 109 (`req :109`)** |
 | Terrain Lighting & Creature Shadows | Baked `terrain_lighting` (AO, SVF, horizon angles) + creature blob/contact shadow (`0` shadow passes) | Dynamic CSM shadows + real-time SSAO/GTAO combined with baked bounce/SVF | `Map v2 §3b` lines 84–86, 109–111 |
 | Vegetation (`10,000` trees) | Near LOD meshes `< 160` sim-units, hemi-octahedral impostors `>= 160` sim-units | Full LOD0/1 near meshes `< 360` sim-units, mid LOD to `700`, impostors beyond; trees cast CSM shadows | `Map v2 §3b.4`, `qualityTiers.ts` aligned to `10,000` fixed scene |
@@ -82,7 +82,7 @@ Every run executes a deterministic scripted camera path derived from Anima's can
 | **Segment D — `massif_sweep`** | `60..75 s` | `15 s` | Fast camera pan + zoom across cliff talus (`Normal` / mip stress + temporal reprojection / disocclusion stress) | Yes |
 | **Static Hold (`ecosystem`)** | `75..90 s` | `15 s` | Stationary camera at `ecosystem` (`jitter / temporal shimmer / memory drift` settle) | Yes |
 | **Total Standard Run** | **`0..90 s`** | **`90 s`** | **`60 s` active tour (`15..75 s`) + `15 s` static (`75..90 s`) = `75 s` scored window** (or exact `60 s` ETW timed window `15..75 s` aligned with `PresentMon --delay 15 --timed 60`) | `15..75 s` primary (`3` repeats, report median run + spread) |
-| **Dell Thermal Soak** | **`0..900 s`** | **`15 min`** | **Dell Iris Xe Low only:** Continuous loop of Segments A–D on AC power (`15..900 s` ETW + CSV), comparing **`min 1..2`** vs. **`min 13..15`** to measure thermal throttling | Yes (tests `H-NR-01`) |
+| **Dell Thermal Soak** | **`0..900 s`** | **`15 min`** | **Dell Iris Xe Low only:** Continuous loop of Segments A–D on AC power (`15..900 s` ETW + CSV), comparing **`min 1..2`** vs. **`min 13..15`** to measure thermal throttling | Diagnostic (`H-NR-01`); hard soak floor `>= 28.0 FPS` is **`PROPOSED — OWNER DECISION NR-D2`** |
 
 ---
 
@@ -94,23 +94,23 @@ Each candidate renders `S-NR-FIXED` inside a **non-merged spike directory** (e.g
 
 - **Crate/API Alignment:** MUST pin **`wgpu = "30.0.2"`** and **`raw-window-handle = "0.6.2"`** matching `src-tauri/Cargo.lock` (`burn 0.22.1 -> cubecl-wgpu 0.11.4 -> wgpu 30.0.2` and `anima-worldgen gpu-bake`). Spike code verifies **zero duplicate `wgpu` major trees** when compiled alongside `burn/wgpu` (`ml-wgpu`).
 - **Tauri Compositor Integration Tested:**
-  - **Windows 11 DX12 (`wry 0.55.1` WebView2):** Test the **Child HWND `DxgiFromHwnd`** path (separate non-`WS_CLIPSIBLINGS` child `HWND` beneath `WRY_WEBVIEW` with WebView2 `DefaultBackgroundColor` alpha `= 0`), AND compare against **`WS_EX_NOREDIRECTIONBITMAP` + `IDCompositionVisual`** (`SurfaceTargetUnsafe::CompositionVisual`) during the Mốc 1 stability suite (marking research §1.1's Child-HWND claims as `[HYPOTHESIS TO TEST]`). Explicitly bundle **`dxcompiler.dll` + `dxil.dll >= v1.8.2502`** alongside the Windows binary (or `static-dxc` on `x86_64` while keeping `aarch64` portability documented) rather than relying on `Dx12Compiler::Auto`.
+  - **Windows 11 DX12 (`wry 0.55.1` WebView2):** Test the **Child HWND `DxgiFromHwnd`** path (separate non-`WS_CLIPSIBLINGS` child `HWND` beneath `WRY_WEBVIEW` with WebView2 `DefaultBackgroundColor` alpha `= 0`), AND compare against **`WS_EX_NOREDIRECTIONBITMAP` + `IDCompositionVisual`** (`SurfaceTargetUnsafe::CompositionVisual`) during the Mốc 1 stability suite (marking research §1.1's Child-HWND claims as `[HYPOTHESIS TO TEST]`). If external **`dxcompiler.dll` + `dxil.dll >= v1.8.2502`** (latest `v1.9.2609`) are bundled alongside the Windows binary rather than `static-dxc` (`x86_64`), download/staging requires prior approval under **`PROPOSED — OWNER DECISION NR-D7`**.
   - **macOS Metal smoke (`WKWebView`, macOS packaging check):** Sibling `NSView` + `CAMetalLayer` beneath `WKWebView` using `drawsBackground = NO` and dynamic `presentsWithTransaction` only during live resize (documenting Apple's private-API policy vs. Developer ID notarization per research §1.1 `[2, 8]`).
-- **Input Routing & Surface Lifecycle (`CurrentSurfaceTexture`):** Use batched DOM-First event forwarding (`pointer-events: none` background / `auto` HUD) for Mốc 1, implement all **7 branches** of `wgpu::CurrentSurfaceTexture` (`Success`, `Suboptimal`, `Timeout`, `Occluded`, `Outdated`, `Lost`, `Validation`), and test Mốc 1 stability: `50` minimize/restore cycles, 4-edge drag live resize, `100% <-> 150%` DPI transition, zero DWM black/transparent flickers, and working Windows Vietnamese TSF/IME input in the HUD text field.
+- **Input Routing & Surface Lifecycle (`CurrentSurfaceTexture`):** Use batched DOM-First event forwarding (`pointer-events: none` background / `auto` HUD) for Mốc 1, implement all **7 branches** of `wgpu::CurrentSurfaceTexture` (`Success`, `Suboptimal`, `Timeout`, `Occluded`, `Outdated`, `Lost`, `Validation`), and test Mốc 1 stability: `50` minimize/restore cycles (**`PROPOSED — OWNER DECISION NR-D4`**; research §4 hypothesis vs. smaller `10`-cycle sanity check), 4-edge drag live resize, `100% <-> 150%` DPI transition, zero DWM black/transparent flickers, and working Windows Vietnamese TSF/IME input in the HUD text field.
 - **Renderer Features Evaluated (`[HYPOTHESIS TO TEST]`):** Two-Phase Hi-Z occlusion culling + fixed `(Species, LOD)` MDI buckets (`atomicAdd` compute cull + single `multi_draw_indexed_indirect` matching `wgpu-hal` 30.0.2 Metal fallback constraint), hemi-octahedral `1024²` BC7/BC5/BC4 impostors, 4-layer weight-pruned terrain splatting + Top-2 Hex-Tiling (`720p -> 1080p` Low), Hillaire sky LUTs, and comparison of Lightweight WGSL TAAU + RCAS vs. AMD FSR 1 (`[HYPOTHESIS]`).
 
 ### 2.2 Candidate `(b)` — Newer Bevy (Native Render Graph + Upgrade Audit)
 
-- **Version Pin:** Pin one specific released Bevy `0.15.x` or `0.16.x` minor version in the spike manifest on Day 1 (never floating git HEAD) and keep **every asset identical** (`S-NR-FIXED` tiles converted strictly without changing World v2 source data or dropping `SSIM >= 0.996`).
+- **Version Pin:** Pin one specific released Bevy minor/patch version inside the isolated spike workspace on Day 1 (latest verified upstream release: **`v0.20.1`**, published `2026-10-28`, `MIT OR Apache-2.0` per `Cargo.toml`, `https://github.com/bevyengine/bevy/releases/tag/v0.20.1`; or an explicit Owner-confirmed `>= 0.15` pin — fetched by Cargo only during spike build, never floating git HEAD) and keep **every asset identical** (`S-NR-FIXED` tiles converted strictly without changing World v2 source data or dropping `SSIM >= 0.996`).
 - **Windowing / Embedding Strategy Tested:** Measure Bevy standalone native window + minimal egui/HUD overlay **and** assess headless/embedded Tauri composition viability (because Tauri owns `tao` while Bevy owns `winit`, creating a known single-main-thread event-loop ownership conflict on macOS/Windows).
 - **Mandatory Migration & Coexistence Audit Deliverable (Non-Optional):** In addition to FPS/GPU/RAM/VRAM numbers, candidate `(b)` MUST produce an empirical audit table answering:
-  1. **`bevy_ecs 0.13.2 -> Bevy 0.15/0.16` blast radius:** Exact file/call-site diff estimate across `src-tauri/src/` (`Schedule`, `Query`, `SystemParam`, `Event`, `Commands`, `GS-4` zero-alloc tick path, and [`ADR-0008`](../../decisions/ADR-0008-world-past-and-time.md) deterministic replay / seeded RNG invariance).
+  1. **`bevy_ecs 0.13.2 -> Bevy v0.20.1` (or pinned `>= 0.15`) blast radius:** Exact file/call-site diff estimate across `src-tauri/src/` (`Schedule`, `Query`, `SystemParam`, `Event`, `Commands`, `GS-4` zero-alloc tick path, and [`ADR-0008`](../../decisions/ADR-0008-world-past-and-time.md) deterministic replay / seeded RNG invariance).
   2. **`wgpu` conflict with `burn 0.22.1` (`ADR-0009`):** Whether newer Bevy pulls a different `wgpu` major version than `wgpu 30.0.2`, forcing two `wgpu` dependency trees (and duplicate native backends/shader compilers) or breaking `ml-wgpu` unless `burn` is upgraded simultaneously.
   3. **CI G2 & Licensing impact:** `cargo deny`, `THIRD_PARTY_LICENSES.txt`, binary size delta, clean `--release` compile time, and impact on [`CI G2`](../../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md) (`--no-default-features` exclusion of rendering crates from `anima-lab` / headless CI).
 
 ### 2.3 Candidate `(c)` — Godot 4 as a Separate Viewer Process
 
-- **Version Pin:** Pin one official Godot `4.3` or `4.4` stable (MIT) release binary/export template at spike start.
+- **Version Pin:** Pin official **`Godot 4.7.2-stable`** (`MIT`, published `2026-08-18`, `https://github.com/godotengine/godot/releases/tag/4.7.2-stable`) binary & export templates at spike start (**`PROPOSED — OWNER DECISION NR-D7` — do not install until approved**).
 - **Process Architecture Tested:** Two-process model per [Map v2 §4 P2](../requirements/2026-11-20-feature-map-v2.md) — headless Rust simulation emitter streams the `30 Hz` `3,000`-segment creature frame over local loopback IPC (`127.0.0.1` TCP/UDP or shared memory) to an exported standalone Godot 4 executable (`Forward+` DX12/Vulkan for High; `Forward+` and/or `Compatibility` for Low — whichever meets `req :109` & `SSIM` visual fidelity without crashes on Iris Xe).
 - **Additional Telemetry Required for `(c)`:**
   - **Combined dual-process footprint:** Sum of `sim_emitter.exe` + `godot_viewer.exe` (never measuring Godot alone).
@@ -148,27 +148,37 @@ Per [Map v2 Requirements §3b](../requirements/2026-11-20-feature-map-v2.md), th
 
 *(Shadow Note: High-tier CSM pass time MUST be broken out cleanly inside/beside Vegetation + Terrain + Creatures or reported as its own `gpu_csm_ms` column so Low `0.00 ms` CSM compliance under `req :109` is mechanically auditable.)*
 
-### 3.3 Hard FPS, RAM, VRAM & Stability Ceilings
+### 3.3 FPS, RAM, VRAM & Stability Ceilings (Accepted vs. Proposed `NR-D1..NR-D3`)
 
-| Metric | **Dell Iris Xe — Low Ceiling** | **RTX 5060 Ti — Low (Ref.)** | **RTX 5060 Ti — High Ceiling** | Failure Condition |
+In the table below, ONLY the **median FPS** ceilings (`30 FPS` Dell Low, `60 FPS` RTX High) come from an accepted document ([Map v2 §1 `G-PERF`](../requirements/2026-11-20-feature-map-v2.md)). Every additional numeric floor or memory ceiling (`p5` floor, `15-min` soak floor, `G-MEM` limits) is a **`PROPOSED — OWNER DECISION NR-D<n>`** pending Owner approval before Stage 1 enforcement:
+
+| Metric | **Dell Iris Xe — Low Ceiling** | **RTX 5060 Ti — Low (Ref.)** | **RTX 5060 Ti — High Ceiling** | Governance & Rationale / Source |
 |---|---|---|---|---|
-| **Median FPS (`60 s` tour)** | **`>= 30.0 FPS`** (`<= 33.33 ms`) | Diagnostic ref. (`>= 60.0 FPS` expected) | **`>= 60.0 FPS`** (`<= 16.67 ms`) | Hard fail (`G-PERF`) |
-| **p5 FPS (`1000 / P95 msBetweenPresents`)** | **`>= 25.0 FPS`** (`<= 40.00 ms`) | Reported verbatim | **`>= 50.0 FPS`** (`<= 20.00 ms`) | Hard fail (`G-PERF`) |
-| **p1 FPS (`1000 / P99`, secondary stutters)** | Reported verbatim (flag `< 18 FPS`) | Reported verbatim | Reported verbatim (flag `< 35 FPS`) | Recorded in `ADR-0011` risk log |
-| **15-min Thermal Soak Median FPS (Dell)** | **`>= 28.0 FPS`** in min `13..15` (`>= 30.0` target w/ DRS `>= 0.50×`) | N/A | N/A | Hard fail if `< 28.0 FPS` or driver reset |
-| **Process-Tree RAM (Working Set / Commit Peak)** | **`<= 2,048 MiB`** (target `<= 1,536 MiB`, excl. shared GPU double-count) | Reported verbatim | **`<= 4,096 MiB`** (target `<= 3,072 MiB`) | Hard fail (`G-MEM`) |
-| **VRAM / Shared GPU Memory Ceiling** | **`<= 768 MiB` DXGI `Local/NonLocal` usage** (target `<= 512 MiB` on unified `16 GB` host) | Reported verbatim | **`<= 3,072 MiB` dedicated VRAM** (target `<= 2,048 MiB`) | Hard fail (`G-MEM`) |
-| **Post-Warmup Leak Drift (`15..90 s` & `2..15 min`)** | **`<= +2.0 MiB/min`** OLS slope on RAM & GPU mem | `<= +2.0 MiB/min` | `<= +2.0 MiB/min` | Hard fail if sustained unbounded growth |
+| **Median FPS (`60 s` tour)** | **`>= 30.0 FPS`** (`<= 33.33 ms`) | Diagnostic ref. (`>= 60.0 FPS` expected) | **`>= 60.0 FPS`** (`<= 16.67 ms`) | **ACCEPTED HARD GATE** (`Map v2 §1 G-PERF`) |
+| **`p5` FPS (`1000 / P95 msBetweenPresents`)** | **`>= 25.0 FPS`** (`<= 40.00 ms`) | Reported verbatim | **`>= 50.0 FPS`** (`<= 20.00 ms`) | **`PROPOSED — OWNER DECISION NR-D1`** — `Map v2 G-PERF` requires reporting `p5` without a floor; `25/50` (`~83%` of median) bounds tail frame hitches (`Research §2.1`). Fallback if declined: report verbatim only. |
+| **p1 FPS (`1000 / P99`, secondary stutters)** | Reported verbatim (flag `< 18 FPS`) | Reported verbatim | Reported verbatim (flag `< 35 FPS`) | Diagnostic risk log only (non-gating in Stage 1; recorded in `ADR-0011`) |
+| **15-min Thermal Soak Median FPS (Dell)** | **`>= 28.0 FPS`** in min `13..15` (`>= 30.0` target w/ diagnostic DRS `>= 0.50×`) | N/A | N/A | **`PROPOSED — OWNER DECISION NR-D2`** — Quantifies `H-NR-01` `15 W` thermal throttle (`Research §2.1`); not in `Map v2`. Fallback if declined: diagnostic `15-min` delta only. |
+| **Process-Tree RAM (Working Set / Commit Peak)** | **`<= 2,048 MiB`** (target `<= 1,536 MiB`, excl. shared GPU double-count) | Reported verbatim | **`<= 4,096 MiB`** (target `<= 3,072 MiB`) | **`PROPOSED — OWNER DECISION NR-D3`** (`G-MEM`) — Not in `Map v2`; sized from Dell `16 GB` shared host (`~11.5 GB` OS resident -> `>= 5 GB` free RAM check per `AGENT_RULES.md §5`). |
+| **VRAM / Shared GPU Memory Ceiling** | **`<= 768 MiB` DXGI `Local/NonLocal` usage** (target `<= 512 MiB` on unified `16 GB` host) | Reported verbatim | **`<= 3,072 MiB` dedicated VRAM** (target `<= 2,048 MiB`) | **`PROPOSED — OWNER DECISION NR-D3`** (`G-MEM`) — Not in `Map v2`; protects Dell `16 GB` unified RAM and keeps `<= 19%` of RTX `16,311 MiB` VRAM. |
+| **Post-Warmup Leak Drift (`15..90 s` & `2..15 min`)** | **`<= +2.0 MiB/min`** OLS slope on RAM & GPU mem | `<= +2.0 MiB/min` | `<= +2.0 MiB/min` | **`PROPOSED — OWNER DECISION NR-D3`** (`G-MEM`) — Bounds unbounded descriptor/buffer leaks; fallback if declined: log OLS slope in `ADR-0011`. |
 
 ---
 
 ## 4. Exact Capture Tools, Metric Definitions & CLI Commands
 
-### 4.1 Observed Local Tooling Inventory (Windows 1 Baseline Check)
+### 4.1 Observed Local Tooling Inventory & Proposed Installs (`OWNER DECISION NR-D7`)
 
 Direct CLI inspection on Windows 1 (`2026-11-23`) verified:
-- **Already present:** `C:\Windows\System32\typeperf.exe`, `C:\Windows\System32\dxdiag.exe`, `nvidia-smi` (RTX 5060 Ti driver `621.24`), `cargo`, `rustup`, `cmake`, `python 3.11.9`.
-- **Not yet installed (require one-time owner-authorized local install before executing Phase P2 code; NEVER committed to the repository):** Intel **`PresentMon`** CLI (`PresentMon-2.x.exe` or latest Windows standalone binary), **`RenderDoc`** (`renderdoccmd.exe`, optional **Microsoft PIX** `pixtool.exe` for `CompositionVisual`), and **Godot 4** Windows/macOS official release binaries for candidate `(c)`.
+- **Already preinstalled:** `C:\Windows\System32\typeperf.exe`, `C:\Windows\System32\dxdiag.exe`, `nvidia-smi` (RTX 5060 Ti driver `621.24`), `cargo`, `rustup`, `cmake`, `python 3.11.9`.
+- **Not installed — `PROPOSED — OWNER DECISION NR-D7` (External Tool Installs; DO NOT DOWNLOAD OR INSTALL ANY TOOL UNTIL OWNER APPROVES):** Every standalone tool below stays untracked outside git (`tools/` ignored or system install) and **MUST NOT** be installed prior to Owner sign-off on `NR-D7`:
+
+| Tool | Target Machine(s) | Exact Version | Source URL | Licence | Purpose / Necessity |
+|---|---|---|---|---|---|
+| **Intel `PresentMon`** (`PresentMon.exe`) | Windows 1 + Dell *(copied in portable dir)* | **`v2.6.0`** (`2026-09-21`) | `https://github.com/GameTechDev/PresentMon/releases/tag/v2.6.0` | **MIT** | Mandatory ETW swapchain ground-truth FPS (`median`, `p5`, `p1`) across all 3 candidates |
+| **`RenderDoc`** (`renderdoccmd.exe`) | Windows 1 only | **`v1.47`** (`2026-10-31`) | `https://github.com/baldurk/renderdoc/releases/tag/v1.47` | **MIT** | Frame-120 DX12/Vulkan pass audit (`0` CSM on Low `req :109`, BC7/BC5 formats, draw counts) |
+| **Microsoft `PIX` on Windows** (`pixtool.exe`) | Windows 1 only *(optional)* | **`PIX 2611.19`** *(latest on download page)* | `https://devblogs.microsoft.com/pix/download/` | **Proprietary Microsoft Software License Terms (EULA)** *(installer-bundled; optional `WinPixEventRuntime` MIT)* | Only required if comparing `CompositionVisual` mode where RenderDoc cannot hook DXGI swapchain (`Research §1.1`) |
+| **`Godot 4` Engine + Export Templates** | Windows 1 only *(Dell runs exported `.exe`/`.pck`)* | **`4.7.2-stable`** (`2026-08-18`) | `https://github.com/godotengine/godot/releases/tag/4.7.2-stable` | **MIT** | Required strictly to build and export Candidate `(c)` standalone viewer bundle |
+| **DirectX Shader Compiler (`dxcompiler.dll`, `dxil.dll`)** *(if not using `static-dxc`)* | Windows 1 + Dell *(in portable `dist_win_x64_a/`)* | **`v1.9.2609`** *(`>= v1.8.2502` min per `wgpu 30`)* | `https://github.com/microsoft/DirectXShaderCompiler/releases/tag/v1.9.2609` | **LLVM Release License (University of Illinois / NCSA Open Source)** | Needed on Windows DX12 if Candidate `(a)` links runtime DXC DLLs rather than `static-dxc` |
 
 ### 4.2 Swapchain Ground-Truth FPS (`p5`, `median`, `p1`) — `PresentMon` (ETW DXGI/DWM)
 
@@ -265,23 +275,23 @@ Every numerical estimate and architectural claim extracted from [`NATIVE_RENDERE
 | **`H-NR-06`** | Lightweight WGSL TAAU + RCAS (~**`2.8 ms`**, `50.1 MB` BW) outperforms FSR 1 (~**`1.4 ms`**, `30.8 MB` BW) on foliage shimmer while FSR 2.2 (~**`4.8 ms`**, `69.4 MB` BW) exceeds Iris Xe Low `4.0 ms` upscale budget (research §2.5; Weak Source `[9, 95]`) | **`[HYPOTHESIS TO TEST]`** | Run A/B toggle inside Candidate `(a)` on Dell Low across Segments B (`spawn`) & D (`massif_sweep`): measure `gpu_post_upscale_ms`, `p5` FPS, and foliage temporal shimmer (`LDR-FLIP` vs supersampled still) | `4.0 ms` (`Map v2 §3b`) governs; FSR 1 is fallback if TAAU exceeds `4.0 ms` |
 | **`H-NR-07`** | Two-Phase Hi-Z SPD + Fixed-Bucket MDI (`48–96` buckets) + `1024²` hemi-octahedral BC7/BC5/BC4 impostors (`3.33 MB/species`, stochastic single-view + Hashed Alpha) fits cleanly within `6.0 ms` vegetation budget (research §2.3) | **`[HYPOTHESIS TO TEST]`** | Measure `gpu_vegetation_ms`, DXGI VRAM footprint, and visual foliage fidelity across all 3 candidates (`10,000` trees) | Must obey `§3b` `6.0 ms` (Low) / `4.0 ms` (High) |
 | **`H-NR-08`** | Headless `wgpu` readback -> IPC -> `<canvas>` adds **`~300 ms`** latency on weak hardware, and `wry 0.55.1` + WebView2 149 shows `256 px` stale compositor tile regression (research §0.2 & §1.1) | **`[HYPOTHESIS TO TEST]`** | Never used as primary architecture; optionally log whether `wry 0.55.1` exhibits stale compositor artifacts during Mốc 1 resize/DOM updates | Requires local reproduction check, not assumed |
-| **`H-NR-09`** | Windows DX12 Child HWND `DxgiFromHwnd` vs `WS_EX_NOREDIRECTIONBITMAP` + `CompositionVisual` (1 px border caveat), DOM-First event routing, and macOS `drawsBackground = NO` + dynamic `presentsWithTransaction` give `0`-panic, `0`-black-frame Tauri composition (research §1.1–1.3; Weak Source `[2]`) | **`[HYPOTHESIS TO TEST]`** | Executed in Candidate `(a)` Mốc 1 torture test (`50` minimize/restore cycles, 4-edge drag, `100% <-> 150%` DPI, Vietnamese TSF/IME typing, macOS Retina resize smoke) | Any DWM glitch, IME break, or `panic!` drops Candidate `(a)` integration score or fails `G-STAB` |
-| **`H-NR-10`** | FXC compiles `2.3–7.2 s` and fails `SHADER_F16`/compute (`12/224` kernels, Weak Source `[58, 59]`), requiring bundled `dxcompiler.dll` + `dxil.dll >= v1.8.2502` and small compute submits to avoid WDDM TDR (research §1.4) | **`[HYPOTHESIS TO TEST]`** | Measure cold shader/pipeline compile time (`0..15 s` warmup window) on Dell & RTX with DXC bundled + `PipelineCache`, plus `SHADER_F16` on/off delta on Iris Xe | Confirms cold-start UX and TDR resilience |
+| **`H-NR-09`** | Windows DX12 Child HWND `DxgiFromHwnd` vs `WS_EX_NOREDIRECTIONBITMAP` + `CompositionVisual` (1 px border caveat), DOM-First event routing, and macOS `drawsBackground = NO` + dynamic `presentsWithTransaction` give `0`-panic, `0`-black-frame Tauri composition (research §1.1–1.3; Weak Source `[2]`) | **`[HYPOTHESIS TO TEST]`** | Executed in Candidate `(a)` Mốc 1 torture test (`50` minimize/restore cycles per `NR-D4` if approved, 4-edge drag, `100% <-> 150%` DPI, Vietnamese TSF/IME typing, macOS Retina resize smoke) | Any DWM glitch, IME break, or `panic!` drops Candidate `(a)` integration score or fails `G-STAB` |
+| **`H-NR-10`** | FXC compiles `2.3–7.2 s` and fails `SHADER_F16`/compute (`12/224` kernels, Weak Source `[58, 59]`), requiring bundled `dxcompiler.dll` + `dxil.dll >= v1.8.2502` and small compute submits to avoid WDDM TDR (research §1.4) | **`[HYPOTHESIS TO TEST]`** | Measure cold shader/pipeline compile time (`0..15 s` warmup window) on Dell & RTX with DXC (`NR-D7` if dynamic DLLs) + `PipelineCache`, plus `SHADER_F16` on/off delta on Iris Xe | Confirms cold-start UX and TDR resilience |
 | **`H-NR-11`** | Basis/UASTC CPU transcode takes **`~160 ms`** on Ryzen 5 3600 (vs `0 ms` Native BC7/BC5), `mipple`/`bc7e` cuts BD-rate `-31.5%`/`-26.1%`, and `SSIM >= 0.98` suffices (research §3.1, §3.4; Weak Source `[112]`) | **`[HYPOTHESIS TO TEST]`** | Measure actual tile-decode latency during Dell/RTX scene load; **strictly enforce `WV2-D` `SSIM >= 0.996` and `Block PSNR >= 42 dB`** (do NOT adopt `0.98`) | Changing KTX2 encoding from `UASTC + bc7enc_rdo` requires separate `WV2-D` amendment after P2 |
 
 ---
 
-## 6. Scoring Rubric: Integration Cost & Windows/macOS Packaging
+## 6. Scoring Rubric: Integration Cost & Windows/macOS Packaging (`PROPOSED — OWNER DECISION NR-D5`)
 
-Candidates that clear all Stage 1 Hard Gates (`§7.1`) are scored on a transparent `0.00–5.00` weighted rubric covering **Performance Headroom (`35%`)**, **Integration Cost (`35%`)**, and **Windows/macOS Packaging & Delivery (`30%`)**:
+Candidates that clear Stage 1 (`§7.1`) are scored on a **`PROPOSED — OWNER DECISION NR-D5`** `0.00–5.00` weighted rubric splitting **Performance Headroom (`35%`: `15/10/10`)**, **Integration Cost (`35%`: `12/13/10`)**, and **Windows/macOS Packaging & Delivery (`30%`: `10/10/10`)**. *(Rationale & source: Balances [`Map v2 §4 P2`](../requirements/2026-11-20-feature-map-v2.md) FPS/GPU, integration cost, and cross-OS delivery goals rather than weighting FPS alone; not specified in `Map v2`. Anchor thresholds in `A1..A3` reference `NR-D1..NR-D3` if approved, or report headroom qualitatively against accepted `30/60 FPS` gates otherwise.)*
 
-| Dimension | Weight | Anchor `0` (Unacceptable) | Anchor `2` (High Friction) | Anchor `3` (Workable w/ Effort) | Anchor `5` (Clean Fit) |
+| Dimension | Weight (`NR-D5`) | Anchor `0` (Unacceptable) | Anchor `2` (High Friction) | Anchor `3` (Workable w/ Effort) | Anchor `5` (Clean Fit) |
 |---|---:|---|---|---|---|
-| **A1. Dell Iris Xe Low FPS & Thermal Headroom (`p5`, median, 15-min soak)** | **15%** | Fails `30` med / `25` `p5` (`§7.1` DQ) | Barely clears `30.0`–`31.9 FPS` med with DRS `< 0.67×` or `p5` `25–27` | `>= 32 FPS` med, `p5 >= 28 FPS`, `<= 1` budget pass barely over | `>= 36 FPS` med (`<= 27 ms`), `p5 >= 32 FPS`, all 6 GPU passes inside `§3b`, zero soak drop |
-| **A2. RTX 5060 Ti High FPS & Per-Pass Headroom (`p5`, median, CSM/SSR)** | **10%** | Fails `60` med / `50` `p5` (`§7.1` DQ) | `60–65 FPS` med or `1–2` passes exceed `§3b` ms | `65–85 FPS` med, `p5 >= 58 FPS`, passes inside `§3b` | `>= 90 FPS` med, `p5 >= 75 FPS`, wide margin under `16.6 ms` |
-| **A3. Combined RAM, VRAM & Leak Margin** | **10%** | Exceeds Dell `2048 MiB` / `768 MiB` or RTX ceiling | Within `10%` of ceiling (`1.85–2.05 GiB` Dell) | `< 80%` of ceiling (`<= 1.6 GiB` Dell, `<= 2.5 GiB` RTX), `<= 0.5 MiB/min` drift | `< 65%` of ceiling, flat `0 MiB/min` drift, fast scene load `< 2 s` |
+| **A1. Dell Iris Xe Low FPS & Thermal Headroom (`p5`, median, 15-min soak)** | **15%** | Fails accepted `30` med (or approved `NR-D1`/`D2` floor) | `30.0`–`31.9 FPS` med with DRS `< 0.67×` or `p5` `25–27` | `>= 32 FPS` med, `p5 >= 28 FPS`, `<= 1` budget pass barely over | `>= 36 FPS` med (`<= 27 ms`), `p5 >= 32 FPS`, all 6 GPU passes inside `§3b`, zero soak drop |
+| **A2. RTX 5060 Ti High FPS & Per-Pass Headroom (`p5`, median, CSM/SSR)** | **10%** | Fails accepted `60` med (or approved `NR-D1` `p5` floor) | `60–65 FPS` med or `1–2` passes exceed `§3b` ms | `65–85 FPS` med, `p5 >= 58 FPS`, passes inside `§3b` | `>= 90 FPS` med, `p5 >= 75 FPS`, wide margin under `16.6 ms` |
+| **A3. Combined RAM, VRAM & Leak Margin** | **10%** | Exceeds approved `NR-D3` limit or leaks uncontrollably | Within `10%` of `NR-D3` (`1.85–2.05 GiB` Dell) | `< 80%` of `NR-D3` (`<= 1.6 GiB` Dell, `<= 2.5 GiB` RTX), `<= 0.5 MiB/min` drift | `< 65%` of `NR-D3`, flat `0 MiB/min` drift, fast scene load `< 2 s` |
 | **B1. Simulation Coupling & Zero-IPC Parity (`bevy_ecs 0.13.2` / `GS-4` / `ADR-0008`)** | **12%** | Breaks `GS-4` zero-alloc or `ADR-0008` determinism | External process IPC with measurable `> 33 ms` lag, stale state, or dual lifecycle | External IPC `< 16 ms` cleanly bounded, OR minor ECS adapter layer | Same-process direct read of `bevy_ecs` world (`0` serialization, `0` IPC tick jitter) |
-| **B2. Upgrade Blast Radius, `wgpu` Alignment (`burn 0.22.1`) & CI G2 / Licensing** | **13%** | GPL/copyleft dep or breaks CI G2 / headless builds | Large `bevy_ecs 0.13 -> 0.15/16` migration across `src-tauri/` + forces two `wgpu` trees or breaks `ml-wgpu` | Moderate feature-gated additions inside isolated module; `cargo deny` clean | Pins exact `Cargo.lock` `wgpu 30.0.2` (`0` duplicate trees), `0` `ecs` migration, G2 & `cargo deny` green |
+| **B2. Upgrade Blast Radius, `wgpu` Alignment (`burn 0.22.1`) & CI G2 / Licensing** | **13%** | GPL/copyleft dep or breaks CI G2 / headless builds | Large `bevy_ecs 0.13 -> v0.20.1` migration across `src-tauri/` + forces two `wgpu` trees or breaks `ml-wgpu` | Moderate feature-gated additions inside isolated module; `cargo deny` clean | Pins exact `Cargo.lock` `wgpu 30.0.2` (`0` duplicate trees), `0` `ecs` migration, G2 & `cargo deny` green |
 | **B3. HUD, Input Routing, Focus & TSF/IME Compositing Maintainability** | **10%** | Severe flicker, broken IME, or dead mouse picking | Dual windows fighting Alt-Tab/fullscreen or fragile native pointer hooks across OSes | Workable DOM-First or sidecar sync with documented Win32/AppKit quirks | Single unified window, intact React/TypeScript HUD, `0` DWM black frames, intact Vietnamese IME |
 | **C1. Windows Packaging (NSIS/MSI Installer, `dxcompiler.dll`, Sidecars, Edge WebView2)** | **10%** | Installer broken or misses signed/unsigned runtime deps | Must bundle & supervise second `.exe` sidecar / separate runtime window (`~100+ MB`) | Bundles explicit `dxcompiler.dll` + `dxil.dll` alongside `anima-engine.exe` in Tauri NSIS/MSI cleanly | Standard `tauri:build` single executable + verified DLL/tile staging, `< +15 MB` binary delta |
 | **C2. macOS Packaging (`.app` Bundle, Universal/arm64, Developer ID Signing, MAS Disclosure)** | **10%** | Fails macOS arm64 Metal build or cannot notarize | Sidecar `.app` signing/Entitlements complexity OR hard-blocks future Mac App Store with no fallback | Developer ID notarization passes cleanly (`drawsBackground = NO` documented as non-MAS) or clean public API | Developer ID + notarization + CI macOS runner green with public/documented APIs |
@@ -293,27 +303,36 @@ Candidates that clear all Stage 1 Hard Gates (`§7.1`) are scored on a transpare
 
 When `NR-SPIKE` measurements complete on both **Windows 1 (`High + Low`)** and **Dell Vostro 3530 (`Low`, prebuilt binary)** — plus macOS packaging smoke check — `ADR-0011` applies a strict **two-stage rule** (no post-hoc threshold relaxation):
 
-### 7.1 Stage 1 — Hard Binary Gates (Fail Any One = Immediate Disqualification)
+### 7.1 Stage 1 — Hard Binary Gates (Accepted Gates + Approved `NR-D1..NR-D4` Only)
 
-A candidate **PASSES** Stage 1 only if ALL 6 hard gates hold:
+> **Stage 1 Gating Authority Rule:** Stage 1 enforces **ONLY** the **ACCEPTED** contract gates from [`Map v2`](../requirements/2026-11-20-feature-map-v2.md) and [`World v2 Design (`WV2-D`)`](../design/2026-11-20-world-v2-design.md) **PLUS** whichever `PROPOSED — OWNER DECISION NR-D1..NR-D4` thresholds the Owner explicitly approves before execution. Any `NR-D<n>` threshold not approved by the Owner is still measured and reported verbatim in `ADR-0011` as diagnostic context, never used for binary disqualification.
 
-1. **`G-PERF-LOW` (Dell Iris Xe Prebuilt Binary):** Median `>= 30.0 FPS` (`<= 33.33 ms`) AND `p5 >= 25.0 FPS` (`<= 40.0 ms`) on the `60 s` tour at `Low` (`no CSM`, `req :109`), AND `15-min` soak min `13..15` median `>= 28.0 FPS`.
-2. **`G-PERF-HIGH` (RTX 5060 Ti):** Median `>= 60.0 FPS` (`<= 16.67 ms`) AND `p5 >= 50.0 FPS` (`<= 20.0 ms`) at `High` (`3-cascade CSM + SSR + volumetrics`).
-3. **`G-MEM` (RAM, VRAM & Leak):** Peak process-tree RAM `<= 2,048 MiB` & GPU mem `<= 768 MiB` on Dell Low; RAM `<= 4,096 MiB` & VRAM `<= 3,072 MiB` on RTX High; post-warmup drift `<= +2.0 MiB/min`.
-4. **`G-STAB` (Zero Crashes / Panic-Free Lifecycle):** `0` panics, `0` WDDM TDR / `Device(Lost)`, `0` failed resize/minimize cycles (`50/50` clean), `0` DWM permanent black frames, intact Vietnamese TSF/IME text input.
-5. **`G-QUAL` (Fidelity & Honesty):** Renders all `10,000` trees and `1,000 × 3` moving creatures without count cheating; clears input `Block PSNR >= 42 dB, SSIM >= 0.996`; obeys `req :109` (`0` CSM passes on Low); keeps `§6` decorative toggle and visually cohesive Low/High canonical stills.
-6. **`G-POLICY` (`G-SIM` + G2 + License):** Preserves `GS-4` zero-alloc sim ticks, `ADR-0008` determinism, `MIT OR Apache-2.0` / compatible license policy (`QD-ASSETS` CC0), and leaves `--no-default-features` CI builds free of graphics crates (G2).
+A candidate **PASSES** Stage 1 only if ALL active hard gates hold:
 
-### 7.2 Stage 2 — Weighted Selection, Margin & Close-Call Escalation
+1. **`G-PERF-LOW` (Dell Iris Xe Prebuilt Binary):**
+   - **ACCEPTED (`Map v2 §1 G-PERF`, `§3b`):** `60 s` Low (`no CSM`, `req :109`) median `>= 30.0 FPS` (`<= 33.33 ms`) AND `p5` FPS measured and reported verbatim (vs. `§3b` `6/6/3/1.5/5/4/7.8 ms` pass budgets).
+   - **`PROPOSED — OWNER DECISION NR-D1` (if approved):** `p5 >= 25.0 FPS` (`<= 40.00 ms`). *(Rationale: bounds stutter tails.)*
+   - **`PROPOSED — OWNER DECISION NR-D2` (if approved):** `15-min` soak `min 13..15` median `>= 28.0 FPS`. *(Rationale: bounds `15 W` thermal throttle.)*
+2. **`G-PERF-HIGH` (RTX 5060 Ti):**
+   - **ACCEPTED (`Map v2 §1 G-PERF`, `§3b`):** `60 s` High (`3-cascade CSM + SSR + volumetrics`) median `>= 60.0 FPS` (`<= 16.67 ms`) AND `p5` reported verbatim (vs. `§3b` `3/4/2/1/2.5/2/2.1 ms` pass budgets).
+   - **`PROPOSED — OWNER DECISION NR-D1` (if approved):** `p5 >= 50.0 FPS` (`<= 20.00 ms`).
+3. **`G-MEM` (RAM, VRAM & Leak — `PROPOSED — OWNER DECISION NR-D3` if approved; diagnostic otherwise):** Peak process-tree RAM `<= 2,048 MiB` & GPU mem `<= 768 MiB` on Dell Low; RAM `<= 4,096 MiB` & VRAM `<= 3,072 MiB` on RTX High; post-warmup drift `<= +2.0 MiB/min`.
+4. **`G-STAB` (Zero Crashes / Panic-Free Lifecycle):**
+   - **ACCEPTED baseline:** `0` panics, `0` WDDM TDR / `Device(Lost)`, `0` DWM permanent black frames, live resize works cleanly, intact Vietnamese TSF/IME text input.
+   - **`PROPOSED — OWNER DECISION NR-D4` (if approved):** Must clear `50/50` minimize/restore + resize cycles cleanly (`Research §4 Mốc 1` stress count; otherwise verified via smaller sanity check).
+5. **`G-QUAL` (Fidelity & Honesty — ACCEPTED `Map v2 §1, §6, req :109/:111`, `WV2-D`):** Renders all `10,000` trees and `1,000 × 3` moving creatures without count cheating; clears input `Block PSNR >= 42 dB, SSIM >= 0.996`; obeys `req :109` (`0` CSM passes on Low); keeps `§6` decorative toggle and visually cohesive Low/High canonical stills.
+6. **`G-POLICY` (`G-SIM` + G2 + License — ACCEPTED):** Preserves `GS-4` zero-alloc sim ticks, `ADR-0008` determinism, `sim_world_identity`, `MIT OR Apache-2.0` / compatible license policy (`QD-ASSETS` CC0), and leaves `--no-default-features` CI builds free of graphics crates (`G2`).
 
-Compute the weighted score $\text{Score}(c) = \sum_k w_k \cdot s_{c,k} \in [0.00, 5.00]$ across all Stage 1 survivors:
+### 7.2 Stage 2 — Weighted Selection, Margin & Close-Call Escalation (`PROPOSED — OWNER DECISION NR-D5 & NR-D6`)
 
-1. **Zero survivors (`0` pass Stage 1):** **Stop — do NOT weaken `G-PERF` (`30/60 FPS`) or `SSIM 0.996` silently.** Keep Three.js ([`WV2-6`](../design/2026-11-20-world-v2-design.md)) as the active desktop viewer and escalate a diagnostic bottleneck report to the Owner proposing scoped engineering options (e.g., lowered asset LOD/density cap on Low, FSR 1 fallback, or deferred P3).
-2. **One survivor (`1` passes Stage 1):** Adopt that candidate in `ADR-0011` provided its lowest sub-score `min(s_{c,k}) >= 2.0`. (If any sub-score `< 2.0`, log an explicit mitigation condition in `ADR-0011` for Owner sign-off.)
-3. **Multiple survivors (`>= 2` pass Stage 1):**
-   - **Clear winner:** Top candidate leads runner-up by **`>= 0.35` weighted points** AND has `min(s_{top,k}) >= 2.0` $\implies$ recommend top candidate cleanly for `ADR-0011`.
-   - **Close call (`< 0.35` margin, or top candidate has a sub-score `< 2.0`):** Escalate both finalists with full evidence tables to the Owner applying this **explicit tie-break hierarchy**:
-     1. *Priority 1 (Iris Xe Headroom):* Higher sustained `15-min` Dell Iris Xe **`p5` FPS** (headroom above `25.0 FPS` floor under `req :109` Low).
+For all Stage 1 survivors, compute the `NR-D5` weighted score $\text{Score}(c) = \sum_k w_k \cdot s_{c,k} \in [0.00, 5.00]$ (if the Owner approves `NR-D5` weights; otherwise present the unweighted multi-criteria table to the Owner):
+
+1. **Zero survivors (`0` pass Stage 1):** **Stop — do NOT weaken accepted `G-PERF` (`30/60 FPS`) or `SSIM 0.996` silently.** Keep Three.js ([`WV2-6`](../design/2026-11-20-world-v2-design.md)) as the active desktop viewer and escalate a diagnostic bottleneck report to the Owner proposing scoped engineering options (e.g., lowered asset LOD/density cap on Low, FSR 1 fallback, or deferred P3).
+2. **One survivor (`1` passes Stage 1):** Adopt that candidate in `ADR-0011` provided its lowest rubric sub-score `min(s_{c,k}) >= 2.0` (**`PROPOSED — OWNER DECISION NR-D5`**; rationale: guards against critical integration/packaging regressions; if any sub-score `< 2.0`, log an explicit mitigation condition for Owner sign-off).
+3. **Multiple survivors (`>= 2` pass Stage 1) — `PROPOSED — OWNER DECISION NR-D6`:**
+   - **Clear winner:** Top candidate leads runner-up by **`>= 0.35` weighted points** (`7%` of `5.00` scale — prevents deciding on subjective noise; not in `Map v2`) AND has `min(s_{top,k}) >= 2.0` (`NR-D5`) $\implies$ recommend top candidate cleanly for `ADR-0011`.
+   - **Close call (`< 0.35` margin, or top candidate has a sub-score `< 2.0`):** Escalate both finalists with full evidence tables to the Owner applying this proposed **3-step tie-break hierarchy** (`NR-D6`; fallback: direct Owner choice across survivors):
+     1. *Priority 1 (Iris Xe Headroom):* Higher sustained `15-min` Dell Iris Xe **`p5` FPS** (headroom above accepted `30.0 FPS` median / `NR-D1` floor under `req :109` Low).
      2. *Priority 2 (Simulation & Burn Safety):* Same-process zero-IPC rendering without requiring an incompatible `bevy_ecs 0.13.2` rewrite or breaking `burn 0.22.1` / `wgpu 30.0.2` (`ADR-0009`).
      3. *Priority 3 (Single-Bundle Portability):* Simpler single-binary Windows NSIS + macOS `.app` Developer ID packaging without a separate runtime viewer sidecar.
 
@@ -321,17 +340,33 @@ Compute the weighted score $\text{Score}(c) = \sum_k w_k \cdot s_{c,k} \in [0.00
 
 ## 8. Spike Execution Sequence & Protocol Boundaries
 
-### 8.1 Recommended Spike Execution Sequence (After Lead/Owner Approval)
+### 8.1 Recommended Spike Execution Sequence (Only After Owner Decisions `NR-D1..NR-D7`)
 
-1. **Pre-Flight Asset & Tool Setup (Windows 1):** Freeze one `4096²` World v2 scene bundle (`scene_bundle_sha256`, verifying `Block PSNR >= 42 dB, SSIM >= 0.996`) + `10,000`-tree placement + `30 s` `1,000 × 3` creature stream; obtain Owner sign-off to install standalone `PresentMon`, `RenderDoc`/`PIX`, and `Godot 4` locally (untracked).
+1. **Obtain Owner Decisions & Setup Tools (`NR-D7` first):** Freeze one `4096²` World v2 scene bundle (`scene_bundle_sha256`, verifying `Block PSNR >= 42 dB, SSIM >= 0.996`) + `10,000`-tree placement + `30 s` `1,000 × 3` creature stream; install ONLY the Owner-approved `NR-D7` standalone tools (`PresentMon v2.6.0`, `RenderDoc v1.47`, optional `PIX`, `Godot 4.7.2-stable`, optional DXC `v1.9.2609` DLLs) locally on Windows 1 (untracked).
 2. **Build & Run on Windows 1 (`RTX High + Low`):** Implement isolated non-merged spikes for `(a)`, `(b)`, `(c)`, execute Mốc 1 stability + `3 × 90 s` timed captures per `(candidate, tier)` + Frame-120 RenderDoc/PIX pass audit, and export `dist_win_x64_<cand>/` + `PACKAGE_SHA256SUMS.txt`.
 3. **Run Prebuilt Binaries on Dell (`Iris Xe Low Only`):** Copy verified `dist_win_x64_<cand>/` bundles to Dell (`0` Cargo/Godot compilation), run pre-flight machine check (`0` `cargo`/`rustc`, `>= 5 GB` free RAM, AC plugged), execute `3 × 90 s` Low captures + `15-min` thermal soak per candidate.
 4. **macOS M5 Smoke & Packaging Check:** Compile/package check on `arm64` Metal (focusing on Mốc 1 Retina `2x` resize + `.app` notarization audit).
-5. **Compute Rubric & Draft `ADR-0011`:** Fill exact measured numbers (testing `H-NR-01..H-NR-11`), merge **only** the benchmark report note + `ADR-0011` (`0` spike code merged per `Map v2 §4 P2`).
+5. **Compute Rubric & Draft `ADR-0011`:** Fill exact measured numbers (testing `H-NR-01..H-NR-11`, applying Stage 1 accepted gates + Owner-approved `NR-D1..NR-D6`), merge **only** the benchmark report note + `ADR-0011` (`0` spike code merged per `Map v2 §4 P2`).
 
 ### 8.2 Explicitly Not Done by This Protocol PR
 
 1. `0` lines of Rust, WGSL, TypeScript, GDScript, or Cargo configuration modified or added.
-2. `0` external binaries (`PresentMon`, `RenderDoc`, `PIX`, `Godot 4`) installed or committed.
+2. `0` external binaries (`PresentMon`, `RenderDoc`, `PIX`, `Godot 4`, `DXC`) downloaded, installed, or committed (`NR-D7` remains unexecuted pending Owner approval).
 3. `0` benchmarks executed on Windows 1, Dell Iris Xe, or MacBook Air M5.
 4. `ADR-0011` is not authored yet; it follows strictly from executing this approved protocol.
+
+---
+
+## 9. OWNER DECISION Summary (`NR-D1..NR-D7`)
+
+All items below go beyond accepted [`Map v2 Requirements`](../requirements/2026-11-20-feature-map-v2.md) and [`World v2 Design`](../design/2026-11-20-world-v2-design.md). Stage 1 enforces ONLY accepted gates plus the `NR-D<n>` rows approved by the Owner, and **zero external tools are installed until `NR-D7` is approved**:
+
+| Decision ID | Topic | Proposed Value / Action | Rationale & Source | Fallback if Declined / Deferred | Status |
+|---|---|---|---|---|---|
+| **`NR-D1`** | `p5` FPS hard floor (`G-PERF-LOW` / `HIGH`) | Dell Low `p5 >= 25.0 FPS` (`<= 40.0 ms`); RTX High `p5 >= 50.0 FPS` (`<= 20.0 ms`) | `Map v2 G-PERF` requires reporting `p5` without a floor; `~83%` of `30/60` median bounds tail stutters (`Research §2.1`) | Report `p5` verbatim as diagnostic metric; enforce median `30/60 FPS` only | `proposed — awaiting Owner decision` |
+| **`NR-D2`** | `15-min` Dell thermal soak floor | `min 13..15` median `>= 28.0 FPS` on Dell Low | Bounds `H-NR-01` `15 W` sustained TDP throttle (`Research §2.1`); not in `Map v2` | Log `15-min` thermal drop diagnostically without Stage 1 disqualification | `proposed — awaiting Owner decision` |
+| **`NR-D3`** | `G-MEM` RAM, VRAM & leak ceilings | Dell Low RAM `<= 2,048 MiB` / GPU `<= 768 MiB`; RTX High RAM `<= 4,096 MiB` / VRAM `<= 3,072 MiB`; OLS drift `<= +2.0 MiB/min` | Sized from Dell `16 GB` shared host (`AGENT_RULES.md §5`) & RTX `16 GB` VRAM; not in `Map v2` | Record RAM, VRAM, and OLS drift verbatim for `ADR-0011` without hard DQ | `proposed — awaiting Owner decision` |
+| **`NR-D4`** | `G-STAB` minimize / restore torture cycles | **`50/50`** clean minimize/restore + 4-edge resize + DPI cycles | Adopted from `Research §4 Mốc 1` stress hypothesis (`H-NR-09`); no count in `Map v2` | Use a `10/10` cycle sanity check alongside mandatory `0`-panic / IME checks | `proposed — awaiting Owner decision` |
+| **`NR-D5`** | Stage 2 rubric weights & min sub-score floor | `35%` Perf (`15/10/10`), `35%` Integration (`12/13/10`), `30%` Packaging (`10/10/10`), plus `min(s_{c,k}) >= 2.0` | Balances `Map v2 §4 P2` axes and rejects candidates with an unusable dimension (`< 2.0`) | Owner sets custom weights or reviews unweighted matrix across Stage 1 survivors | `proposed — awaiting Owner decision` |
+| **`NR-D6`** | Stage 2 win margin & 3-step tie-break | Clear-win margin **`>= 0.35`** pts; close calls use `(1) Iris Xe 15-min p5 -> (2) zero-IPC/burn safety -> (3) single-bundle portability` | Avoids fragile `< 7%` score noise and encodes P2 survival priorities into tie-breaks | Owner chooses directly among Stage 1 survivors without preset margin | `proposed — awaiting Owner decision` |
+| **`NR-D7`** | External local tool installs (Windows 1 / Dell) | Approve untracked install of **`PresentMon v2.6.0`** (MIT, `GameTechDev/PresentMon`), **`RenderDoc v1.47`** (MIT, `baldurk/renderdoc`), optional **`PIX 2611.19`** (MS EULA, `devblogs.microsoft.com/pix/download/`), **`Godot 4.7.2-stable`** (MIT, `godotengine/godot`), & optional **`DXC v1.9.2609`** (LLVM NCSA, `microsoft/DirectXShaderCompiler`) | Required by `§4` ETW/pass captures & Candidate `(c)`; Dell gets prebuilt exports only (`AGENT_RULES.md §5`) | Do NOT install unapproved tools (e.g., omit `PIX` if Child HWND suffices, or drop `(c)` if `Godot` declined) | **`proposed — DO NOT INSTALL until approved`** |
