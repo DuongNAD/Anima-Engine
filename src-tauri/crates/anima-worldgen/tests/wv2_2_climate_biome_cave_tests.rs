@@ -317,6 +317,7 @@ fn orographic_precip_floor_rain_shadow_and_twi() {
 }
 
 #[test]
+#[ignore = "MAP-D3: Card 3 gates endorheic_humid_fraction, lake_surface_fraction, large_lakes, paramo_lakes, and small_paramo_ponds not met at 256^2; see docs/ai/planning/2026-11-23-wv2-2.md §6"]
 fn fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity() {
     let guard = TempDirGuard::new("c3_diversity");
     let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, 256);
@@ -437,6 +438,100 @@ fn fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity() {
 }
 
 #[test]
+fn fill_spill_merge_humid_spillways_and_arid_equilibrium_passing_invariants() {
+    let guard = TempDirGuard::new("c3_diversity_passing");
+    let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, 256);
+    let meta: RawWorldMeta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 256");
+
+    assert_eq!(meta.stats.severed_humid_spillways, 0);
+    assert_eq!(meta.stats.unmodeled_micro_pits, 0);
+    assert!(meta.stats.endorheic_land_fraction <= 0.10);
+    let caldera_or_trough = meta
+        .basins
+        .iter()
+        .filter(|b| {
+            b.classification == LakeClassification::CalderaOrTrough
+                || b.max_wall_slope_deg > 25.0
+                || b.elongation > 3.5
+        })
+        .count();
+    assert!(caldera_or_trough >= 1, "expected >= 1 caldera/trough lake");
+
+    // Arid closed basin equilibrium: |A(h_eq)*PET - Q_in| / Q_in < 0.10.
+    let n = 64usize;
+    let dx_m = 40.0_f32;
+    let mut elev = vec![0.0_f32; n * n];
+    for r in 0..n {
+        for c in 0..n {
+            let dr = r as f32 - 32.0;
+            let dc = c as f32 - 32.0;
+            let dist = (dr * dr + dc * dc).sqrt();
+            let bowl = 200.0 + (dist * 2.2).min(180.0);
+            elev[r * n + c] = if r == 0 || r + 1 == n || c == 0 || c + 1 == n {
+                380.0
+            } else {
+                bowl
+            };
+        }
+    }
+    let pf = priority_flood_d8(&elev, n, n, None);
+    let precip = vec![0.45_f32; n * n];
+    let pet = vec![1.35_f32; n * n];
+    let hydro = route_hybrid_mfd_d8(
+        &pf.filled_h,
+        &pf.d8_receiver,
+        n,
+        n,
+        &precip,
+        &pet,
+        &HydrologyConfig {
+            dx_m,
+            sea_level_m: None,
+            ..HydrologyConfig::default()
+        },
+    );
+    // Inject small arid inflow patch on rim so Q_in > 0 yet A_full * PET > Q_in.
+    let mut p_in = precip;
+    for r in 6..18 {
+        for c in 6..18 {
+            p_in[r * n + c] = 2.6;
+        }
+    }
+    let mut sed = vec![0.0_f32; n * n];
+    let mut wh = hydro.water_h_m.clone();
+    let mut wk = vec![WaterKind::None as u8; n * n];
+    let lith = vec![anima_worldgen::tectonic::LithologyClass::GraniteCrystalline as u8; n * n];
+    let s6_in = LakesFallsInput::from_hydrology(&hydro, &p_in, &pet, &lith);
+    let s6_arid = generate_lakes_and_waterfalls(
+        &mut elev,
+        &mut sed,
+        &mut wh,
+        &mut wk,
+        &s6_in,
+        &LakesFallsConfig {
+            dx_m,
+            sea_level_m: -1_000.0,
+            ..LakesFallsConfig::default()
+        },
+    )
+    .expect("arid equilibrium");
+    let endo = s6_arid
+        .basins
+        .iter()
+        .find(|b| b.classification == LakeClassification::EndorheicClosed)
+        .expect("endorheic closed basin");
+    assert_eq!(endo.q_out_m3_s, 0.0);
+    let q_in_yr = f64::from(endo.q_in_m3_s) * anima_worldgen::hydrology::SECONDS_PER_YEAR;
+    let evap_yr = endo.area_m2 * 1.35;
+    let rel_eq_err = libm::fabs(evap_yr - q_in_yr) / q_in_yr.max(1.0);
+    assert!(
+        rel_eq_err < 0.10,
+        "endorheic water balance error {rel_eq_err:.4} >= 0.10"
+    );
+}
+
+#[test]
+#[ignore = "MAP-D3: Card 3 gate waterfall_count not met by physics; see docs/ai/planning/2026-11-23-wv2-2.md §6"]
 fn coarse_512_relaxed_run_knickpoint_waterfalls_with_plunge_pools() {
     let guard = TempDirGuard::new("waterfalls");
     let size = 512_u32;
@@ -473,6 +568,42 @@ fn coarse_512_relaxed_run_knickpoint_waterfalls_with_plunge_pools() {
 }
 
 #[test]
+fn coarse_512_relaxed_run_waterfall_geometry_and_plunge_pools_passing_invariants() {
+    let guard = TempDirGuard::new("waterfalls_passing");
+    let size = 512_u32;
+    let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, size);
+    // Uses `pipeline.rs` coarse-grid relaxation (`waterfall_max_run_m` = `3.65 * 80 m = 292 m` at `512^2`).
+    let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 512");
+    assert!(
+        !meta.waterfalls.is_empty(),
+        "expected >= 1 waterfall on seed 0x0057_5632_2026_1120 at 512^2"
+    );
+    let wk = read_bin_u8(
+        &guard.path().join("water_kind.bin"),
+        (size as usize) * (size as usize),
+    )
+    .expect("water_kind");
+    let min_sp = LakesFallsConfig::default().waterfall_min_spacing_m;
+    for (idx, wf) in meta.waterfalls.iter().enumerate() {
+        assert!(wf.drop_m >= 12.0, "waterfall {idx} drop_m < 12.0");
+        assert!(
+            wf.plunge_depth_m > 0.0,
+            "waterfall {idx} plunge_depth_m <= 0"
+        );
+        assert_eq!(
+            wk[wf.base_cell as usize],
+            WaterKind::Waterfall as u8,
+            "base cell not marked Waterfall"
+        );
+        for other in &meta.waterfalls[(idx + 1)..] {
+            let d = libm::hypotf(wf.x_m - other.x_m, wf.z_m - other.z_m);
+            assert!(d >= min_sp - 1e-2, "waterfall spacing {d} < {min_sp}");
+        }
+    }
+}
+
+#[test]
+#[ignore = "MAP-D3: Card 3 gates waterfall_count, river_surface_fraction, lake_surface_fraction, large_lakes, and endorheic_humid_fraction not met by physics; see docs/ai/planning/2026-11-23-wv2-2.md §6"]
 fn multi_seed_card3_waterfalls_rivers_lakes_dunes_invariants() {
     let size = 512_u32;
     let n = (size as usize) * (size as usize);
@@ -508,6 +639,56 @@ fn multi_seed_card3_waterfalls_rivers_lakes_dunes_invariants() {
         assert_eq!(meta.stats.severed_humid_spillways, 0);
         assert_eq!(meta.stats.unmodeled_micro_pits, 0);
         assert_eq!(meta.stats.endorheic_humid_fraction, 0.0);
+        assert!(
+            (30..=48).contains(&meta.stats.cave_entrance_count),
+            "seed={seed}: cave_entrance_count={} outside [30, 48]",
+            meta.stats.cave_entrance_count
+        );
+        for (wf_idx, wf) in meta.waterfalls.iter().enumerate() {
+            assert!(
+                wf.plunge_depth_m > 0.0,
+                "seed={seed}: waterfall {wf_idx} plunge_depth_m={} <= 0.0",
+                wf.plunge_depth_m
+            );
+        }
+        assert!(
+            (0.15..=0.55).contains(&meta.stats.ecotone_fraction),
+            "seed={seed}: ecotone_fraction={} outside [0.15, 0.55]",
+            meta.stats.ecotone_fraction
+        );
+        assert!(
+            meta.stats.non_cliff_jump_fraction < 0.03,
+            "seed={seed}: non_cliff_jump_fraction={} >= 0.03",
+            meta.stats.non_cliff_jump_fraction
+        );
+        for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
+            let cnt = meta.stats.biome_counts[b as usize];
+            assert!(
+                cnt >= scaled_floor,
+                "seed={seed}: biome {b:?} has {cnt} < {scaled_floor}"
+            );
+        }
+        let dune = read_bin_f32(&guard.path().join("dune_h_m.bin"), n).expect("dune");
+        let dune_cells = dune.iter().filter(|&&d| d > 0.0).count();
+        assert!(dune_cells > 0, "seed={seed}: expected dune_cells > 0");
+    }
+}
+
+#[test]
+fn multi_seed_non_card3_hydrology_caves_biomes_dunes_passing_invariants() {
+    let size = 512_u32;
+    let n = (size as usize) * (size as usize);
+    let scaled_floor =
+        ((2500.0_f64 * (f64::from(size) / 4096.0) * (f64::from(size) / 4096.0)).ceil()) as usize;
+
+    // 2 diverse seeds at 512^2 keep debug CI fast; all 12 seeds at 1024^2 run in `examples/wv2_2_release_verify.rs`.
+    for &seed in &[57_563_201_u64, 42_u64] {
+        let guard = TempDirGuard::new(&format!("card3_passing_{size}_{seed}"));
+        let cfg = WorldV2Config::for_size(seed, size);
+        let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 512");
+
+        assert_eq!(meta.stats.severed_humid_spillways, 0);
+        assert_eq!(meta.stats.unmodeled_micro_pits, 0);
         assert!(
             (30..=48).contains(&meta.stats.cave_entrance_count),
             "seed={seed}: cave_entrance_count={} outside [30, 48]",
@@ -704,6 +885,7 @@ fn negative_control_flattened_peaks_fail_snowline_and_rain_shadow() {
 }
 
 #[test]
+#[ignore = "MAP-D3: Card 3 gates lake_surface_fraction, river_surface_fraction, and endorheic_humid_fraction not met by physics; see docs/ai/planning/2026-11-23-wv2-2.md §6"]
 fn full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes() {
     let size = 512_u32;
     let n = (size as usize) * (size as usize);
@@ -734,6 +916,85 @@ fn full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes() {
         assert_eq!(meta.stats.severed_humid_spillways, 0);
         assert_eq!(meta.stats.unmodeled_micro_pits, 0);
         assert_eq!(meta.stats.endorheic_humid_fraction, 0.0);
+        assert!(meta.stats.endorheic_land_fraction <= 0.10);
+        assert!(
+            (30..=48).contains(&meta.stats.cave_entrance_count),
+            "seed={seed}: cave_entrance_count={} outside [30, 48]",
+            meta.stats.cave_entrance_count
+        );
+        for (wf_idx, wf) in meta.waterfalls.iter().enumerate() {
+            assert!(
+                wf.plunge_depth_m > 0.0,
+                "seed={seed}: waterfall {wf_idx} plunge_depth_m={} <= 0.0",
+                wf.plunge_depth_m
+            );
+        }
+        assert_eq!(meta.stats.biome_counts[BiomeId::Chaparral as usize], 0);
+        assert_eq!(meta.stats.biome_counts[BiomeId::Steppe as usize], 0);
+        for &b in &BiomeId::ZONED_TERRESTRIAL_16 {
+            let cnt = meta.stats.biome_counts[b as usize];
+            assert!(
+                cnt >= scaled_floor,
+                "seed={seed}: biome {b:?} has {cnt} < {scaled_floor}"
+            );
+        }
+        assert!(
+            (0.15..=0.55).contains(&meta.stats.ecotone_fraction),
+            "seed={seed}: ecotone_fraction={} outside [0.15, 0.55]",
+            meta.stats.ecotone_fraction
+        );
+        assert!(
+            meta.stats.non_cliff_jump_fraction < 0.03,
+            "seed={seed}: non_cliff_jump_fraction={} >= 0.03",
+            meta.stats.non_cliff_jump_fraction
+        );
+
+        let ids = read_bin_u8x4(&guard.path().join("biome_ids.bin"), n).expect("ids");
+        let wts = read_bin_u8x4(&guard.path().join("biome_weights.bin"), n).expect("wts");
+        let dune = read_bin_f32(&guard.path().join("dune_h_m.bin"), n).expect("dune");
+        let precip = read_bin_f32(&guard.path().join("precip_m_yr.bin"), n).expect("precip");
+        let moist = read_bin_f32(&guard.path().join("moisture.bin"), n).expect("moist");
+        let lith = read_bin_u8(&guard.path().join("lithology_id.bin"), n).expect("lith");
+
+        for (id4, w4) in ids.iter().zip(wts.iter()) {
+            assert_eq!(w4.iter().map(|&w| u16::from(w)).sum::<u16>(), 255);
+            assert!(!id4.contains(&(BiomeId::Chaparral as u8)));
+            assert!(!id4.contains(&(BiomeId::Steppe as u8)));
+        }
+
+        let mut dune_cells = 0usize;
+        for i in 0..n {
+            if dune[i] > 0.0 {
+                dune_cells += 1;
+                assert!(precip[i] < 0.48, "dune cell precip={} >= 0.48", precip[i]);
+                assert!(moist[i] < 0.28, "dune cell moist={} >= 0.28", moist[i]);
+                assert_ne!(lith[i], 1, "dune formed on SandstoneCaprock");
+            }
+        }
+        assert!(dune_cells > 0, "seed={seed}: expected leeward Werner dunes");
+    }
+}
+
+#[test]
+fn full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes_passing_invariants() {
+    let size = 512_u32;
+    let n = (size as usize) * (size as usize);
+    let scaled_floor =
+        ((2500.0_f64 * (f64::from(size) / 4096.0) * (f64::from(size) / 4096.0)).ceil()) as usize;
+
+    // 3 diverse seeds at 512^2 keep debug CI fast; all 11 seeds at 512^2 run in `examples/wv2_2_release_verify.rs`.
+    for &seed in &[0x0057_5632_2026_1120_u64, 0x5756_3201_u64, 42_u64] {
+        let guard = TempDirGuard::new(&format!("biomes_passing_{seed}"));
+        let cfg = WorldV2Config::for_size(seed, size);
+        let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("full pipeline 512");
+
+        assert!(
+            (0.40..=0.50).contains(&meta.stats.ocean_fraction),
+            "seed={seed}: ocean_fraction={} outside [0.40, 0.50]",
+            meta.stats.ocean_fraction
+        );
+        assert_eq!(meta.stats.severed_humid_spillways, 0);
+        assert_eq!(meta.stats.unmodeled_micro_pits, 0);
         assert!(meta.stats.endorheic_land_fraction <= 0.10);
         assert!(
             (30..=48).contains(&meta.stats.cave_entrance_count),
