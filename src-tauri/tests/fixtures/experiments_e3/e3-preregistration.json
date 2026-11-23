@@ -128,7 +128,9 @@
     "live.land_mask": 0,
     "live.strict_prey_cap": 0,
     "live.grass_steering": 0,
-    "live.founder_layout": 0
+    "live.founder_layout": 0,
+    "live.lineage_tracking": 0,
+    "live.founder_genotype": 0
   },
   "hypotheses": [
     {

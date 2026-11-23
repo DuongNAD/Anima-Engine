@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-23
 review_cycle: monthly
 ---
 
@@ -26,6 +26,13 @@ tài liệu ở bảng thắng; sửa trang này.
 
 ## 1. Đang ở đâu
 
+- **2026-11-23 (đối chiếu của lead).** Ba worker Gemini nhận thẻ qua hub: `anima-mac` (Mac),
+  `anima-case` (Windows 1, RTX; vai `agent-win`) và `anima-dell` (Dell Iris Xe; im lặng từ 2026-11-20).
+  Phiên Claude Code điều phối là lead: giao thẻ, thẩm định và ghi verdict. Bốn quyết định ngày này ở §4:
+  QD-OFFQ (giữ việc làm ngoài hàng đợi, đóng băng PR mới của `anima-mac`), QD-DOCLANG (tài liệu công khai
+  bằng tiếng Anh), QD-VIAB1C, và các dòng `R5-AUTH` mới. VIAB-1 đã có kết quả (#215): một ô E3b đạt mọi chỉ
+  tiêu, SEL2-P2 không ô nào đạt vì nhánh mut0 không sống được (chẩn đoán ở #216). Bản nháp đăng ký E3b là
+  #217 và #218, chờ chủ dự án quyết D1–D5. Trạng thái từng thẻ: §3, mục "2026-11-19 → 2026-11-23".
 - **2026-11-17: chặng 1 và chặng 2** của kế hoạch 13/11 **đã đóng**. Thân cây và `main` được bảo vệ, hai job
   CI là gate bắt buộc ([STATE §3.00](../planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17)).
   Chặng 0 vẫn còn các ô quyết định trống ở dưới. Theo thứ tự, chặng kế là chặng 3. Thứ tự không đổi:
@@ -84,6 +91,34 @@ tài liệu ở bảng thắng; sửa trang này.
 [kế hoạch swarm §3](../ai/planning/2026-11-05-swarm-master-plan.md); prompt ở
 [file prompt](../ai/planning/2026-11-05-swarm-prompts.md). Ký hiệu: ✅ đã merge · 🔄 đang làm ·
 ⬜ chưa bắt đầu · ⛔ bị chặn.
+
+### 2026-11-19 → 2026-11-23 (đối chiếu 2026-11-23)
+
+Nguồn: `gh pr list --state all`, `git branch -r` và các verdict của lead ngày 2026-11-23. "Đã thẩm định"
+nghĩa là lead đã kiểm lại ở đúng commit đầu PR và PR chờ merge.
+
+| Thẻ | Máy | PR | Trạng thái |
+|---|---|---|---|
+| SEL2-P-impl / -fix, E3-P, LAND1 | mac / case / dell | #152, #165, #164, #166 | ✅ |
+| E3-X (impl, run) | case | #178, #181 | ✅ `insufficient_evidence` |
+| F051 / F051b, FIX-CAP / FIX-CAP2 | mac | #174 / #179, #177 / #180 | ✅ |
+| SEL2P2-PREP, FOUNDER-LAYOUT | mac | #182, #186 | ✅ |
+| WV2-D, WV2-1a/b/c | lead, mac | #192, #193–#195 | ✅ |
+| Gate rỗng + F-054, F-061, RUSTSEC url | mac, mac, lead | #197, #198, #203 | ✅ |
+| Quyết định 2026-11-23; sửa CLAUDE.md/README | lead | #212, #213 | ✅ |
+| VIAB-1 | case | #215 | 🔄 đã thẩm định, chờ merge |
+| E3B-P, E3B-PWR (nháp đăng ký E3b) | case | #217, #218 | 🔄 đã thẩm định; chờ chủ dự án quyết D1–D5 |
+| NR-SPIKE-PROTOCOL (chỉ tài liệu) | case | — | 🔄 |
+| F-066 (phả hệ live) | lead | #207 | 🔄 đã thẩm định sau vòng sửa ADR-0008, chờ merge |
+| P1 (danh mục sự cố) | mac | #211 | 🔄 đã thẩm định, chờ merge |
+| DOC1, DOC2, DOC3, DOC5+6 | mac | #204, #205, #202, #201 | 🔄 đã thẩm định, chờ merge |
+| DOC7 (đề xuất), DOC8 (gate lệnh docs) | mac | #209, #208 | 🔄 sửa vòng 3 |
+| M2 (đối chứng âm) | mac (dell #188 sẽ đóng) | #196 | 🔄 sửa vòng 3 |
+| R5 (F-053, F-055…F-065) | mac | #200 | 🔄 sửa theo verdict (F-064 bảng Sobol) |
+| Gate dấu xung đột | mac | #210 | 🔄 sửa theo verdict |
+| WV2-2 | mac | #199 | ⛔ làm lại: thác nước bậc thang toàn cục |
+| Mẫu thống kê đăng ký; chẩn đoán mut0 | lead | #214, #216 | 🔄 chờ merge |
+| D6 F053-FIX, D7 F054-FIX (giao dell) | — | — | chuyển cho mac, đã nằm ở #200 / #197 |
 
 ### Đợt 1 — đã đóng
 
@@ -146,7 +181,7 @@ dư EU) rồi **M3** (đường cong scaling): **M3** ✅ #138; **M4** ✅ #137,
 (verdict M4_064bc43c trên hub), vòng hai đạt. **S12** ✅ #135. Hàng việc từ 2026-11-19: `anima-dell` S13 (đo 200.000 tick
 trên hồ đã rải) rồi M2; `anima-case` S2 (observable tích luỹ cho SEL2-P); `anima-mac` làm tiếp F045 sau khi dừng
 khoảng 7 giờ ngày 2026-11-18 (merge thân cây vào nhánh, không rebase): **F045** ✅ #140, rồi F046 (chẩn đoán, chỉ đọc).
-**S13** ✅ #139 cho kết quả âm (0/12 ô khả thi); **S14** ✅ #142 và **S15** ✅ #146 dẫn tới QD-SEL2g (chuẩn gộp). **F046** (chẩn đoán), **F047** và **F048** ✅ #146 (khôi phục suy luận đang chờ ở app desktop). **S2** ✅ #148. Bản nháp **SEL2-P** ✅ #147. Hàng việc sáng 2026-11-19: `anima-mac` SEL2-P-impl, `anima-case` E3-P, `anima-dell` M2. Định nghĩa các thẻ ở
+**S13** ✅ #139 cho kết quả âm (0/12 ô khả thi); **S14** ✅ #142 và **S15** ✅ #145 dẫn tới QD-SEL2g (chuẩn gộp). **F046** (chẩn đoán), **F047** và **F048** ✅ #146 (khôi phục suy luận đang chờ ở app desktop). **S2** ✅ #148. Bản nháp **SEL2-P** ✅ #147. Hàng việc sáng 2026-11-19: `anima-mac` SEL2-P-impl, `anima-case` E3-P, `anima-dell` M2. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
@@ -295,6 +330,43 @@ QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the 
 QD-LEAD   = the coordinating (lead) session may itself merge a pull request it has verified, once
             both required checks are green at the verified head; worker agents still never merge (owner
             in chat, 2026-11-18: "Bạn đc phép tự merge và hoàn thiện dự án")
+QD-OFFQ   = work done on 2026-11-21..22 without a queue slot (DOC1-DOC8, P1 incidents, the conflict-marker
+            gate, the R5 findings fixes F-055..F-065 and F053-FIX) is kept and finished through its
+            open draft PRs; DOC8 (#208) is rewritten to the card's size (extract marked blocks, run
+            them, fail on zero blocks and on "running 0 tests", report doc:line). M2 keeps #196 as
+            the base; the owner closes #188 after #196 merges. No new PR or branch from anima-mac
+            until the lead has verdicts on its open drafts (owner in chat, 2026-11-23: "Duyệt theo
+            đề xuất", lead review of 2026-11-23)
+QD-DOCLANG= QD-SCOPE's "public docs in English" stands: tutorials, how-to and explanation pages are
+            written in English. A Vietnamese version may be kept next to the English one as a
+            translation, never instead of it (owner in chat, 2026-11-23: "Duyệt theo đề xuất")
+QD-VIAB1C = VIAB-1 continues as registered, without a re-run after the F-055/F-057 fixes, provided no
+            VIAB-1 family enables live.grass_steering and live.land_mask together (the only
+            combination F-055 changes). If one does, that family stops and the lead decides (owner in
+            chat, 2026-11-23: "Duyệt theo đề xuất")
+QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation after an independent
+            review of four research reports and checks against VIAB-1 (#215):
+            - D1: keep live.predator_fraction = 0.3 (the calibrated cell), disclosed as effectively
+              herbivore-only;
+            - D2: directional H1 T > S with the 4-label R10 table;
+            - D3: complete-pair analysis is primary for T - S; contrasts involving U add Lee bounds and
+              survival (RMST) as a separate endpoint;
+            - D4: the per-seed log variance ratio ln[(var_T+e)/(var_S+e)], e = 5e-4, SESOI +/-ln(1.5),
+              N = 64;
+            - D5: a declared 2-segment founder, the genesis genotype minus its tail leaf, behind the
+              opt-in key live.founder_genotype.
+            E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
+            the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+MAP-D2    = the design amendments for WV2-2-PHYS are approved: A1 (a dipping marginal sedimentary column,
+            with lithology evaluated against a datum advected with uplift), A2 (an S2b paleo-glacial
+            pass), A3 (rift segmentation) and A5 (a continuous cover transition in S3, an adaptation).
+            A4 (G 0.85 -> 0.25) was withdrawn on its source, and the endorheic definitions stay parked.
+            The plan predicts 5-19 waterfalls per seed, below the 20-80 gate on most seeds; a shortfall
+            is reported, never tuned. Recorded in the World v2 design under "Amendments after
+            acceptance". (Owner in chat, 2026-11-23: "Duyệt, làm Step B".)
+MAP-D1    = the World v2 Card 3 gates stay as accepted; the terrain physics is reworked until it meets
+            them by process (WV2-2-PHYS: plan first, 1-D column test first). Amending the spec ranges
+            was declined. (Owner in chat, 2026-11-23: "làm lại vật lý".)
 QD-C2     = utf8-chars 3.0.7 (no licence file; the one row in licensing/UNRESOLVED.md): ask upstream
             and defer, and R1c merges as is. Upstream: A1-Triard/utf8-chars issue #4 and pull request #5
             (licence files). Fallback: if no utf8-chars release with licence texts exists when release
@@ -476,13 +548,86 @@ R5-AUTH   =
   [[bench]] entry only), one new doc docs/paper/data/scaling.md, and its row in
   docs/paper/data/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for
   exactly these paths and no others.
-CURRENT WAVE = 2
+  -- Copied 2026-11-23 by the lead from the hub's WORK_PLAN.md "R5-AUTH additions" block (last
+  -- modified 2026-11-20), as the note below this block requires. Verbatim; a line struck through with ~~
+  -- was withdrawn on the hub. These lines authorize cards that have since merged; they are a record. --
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-18): for card S13 only, you may write to one new example src-tauri/examples/sel2_spread_lakes.rs and one result note under docs/ai/planning/ with its row in docs/ai/README.md. No other path.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card S2 only, you may write to src-tauri/src/core/live_experiment.rs (appending to LIVE_EXTENDED_OBSERVABLE_IDS, computing the new observables where the existing ones are computed, and one accumulator field on LiveExperimentAdapter with its update after each tick and its save/load handling inside this file only), src-tauri/src/core/experiment/observables.rs (registry entries for the new ids only), src-tauri/tests/observables_tests.rs, src-tauri/tests/live_experiment_tests.rs, one new test file src-tauri/tests/s2_observables_tests.rs, src/types/generated/** (regenerated by ts-rs only), and one result note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the S2 line at anima-case's BLOCKED): for card S2 only, you may also write to src-tauri/tests/death_cause_split_tests.rs, only the_cause_split_is_appended_after_the_existing_extended_ids: assert that LIVE_EXTENDED_OBSERVABLE_IDS[10..12] is [live.deaths_starvation, live.deaths_dehydration] (a fixed position instead of the last two), keeping its message. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly this path and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card M2 only, you may write to scripts/paper/gate_controls.mjs, scripts/paper/gate_faults/** (patch files as data), docs/paper/data/gate_controls.md and its row in docs/paper/data/README.md. No other path.
+  ~~AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card W3-lite only, you may write to src/components/Landscape/WorldTerrain.tsx, WorldTerrainLod.tsx, WorldWater.tsx, WorldSky.tsx, WorldVegetation.tsx, WorldWeather.tsx, WorldWaterfalls.tsx, src/components/Landscape/utils/worldTerrainTextures.ts, utils/skyParams.ts, utils/qualityTiers.ts, utils/floraGeometry.ts, utils/chunkLod.ts, new files under src/components/Landscape/materials/, tests/frontend/** (existing tests only with a stated reason), scripts/check_bundle_budget.mjs (budget numbers only, with reason), and one result note under docs/ai/planning/ with its README row. Nothing under src-tauri/.~~ SUPERSEDED by the next line.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19; the owner's own words in chat: "Cho tải CC0" for the downloads, "Win 1 sau B1" for the machine): for card W3-lite only, you may write to src/components/Landscape/WorldTerrain.tsx, WorldTerrainLod.tsx, WorldWater.tsx, WorldSky.tsx, WorldVegetation.tsx, WorldWeather.tsx, WorldWaterfalls.tsx, src/components/Landscape/WorldShowcase.tsx (mount and lighting lines only), src/components/Landscape/utils/worldTerrainTextures.ts, utils/skyParams.ts, utils/qualityTiers.ts, utils/floraGeometry.ts, utils/chunkLod.ts, utils/oceanShelf.ts, new files under src/components/Landscape/materials/ and src/components/Landscape/assets/, public/assets/world/** (new), public/assets/basis/** (new, copied from three), scripts/gen_notice.mjs (the art-assets section only), NOTICE (regenerated only), tests/frontend/** (edits to existing tests only with a stated reason), scripts/check_bundle_budget.mjs (budget numbers only, with reason), and one result note under docs/ai/planning/ with its row in docs/ai/README.md. No other path. Downloads: only what ASSETS lists.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the W3-lite line): for card W3-lite only, you may also write to src/components/Landscape/WorldCaves.tsx, src/components/Landscape/utils/caveGeometry.ts and src/components/Landscape/WorldMinimap.tsx. Not worldGen.ts, not src/utils/sharedWorld.ts.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card LAND1 only, you may write to src-tauri/src/core/resources.rs (the policy resource and its default only), src-tauri/src/core/terrain_navigation.rs (new) and its declaration in src-tauri/src/core/mod.rs, src-tauri/src/core/simulation_schedule.rs (registering the one system only), src-tauri/src/core/live_experiment.rs (live.land_mask key, validation, LiveWorldConfig field, policy insertion, lattice snapping in genesis only), src-tauri/src/core/simulation_loop.rs (enabling the policy and land-only genesis in SimulationEngine::start only), src-tauri/src/core/world_systems.rs (spawn_food_system land check only), src-tauri/src/core/components.rs and src-tauri/src/evolution/genotype.rs (a last-walkable-position component and its insertion at spawn only, if needed), src-tauri/tests/e2_seam_tests.rs and eco_card_b_tests.rs (pinned LIVE_KEYS.len() only), src-tauri/tests/land_mask_tests.rs (new), dataflow.json, and one result note with its README row. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card W11 only, you may write to src/components/Landscape/utils/worldTerrainTextures.ts, src/components/Landscape/materials/terrainPbrMaterial.ts, src/components/Landscape/utils/worldGen.worker.ts and utils/worldCache.ts (only if the AO bake must move off the main thread), tests/frontend/** (new tests; existing ones only with a stated reason), map-views/*.png, map_manifest.json, artifacts/world_256.anmw and artifacts/map_evidence.json (regenerated by their scripts only, never by hand), and one result note under docs/ai/planning/ (no README row: npm run gen:docs-index is the lead's). No other path.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card C4 only, you may write to src/components/Landscape/materials/terrainPbrMaterial.ts (Low-tier trims only), src/components/Landscape/utils/qualityTiers.ts (a flag only), tests/frontend/** (a test for the flag), and one result note under docs/ai/planning/ (no README row). No other path.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the LAND1 line at anima-dell's BLOCKED): for card LAND1 only, you may also write to src-tauri/tests/lake_layout_tests.rs (the pinned LIVE_KEYS.len() only), src-tauri/src/core/environmental_systems.rs (seed_dropping_system's policy-gated land check only), and src-tauri/src/core/agent_systems.rs (execute_reproduction_birth and apply_staggered_evolution_system: the policy-gated walkable spawn position and the LastWalkablePosition value at spawn only). This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these changes and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card S14 only, you may write to one new example src-tauri/examples/sel2_lakes16_scale.rs and one result note under docs/ai/planning/ with its row in docs/ai/README.md. No other path.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card F047 only, you may write to one new test file src-tauri/tests/f047_restore_divergence_tests.rs and one result note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card S15 only, you may write to one new example src-tauri/examples/sel2_reference_check.rs and one result note under docs/ai/planning/ with its row in docs/ai/README.md. No other path.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card SEL2-P-draft only, you may write to docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md and its row in docs/ai/README.md. No other path.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card SEL2-P-impl only, you may write to src-tauri/tests/fixtures/experiments_sel2p/** (new), src-tauri/examples/run_sel2p_experiment.rs (new), src-tauri/tests/prereg_sel2p_manifest_tests.rs (new), scripts/sel2p_smoke_driver.mjs (new), scripts/verify_sel2p_artifacts.mjs (new), docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md, and one result note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others. Nothing under src-tauri/src.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19; the owner approved the SEL2-P preregistration in chat: "Duyệt"): for card SEL2-P-smoke only, you may write to artifacts/experiments/sel2-p-food-scarcity/smoke/** (new, runner output only, never edited by hand) and one result note under docs/ai/planning/ with its row in docs/ai/README.md. No other path. Running: only the three commands in WHAT 2.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card SEL2-P-fix only, you may write to src-tauri/tests/fixtures/experiments_sel2p/**, src-tauri/examples/run_sel2p_experiment.rs, src-tauri/tests/prereg_sel2p_manifest_tests.rs, scripts/sel2p_smoke_driver.mjs, scripts/verify_sel2p_artifacts.mjs, docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md, docs/ai/planning/2026-11-19-sel2-p-impl.md, and the rows of those two notes in docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others. Nothing under src-tauri/src: if the runner needs a library change, stop and send BLOCKED naming it.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the SEL2-P-fix line): for card SEL2-P-fix only, you may also write to src/components/ExperimentWorldControl.tsx (the bundled SEL2-P manifest copy only) and tests/frontend/experimentWorldControl.test.tsx (the N4 test only).
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card W2-lite only, you may write to src-tauri/src/core/live_experiment.rs (one pub function applying genesis and world-law policy resources to a World, extracted from build_live_world, which calls it; no behaviour change), src-tauri/src/core/simulation_loop.rs (a pending-manifest slot on SimulationEngine and its use in start() instead of the app's genesis; nothing else), src-tauri/src/commands/simulation.rs (the new command), src-tauri/src/commands/mod.rs and src-tauri/src/lib.rs (registering it only), docs/reference/IPC_CONTRACT.md (its row), src/types/generated/** (ts-rs output only), src/components/SimulationControls.tsx and one new frontend file for the control and its bundled manifest list, src-tauri/tests/start_from_manifest_tests.rs (new), one new test under tests/frontend/, dataflow.json (only what scripts/verify_dataflow.py needs), and one result note under docs/ai/planning/ with its README row. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the W2-lite lines): for card W2-lite only, you may also write to CLAUDE.md (the command count in the "Tauri IPC contract" paragraph only) and, in src/App.tsx, the disabled condition of the ExperimentWorldControl you render. Everything else stays within the existing W2-lite lines.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the W2-lite line at anima-mac's BLOCKED): for card W2-lite only, you may also write to src/App.tsx (importing and rendering ExperimentWorldControl in the simulation controls row, and syncing the running state after a successful start only). src/components/SimulationControls.tsx is withdrawn from the W2-lite line. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly this change and no other.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card E3-P only, you may write to src-tauri/tests/fixtures/experiments_e3/** (new), src-tauri/tests/prereg_e3_manifest_tests.rs (new), src-tauri/examples/e3_smoke.rs (new, only if needed), artifacts/experiments/e3-*/smoke/** (new), docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md, and its row in docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others. Nothing under src-tauri/src.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card V1 only: src/components/Landscape/** , src/components/Landscape/utils/** , tests/frontend/** (edits to existing tests only with a stated reason), one result note under docs/ai/planning/ with its README row. For card B1 only: src/components/Landscape/LiveAgents.tsx, src/components/Landscape/agentInterpolation.ts, src/components/Landscape/utils/** , tests/frontend/** , scripts/check_bundle_budget.mjs (budget numbers only, with reason), one result note under docs/ai/planning/ with its README row. Nothing under src-tauri/ for either.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the B1 lines): for card B1 only, you may also write to src/components/Landscape/WorldShowcase.tsx, the simulated-entities HUD label only (choosing the synthetic wording when the tick source is synthetic). This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly this change and no other.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the B1 line): for card B1 only, you may also write to src/components/Landscape/WorldShowcase.tsx (passing qualityTier={effectiveQuality} to LiveAgents only). This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly this change and no other.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card SPIKE-NR only: on branch win/spike-native-render (never merged) any file the prototype needs, including Cargo.toml/Cargo.lock and new crates; on branch win/spike-native-render-note only the result note under docs/ai/planning/ and its README row. Never accept a licence, EULA or terms on the owner's behalf.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19): for card F048 only, you may write to src-tauri/src/core/simulation_state.rs (one new pub routing function for restored pending-inference responses and its doc comment only), src-tauri/src/core/simulation_loop.rs (only the pending-inference restore in SimulationEngine::start, replaced by a call to that function), src-tauri/src/core/snapshot.rs (only the pending_by_lineage keying in validation), src-tauri/tests/f047_restore_divergence_tests.rs, one new test file src-tauri/tests/f048_pending_restore_tests.rs, and one result note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-19, extending the F048 line at anima-mac's BLOCKED): for card F048 only, you may also write to src-tauri/src/core/simulation_state.rs inside SavedSharedLearningState::validate, only its pending_inference duplicate check, keyed by (lineage_id, request_id) instead of lineage_id. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly this change and no other.
+  AUTHORIZATION (owner via the lead under the owner's delegation, 2026-11-18): for card R1c only, you may also remove the --no-dedupe flag from cargoInventory's cargo tree call in scripts/lib/licensing.mjs, provided the crate set with and without it is identical on the base and head lockfiles. No other change to the licensing scripts, rules or tests.
+  AUTHORIZATION (owner, 2026-11-23, "Duyệt theo đề xuất" on the lead's review): for the R5 findings
+  fixes (PR #200, F-055..F-065 and F053-FIX) only, you may write to the 17 files that PR already
+  touches: FINDINGS.md, src-tauri/crates/anima-domain/src/intervention.rs,
+  src-tauri/src/commands/simulation.rs, src-tauri/src/core/{branch_tree.rs, dynamic_fields.rs,
+  experiment/observables.rs, live_experiment.rs, locomotion.rs, simulation_loop.rs, sweeps.rs,
+  terrain_navigation.rs}, src-tauri/src/evolution/newick.rs, and src-tauri/tests/{
+  domain_and_fields_hardening_tests.rs, observables_tests.rs, post_194_hardening_audit_tests.rs,
+  prereg_sel2p_manifest_tests.rs, scientific_pipeline_hardening_tests.rs}, plus
+  src-tauri/src/core/experiment/interventions.rs (manifest check radius > 0) and
+  src-tauri/src/core/exotic_energy/forcings.rs (checked add), both named in the 2026-11-23
+  verdict. F-064 may move to its own PR with the same paths. This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23): for F-066 (PR #207, lead) only, the 28 files that PR touches
+  (live lineage tracking under src-tauri/src/core and src-tauri/src/evolution, their tests, the
+  pinned LIVE_KEYS counts, and the E3 preregistration fixture's key list). This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23): for card WV2-2 (PR #199) only: src-tauri/crates/anima-worldgen/**
+  (src, src/bin and tests), src-tauri/Cargo.lock, scripts/test_target_policy.mjs, and one card note
+  docs/ai/planning/2026-11-2x-wv2-2.md. This overrides AGENTS.md's read-only declaration and BLOCK 0
+  R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-23): for the conflict-marker gate (PR #210) and card P1 (PR #211)
+  only, in addition to each card's own paths: .github/workflows/ci.yml (one step in the Frontend job
+  for #210; the Frontend checkout's fetch-depth for #211), package.json (one script for #210), and
+  each PR's single test file under tests/frontend/. This overrides AGENTS.md's read-only
+  declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner via the lead, 2026-11-23, sent to anima-case through the hub): for card VIAB-1
+  only, you may add the probe source unchanged under artifacts/experiments/viab1-shared-viability/probe/
+  (src/main.rs, Cargo.toml, Cargo.lock, never added to the Cargo workspace) and three lines for them in
+  that directory's checksums.sha256, besides the card's own artifacts and result note.
+  AUTHORIZATION (owner via the lead, 2026-11-23): for cards E3B-P and E3B-PWR only (documents only),
+  docs/ai/planning/2026-11-23-e3b-preregistration-draft.md. For card NR-SPIKE-PROTOCOL only (documents
+  only), docs/ai/planning/2026-11-23-nr-spike-protocol.md. No code, manifest or fixture.
+  AUTHORIZATION (owner via the lead, 2026-11-23): for card FOUNDER-2SEG only, you may write to
+  src-tauri/src/core/live_experiment.rs (the live.founder_genotype key constant, LIVE_KEYS, the config
+  field, the validation and the parse arm, and the founder genotype in genesis only), the LIVE_KEYS.len()
+  assertions in src-tauri/tests/ (e2_seam, eco_card_b, founder_layout, grass_steering, lake_layout,
+  land_mask, strict_prey_cap, live_lineage and any other test pinning that count),
+  src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json (one default-absent key),
+  src-tauri/tests/prereg_e3_manifest_tests.rs (only if the key list needs it), one new test file
+  src-tauri/tests/founder_genotype_tests.rs, one amendment line in
+  docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md, one card note under
+  docs/ai/planning/, and dataflow.json (only if verify_dataflow.py needs it). This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
-Dòng uỷ quyền của **R1c** đã được soạn ngày 2026-11-17 và nằm trong prompt của
-[bản giao việc cho `agent-win`](../ai/planning/2026-11-17-agent-win-handoff-r1c.md). Nó **chưa** nằm trong
-`R5-AUTH` ở trên: chủ dự án cấp nó bằng việc dán prompt đó vào phiên `agent-win`. Sau khi đã dán, chép nguyên
-văn dòng đó vào `R5-AUTH` để một phiên lead đọc khối này cũng thấy.
+Dòng uỷ quyền của **R1c** đã được chép vào `R5-AUTH` ở trên (các dòng ngày 2026-11-18). Mọi dòng uỷ quyền cấp trên hub từ 2026-11-18 đến 2026-11-20 cũng đã được chép vào khối đó ngày 2026-11-23; từ nay lead chép dòng mới vào đây cùng lúc gửi nó lên hub.
 
 Dòng uỷ quyền của T2 dưới đây **đã dùng xong** (T2 merge ngày 2026-11-15) và được giữ làm ví dụ lịch sử.
 Mẫu để soạn dòng mới là §4 của [file prompt swarm](../ai/planning/2026-11-05-swarm-prompts.md); dòng cho

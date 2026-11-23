@@ -46,8 +46,12 @@ impl Region {
                 max_y,
             } => x >= min_x && x <= max_x && y >= min_y && y <= max_y,
             Region::Radius { cx, cy, r } => {
-                let dx = x as f32 - cx;
-                let dy = y as f32 - cy;
+                if !cx.is_finite() || !cy.is_finite() || !r.is_finite() || r <= 0.0 {
+                    return false;
+                }
+                let dx = x as f64 - cx as f64;
+                let dy = y as f64 - cy as f64;
+                let r = r as f64;
                 dx * dx + dy * dy <= r * r
             }
         }
@@ -165,7 +169,7 @@ impl InterventionCommand {
 
     /// Whether this intervention is active at `tick`: `start <= tick < start + effective_duration`.
     pub fn active_at(&self, tick: u64) -> bool {
-        tick >= self.start_tick && tick < self.start_tick + self.effective_duration()
+        tick >= self.start_tick && (tick - self.start_tick) < self.effective_duration()
     }
 
     /// The signed applied magnitude at `tick` (0 outside the active window), following the ramp

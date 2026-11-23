@@ -1,0 +1,10 @@
+diff --git a/docs/README.md b/docs/README.md
+index 62316e8..1d49487 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -83,3 +83,5 @@ flowchart TD
+ Các tài liệu chuẩn đang ở thư mục gốc được giữ nguyên để không phá liên kết và thay
+ đổi đang thực hiện. Việc di chuyển chỉ diễn ra theo từng đợt có redirect stub, được
+ mô tả trong [chính sách tài liệu](governance/DOCUMENTATION_POLICY.md).
++
++- [m2-broken](./m2-missing-target.md)

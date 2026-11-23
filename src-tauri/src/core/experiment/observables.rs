@@ -393,6 +393,16 @@ impl ObservableRegistry {
             ),
             eu("live.trait_mass_mean_west", ConservationRole::None),
             eu("live.trait_mass_mean_east", ConservationRole::None),
+            // F053-FIX: explicitly windowed [0, tick] cumulative mean lifespan (`ticks`, undrained
+            // by `VitalStatistics::sample_window`).
+            spec(
+                "live.cumulative_mean_lifespan",
+                "ticks",
+                ConservationRole::None,
+                Self::OPEN_UPPER_BOUND,
+                PHYSICS_PERIOD,
+                "physics",
+            ),
         ];
         Self {
             version: OBSERVABLE_REGISTRY_VERSION,

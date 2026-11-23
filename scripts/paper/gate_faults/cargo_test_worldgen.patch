@@ -1,0 +1,12 @@
+diff --git a/src-tauri/crates/anima-worldgen/src/lib.rs b/src-tauri/crates/anima-worldgen/src/lib.rs
+--- a/src-tauri/crates/anima-worldgen/src/lib.rs
++++ b/src-tauri/crates/anima-worldgen/src/lib.rs
+@@ -53,7 +53,7 @@ mod tests {
+     #[test]
+     fn elevation_normalization_anchors_match_v3_vertical_scale() {
+         assert!((WORLD_EXTENT_M - 40_960.0).abs() < f32::EPSILON);
+-        assert_eq!(LITHOLOGY_CLASS_COUNT, 6);
++        assert_eq!(LITHOLOGY_CLASS_COUNT, 99);
+         assert!((normalize_elevation(ELEV_MIN_M) - 0.0).abs() < 1e-6);
+         assert!((normalize_elevation(ELEV_MAX_M) - 1.0).abs() < 1e-6);
+         assert!((normalize_elevation(SEA_LEVEL_M) - SEA_LEVEL_NORM).abs() < 1e-6);

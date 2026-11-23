@@ -319,7 +319,7 @@ Luồng tài liệu của kế hoạch swarm (DOC1 đến DOC8), cộng ba chỗ
 
 - `SNAPSHOT_CONTRACT.md` mô tả schema 3; mã ở schema 7.
 - Bản `STATE` trên thân cây thiếu cập nhật ngày 16/10 của bản trên `main`. Chặng 2 (`C5`) sửa.
-- `docs/planning/README.md` gọi `TODO.md` là backlog; `TODO.md` tự nhận là nhật ký.
+- `docs/planning/README.md` gọi `TODO.md` là backlog; `TODO.md` tự nhận là nhật ký. *(đã xử lý 2026-11-17 ở #97 tại [`docs/planning/README.md`](README.md))*
 
 Thêm một việc từ nghiên cứu 13/11, làm được ngay và không cần build: **mở một nhật ký dùng AI**
 (công cụ, phiên bản, đã dùng vào việc gì). Ba nơi công bố mà nghiên cứu xem xét đều đòi khai

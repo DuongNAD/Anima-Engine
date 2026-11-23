@@ -422,12 +422,16 @@ fn test_adversarial_newick_cycles_and_generation_inversions_rejected() {
             generation: 1,
             genotype: None,
             cumulative_mutations: None,
+            origin_tick: None,
+            destruction_tick: None,
         },
         LineageNode {
             id: "loop_b".to_string(),
             generation: 2,
             genotype: None,
             cumulative_mutations: None,
+            origin_tick: None,
+            destruction_tick: None,
         },
     ];
     let cyclic_relations = vec![
@@ -458,12 +462,16 @@ fn test_adversarial_newick_cycles_and_generation_inversions_rejected() {
             generation: 50,
             genotype: None,
             cumulative_mutations: None,
+            origin_tick: None,
+            destruction_tick: None,
         },
         LineageNode {
             id: "impossible_child".to_string(),
             generation: 10, // Inverted! Child generation < parent generation
             genotype: None,
             cumulative_mutations: None,
+            origin_tick: None,
+            destruction_tick: None,
         },
     ];
     let inv_relations = vec![LineageRelation {

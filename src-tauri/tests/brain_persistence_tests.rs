@@ -79,6 +79,7 @@ fn serialized_agent(brain: Option<AgentBrain>) -> SerializedAgent {
         segments: vec![],
         brain,
         sex: None,
+        live_id: None,
     }
 }
 

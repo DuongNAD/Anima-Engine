@@ -1231,13 +1231,13 @@ pkg:cargo/convert_case@0.11.0
     repository : https://github.com/rutrum/convert-case
     text       : T0257  cargo-registry:convert_case-0.11.0/LICENSE
 
-pkg:cargo/cookie@0.18.1
-    name       : cookie 0.18.1
+pkg:cargo/cookie@0.18.3
+    name       : cookie 0.18.3
     ecosystem  : cargo (cargo-registry)
     SPDX       : MIT OR Apache-2.0
     repository : https://github.com/SergioBenitez/cookie-rs
-    text       : T0051  cargo-registry:cookie-0.18.1/LICENSE-APACHE
-    text       : T0280  cargo-registry:cookie-0.18.1/LICENSE-MIT
+    text       : T0051  cargo-registry:cookie-0.18.3/LICENSE-APACHE
+    text       : T0280  cargo-registry:cookie-0.18.3/LICENSE-MIT
 
 pkg:cargo/cpufeatures@0.2.17
     name       : cpufeatures 0.2.17
@@ -8513,7 +8513,7 @@ limitations under the License.
 ------------------------------------------------------------------------------------------------
 T0051   sha256:2773e20df8f4c52a026b5b578c7f2457341f5aa3fb6612fd87e1d2e1bd8f48ad
 applies to 1 component file(s):
-  pkg:cargo/cookie@0.18.1  (LICENSE-APACHE)
+  pkg:cargo/cookie@0.18.3  (LICENSE-APACHE)
 ------------------------------------------------------------------------------------------------
 
                               Apache License
@@ -25856,7 +25856,7 @@ THE SOFTWARE.
 ------------------------------------------------------------------------------------------------
 T0280   sha256:f28420c1906af38be726cd7842798f0194b27c41d6051c0d1e9ee348b8a4a0ea
 applies to 1 component file(s):
-  pkg:cargo/cookie@0.18.1  (LICENSE-MIT)
+  pkg:cargo/cookie@0.18.3  (LICENSE-MIT)
 ------------------------------------------------------------------------------------------------
 
 Copyright (c) 2017 Sergio Benitez

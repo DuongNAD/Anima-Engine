@@ -1,0 +1,10 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index be388d0..6c6dddd 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -1,3 +1,5 @@
++import * as THREE from "three";
++console.log(THREE.REVISION);
+ import { useEffect, useState, useRef, lazy, Suspense } from "react";
+ import { invoke } from "@tauri-apps/api/core";
+ import PixiViewport from "./PixiViewport";

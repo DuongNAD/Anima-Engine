@@ -1,59 +1,63 @@
 ---
-title: Lộ trình làm quen Anima Engine
+title: Onboarding and First Headless Tutorials
 status: active
 owner: maintainers
-last_reviewed: 2026-07-24
+last_reviewed: 2026-11-23
 review_cycle: per-release
 ---
 
 # Tutorials
 
-## Lộ trình 60 phút
+## Hands-on Tutorials
 
-### 1. Hiểu thế giới cần mô phỏng
+| Tutorial | Contents | Status |
+|---|---|---|
+| [01 — From a Clean Clone to Your First Headless Experiment](01-first-headless-experiment.md) | Go from a clean clone to installing dependencies, running `e2_seam_tests`, building `run_e2_brain_experiment` (`--release`), running your first E2 `--smoke` calibration, verifying digests with `npm run check:e2`, and reading the inference boundaries | `active` |
 
-Đọc theo thứ tự:
+## 60-Minute Onboarding Path
 
-1. [`README.md`](../../README.md) — mục tiêu và kiến trúc.
-2. [`WORLD_DESIGN.md`](../../WORLD_DESIGN.md) — trải nghiệm và thế giới đích.
-3. [`SIMULATION_RULES.md`](../../SIMULATION_RULES.md) — đơn vị, bảo toàn và lát cắt MVP.
+### 1. Understand the Simulated World
 
-Kết quả mong đợi: giải thích được đường tác động
-“mưa → nước/đất → cỏ → thỏ → sói” và phân biệt causal event với log kỹ thuật.
+Read in order:
 
-### 2. Chạy một vòng kiểm tra
+1. [`README.md`](../../README.md) — project goals and architecture.
+2. [`WORLD_DESIGN.md`](../../WORLD_DESIGN.md) — target world and user experience.
+3. [`SIMULATION_RULES.md`](../../SIMULATION_RULES.md) — units, conservation laws, and MVP slices.
 
-Làm theo [How-to](../how-to/README.md): cài dependency, chạy frontend test và Cargo
-test. Đọc [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) trước khi tạo một report baseline trên
-máy của bạn: script cần output của `cargo bench` và sẽ từ chối chạy trên một clone chưa bench (xem
-How-to).
+Expected outcome: trace the causal chain
+"rain → water/soil → grass → rabbit → wolf" and distinguish causal domain events from technical logs.
 
-Kết quả mong đợi: biết test nào bảo vệ Rust, TypeScript và biên artifact.
+### 2. Run a Verification Pass
 
-### 3. Theo dấu một thay đổi
+Follow [How-to](../how-to/README.md): install dependencies and run frontend and Cargo
+tests. Read [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) before generating a baseline report on
+your machine: the script reads `cargo bench` output and refuses to run on an unbenched clone (see How-to).
 
-Chọn một scenario nhỏ trong [`WORLD_SIMULATION_PLAN.md`](../../WORLD_SIMULATION_PLAN.md):
+Expected outcome: identify which checks guard Rust, TypeScript, and artifact boundaries.
 
-1. tìm luật bị tác động trong `SIMULATION_RULES.md`;
-2. tìm component/system liên quan trong `src-tauri/src/core/`;
-3. tìm artifact/renderer consumer tương ứng;
-4. xác định invariant, fixture và benchmark cần cập nhật;
-5. ghi việc cần làm vào backlog ở [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) §3
-   (`TODO.md` chỉ là nhật ký việc đã làm); không định nghĩa lại luật ở đó.
+### 3. Trace One Change End-to-End
 
-### 4. Đề xuất một tích hợp nguồn mở
+Pick a small scenario from [`WORLD_SIMULATION_PLAN.md`](../../WORLD_SIMULATION_PLAN.md):
 
-Đọc [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md), chọn một ứng viên `Pilot`, rồi
-dùng [ADR template](../decisions/ADR-0000-template.md) để ghi ranh giới, baseline,
-quality gate và rollback. Không thêm package trước khi license và nguồn sự thật được
-xác định.
+1. locate the affected law in `SIMULATION_RULES.md`;
+2. locate the matching component/system under `src-tauri/src/core/`;
+3. locate the corresponding artifact/renderer consumer;
+4. identify invariants, fixtures, and benchmarks to update;
+5. record follow-up work in the backlog at [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) §3
+   (`TODO.md` is a chronological log of completed work); do not redefine domain laws there.
 
-## Bài tiếp theo nên được bổ sung
+### 4. Propose an Open-Source Integration
 
-- Tạo scenario “mưa tăng 20%” và đọc causal chain.
-- Thêm một producer species từ schema đến renderer.
-- Tạo scientific fixture có provenance.
-- Migration `WorldArtifact` từ phiên bản N sang N+1.
+Read the [open-source landscape survey](../research/OPEN_SOURCE_LANDSCAPE.md), pick a `Pilot` candidate, and
+use the [ADR template](../decisions/ADR-0000-template.md) to record boundaries, baseline,
+quality gates, and rollback plan. Do not add a package before license and source-of-truth are settled.
 
-Mỗi tutorial mới phải chạy được từ môi trường sạch, có kết quả quan sát được và link
-tới reference thay vì sao chép hợp đồng.
+## Suggested Next Tutorials
+
+- Author a "rainfall +20%" scenario and inspect the causal chain.
+- Add a producer species from schema to renderer.
+- Build a scientific fixture with provenance.
+- Migrate `WorldArtifact` from version N to N+1.
+
+Every new tutorial must run from a clean checkout, include observed outputs, and link
+to Reference contracts rather than duplicating specification prose.

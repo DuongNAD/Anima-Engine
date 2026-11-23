@@ -30,6 +30,147 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-066 — Ca sinh trong thế giới live không bao giờ tới lineage tracker, và anh em cùng cha dùng chung một lineage id
+- **Ngày:** 2026-11-22
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/simulation_loop.rs:956`: lời gọi `add_reproduction` duy nhất là epoch MAP-Elites trên luồng tiến hoá. Sinh sản liên tục (ADR-0005) đi qua `autonomous_reproduction_system` → `SpawnOffspringCommand::apply` (`src-tauri/src/core/agent_systems.rs:478` ở trunk `7111093`), mang id cha nhưng không ghi cạnh nào.
+  - `src-tauri/src/core/agent_systems.rs:1129` (trunk `7111093`): id con là `format!("{parent_lineage_id}.{}", parent_generation + 1)`, nên mọi con của cùng một cha có **cùng** id. Đây là gốc của F-047; F-047 được sửa bằng cách ghép phản hồi suy luận theo `(lineage_id, request_id)`, không phải bằng id duy nhất.
+  - `src-tauri/src/evolution/lineage.rs`: `LineageNode` không có thời điểm chết, nên không xuất được `destruction_time` theo chuẩn dữ liệu ALife.
+- **Phát hiện bởi:** tay (đọc code sau các báo cáo nghiên cứu ngày 2026-11-22; ghi ở `docs/research/OPEN_ENDEDNESS_LINEAGE_SPECIES_RESEARCH_2026-11-22.md` §1, PR #206)
+- **Triệu chứng:** Chạy thế giới live có sinh sản thì đồ thị phả hệ rỗng (adapter) hoặc chỉ chứa con MAP-Elites (app), và các cá thể sống có id trùng nhau. Mọi phép đo dòng dõi trên quần thể live (OSS-073 line of descent kiểu Avida, cổng Red-Queen S43, ứng viên loài AE-S11) vì thế không làm được: không có đồ thị, và id cũng không gọi tên được node của nó.
+- **Vì sao id duy nhất không nằm ở `AgentLineageId`:** id đó không chỉ là nhãn. `autonomous_reproduction_system` duyệt cha **theo thứ tự `AgentLineageId`**, và thứ tự ứng viên của drift replay cũng khoá theo nó, nên đổi giá trị đó là đổi thứ tự rút `SimRng`, đổi quỹ đạo và checksum. Bản đầu của sửa này đã ghi đè nó, và bật khoá làm lệch quỹ đạo (54 sinh / 26 chết với khoá, 53 / 25 không khoá ở tick 2.500) — trái ADR-0008 động lực 4 ("không phản hồi": ghi quá khứ không được đổi tương lai). Bản sửa giữ `AgentLineageId`/`AgentParentLineageIds` ở giá trị cũ `cha.thế_hệ` trong mọi lượt chạy và đặt id duy nhất trong bảng phụ của `LiveLineage` theo `Entity` (không phải component: chèn component lên founder sau genesis sẽ đổi archetype và thứ tự hàng). **Ghi phả hệ không đổi quỹ đạo**: cùng seed và manifest, có khoá và không khoá cho cùng `world_checksum` và cùng số sinh/chết ở mọi mốc. Khoá `live.lineage_tracking = 1` vẫn opt-in vì tốn bộ nhớ; vắng khoá thì không có resource `LiveLineage`, hai command chỉ kiểm tra sự có mặt của nó (không cấp phát, không rút số), và `LIVE_MODEL_VERSION` không đổi.
+- **Sửa:** module mới `src-tauri/src/core/live_lineage.rs` (resource `LiveLineage`). Khi bật khoá: founder là root có `origin_tick = 0`; mỗi ca sinh lấy id `birth-{run:016x}-{n:08x}` (namespace riêng, không đụng con trỏ `lineage-…` của MAP-Elites), thành một node có cạnh từ id riêng của cha (tìm qua `SpawnOffspringCommand::parent_entity`), `origin_tick` và kiểu cạnh `Clone`/`Mutate` theo việc genome thân (`mutate_genotype_reporting`, so từng bit với bản trước) hoặc não (so từng bit trọng số) có thật sự đổi hay không; mỗi ca chết qua `ReclaimAndDespawnAgentCommand` ghi `destruction_tick` và rời bảng phụ. Mọi việc này nằm trong deferred command và trong `LiveLineage::set_tick` (giữa hai tick, nơi chạy nén), không trong system của vòng tick. Ngưỡng nén có sàn tiêm được (`set_compaction_floor`, mặc định `FIRST_COMPACTION_AT`), lưu cùng save. `LineageNode` có thêm `origin_tick`/`destruction_tick` (`Option<u64>`, `#[serde(default)]`); `compact` coi mọi node "mở" (đã sinh, chưa chết) là sample. Snapshot mang đồ thị, `SavedSimulationState::live_lineage` (con trỏ id, ngưỡng nén, sàn nén, số fault) và `SerializedAgent::live_id` của từng cá thể sống, được gắn lại đúng như vậy khi khôi phục (D01, không mint lại); các trường mới được bỏ khỏi bytes khi `None`, nên save của lượt chạy không khoá không đổi. Save cũ không có các trường này vẫn đọc được: con trỏ được khôi phục từ các id có trong save, founder giữ node của nó, còn cá thể con (id cũ không gọi tên node nào) vào đồ thị như một root mới.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test live_lineage_tests`. Trên trunk `7111093` file này không biên dịch được (khoá và API chưa có); test `the_legacy_path_records_nothing_and_keeps_parent_generation_ids` cho thấy đường mặc định vẫn tái hiện va chạm id anh em.
+- **Test khoá lại:** `src-tauri/tests/live_lineage_tests.rs` (11 test: cạnh từ đúng cha, id anh em khác nhau, thời điểm chết, `run N == run K → snapshot → restore → run N−K` cả checksum, đồ thị lẫn id từng cá thể, save thiếu trường mới với fault = 0, đường legacy, **có khoá == không khoá** về checksum và số sinh/chết ở tick 0/180/1.800/2.500, nén ở cả hai phía điểm khôi phục qua đĩa mà node của mọi cá thể sống vẫn còn, `live.mutation_rate = 0` cho toàn cạnh `Clone` với genotype con bằng cha, nhãn cạnh khớp việc genome đổi) và 6 unit test trong `core/live_lineage.rs`.
+- **Chưa phủ:** app desktop chưa đặt khoá (luồng `simulation_loop` vẫn chỉ thấy con MAP-Elites; Neo4j chưa có cột cho hai tick); chế độ viewer W2-lite bỏ qua khoá; di cư và ngủ đông không phải là chết nên node vẫn mở (ngủ đông mang id trong bản ghi dormant; tầng quần thể gộp `DehydrateAgentCommand` và di cư giữa shard không mang id, và adapter không bật hai đường đó); nén nối đường đơn nhánh nên genotype của tổ tiên trung gian bị bỏ (như OSS-071b), một chuỗi genotype kiểu Avida theo từng bước cần thêm tuỳ chọn tắt nén.
+- **Trạng thái:** FIXED (opt-in) ở PR sửa F-066.
+
+### F-065 — `pearson_correlation` và `DimensionSpec::Logarithmic::grid_values` dùng ngưỡng tuyệt đối `1e-15`, làm mất tương quan và làm sập lưới quét với số dương cỡ nhỏ
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/sweeps.rs:766-768`: `if var_x <= 1e-15 || var_y <= 1e-15 { return None; }` kiểm tra phương sai chưa chia chuẩn theo độ lớn nên từ chối chuỗi tuyến tính hoàn hảo có biên độ nhỏ (vd. `1e-9`).
+  - `src-tauri/src/core/sweeps.rs:196` (cùng mẫu với `Continuous` ở `:185`): `if default_points_per_dim <= 1 || (min - max).abs() < 1e-15` gộp nhầm toàn bộ miền logarit hợp lệ (`[1e-18, 1e-16]`, rộng `100×`) thành đúng **1 điểm duy nhất** dù `DimensionSpec::validate` ở `:110` đã chấp nhận tới `f64::MIN_POSITIVE`.
+- **Phát hiện bởi:** tay (kiểm toán mô-đun `sweeps.rs`)
+- **Triệu chứng:** Quét tham số trên các hằng số sinh/hấp thụ rất nhỏ (`1e-9`–`1e-18`) bị im lặng co về 1 điểm lưới (bỏ qua 4/5 giá trị ở `points_per_dim = 5`) hoặc trả `None` cho hệ số tương quan `r = 1.0`.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `scientific_pipeline_hardening_tests::f065_sweeps_pearson_and_grid_values_are_scale_invariant`)
+- **Test khoá lại:** `scientific_pipeline_hardening_tests::f065_sweeps_pearson_and_grid_values_are_scale_invariant` và `sweeps::tests::{pearson_correlation_is_scale_invariant_and_rejects_constants_and_non_finite, grid_values_handles_extreme_ratios_and_degenerate_ranges, map_normalized_and_sampling_handle_extreme_log_and_continuous_spans}` (khẳng định `Some(r)` ở biên độ `1e-9..1e-250` và `[-1e308, 0, 1e308]`, trả `None` cho `[0.1; 3]`, giữ 5 điểm lưới + `map_normalized`/Sobol/LHS hữu hạn trong `[min, max]` ở `[1e-18, 1e-16]`, `[1e-200, 1e200]` và `[-1e308, 1e308]`). Lưu ý hành vi phi mặc định: các điểm lưới bên trong (interior grid points) có thể thay đổi ở bit cuối do công thức chia tỉ lệ mới (`(max / min).powf(t)` / chia Span).
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-064 — Bảng đa thức `SOBOL_POLY_TABLE` chứa đa thức không nguyên thuỷ / khả quy và số định hướng `m_i >= 2^(i+1)`, làm sập phân tầng 2D của chuỗi Sobol tới 75% ô trống
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/sweeps.rs:645-678` (`SOBOL_POLY_TABLE`, `generate_sobol_direction_numbers`).
+- **Phát hiện bởi:** tay (kiểm toán toán học bảng Joe & Kuo trên 31 chiều của `SOBOL_POLY_TABLE`)
+- **Triệu chứng:** Qua kiểm tra đại số trên $\mathbb{F}_2$ và phép đo phân tầng, bảng `SOBOL_POLY_TABLE` cũ có **7/31** đa thức không nguyên thuỷ hoặc khả quy và **12** giá trị khởi tạo `init_m` vi phạm chặn trên $m_i < 2^{i+1}$, khiến ~50 cặp chiều sụp xuống `~64/256` ô (`~75%` trống) ở `N = 256` (và bảng thay thế tự tạo ban đầu vẫn gây tương quan `|r(24,25)| ≈ 0.74` do không dùng nguyên bản `init_m` của Joe & Kuo). Đã thay bằng bảng nguyên bản Joe & Kuo (`new-joe-kuo-6.21201`, SIAM J. Sci. Comput. 30(5), 2635-2654 (2008)) kèm trích dẫn.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `scientific_pipeline_hardening_tests::f064_sobol_matches_joe_kuo_reference_points_and_decorrelates_high_dims`)
+- **Test khoá lại:** `scientific_pipeline_hardening_tests::f064_sobol_matches_joe_kuo_reference_points_and_decorrelates_high_dims` và `sweeps::tests::sobol_poly_table_entries_are_primitive_and_within_bounds` (khẳng định 31 đa thức nguyên thuỷ trên $\mathbb{F}_2$, $m_i$ lẻ $< 2^{i+1}$, khớp từng bit mẫu chuẩn `scipy.stats.qmc.Sobol(d=32, scramble=False)` ở các điểm `1, 2, 3, 8, 16, 64, 256`, `|r(23,24)| < 0.25` và `|r(24,25)| < 0.25` ở `N = 256`, và phân tầng 1D chính xác trên 16 khoảng ở `N = 255`)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-063 — `newick::to_newick` âm thầm vứt bỏ self-loop và chu trình nếu thực thể con đã có một `parent_id` khác nhỏ hơn theo thứ tự từ điển
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/evolution/newick.rs:206-229`: vòng lặp chọn đúng 1 cha có `id` nhỏ nhất và đẩy các cạnh còn lại vào `dropped_parent_edges` trước khi kiểm tra DAG.
+  - `src-tauri/src/evolution/newick.rs:255-272`: kiểm tra chu trình chỉ đi ngược qua mảng `parent_of` (tối đa 1 cha mỗi nút), không thấy các cạnh bị loại bỏ.
+- **Phát hiện bởi:** tay (kiểm toán `newick.rs` và giả định crossover DAG)
+- **Triệu chứng:** Với đồ thị có cạnh hợp lệ `"A" -> "B"` kèm self-loop `"B" -> "B"`, hoặc chu trình 2 bước + đảo thế hệ `"A" -> "B" -> "C" -> "B"`, do `"A" < "B"` và `"A" < "C"`, `to_newick` giữ cha `"A"` trên `"B"` và vứt cạnh tạo chu trình vào `dropped_parent_edges = 1`, rồi trả về `Ok(NewickExport)` hợp lệ thay vì `Err(NewickError::Cycle { .. })`. Cạnh trùng lặp `"A" -> "B"` hai lần cũng bị đếm sai thành 1 crossover bị loại.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `scientific_pipeline_hardening_tests::f063_newick_detects_cycles_and_self_loops_across_all_edges_and_dedups_duplicates`)
+- **Test khoá lại:** `scientific_pipeline_hardening_tests::f063_newick_detects_cycles_and_self_loops_across_all_edges_and_dedups_duplicates` (khẳng định `Err(NewickError::Cycle { .. })` trên nút thực sự thuộc vòng lặp khi bóc nút lá lặp $O(V+E)$, và `dropped_parent_edges == 0` với cạnh trùng lặp)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-062 — `run_branch_tree` làm rơi toàn bộ can thiệp (`interventions`) của nút cha/tổ tiên khi chạy nhánh rẽ con cháu
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/branch_tree.rs:731-735`: `exotic_interventions` được ghép từ `base_manifest` và nhánh con (vẫn thiếu tổ tiên trung gian nếu `nodes >= 3`).
+  - `src-tauri/src/core/branch_tree.rs:778-780`: `let mut combined_interventions = manifest.base_manifest.interventions.clone(); combined_interventions.extend(spec.interventions.clone());` — **chỉ lấy** từ `base_manifest` và riêng nhánh hiện tại, hoàn toàn bỏ qua `interventions` của nút cha và các tổ tiên trung gian.
+- **Phát hiện bởi:** tay (kiểm toán thực thi rẽ nhánh phản thực tế `branch_tree.rs`)
+- **Triệu chứng:** Khi nhánh gốc (Node 0) hoặc nhánh cha (Node 1) mang một can thiệp (ví dụ `RainfallDelta` kéo dài từ tick `20..200`), và nhánh con/cháu (Node 2) rẽ từ tick `50` với `interventions = []` để quan sát tiếp quỹ đạo dưới cùng điều kiện rồi rẽ nhánh đối chứng, từ tick `51` trở đi `InterventionQueue` của nhánh con không còn can thiệp của cha, khiến nhánh con không thêm can thiệp vẫn lệch checksum và lệch pha sinh thái (`plants` hồi phục giả) so với chính cha nó.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `scientific_pipeline_hardening_tests::f062_branch_tree_inherits_ancestor_interventions_and_exotic_forcings`)
+- **Test khoá lại:** `scientific_pipeline_hardening_tests::{f062_branch_tree_inherits_ancestor_interventions_and_exotic_forcings, f062_shorter_child_with_exotic_interventions_filters_future_ancestor_forcings_and_rejects_invalid_own, f062_three_level_shorter_child_to_longer_empty_grandchild_restores_ancestor_forcings}` (khẳng định `final_checksum` khớp, `final_distance == 0.0`, kế thừa đủ chuỗi `exotic_interventions` 3 tầng gốc→cha→cháu kể cả khi nhánh cháu có `exotic_interventions = []` sau nhánh cha ngắn hơn, và nhánh con ngắn hơn lọc bỏ forcing tổ tiên ngoài tầm `duration_ticks` trong khi vẫn từ chối forcing riêng ngoài tầm). Lưu ý hành vi phi mặc định: nút con nay kế thừa thêm `interventions` từ các tổ tiên trung gian và `exotic_interventions` từ nút gốc, đồng thời ID trùng lặp giữa tổ tiên và con vẫn chưa được kiểm tra trùng.
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-061 — `start_from_manifest_tests.rs:757` dùng `include_str!("../../src/...")` thoát khỏi `src-tauri/`, làm gãy toàn bộ lệnh săn mutant (`just hunt`, `just hunt-file`, `just verify <mutant>`)
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/tests/start_from_manifest_tests.rs:757`: `let tsx = include_str!("../../src/components/ExperimentWorldControl.tsx");`
+  - `justfile:90-98` (`hunt`, `hunt-file`) và `scripts/verify.sh:103` (`verify <mutant>`): chạy `cargo mutants` trong `src-tauri/` (`--copy-target true`).
+- **Phát hiện bởi:** mutant (`just hunt-file src/core/terrain_navigation.rs 2 ...`)
+- **Triệu chứng:** Khi `cargo mutants` sao chép thư mục crate `src-tauri/` sang sandbox tạm (`/tmp/cargo-mutants-src-tauri-...`), đường dẫn tương đối `../../src/components/ExperimentWorldControl.tsx` không tồn tại bên trong bản sao. Lệnh baseline `cargo test --no-run` thất bại ngay với `os error 2` ở `start_from_manifest_tests`, khiến cả `just hunt`, `just hunt-file` lẫn cổng `just verify <mutant>` đều gãy trên toàn crate `anima-engine`. (`just verify` không đối số không gọi `cargo-mutants` nên vẫn chạy.)
+- **Tái hiện:** `just hunt-file src/core/terrain_navigation.rs 2 land_mask_tests` → `ERROR cargo build failed in an unmutated tree, so no mutants were tested` (ghi chi tiết trong `mutants.out/log/baseline.log`).
+- **Test khoá lại:** chưa có (cần đổi cách test frontend↔backend kiểm tra fixture từ đường nội bộ crate hoặc qua script npm thay vì `include_str!("../../...")`).
+- **Trạng thái:** OPEN (đã có bản vá ở Draft PR #198, nhánh `mac/fix-f061`)
+
+### F-060 — `DynamicFields::step_soil` trừ `absorbed` bằng `f32` trước khi ép sang `f64`, phá vỡ bảo toàn dinh dưỡng hơn `1.000 NM` trong một tick với `AddNutrient` cường độ lớn
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/dynamic_fields.rs:439-445`: `self.cum_nutrient_leached += (add - absorbed) as f64;`, trong khi `add` và `absorbed` đều là `f32`.
+- **Phát hiện bởi:** tay (kiểm toán vòng bảo toàn dinh dưỡng `DynamicFields`)
+- **Triệu chứng:** Với một can thiệp `AddNutrient` có `add >= ~1e8_f32` (đủ lớn để lượng hấp thụ `room <= 5.0` nhỏ hơn ULP của `add`), phép trừ `(add - absorbed)` trong `f32` làm tròn triệt tiêu hoàn toàn `absorbed`, ghi `cum_nutrient_leached == cum_nutrient_added`. Hệ quả là `soil_nitrogen` tăng thật tới `NITROGEN_CAP` (`+4,0 NM/ô`), nhưng sổ kết toán ghi nhận `100%` bị rửa trôi, làm `nutrient_budget_residual()` vọt thêm **`> 1.000 NM`** trên lưới `16×16` chỉ sau đúng 1 tick.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `domain_and_fields_hardening_tests::f060_dynamic_fields_step_soil_preserves_nutrient_conservation_with_large_input`)
+- **Test khoá lại:** `domain_and_fields_hardening_tests::f060_dynamic_fields_step_soil_preserves_nutrient_conservation_with_large_input` (khẳng định `cum_nutrient_leached < cum_nutrient_added` và `nutrient_budget_residual().abs() < 1e-2` khi giữ zero-alloc)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-059 — `Region::Radius` bình phương `r * r` mà không kiểm tra `r >= 0.0`, khiến bán kính âm khớp mọi điểm như bán kính dương
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/crates/anima-domain/src/intervention.rs:48-52`: `Region::Radius { cx, cy, r } => dx * dx + dy * dy <= r * r` không chặn `r <= 0.0` (hoặc `< 0.0`).
+- **Phát hiện bởi:** tay (kiểm toán ranh giới `anima-domain::intervention`)
+- **Triệu chứng:** Trong khi đường `manifest` đã chặn `r <= 0.0` ở `src-tauri/src/core/experiment/interventions.rs:59`, struct công khai `Region::Radius` ở `anima-domain` và các caller trực tiếp (`DynamicFields::step_climate`, `Scenario`) chấp nhận `r = -4.0` và áp can thiệp lên toàn bộ đĩa tròn bán kính `4.0` y như `+4.0`.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `domain_and_fields_hardening_tests::f059_region_radius_rejects_non_positive_and_non_finite_radii`)
+- **Test khoá lại:** `domain_and_fields_hardening_tests::{f059_region_radius_rejects_non_positive_and_non_finite_radii, f059_toxicity_plume_manifest_rejects_non_positive_radius}` (khẳng định `contains` trả `false` với `r <= 0.0` hoặc toạ độ/bán kính phi hữu hạn, và `validate_intervention` từ chối `ToxicityPlume` có `radius <= 0.0` ở `interventions.rs`). Lưu ý hành vi phi mặc định: `Region::Radius` có `r == 0.0` nay không khớp ô nào (trước kia khớp tâm `(cx, cy)`).
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-058 — `InterventionCommand::active_at` cộng tràn `u64` ở chế độ `--release` khi `duration_ticks = u64::MAX` (`start_tick > 0`), làm lệnh vô hạn tắt ngấm
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/crates/anima-domain/src/intervention.rs:167-169` (`InterventionCommand::active_at`) và nhánh anh em `src-tauri/src/core/exotic_energy/forcings.rs:60` (`ExoticIntervention::active_at`): `tick >= self.start_tick && tick < self.start_tick + self.effective_duration()`.
+- **Phát hiện bởi:** tay (kiểm toán ranh giới `anima-domain::intervention`)
+- **Triệu chứng:** Đường `manifest` có `checked_add` ở `src-tauri/src/core/experiment/interventions.rs:72`, nhưng `InterventionCommand` và `ExoticIntervention` công khai khi chạy `--release` sẽ cộng tràn `100 + u64::MAX == 99`, khiến `active_at(tick)` trả `false` ở mọi `tick >= 100`.
+- **Tái hiện:** `just test` hoặc `just verify` (chạy `domain_and_fields_hardening_tests::f058_intervention_active_at_avoids_u64_overflow_for_open_ended_commands` và `f058_exotic_intervention_active_at_avoids_u64_overflow`)
+- **Test khoá lại:** `domain_and_fields_hardening_tests::{f058_intervention_active_at_avoids_u64_overflow_for_open_ended_commands, f058_exotic_intervention_active_at_avoids_u64_overflow}` (khẳng định `active_at(100)`, `active_at(200)`, `active_at(u64::MAX)` trả `true` và biên nửa mở không tràn cho cả `InterventionCommand` lẫn `ExoticIntervention`)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 1)
+
+### F-057 — `start_from_manifest` preflight chấp nhận `founder_layout = 1 | 2` + `land_mask = 1`, nhưng worker `sim` gọi hàm panic `apply_live_genesis_and_policies`
+- **Ngày:** 2026-11-21
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/commands/simulation.rs:910-952` (`load_viewer_terrain_map`, `parse_and_validate_manifest_for_viewer`, `start_from_manifest_with_engine`): trước đây chưa kiểm tra đất và sau đó dựng cả `init_world()`; nay chỉ nạp `TerrainMap` qua `load_viewer_terrain_map()`.
+  - `src-tauri/src/core/simulation_loop.rs:1539`: luồng nền `sim` chuyển sang xử lý lỗi sạch từ `try_apply_live_genesis_and_policies`.
+  - `src-tauri/src/core/live_experiment.rs:2589-2597`: `apply_live_genesis_and_policies` gọi `.unwrap_or_else(|e| panic!("{e}"))`.
+- **Phát hiện bởi:** tay (kiểm toán W2-lite sau PR #194)
+- **Triệu chứng:** Trên địa hình tạo mặc định (`256×256`), số ô đất đi được vượt trần `4096` founder nên chưa kích hoạt. Tuy nhiên khi app nạp file thế giới `.anmw` ít đất (`walkable_cells < founders`) — đường nạp mà `README.md` xác nhận vẫn tồn tại — lệnh `parse_and_validate_manifest_for_viewer` chấp nhận manifest và `start_from_manifest` trả `Ok`, sau đó luồng nền `sim` tự dừng bằng `panic!` ở bước genesis thay vì từ chối sạch từ preflight hoặc báo lỗi có cấu trúc.
+- **Tái hiện:** `just test` (chạy `post_194_hardening_audit_tests::w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling` và `post_194_hardening_audit_tests::f057_scarce_land_artifact_refused_at_preflight_and_non_panicking_in_engine`)
+- **Test khoá lại:** `post_194_hardening_audit_tests::{w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling, f057_scarce_land_artifact_refused_at_preflight_and_non_panicking_in_engine}` (khẳng định preflight chỉ nạp `TerrainMap` và kiểm tra `validate_founder_land_capacity` mà không dừng engine đang chạy, còn `simulation_loop.rs` dùng `try_apply_live_genesis_and_policies` thoát sạch với `running == false`). Lưu ý: việc xoá `apply_live_genesis_and_policies` khỏi `live_experiment.rs` đang **BLOCKED** vì `src-tauri/tests/start_from_manifest_tests.rs:34,376` và `src-tauri/tests/founder_layout_tests.rs:29,439,458,560,589` nằm ngoài danh sách file được phép sửa của PR #200.
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2; giữ lại `apply_live_genesis_and_policies` do blocker phạm vi file)
+
+### F-056 — `terrain_navigation_system` làm hỏng mọi đốt thân con thành `NaN` dù vừa phục hồi được vị trí `root` về `LastWalkablePosition`
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/terrain_navigation.rs:231-238`: `let delta = target - pos.0;` tính hiệu dịch chuyển từ `pos.0` đang hỏng trước khi ghi đè `pos.0 = target` và `last.revert_delta = delta`.
+  - `src-tauri/src/core/terrain_navigation.rs:246-253`: `seg_pos.0 += last.revert_delta;` cộng `delta` vào toàn bộ đốt con (`Without<Agent>`).
+- **Phát hiện bởi:** tay (kiểm toán `LAND1` sau PR #166)
+- **Triệu chứng:** Khi `pos.0` của `root` trở thành phi hữu hạn (`NaN` hoặc `±inf`) trong khi `LastWalkablePosition` vẫn giữ toạ độ đất hợp lệ, `terrain_navigation_system` phục hồi đúng `pos.0` của `root` về `LastWalkablePosition`, nhưng giữ `revert_delta = NaN` và cộng thẳng vào mọi đốt thân con, biến toàn bộ chuỗi đốt con thành `NaN` dù `root` đã lành (tick vật lý kế tiếp kéo ngược `root` hỏng theo).
+- **Tái hiện:** `just verify` hoặc `just test` (chạy `post_194_hardening_audit_tests::terrain_navigation_nan_root_poisons_child_segments_even_after_root_recovery`)
+- **Test khoá lại:** `post_194_hardening_audit_tests::terrain_navigation_nan_root_poisons_child_segments_even_after_root_recovery` (khẳng định `is_pos_walkable` từ chối toạ độ phi hữu hạn kể cả ở `y`, mọi trạng thái `NaN`/`±inf` phục hồi `root` sạch với `revert_delta == Vec3::ZERO` và đốt con giữ nguyên toạ độ hữu hạn hoặc phục hồi về `LastWalkablePosition`, không làm lệch đường bờ hữu hạn ở `land_mask_tests`)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2)
+
+### F-055 — `grass_steering` dưới `LAND1` dẫn con mồi lao ra thức ăn trên biển (`DeepOcean`), kích hoạt bẫy giật lùi bờ biển dù dưới chân có cỏ giàu năng lượng
+- **Ngày:** 2026-11-21
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/locomotion.rs:116-120` (`select_prey_grass_target`, Ưu tiên 2): chọn `Food` cục bộ trong `local_food_radius_sq` mà không kiểm tra `grass.is_walkable(food_pos)`, trong khi cùng hàm ở `:147` lọc mọi ô cỏ qua `grass.is_walkable(center)`.
+  - `src-tauri/src/core/locomotion.rs:165` (fallback Ưu tiên 3): trả về `nearest_food` toàn cục cũng không kiểm tra `grass.is_walkable(food_pos)`.
+- **Phát hiện bởi:** tay (kiểm toán tương tác `live.grass_steering` × `live.land_mask` sau PR #182)
+- **Triệu chứng:** Dù `spawn_food_system` đã né nước khi bật `LAND1`, bất kỳ thực thể `Food` nào nằm trên ô `DeepOcean`/`Ocean` (ví dụ khôi phục từ save tiền-LAND1 hoặc kịch bản có thức ăn trên mặt nước) đều khiến con mồi đang đứng trên ô cỏ đất liền giàu năng lượng (`r >= GRASS_STAY_FRACTION * r_max`) bỏ qua cỏ để lái thẳng về phía `Food` dưới biển, rồi bị `terrain_navigation_system` giật lùi lặp đi lặp lại ở đường bờ (`reverted_this_tick == true`). Fallback toàn cục `:165` khi hết cỏ trong vùng `7×7` cũng mắc cùng lỗi.
+- **Tái hiện:** `just verify` hoặc `just test` (chạy `post_194_hardening_audit_tests::grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_land_grass`)
+- **Test khoá lại:** `post_194_hardening_audit_tests::grass_steering_with_land_mask_steers_prey_into_ocean_food_instead_of_grazing_land_grass` (khẳng định `vel_priority2 == Vec3::ZERO`, `revert_count == 0`, `vel_fallback == Vec3::ZERO`, bỏ qua `Food` phi hữu hạn, và đối chứng dương vẫn chọn `Food` đi được trên đất liền kể cả khi có `Food` trên biển ở gần hơn; giữ nguyên 0 heap allocation ở `locomotion_steering_zero_alloc_tests` và `grass_steering_tests`)
+- **Trạng thái:** FIXED (nhánh `mac/r5-findings-fixes`, R5 Part 2)
+
 ### F-054 — `check:bundle` nhận ra chunk 3D chỉ bằng tên file, nên không thấy three.js bị import thẳng vào trang chính
 - **Ngày:** 2026-11-20
 - **Loại:** BUG
@@ -38,7 +179,7 @@ Quy tắc ghi:
 - **Triệu chứng:** Chú thích ở `:147-158` nói kiểm tra tách route bắt đúng trường hợp có người thêm `import * as THREE from 'three'` vào trang chính. Khi làm đúng như vậy, rolldown gom three.js vào một chunk tên `defineProperty-*.js` (502 KiB) và `index.html` tải nó, nhưng kiểm tra in `entry index.html ... 3D renderer: no` và không báo lỗi, vì tên chunk không bắt đầu bằng `react-three-fiber`. Cổng vẫn đỏ, nhưng chỉ nhờ ngân sách byte: chunk `defineProperty` vượt 170 KiB, tổng chỉ vượt 3,2 KiB. Một thay đổi nhỏ hơn về byte sẽ lọt qua.
 - **Tái hiện:** trên trunk `4794b6f`: `git show 82a7a604:scripts/paper/gate_faults/check_bundle.patch | git apply && npm run build && npm run check:bundle`. Kết quả có dòng `entry index.html 12 static chunk(s), 3D renderer: no` và `OVER defineProperty 501.9 KiB`. Hoàn tác bằng `git checkout -- src/App.tsx`.
 - **Test khoá lại:** chưa có. Bản sửa nên nhận ra three.js theo nội dung hoặc theo module gốc trong manifest của Vite, không theo tên chunk; đối chứng âm chính là patch trên.
-- **Trạng thái:** OPEN.
+- **Trạng thái:** OPEN (đã có bản vá ở Draft PR #197, nhánh `mac/fix-vacuous-gates-f054`).
 
 ### F-053 — `live.mean_lifespan` trong `final_observables` luôn bằng 0: cửa sổ đã bị lần lấy mẫu cuối rút cạn trước khi đọc
 - **Ngày:** 2026-11-20
@@ -47,10 +188,10 @@ Quy tắc ghi:
   - `src-tauri/src/core/live_experiment.rs:1700-1710`: lần lấy mẫu chuỗi thời gian gọi `VitalStatistics::sample_window()`, hàm này đóng và xoá cửa sổ sinh/chết.
   - `src-tauri/src/core/experiment_runner.rs:548` (`final_observables = model.observables()`): đọc sau mẫu cuối, đi qua `peek_window()` trên một cửa sổ đã trống, nên `mean_lifespan = None`, ghi ra thành `0.0`.
 - **Phát hiện bởi:** tay (người thẩm định độc lập thẻ E3-X-run)
-- **Triệu chứng:** Trong E3-X (#181), `live.mean_lifespan` ở `final-observables.json` bằng `0.0` ở cả 36/36 lượt, dù các cá thể có chết. Endpoint phụ S6 của E3 vì thế đọc một cửa sổ rỗng và được ghi là `reported_not_interpreted_structural_zero`. Mọi observable khác tính theo cửa sổ sinh/chết mà được đọc trong `final_observables` ngay sau một mẫu ở cùng tick đều có thể gặp đúng lỗi này.
-- **Tái hiện:** `python3 -c "import json;d=json.load(open('artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/final-observables.json'));print(d)" | grep -o "live.mean_lifespan[^,]*"`: cả 36 giá trị đều là `0.0`.
-- **Test khoá lại:** chưa có.
-- **Trạng thái:** OPEN. Không sửa trong E3 (bản đăng ký cấm đổi metric). Thẻ sửa phải giữ nguyên các artifact đã đăng ký và cho một thí nghiệm mới khai báo rõ cửa sổ nó đọc.
+- **Triệu chứng:** Trong E3-X (#181), `live.mean_lifespan` ở `final-observables.json` bằng `0.0` ở cả 36/36 lượt, dù các cá thể có chết. Endpoint phụ S6 của E3 vì thế đọc một cửa sổ rỗng và được ghi là `reported_not_interpreted_structural_zero`. Thực nghiệm kiểm chứng trên `HD_SEED = 0x5EED` (`duration_ticks = 3_000`, `sample_period = 60` so với đối chứng không thẳng hàng `sample_period = 2_000` có cùng `final_checksum`) xác nhận **cả 5** observable cửa sổ (`live.births`, `live.deaths`, `live.mean_lifespan`, `live.deaths_starvation`, `live.deaths_dehydration`) trong `final_observables` đều bị rút về `0.0`.
+- **Tái hiện:** `python3 -c "import json;d=json.load(open('artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/final-observables.json'));print(d)" | grep -o "live.mean_lifespan[^,]*"` (cả 36 giá trị đều là `0.0`), hoặc chạy `just test` (`post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration` và `observables_tests::cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork`).
+- **Test khoá lại:** `post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration`, `observables_tests::{cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zero_deaths, cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork}`, và `prereg_sel2p_manifest_tests::drift_arm_omits_cause_split_observables_and_smoke_manifests_are_blind_to_body_mass` (khẳng định `live.cumulative_mean_lifespan` tích luỹ `[0, tick]` không bị rút cạn và khớp từng bit qua `run K -> save -> load -> run N-K`, trong khi 5 chỉ số cửa sổ cũ và toàn bộ artifact đã commit `E2`/`E3`/`E-SEL1`/`SEL2-P` giữ nguyên không đổi).
+- **Trạng thái:** mitigated (`live.cumulative_mean_lifespan`, nhánh `mac/r5-findings-fixes`, R5 Part 2 — thẻ `F053-FIX`). **Phần còn OPEN:** cả 5 bộ đếm cửa sổ cũ trong `final_observables` (`live.births`, `live.deaths`, `live.deaths_starvation`, `live.deaths_dehydration`, và `live.mean_lifespan` cũ) vẫn bị rút về `0.0` khi `duration_ticks % sample_period == 0`. **Khai báo tác động registry:** do bổ sung `live.cumulative_mean_lifespan` vào `ObservableRegistry::live_default()`, mọi lượt **chạy lại** tương lai của `E2`, `E3`, `E-SEL1`, hoặc `SEL2-P` sẽ có thêm 1 cột chuỗi thời gian và `run_id` mới (registry fingerprint thay đổi); các artifact đã commit giữ nguyên không đổi.
 
 ### F-052 — `prey_cap` chỉ là cửa chặn, không phải giới hạn: bộ đếm quần thể không tăng theo số ca sinh đã xếp trong cùng tick
 - **Ngày:** 2026-11-20

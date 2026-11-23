@@ -2,7 +2,7 @@
 //! caps in `autonomous_reproduction_system` (normal/selected mode and neutral-drift replay).
 //!
 //! Covers every acceptance requirement without pinning any absolute world checksum or trajectory:
-//! - Key registration (`LIVE_KEY_STRICT_PREY_CAP = "live.strict_prey_cap"`, `LIVE_KEYS.len() = 29`),
+//! - Key registration (`LIVE_KEY_STRICT_PREY_CAP = "live.strict_prey_cap"`, `LIVE_KEYS.len() = 31`),
 //!   exact boolean validation, `PreyCapPolicy::default()` / `LiveWorldConfig::default()` parity, and
 //!   serde backward compatibility.
 //! - (a) With `live.reproduction = 1.0` and `live.strict_prey_cap = 1.0`, prey count stays `<= prey_cap`
@@ -70,7 +70,7 @@ fn obs_value(obs: &[(String, f64)], key: &str) -> f64 {
 #[test]
 fn key_is_registered_validated_and_serde_backward_compatible() {
     assert_eq!(LIVE_KEY_STRICT_PREY_CAP, "live.strict_prey_cap");
-    assert_eq!(LIVE_KEYS.len(), 29);
+    assert_eq!(LIVE_KEYS.len(), 31);
     assert!(LIVE_KEYS.contains(&LIVE_KEY_STRICT_PREY_CAP));
 
     assert!(!LiveWorldConfig::default().strict_prey_cap);

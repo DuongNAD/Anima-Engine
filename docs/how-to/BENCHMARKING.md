@@ -18,11 +18,13 @@ diễn giải một report và metadata bắt buộc vẫn ở
 
 ## Vì sao có bộ này
 
-Tuyên bố "60 FPS real-time" của dự án **chưa từng được đo**:
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) tự khai số của nó là proxy, vì chạy full
-backend đã crash máy dev. Ràng buộc đó không mất đi — nên bộ bench này **không chạy backend**. Mỗi
-benchmark lái đúng một system, hoặc một hàm thuần, trên dữ liệu nó tự dựng: không Tauri, không cửa
-sổ, không GPU device, không thread mô phỏng.
+Tuyên bố "60 FPS real-time" ở cấu hình release / 1.000 agent **chưa từng được đo**:
+[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) mới có số Criterion theo từng system (cận dưới)
+và một lần chạy app desktop bản **debug, 10 agent** ngày 2026-07-27 (xem
+[§ In-app tick capture](#in-app-tick-capture-2026-07-27)), còn chạy full backend bản release để đo
+1.000 agent vẫn chưa thực hiện trên máy dev vì ràng buộc đã ghi ở đó. Ràng buộc đó không mất đi — nên
+bộ bench này **không chạy backend**. Mỗi benchmark lái đúng một system, hoặc một hàm thuần, trên dữ
+liệu nó tự dựng: không Tauri, không cửa sổ, không GPU device, không thread mô phỏng.
 
 Đó cũng là lý do Criterion hợp: một khung hình 60 FPS là **16,67 ms**, và ngân sách khung hình là
 một **tổng theo system** — nên số theo từng system chính là thứ cấu thành tuyên bố kia.

@@ -118,6 +118,21 @@ repository = "https://github.com/DuongNAD/Anima-Engine"
 # inherits from `dev`, which is where the test binaries actually come from.
 [profile.dev]
 debug = "line-tables-only"
+# Optimization for dev and test builds (2026-11-23). The integration tests run the simulation for
+# thousands of ticks, and at opt-level 0 the Rust CI job spent ~41 of its ~65 minutes running them.
+# Measured on macOS, on the four slowest targets (locomotion_ecology, predator_prey_coexistence,
+# sel2_drift_control, plant_reserve):
+# - opt-level 0 everywhere: 390 s;
+# - dependencies only at opt-level 2: 262 s;
+# - dependencies at 2 and workspace crates at 1: 39 s, with the workspace rebuilt in 27 s.
+# The full suite at this setting: 1,662 passed, 0 failed, in 238 s after a 91 s build.
+# Neither setting changes results. Rust has no fast-math, so IEEE-754 results do not depend on the
+# optimization level. Debug assertions and overflow checks are separate profile keys and stay on.
+# Dependencies come from the CI rust-cache, so their opt-level 2 is paid once per lockfile.
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [build-dependencies]
 sha2 = "0.10"

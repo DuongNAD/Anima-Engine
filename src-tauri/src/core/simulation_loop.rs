@@ -1536,12 +1536,26 @@ impl SimulationEngine {
                 // W2-lite viewer mode (prototype, to be replaced): shares genesis and world-law
                 // policy setup with LiveExperimentAdapter, while keeping the app's background
                 // threads so trajectory equality with headless runs is not claimed.
-                crate::core::live_experiment::apply_live_genesis_and_policies(
-                    &mut world,
-                    manifest.seed,
-                    &manifest.config,
-                    loaded_bounds,
-                );
+                if let Err(error) =
+                    crate::core::live_experiment::try_apply_live_genesis_and_policies(
+                        &mut world,
+                        manifest.seed,
+                        &manifest.config,
+                        loaded_bounds,
+                    )
+                {
+                    eprintln!(
+                        "ERROR: viewer manifest genesis aborted before simulation started: {error}"
+                    );
+                    running_clone.store(false, Ordering::SeqCst);
+                    if let Err(e) = inference_handle.join() {
+                        eprintln!("inference thread panicked: {e:?}");
+                    }
+                    if let Ok(mut stat) = status_clone.lock() {
+                        stat.running = false;
+                    }
+                    return;
+                }
                 let mut founder_q = world.query::<(&AgentLineageId, &AgentGenotype)>();
                 for (lineage_id, genotype) in founder_q.iter(&world) {
                     let _ = lineage_tracker_sim.add_root(lineage_id.0.clone(), genotype.0.clone());

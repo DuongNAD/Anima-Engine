@@ -92,6 +92,11 @@ Eight verified problems, grouped by what they cost.
   code / model / dataset / asset scope; there is no `NOTICE` attributing the permissive components
   that ship in the binary (§3.16). `burn`/`burn-wgpu` are running runtime dependencies absent from
   the open-source inventory matrix (§3.17).
+  *(Forward note 2026-11-22: historical 2026-07-27 record; the repository was dual-licensed under
+  `MIT OR Apache-2.0` on 2026-08-08, `NOTICE`/SBOM/third-party texts were automated, and
+  `licensing/UNRESOLVED.md` reached `0` unresolved items on 2026-11-19 — see
+  [`OPEN_SOURCE_POLICY.md`](../../governance/OPEN_SOURCE_POLICY.md) and
+  [`STATE_OF_THE_PROJECT.md` §1.c](../../planning/STATE_OF_THE_PROJECT.md#1c-licensing--sbom--vệ-sinh--chạy-lại-2026-07-27-tại-e4eff6c).)*
 - **D3 — ESLint debt is frozen, not shrinking.** 0 errors, 491 warnings; the ratchet blocks growth
   but never forces a decrease (§3.11).
 

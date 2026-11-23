@@ -1,0 +1,3 @@
+suite,trunk_sha,cell_id,n_seeds,runs,elapsed_secs,surv_summary,min_n_ge_10_summary,pred_final_gt_0,generations_mean_ust,gate_summary,max_abs_eu_drift
+e3b_viab1b,98054ba206d275014ecce89e7ab7c2ad603ead1d,e3b_fg1_g4_fl1,12,36,82.394,U=12;S=12;T=12;all=12,all=12,U=12;S=11;T=12,U=3.091;S=2.111;T=3.041,wp2_b1=12;b2=12;c=12;all=12,7.718336e-8
+e3b_viab1b,98054ba206d275014ecce89e7ab7c2ad603ead1d,e3b_fg1_g4_fl1_mut0,12,36,86.532,U=12;S=12;T=12;all=12,all=12,U=12;S=11;T=12,U=3.170;S=2.178;T=2.993,wp2_b1=12;b2=12;c=12;all=12,6.172922e-8

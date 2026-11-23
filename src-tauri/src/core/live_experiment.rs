@@ -101,6 +101,17 @@ pub const FOUNDER_MIN_SPACING: f32 = 2.0;
 const FOUNDER_LAYOUT_LINE: u8 = 0;
 const FOUNDER_LAYOUT_GRID: u8 = 1;
 const FOUNDER_LAYOUT_SCATTER: u8 = 2;
+/// Card FOUNDER-2SEG (D5 option (b)): opt-in genesis founder morphology (`0.0`/absent = legacy
+/// 3-segment founder with nodes `[0, 1, 2]` and masses `[1.5, 1.0, 0.8]`, bit-identical to pre-card
+/// runs; `1.0` = declared 2-segment founder minus tail leaf: nodes `[0, 1]` with masses
+/// `[1.5, 1.0]`, edge `0 -> 1`, `joint_anchor = (1, 0, 0)`, `joint_axis = (0, 0, 1)`).
+///
+/// Note on [`crate::evolution::mutation::mutate_genotype`] operator 4: structural node removal
+/// requires `nodes.len() > 2`, so structural mutations on the 2-segment founder can only add
+/// segments. Development occurs once at genesis; restore preserves saved genotypes verbatim.
+pub const LIVE_KEY_FOUNDER_GENOTYPE: &str = "live.founder_genotype";
+const FOUNDER_GENOTYPE_LEGACY_3SEG: u8 = 0;
+const FOUNDER_GENOTYPE_2SEG: u8 = 1;
 /// Fraction of founders that are predators, in `[0, 1]`.
 pub const LIVE_KEY_PREDATOR_FRACTION: &str = "live.predator_fraction";
 /// Trees placed at genesis.
@@ -250,11 +261,26 @@ pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 /// 5:1. `0.0`/absent keeps the legacy soft/uncapped path bit-identical so frozen E3 and historical
 /// manifests stay reproducible.
 pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
+/// FINDINGS F-066: `1.0` records the live population's lineage — every founder as a root, every
+/// birth as a node with an edge from its parent and its origin tick, every death as a destruction
+/// tick — in a [`crate::core::live_lineage::LiveLineage`] the snapshot carries. Each child gets a
+/// **unique** minted id (`birth-{run}-{n}`), kept in that resource and in
+/// `SerializedAgent::live_id`; `AgentLineageId` keeps the legacy `parent.generation`, which
+/// siblings share.
+///
+/// **Recording does not change the trajectory** (ADR-0008 driver 4): `autonomous_reproduction_system`
+/// orders parents by `AgentLineageId`, so the unique id is never written there, and recording reads
+/// and writes nothing the schedule reads. A run with the key and the same run without it have the
+/// same `world_checksum`, births and deaths at every tick
+/// (`recording_lineage_does_not_change_the_trajectory`). `0.0`/absent records nothing. Exact
+/// boolean. Honoured by the headless adapter only; the desktop viewer's genesis ignores it.
+pub const LIVE_KEY_LINEAGE_TRACKING: &str = "live.lineage_tracking";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 29] = [
+pub const LIVE_KEYS: [&str; 31] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_FOUNDER_LAYOUT,
+    LIVE_KEY_FOUNDER_GENOTYPE,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
@@ -282,6 +308,7 @@ pub const LIVE_KEYS: [&str; 29] = [
     LIVE_KEY_DRIFT_RESET_TICKS,
     LIVE_KEY_LAND_MASK,
     LIVE_KEY_STRICT_PREY_CAP,
+    LIVE_KEY_LINEAGE_TRACKING,
 ];
 
 /// The genesis the manifest asked for.
@@ -293,6 +320,10 @@ pub struct LiveWorldConfig {
     /// from [`crate::core::resources::sim_stream::LIVE_GENESIS_FOUNDERS`]).
     #[serde(default)]
     pub founder_layout: u8,
+    /// Card FOUNDER-2SEG: genesis founder morphology (`0` = legacy 3-segment founder, `1` = declared
+    /// 2-segment founder minus tail leaf).
+    #[serde(default)]
+    pub founder_genotype: u8,
     pub predator_fraction: f64,
     pub trees: usize,
     pub lakes: usize,
@@ -376,6 +407,10 @@ pub struct LiveWorldConfig {
     /// `autonomous_reproduction_system`; `0.0`/absent keeps the legacy soft gate bit-identical.
     #[serde(default)]
     pub strict_prey_cap: bool,
+    /// F-066 (`live.lineage_tracking`): record live births/deaths and mint unique child ids;
+    /// `0.0`/absent keeps the legacy ids and records nothing, bit-identical.
+    #[serde(default)]
+    pub lineage_tracking: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -415,6 +450,7 @@ impl Default for LiveWorldConfig {
         Self {
             founders: 10,
             founder_layout: 0,
+            founder_genotype: FOUNDER_GENOTYPE_LEGACY_3SEG,
             predator_fraction: 0.3,
             trees: 8,
             lakes: 2,
@@ -442,6 +478,7 @@ impl Default for LiveWorldConfig {
             lake_layout: 0,
             land_mask: false,
             strict_prey_cap: false,
+            lineage_tracking: false,
         }
     }
 }
@@ -480,6 +517,18 @@ impl LiveWorldConfig {
                             value: other,
                             min: 0.0,
                             max: 2.0,
+                        })
+                    }
+                },
+                LIVE_KEY_FOUNDER_GENOTYPE => match *value {
+                    0.0 => config.founder_genotype = FOUNDER_GENOTYPE_LEGACY_3SEG,
+                    1.0 => config.founder_genotype = FOUNDER_GENOTYPE_2SEG,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
                         })
                     }
                 },
@@ -738,6 +787,18 @@ impl LiveWorldConfig {
                         })
                     }
                 },
+                LIVE_KEY_LINEAGE_TRACKING => match *value {
+                    0.0 => config.lineage_tracking = false,
+                    1.0 => config.lineage_tracking = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
                 _ => unreachable!("key membership was checked above"),
             }
         }
@@ -771,6 +832,16 @@ impl LiveWorldConfig {
         ((self.founders as f64) * self.predator_fraction).round() as usize
     }
 
+    /// Whether this manifest's founder placement requires checking that the loaded world has
+    /// enough distinct walkable terrain cells (`land_mask = true` with `grid` or `scatter` layout
+    /// and at least one founder).
+    pub fn requires_walkable_founder_capacity(&self) -> bool {
+        self.founders > 0
+            && self.land_mask
+            && (self.founder_layout == FOUNDER_LAYOUT_GRID
+                || self.founder_layout == FOUNDER_LAYOUT_SCATTER)
+    }
+
     /// Feature ecological-selection, branch O-5: refuse a manifest's observable requests whose
     /// producing structure this run does not declare. Death observables need a declared death
     /// rule — reporting zeros for a world where nobody CAN die would look like a measurement.
@@ -781,6 +852,7 @@ impl LiveWorldConfig {
                 id.as_str(),
                 "live.deaths"
                     | "live.mean_lifespan"
+                    | "live.cumulative_mean_lifespan"
                     | "live.deaths_starvation"
                     | "live.deaths_dehydration"
             ) && !self.mortality
@@ -869,6 +941,15 @@ pub struct LiveExperimentState {
     /// `world_checksum`. Pre-S2 schema-v1 saves default to `0.0`.
     #[serde(default)]
     pub mean_energy_integral: f64,
+    /// Cumulative sum of `survival_ticks` across all recorded deaths in `[0, tick]` (F053-FIX).
+    ///
+    /// Preserved across disk save/load checkpoints just like `mean_energy_integral`, without
+    /// modifying `SavedSimulationState` fields or `world_checksum`. Pre-F053-FIX saves default to `0`.
+    #[serde(default)]
+    pub cumulative_lifespan_sum: u64,
+    /// Cumulative count of recorded deaths in `[0, tick]` (F053-FIX).
+    #[serde(default)]
+    pub cumulative_lifespan_count: u64,
 }
 
 impl LiveExperimentState {
@@ -893,6 +974,8 @@ impl LiveExperimentState {
             ledger: CausalLedger::new(),
             applied_interventions: 0,
             mean_energy_integral: 0.0,
+            cumulative_lifespan_sum: 0,
+            cumulative_lifespan_count: 0,
         }
     }
 
@@ -1537,11 +1620,16 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
 ///   [`ResourceField::cell_index`] and [`crate::core::terrain::TerrainMap::get_map_indices`]. An
 ///   empty half emits `0.0` via [`mass_statistics`] (`&[]`), matching `live.trait_mass_mean`.
 ///
+/// F053-FIX appended `live.cumulative_mean_lifespan` at the end: the explicitly windowed `[0, tick]`
+/// cumulative mean `survival_ticks` over all recorded deaths so far (never drained by
+/// [`crate::core::resources::VitalStatistics::sample_window`], emitting `0.0` when zero deaths have
+/// occurred), while keeping `live.mean_lifespan` and all prior observables bit-for-bit identical.
+///
 /// Time-to-floor remains a **derived** quantity computed post-hoc from time series by analysis
 /// scripts: floor thresholds are experiment-specific, and pre-floor / never-floor runs are
 /// right-censored so any per-tick number would either encode a sentinel (corrupting paired deltas)
 /// or conflate survival time with hitting the floor.
-pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 15] = [
+pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 16] = [
     "live.trait_mass_mean",
     "live.trait_mass_var",
     "live.trait_mass_p10",
@@ -1557,6 +1645,7 @@ pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 15] = [
     "live.mean_energy_integral",
     "live.trait_mass_mean_west",
     "live.trait_mass_mean_east",
+    "live.cumulative_mean_lifespan",
 ];
 
 /// Every observable id the adapter emits (legacy + extended), in emission order.
@@ -1724,6 +1813,20 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         .get_resource::<LiveExperimentState>()
         .map(|s| s.mean_energy_integral)
         .unwrap_or(0.0);
+    let (cum_lifespan_sum, cum_lifespan_count) = world
+        .get_resource::<LiveExperimentState>()
+        .map(|s| (s.cumulative_lifespan_sum, s.cumulative_lifespan_count))
+        .unwrap_or_else(|| {
+            world
+                .get_resource::<crate::core::resources::VitalStatistics>()
+                .map(|v| (v.lifespan_sum, v.lifespan_count))
+                .unwrap_or((0, 0))
+        });
+    let cumulative_mean_lifespan = if cum_lifespan_count > 0 {
+        cum_lifespan_sum as f64 / cum_lifespan_count as f64
+    } else {
+        0.0
+    };
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
@@ -1803,6 +1906,10 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         "live.trait_mass_mean_east".to_string(),
         trait_mass_mean_east,
     ));
+    out.push((
+        "live.cumulative_mean_lifespan".to_string(),
+        cumulative_mean_lifespan,
+    ));
     out
 }
 
@@ -1836,6 +1943,10 @@ pub struct LiveExperimentAdapter {
     mirrored_effects: usize,
     /// Running sum of `live.mean_agent_energy` across every simulated tick (`EU·tick`).
     mean_energy_integral: f64,
+    /// Checkpoint baseline for cumulative `survival_ticks` sum (`[0, checkpoint]`, F053-FIX).
+    base_lifespan_sum: u64,
+    /// Checkpoint baseline for cumulative death count (`[0, checkpoint]`, F053-FIX).
+    base_lifespan_count: u64,
 }
 
 /// A `World` and a `Schedule` are not `Debug`, and the interesting part of an adapter is not their
@@ -1915,6 +2026,8 @@ impl LiveExperimentAdapter {
         };
         let mirrored_effects = state.ledger.len();
         let mean_energy_integral = state.mean_energy_integral;
+        let base_lifespan_sum = state.cumulative_lifespan_sum;
+        let base_lifespan_count = state.cumulative_lifespan_count;
         world.insert_resource(state);
         world.insert_resource(LiveForcings::default());
         world.insert_resource(LiveInterventions::with_capacity(16));
@@ -1935,6 +2048,8 @@ impl LiveExperimentAdapter {
             seed,
             mirrored_effects,
             mean_energy_integral,
+            base_lifespan_sum,
+            base_lifespan_count,
         })
     }
 
@@ -1965,6 +2080,7 @@ impl LiveExperimentAdapter {
         self.run_tick();
         self.drain_absent_thread_queues();
         self.accumulate_mean_energy_integral();
+        self.accumulate_cumulative_lifespan();
         self.record_drift_shortfalls_if_due(self.clock.tick, false);
     }
 
@@ -1977,6 +2093,23 @@ impl LiveExperimentAdapter {
         self.mean_energy_integral += mean_energy;
         if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
             state.mean_energy_integral = self.mean_energy_integral;
+        }
+    }
+
+    /// Mirror cumulative `(lifespan_sum, lifespan_count)` onto [`LiveExperimentState`] (adding any
+    /// checkpoint baseline from `from_snapshot`) so `live.cumulative_mean_lifespan` stays intact
+    /// across `VitalStatistics::sample_window` drains and disk save/load forks (F053-FIX).
+    fn accumulate_cumulative_lifespan(&mut self) {
+        let world = self.world.get_mut();
+        let (v_sum, v_count) = world
+            .get_resource::<crate::core::resources::VitalStatistics>()
+            .map(|v| (v.lifespan_sum, v.lifespan_count))
+            .unwrap_or((0, 0));
+        let total_sum = self.base_lifespan_sum.saturating_add(v_sum);
+        let total_count = self.base_lifespan_count.saturating_add(v_count);
+        if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
+            state.cumulative_lifespan_sum = total_sum;
+            state.cumulative_lifespan_count = total_count;
         }
     }
 
@@ -2150,6 +2283,11 @@ impl LiveExperimentAdapter {
             world.get_resource_mut::<crate::core::drift_control::DriftControlState>()
         {
             drift.sync_tick(tick);
+        }
+        // Same moment, same reason: births and deaths in the tick about to run are stamped with
+        // its number (F-066). Absent resource = nothing.
+        if let Some(mut live) = world.get_resource_mut::<crate::core::live_lineage::LiveLineage>() {
+            live.set_tick(tick);
         }
     }
 
@@ -2357,9 +2495,15 @@ impl ExperimentModel for LiveExperimentAdapter {
         let mut world = self.world.borrow_mut();
         // The clock and accumulator live on the adapter and in the resource; the resource is what
         // the serializer reads, so both are refreshed here rather than only at the end of `step`.
+        let (v_sum, v_count) = world
+            .get_resource::<crate::core::resources::VitalStatistics>()
+            .map(|v| (v.lifespan_sum, v.lifespan_count))
+            .unwrap_or((0, 0));
         if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
             state.clock_tick = self.clock.tick;
             state.mean_energy_integral = self.mean_energy_integral;
+            state.cumulative_lifespan_sum = self.base_lifespan_sum.saturating_add(v_sum);
+            state.cumulative_lifespan_count = self.base_lifespan_count.saturating_add(v_count);
         }
         let deps = SaveHandles::new();
         let saved = crate::core::simulation_state::serialize_world_state(
@@ -2421,6 +2565,7 @@ impl ExperimentModel for LiveExperimentAdapter {
         self.run_tick();
         self.drain_absent_thread_queues();
         self.accumulate_mean_energy_integral();
+        self.accumulate_cumulative_lifespan();
         self.record_drift_shortfalls_if_due(clock.tick, false);
         self.mirror_ledger(ledger);
     }
@@ -2643,15 +2788,20 @@ fn build_live_world(
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent(
                 state.active_environment_event,
             ));
+            // `live.lineage_tracking` (F-066) needs each restored agent's entity to re-attach its
+            // saved live id; the legacy path collects nothing.
+            let mut restored_roots: Vec<Entity> = Vec::new();
             for agent in &state.agents {
-                crate::core::simulation_state::spawn_serialized_agent(&mut world, agent).map_err(
-                    |error| ExperimentError::InvalidPopulation {
+                let root = crate::core::simulation_state::spawn_serialized_agent(&mut world, agent)
+                    .map_err(|error| ExperimentError::InvalidPopulation {
                         reason: format!(
                             "snapshot agent {} could not be restored: {error}",
                             agent.lineage_id
                         ),
-                    },
-                )?;
+                    })?;
+                if config.lineage_tracking {
+                    restored_roots.push(root);
+                }
             }
             crate::core::simulation_state::restore_energy_state(&mut world, state);
             // The save carries the standing crop `r` but not the capacity `r_max`, which
@@ -2704,6 +2854,29 @@ fn build_live_world(
             // colliders (when `tick_count > 0 || clock_tick > 0`), leaving post-rebuild spawns
             // unindexed until tick K+1's rebuild (F-045).
             populate_spatial_grid(&mut world, state);
+            if config.lineage_tracking {
+                let agents: Vec<crate::core::live_lineage::RestoredAgent<'_>> = restored_roots
+                    .iter()
+                    .zip(&state.agents)
+                    .map(
+                        |(&entity, saved)| crate::core::live_lineage::RestoredAgent {
+                            entity,
+                            saved,
+                        },
+                    )
+                    .collect();
+                let live = crate::core::live_lineage::LiveLineage::restore(
+                    seed,
+                    state.live_lineage.as_ref(),
+                    state.lineage_nodes.clone(),
+                    state.lineage_relations.clone(),
+                    &agents,
+                    &state.dormant_agents,
+                    state.tick_count,
+                )
+                .map_err(|reason| ExperimentError::InvalidPopulation { reason })?;
+                world.insert_resource(live);
+            }
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
@@ -2714,10 +2887,33 @@ fn build_live_world(
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
             try_apply_live_genesis_and_policies(&mut world, seed, config, bounds)?;
+            if config.lineage_tracking {
+                insert_live_lineage_founders(&mut world, seed);
+            }
         }
     }
 
     Ok(world)
+}
+
+/// `live.lineage_tracking` (F-066): record every genesis founder as a root born at tick 0, in id
+/// order so the graph does not depend on archetype iteration order. A founder's live id is its
+/// genesis id, which is already unique. Read-only on the world: the founders are not touched.
+fn insert_live_lineage_founders(world: &mut World, seed: u64) {
+    use crate::core::agent_systems::{AgentGenotype, AgentLineageId};
+    use crate::core::ecs::Agent;
+    use crate::evolution::genotype::MorphologyGenotype;
+    let mut founders: Vec<(Entity, String, MorphologyGenotype)> = world
+        .query_filtered::<(Entity, &AgentLineageId, &AgentGenotype), With<Agent>>()
+        .iter(world)
+        .map(|(entity, id, genotype)| (entity, id.0.clone(), genotype.0.clone()))
+        .collect();
+    founders.sort_by(|a, b| a.1.cmp(&b.1));
+    let mut live = crate::core::live_lineage::LiveLineage::new(seed);
+    for (entity, id, genotype) in founders {
+        live.record_founder(entity, id, genotype);
+    }
+    world.insert_resource(live);
 }
 
 /// `live.resource_capacity_scale` (card S6): scale the pasture's capacity and standing crop once, at
@@ -2771,6 +2967,35 @@ fn populate_spatial_grid(world: &mut World, state: &SavedSimulationState) {
     crate::core::simulation_state::populate_restored_spatial_grid(world, state);
 }
 
+/// Validate that `terrain_map` provides at least `config.founders` distinct walkable cells
+/// whenever `config.requires_walkable_founder_capacity()` holds.
+pub fn validate_founder_land_capacity(
+    config: &LiveWorldConfig,
+    terrain_map: Option<&crate::core::terrain::TerrainMap>,
+) -> Result<(), ExperimentError> {
+    if !config.requires_walkable_founder_capacity() {
+        return Ok(());
+    }
+    let walkable_cells = terrain_map.map(walkable_cell_count).unwrap_or(0);
+    if walkable_cells == 0 {
+        return Err(ExperimentError::InvalidPopulation {
+            reason: format!(
+                "live.founder_layout={} with land_mask=1 cannot place {} founder(s): terrain has 0 walkable cells (no walkable land)",
+                config.founder_layout, config.founders
+            ),
+        });
+    }
+    if walkable_cells < config.founders {
+        return Err(ExperimentError::InvalidPopulation {
+            reason: format!(
+                "live.founder_layout={} with land_mask=1 cannot place {} founder(s) without stacking: terrain has only {} distinct walkable cell(s)",
+                config.founder_layout, config.founders, walkable_cells
+            ),
+        });
+    }
+    Ok(())
+}
+
 /// The founding population and environment a manifest declared.
 ///
 /// Placement is a deterministic lattice rather than the app's biome-weighted shuffle. That is a real
@@ -2816,32 +3041,14 @@ fn genesis(
         None
     };
 
-    if config.founders > 0
-        && config.land_mask
-        && (config.founder_layout == FOUNDER_LAYOUT_GRID
-            || config.founder_layout == FOUNDER_LAYOUT_SCATTER)
-    {
-        let walkable_cells = terrain_map.as_ref().map(walkable_cell_count).unwrap_or(0);
-        if walkable_cells == 0 {
-            return Err(ExperimentError::InvalidPopulation {
-                reason: format!(
-                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s): terrain has 0 walkable cells (no walkable land)",
-                    config.founder_layout, config.founders
-                ),
-            });
-        }
-        if walkable_cells < config.founders {
-            return Err(ExperimentError::InvalidPopulation {
-                reason: format!(
-                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s) without stacking: terrain has only {} distinct walkable cell(s)",
-                    config.founder_layout, config.founders, walkable_cells
-                ),
-            });
-        }
-    }
+    validate_founder_land_capacity(config, terrain_map.as_ref())?;
 
     let mut genotype = MorphologyGenotype::new();
-    for (id, mass) in [(0u32, 1.5f32), (1, 1.0), (2, 0.8)] {
+    let (nodes, edges): (&[(u32, f32)], &[(u32, u32)]) = match config.founder_genotype {
+        FOUNDER_GENOTYPE_2SEG => (&[(0, 1.5), (1, 1.0)], &[(0, 1)]),
+        _ => (&[(0, 1.5), (1, 1.0), (2, 0.8)], &[(0, 1), (1, 2)]),
+    };
+    for &(id, mass) in nodes {
         genotype.add_node(MorphologyNode {
             id,
             length: 1.0,
@@ -2849,7 +3056,7 @@ fn genesis(
             mass,
         });
     }
-    for (source_node, target_node) in [(0u32, 1u32), (1, 2)] {
+    for &(source_node, target_node) in edges {
         genotype.add_edge(MorphologyEdge {
             source_node,
             target_node,

@@ -67,6 +67,9 @@ pub fn cell_center(tm: &TerrainMap, bounds: &MapBounds, col: usize, row: usize) 
 /// Returns `true` when `pos` (wrapped modulo `bounds`) maps inside `tm` onto a walkable cell.
 #[inline]
 pub fn is_pos_walkable(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) -> bool {
+    if !pos.is_finite() {
+        return false;
+    }
     let wrapped = wrap_pos(pos, bounds);
     let Some((col, row)) = tm.get_map_indices(wrapped, bounds) else {
         return false;
@@ -216,19 +219,63 @@ pub fn terrain_navigation_system(
         return;
     };
 
+    let bounds_center = Vec3::new(
+        0.5 * (bounds.min.x + bounds.max.x),
+        0.0,
+        0.5 * (bounds.min.z + bounds.max.z),
+    );
+    let safe_origin = if bounds_center.is_finite() {
+        bounds_center
+    } else {
+        Vec3::ZERO
+    };
+
     let mut any_reverted = false;
     for (mut pos, mut vel, mut body, mut last) in root_query.iter_mut() {
         let wrapped = wrap_pos(pos.0, bounds);
-        if is_pos_walkable(tm, bounds, wrapped) {
+        if pos.0.is_finite() && wrapped.is_finite() && is_pos_walkable(tm, bounds, wrapped) {
             last.pos = wrapped;
             last.reverted_this_tick = false;
         } else {
-            let target = if is_pos_walkable(tm, bounds, last.pos) {
+            let mut target = if last.pos.is_finite() && is_pos_walkable(tm, bounds, last.pos) {
                 wrap_pos(last.pos, bounds)
             } else {
-                snap_to_nearest_walkable(tm, bounds, wrapped).unwrap_or(last.pos)
+                let snap_seed = if wrapped.x.is_finite() && wrapped.z.is_finite() {
+                    Vec3::new(
+                        wrapped.x,
+                        if wrapped.y.is_finite() {
+                            wrapped.y
+                        } else {
+                            0.0
+                        },
+                        wrapped.z,
+                    )
+                } else if last.pos.is_finite() {
+                    last.pos
+                } else {
+                    safe_origin
+                };
+                snap_to_nearest_walkable(tm, bounds, snap_seed).unwrap_or_else(|| {
+                    if last.pos.is_finite() {
+                        last.pos
+                    } else {
+                        safe_origin
+                    }
+                })
             };
-            let delta = target - pos.0;
+            if !target.is_finite() {
+                target = if last.pos.is_finite() {
+                    last.pos
+                } else {
+                    safe_origin
+                };
+            }
+            let raw_delta = target - pos.0;
+            let delta = if raw_delta.is_finite() {
+                raw_delta
+            } else {
+                Vec3::ZERO
+            };
             pos.0 = target;
             vel.0 = Vec3::ZERO;
             body.velocity = Vec3::ZERO;
@@ -246,7 +293,16 @@ pub fn terrain_navigation_system(
     for (parent, mut seg_pos, mut seg_vel, mut seg_body) in segment_query.iter_mut() {
         if let Ok((_, _, _, last)) = root_query.get(parent.0) {
             if last.reverted_this_tick {
-                seg_pos.0 += last.revert_delta;
+                if seg_pos.0.is_finite() {
+                    let shifted = seg_pos.0 + last.revert_delta;
+                    seg_pos.0 = if shifted.is_finite() {
+                        shifted
+                    } else {
+                        last.pos
+                    };
+                } else {
+                    seg_pos.0 = last.pos;
+                }
                 seg_vel.0 = Vec3::ZERO;
                 seg_body.velocity = Vec3::ZERO;
             }

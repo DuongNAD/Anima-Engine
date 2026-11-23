@@ -4,7 +4,7 @@
 //! `sim_stream::LIVE_GENESIS_FOUNDERS`).
 //!
 //! Covers every acceptance requirement without pinning trajectory floats:
-//! 1. Key registration (`LIVE_KEY_FOUNDER_LAYOUT = "live.founder_layout"`, `LIVE_KEYS.len() = 29`),
+//! 1. Key registration (`LIVE_KEY_FOUNDER_LAYOUT = "live.founder_layout"`, `LIVE_KEYS.len() = 31`),
 //!    exact `{0.0, 1.0, 2.0}` validation, `LiveWorldConfig::default().founder_layout = 0`, serde
 //!    backward compatibility, and `live.founders = 0` no-op across all three modes.
 //! 2. `absent` and `0.0` produce identical checksums, observables, and tick-0 coordinates (with and
@@ -171,7 +171,7 @@ fn make_synthetic_terrain(width: usize, height: usize, biomes: Vec<u8>) -> Terra
 #[test]
 fn key_is_registered_validated_and_serde_backward_compatible() {
     assert_eq!(LIVE_KEY_FOUNDER_LAYOUT, "live.founder_layout");
-    assert_eq!(LIVE_KEYS.len(), 29);
+    assert_eq!(LIVE_KEYS.len(), 31);
     assert!(LIVE_KEYS.contains(&LIVE_KEY_FOUNDER_LAYOUT));
     const {
         assert!(FOUNDER_MIN_SPACING > 0.0);
