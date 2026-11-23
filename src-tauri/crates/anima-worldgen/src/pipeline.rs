@@ -489,11 +489,13 @@ fn run_fluvial_step_advected(
         }
         if any_split {
             *hint_k = bumped_k;
-        } else if base_params
-            .max_incision_cap_m
-            .is_some_and(|cap_m| worst_dh <= 0.45 * cap_m)
-        {
-            *hint_k = (k_init / 2).max(1);
+        } else if let Some(cap_m) = base_params.max_incision_cap_m {
+            let next_k = if worst_dh <= 0.0 {
+                1
+            } else {
+                libm::ceil((k_init as f64) * (worst_dh / (0.85 * cap_m))).clamp(1.0, 16.0) as usize
+            };
+            *hint_k = next_k.min(k_init);
         }
         return Ok((worst_dh, true));
     }

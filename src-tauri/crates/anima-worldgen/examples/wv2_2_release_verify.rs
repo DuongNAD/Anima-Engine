@@ -878,6 +878,7 @@ fn main() {
     let only_4096 = std::env::args().any(|a| a == "--only-4096");
     let only_1024 = std::env::args().any(|a| a == "--only-1024");
     let only_512 = std::env::args().any(|a| a == "--only-512");
+    let only_rayon = std::env::args().any(|a| a == "--only-rayon");
     if only_4096 {
         verify_4096_full_pipeline();
         return;
@@ -888,6 +889,10 @@ fn main() {
     }
     if only_512 {
         verify_biome_512_sweep();
+        return;
+    }
+    if only_rayon {
+        verify_1024_rayon_invariance();
         return;
     }
     verify_card3_1024_sweep();
