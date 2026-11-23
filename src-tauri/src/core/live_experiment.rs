@@ -803,6 +803,16 @@ impl LiveWorldConfig {
         ((self.founders as f64) * self.predator_fraction).round() as usize
     }
 
+    /// Whether this manifest's founder placement requires checking that the loaded world has
+    /// enough distinct walkable terrain cells (`land_mask = true` with `grid` or `scatter` layout
+    /// and at least one founder).
+    pub fn requires_walkable_founder_capacity(&self) -> bool {
+        self.founders > 0
+            && self.land_mask
+            && (self.founder_layout == FOUNDER_LAYOUT_GRID
+                || self.founder_layout == FOUNDER_LAYOUT_SCATTER)
+    }
+
     /// Feature ecological-selection, branch O-5: refuse a manifest's observable requests whose
     /// producing structure this run does not declare. Death observables need a declared death
     /// rule — reporting zeros for a world where nobody CAN die would look like a measurement.
@@ -813,6 +823,7 @@ impl LiveWorldConfig {
                 id.as_str(),
                 "live.deaths"
                     | "live.mean_lifespan"
+                    | "live.cumulative_mean_lifespan"
                     | "live.deaths_starvation"
                     | "live.deaths_dehydration"
             ) && !self.mortality
@@ -901,6 +912,15 @@ pub struct LiveExperimentState {
     /// `world_checksum`. Pre-S2 schema-v1 saves default to `0.0`.
     #[serde(default)]
     pub mean_energy_integral: f64,
+    /// Cumulative sum of `survival_ticks` across all recorded deaths in `[0, tick]` (F053-FIX).
+    ///
+    /// Preserved across disk save/load checkpoints just like `mean_energy_integral`, without
+    /// modifying `SavedSimulationState` fields or `world_checksum`. Pre-F053-FIX saves default to `0`.
+    #[serde(default)]
+    pub cumulative_lifespan_sum: u64,
+    /// Cumulative count of recorded deaths in `[0, tick]` (F053-FIX).
+    #[serde(default)]
+    pub cumulative_lifespan_count: u64,
 }
 
 impl LiveExperimentState {
@@ -925,6 +945,8 @@ impl LiveExperimentState {
             ledger: CausalLedger::new(),
             applied_interventions: 0,
             mean_energy_integral: 0.0,
+            cumulative_lifespan_sum: 0,
+            cumulative_lifespan_count: 0,
         }
     }
 
@@ -1569,11 +1591,16 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
 ///   [`ResourceField::cell_index`] and [`crate::core::terrain::TerrainMap::get_map_indices`]. An
 ///   empty half emits `0.0` via [`mass_statistics`] (`&[]`), matching `live.trait_mass_mean`.
 ///
+/// F053-FIX appended `live.cumulative_mean_lifespan` at the end: the explicitly windowed `[0, tick]`
+/// cumulative mean `survival_ticks` over all recorded deaths so far (never drained by
+/// [`crate::core::resources::VitalStatistics::sample_window`], emitting `0.0` when zero deaths have
+/// occurred), while keeping `live.mean_lifespan` and all prior observables bit-for-bit identical.
+///
 /// Time-to-floor remains a **derived** quantity computed post-hoc from time series by analysis
 /// scripts: floor thresholds are experiment-specific, and pre-floor / never-floor runs are
 /// right-censored so any per-tick number would either encode a sentinel (corrupting paired deltas)
 /// or conflate survival time with hitting the floor.
-pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 15] = [
+pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 16] = [
     "live.trait_mass_mean",
     "live.trait_mass_var",
     "live.trait_mass_p10",
@@ -1589,6 +1616,7 @@ pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 15] = [
     "live.mean_energy_integral",
     "live.trait_mass_mean_west",
     "live.trait_mass_mean_east",
+    "live.cumulative_mean_lifespan",
 ];
 
 /// Every observable id the adapter emits (legacy + extended), in emission order.
@@ -1756,6 +1784,20 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         .get_resource::<LiveExperimentState>()
         .map(|s| s.mean_energy_integral)
         .unwrap_or(0.0);
+    let (cum_lifespan_sum, cum_lifespan_count) = world
+        .get_resource::<LiveExperimentState>()
+        .map(|s| (s.cumulative_lifespan_sum, s.cumulative_lifespan_count))
+        .unwrap_or_else(|| {
+            world
+                .get_resource::<crate::core::resources::VitalStatistics>()
+                .map(|v| (v.lifespan_sum, v.lifespan_count))
+                .unwrap_or((0, 0))
+        });
+    let cumulative_mean_lifespan = if cum_lifespan_count > 0 {
+        cum_lifespan_sum as f64 / cum_lifespan_count as f64
+    } else {
+        0.0
+    };
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
@@ -1835,6 +1877,10 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         "live.trait_mass_mean_east".to_string(),
         trait_mass_mean_east,
     ));
+    out.push((
+        "live.cumulative_mean_lifespan".to_string(),
+        cumulative_mean_lifespan,
+    ));
     out
 }
 
@@ -1868,6 +1914,10 @@ pub struct LiveExperimentAdapter {
     mirrored_effects: usize,
     /// Running sum of `live.mean_agent_energy` across every simulated tick (`EU·tick`).
     mean_energy_integral: f64,
+    /// Checkpoint baseline for cumulative `survival_ticks` sum (`[0, checkpoint]`, F053-FIX).
+    base_lifespan_sum: u64,
+    /// Checkpoint baseline for cumulative death count (`[0, checkpoint]`, F053-FIX).
+    base_lifespan_count: u64,
 }
 
 /// A `World` and a `Schedule` are not `Debug`, and the interesting part of an adapter is not their
@@ -1947,6 +1997,8 @@ impl LiveExperimentAdapter {
         };
         let mirrored_effects = state.ledger.len();
         let mean_energy_integral = state.mean_energy_integral;
+        let base_lifespan_sum = state.cumulative_lifespan_sum;
+        let base_lifespan_count = state.cumulative_lifespan_count;
         world.insert_resource(state);
         world.insert_resource(LiveForcings::default());
         world.insert_resource(LiveInterventions::with_capacity(16));
@@ -1967,6 +2019,8 @@ impl LiveExperimentAdapter {
             seed,
             mirrored_effects,
             mean_energy_integral,
+            base_lifespan_sum,
+            base_lifespan_count,
         })
     }
 
@@ -1997,6 +2051,7 @@ impl LiveExperimentAdapter {
         self.run_tick();
         self.drain_absent_thread_queues();
         self.accumulate_mean_energy_integral();
+        self.accumulate_cumulative_lifespan();
         self.record_drift_shortfalls_if_due(self.clock.tick, false);
     }
 
@@ -2009,6 +2064,23 @@ impl LiveExperimentAdapter {
         self.mean_energy_integral += mean_energy;
         if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
             state.mean_energy_integral = self.mean_energy_integral;
+        }
+    }
+
+    /// Mirror cumulative `(lifespan_sum, lifespan_count)` onto [`LiveExperimentState`] (adding any
+    /// checkpoint baseline from `from_snapshot`) so `live.cumulative_mean_lifespan` stays intact
+    /// across `VitalStatistics::sample_window` drains and disk save/load forks (F053-FIX).
+    fn accumulate_cumulative_lifespan(&mut self) {
+        let world = self.world.get_mut();
+        let (v_sum, v_count) = world
+            .get_resource::<crate::core::resources::VitalStatistics>()
+            .map(|v| (v.lifespan_sum, v.lifespan_count))
+            .unwrap_or((0, 0));
+        let total_sum = self.base_lifespan_sum.saturating_add(v_sum);
+        let total_count = self.base_lifespan_count.saturating_add(v_count);
+        if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
+            state.cumulative_lifespan_sum = total_sum;
+            state.cumulative_lifespan_count = total_count;
         }
     }
 
@@ -2394,9 +2466,15 @@ impl ExperimentModel for LiveExperimentAdapter {
         let mut world = self.world.borrow_mut();
         // The clock and accumulator live on the adapter and in the resource; the resource is what
         // the serializer reads, so both are refreshed here rather than only at the end of `step`.
+        let (v_sum, v_count) = world
+            .get_resource::<crate::core::resources::VitalStatistics>()
+            .map(|v| (v.lifespan_sum, v.lifespan_count))
+            .unwrap_or((0, 0));
         if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
             state.clock_tick = self.clock.tick;
             state.mean_energy_integral = self.mean_energy_integral;
+            state.cumulative_lifespan_sum = self.base_lifespan_sum.saturating_add(v_sum);
+            state.cumulative_lifespan_count = self.base_lifespan_count.saturating_add(v_count);
         }
         let deps = SaveHandles::new();
         let saved = crate::core::simulation_state::serialize_world_state(
@@ -2458,6 +2536,7 @@ impl ExperimentModel for LiveExperimentAdapter {
         self.run_tick();
         self.drain_absent_thread_queues();
         self.accumulate_mean_energy_integral();
+        self.accumulate_cumulative_lifespan();
         self.record_drift_shortfalls_if_due(clock.tick, false);
         self.mirror_ledger(ledger);
     }
@@ -2859,6 +2938,35 @@ fn populate_spatial_grid(world: &mut World, state: &SavedSimulationState) {
     crate::core::simulation_state::populate_restored_spatial_grid(world, state);
 }
 
+/// Validate that `terrain_map` provides at least `config.founders` distinct walkable cells
+/// whenever `config.requires_walkable_founder_capacity()` holds.
+pub fn validate_founder_land_capacity(
+    config: &LiveWorldConfig,
+    terrain_map: Option<&crate::core::terrain::TerrainMap>,
+) -> Result<(), ExperimentError> {
+    if !config.requires_walkable_founder_capacity() {
+        return Ok(());
+    }
+    let walkable_cells = terrain_map.map(walkable_cell_count).unwrap_or(0);
+    if walkable_cells == 0 {
+        return Err(ExperimentError::InvalidPopulation {
+            reason: format!(
+                "live.founder_layout={} with land_mask=1 cannot place {} founder(s): terrain has 0 walkable cells (no walkable land)",
+                config.founder_layout, config.founders
+            ),
+        });
+    }
+    if walkable_cells < config.founders {
+        return Err(ExperimentError::InvalidPopulation {
+            reason: format!(
+                "live.founder_layout={} with land_mask=1 cannot place {} founder(s) without stacking: terrain has only {} distinct walkable cell(s)",
+                config.founder_layout, config.founders, walkable_cells
+            ),
+        });
+    }
+    Ok(())
+}
+
 /// The founding population and environment a manifest declared.
 ///
 /// Placement is a deterministic lattice rather than the app's biome-weighted shuffle. That is a real
@@ -2904,29 +3012,7 @@ fn genesis(
         None
     };
 
-    if config.founders > 0
-        && config.land_mask
-        && (config.founder_layout == FOUNDER_LAYOUT_GRID
-            || config.founder_layout == FOUNDER_LAYOUT_SCATTER)
-    {
-        let walkable_cells = terrain_map.as_ref().map(walkable_cell_count).unwrap_or(0);
-        if walkable_cells == 0 {
-            return Err(ExperimentError::InvalidPopulation {
-                reason: format!(
-                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s): terrain has 0 walkable cells (no walkable land)",
-                    config.founder_layout, config.founders
-                ),
-            });
-        }
-        if walkable_cells < config.founders {
-            return Err(ExperimentError::InvalidPopulation {
-                reason: format!(
-                    "live.founder_layout={} with land_mask=1 cannot place {} founder(s) without stacking: terrain has only {} distinct walkable cell(s)",
-                    config.founder_layout, config.founders, walkable_cells
-                ),
-            });
-        }
-    }
+    validate_founder_land_capacity(config, terrain_map.as_ref())?;
 
     let mut genotype = MorphologyGenotype::new();
     for (id, mass) in [(0u32, 1.5f32), (1, 1.0), (2, 0.8)] {
