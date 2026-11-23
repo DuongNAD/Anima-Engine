@@ -49,12 +49,13 @@ All **29 `LIVE_KEYS`** on trunk `e576350` are pinned as follows:
 
 - **Shared explicit keys across all 3 arms (20 keys including `resource_capacity_scale`):** `live.ecological_fitness = 1.0`, `live.mortality = 1.0`, `live.reproduction = 1.0`, `live.locomotion = 1.0`, `live.drive_floor = 0.5`, `live.thirst_steering = 1.0`, `live.evolved_brains = 0.0`, `live.trees = 8.0`, `live.food_cap = 50.0`, plus the 7 `e3_b1_g4_fl1` overrides (`live.strict_prey_cap = 1.0`, `live.founders = 160.0`, `live.prey_cap = 160.0`, `live.lakes = 16.0`, `live.lake_layout = 1.0`, `live.dehydration_ticks = 960.0`, `live.founder_layout = 1.0`), per-arm `live.resource_capacity_scale` (`1.0` in `U` & `T`, `0.42` in `S`), and **`live.predator_fraction`** (`OWNER DECISION — E3B-D1`, below). *(Plus optional explicit zero or left default: `live.grass_steering = 0.0`.)*
 - **Remaining `LIVE_KEYS` left at `LiveWorldConfig::default()` (`0` / absent):** `live.w_surplus = 1.0`, `live.starve_ticks = 120`, `live.mutation_rate = 0.05`, `live.plant_reserve = 0.0`, `live.kill_hydration = 0.0`, `live.kill_efficiency = 0.40`, `live.target_min_energy = 0.0`, `live.drift_control = 0.0`, `live.drift_reset_ticks = 0`, `live.land_mask = 0` (`false`), and `live.grass_steering = 0` (`false`). Note that `grass_steering` and `land_mask` remain off (`0` combinations of both keys, matching `QD-VIAB1C`).
+- **Effective `live.predator_fraction` in VIAB-1 (`0.3` vs `"0.20"` typo):** Neither `e3_b1_g4_fl1.json` nor `e3_b1_g3_fl1.json` overrides `live.predator_fraction`, so **`0.3` is the effective value inherited from frozen E3**; the `"0.20"` parenthetical in the VIAB-1 result note (`PR #215` §4a, including the `e3_b1_g3_fl1` line) is a prose typo that the lead will fix later without blocking `E3B-P`.
 
 ### 1.2. Plain Predator Extinction Statement & `OWNER DECISION — E3B-D1`
 
 > **Plain empirical fact (`e3_b1_g4_fl1` and frozen E3):** Predators go extinct in **`12/12` seeds of every arm** (`pred_final > 0` is **`U = 0/12`, `S = 0/12`, `T = 0/12`** in both `e3_b1_g4_fl1` and registered `e3_a_reg`). Consequently, **E3b is effectively herbivore-only by the end of the run (`T = 18,000`), just as frozen E3 was.**
 >
-> **Base-manifest audit note (`0.3` vs `0.20`):** Frozen E3 manifests (`e3-control-uniform.json`, `e3-preregistration.json`) and `LiveWorldConfig::default()` set **`live.predator_fraction = 0.3`** (`round(160 × 0.3) = 48` initial predators, `112` initial herbivores in `e3_b1_g4_fl1`), and `e3_b1_g4_fl1.json` carries **no** override on `live.predator_fraction` (the `0.20` parenthetical in VIAB-1 §4a prose was a typo). Therefore `live.predator_fraction` requires an explicit decision before manifests are generated:
+> **Base-manifest audit note (`0.3` effective value):** Frozen E3 manifests (`e3-control-uniform.json`, `e3-preregistration.json`) and `LiveWorldConfig::default()` set **`live.predator_fraction = 0.3`** (`round(160 × 0.3) = 48` initial predators, `112` initial herbivores in `e3_b1_g4_fl1`), and neither `e3_b1_g4_fl1.json` nor `e3_b1_g3_fl1.json` overrides `live.predator_fraction`. Therefore `live.predator_fraction` requires an explicit decision before manifests are generated:
 
 | Option (`OWNER DECISION — E3B-D1`) | `live.predator_fraction` | Initial Split (`founders=160`) | Trade-Off & Evidence Basis |
 |---|---|---|---|
@@ -101,13 +102,17 @@ The frozen E3 mechanistic limitation remains explicitly declared in advance: `T`
 
 ### 2.2. Confirmatory Primary Family (`m = 3`, Template R2) — `OWNER DECISION — E3B-D2`
 
-Template R2 limits the Holm-controlled confirmatory family to **at most 3 primary contrasts**. Two options are presented (`Option 2A` recommended):
+Template R2 limits the Holm-controlled confirmatory family to **at most 3 primary contrasts**. Two sub-decisions sit under **`OWNER DECISION — E3B-D2`**:
 
-- **Option 2A (Recommended — variance dispersion decomposition across all 3 arms on `live.trait_mass_var` at `T = 18,000`):**
-  1. **`H1` (`T - S` on `live.trait_mass_var`, predicted positive `T > S`, tested two-sided):** Isolates spatial productivity gradient at matched ~`64k EU` total standing plant food.
-  2. **`H2` (`T - U` on `live.trait_mass_var`, two-sided):** Total gradient + scarcity effect relative to abundant uniform control.
-  3. **`H3` (`S - U` on `live.trait_mass_var`, two-sided):** Uniform scarcity + whole-map `AddNutrient 1.00` refill effect relative to abundant uniform control.
-- **Option 2B (Alternative — include regional East–West differentiation `S3` inside primary family):** Keep `H1` (`T - S`, `live.trait_mass_var`) and `H2` (`T - U`, `live.trait_mass_var`), and replace `H3` with **`H3_alt` (`T - S` on `live.trait_mass_mean_east - live.trait_mass_mean_west`, two-sided)**. *Trade-off:* brings regional differentiation directly under Holm FWER control, but requires an additional SESOI in mean-mass EU units and introduces uncalibrated `empty_half_rule` exclusions (`VIAB-1` did not record regional half-map occupancy).
+1. **Choice of the 3 contrasts:**
+   - **Option 2A (Recommended — variance dispersion decomposition across all 3 arms on `live.trait_mass_var` at `T = 18,000`):**
+     1. **`H1` (`T - S` on `live.trait_mass_var`):** Isolates spatial productivity gradient at matched ~`64k EU` total standing plant food.
+     2. **`H2` (`T - U` on `live.trait_mass_var`, two-sided):** Total gradient + scarcity effect relative to abundant uniform control.
+     3. **`H3` (`S - U` on `live.trait_mass_var`, two-sided):** Uniform scarcity + whole-map `AddNutrient 1.00` refill effect relative to abundant uniform control.
+   - **Option 2B (Alternative — include regional East–West differentiation `S3` inside primary family):** Keep `H1` (`T - S`, `live.trait_mass_var`) and `H2` (`T - U`, `live.trait_mass_var`), and replace `H3` with **`H3_alt` (`T - S` on `live.trait_mass_mean_east - live.trait_mass_mean_west`, two-sided)**. *Trade-off:* brings regional differentiation directly under Holm FWER control, but requires an additional SESOI in mean-mass EU units and introduces uncalibrated `empty_half_rule` exclusions (`VIAB-1` did not record regional half-map occupancy).
+2. **`H1` directionality and R10 label rule:**
+   - **Default `(a)` (Directional `H1` with 4-label R10 set):** Predicts `T > S` (`H1` positive dispersion under spatial gradient); extends R10's closed decision set to **`{supports, opposite, equivalent_to_zero, insufficient_evidence}`** so a Holm-significant negative shift (`T < S`, $|\hat{\Delta}| \ge \text{SESOI}$) maps cleanly to **`opposite`** (refuting the directional prediction; never `supports` and never `equivalent_to_zero`).
+   - **Alternative `(b)` (Two-sided `H1` with 3-label R10 set):** Leaves `H1` undirected (`T != S`) under `{supports, equivalent_to_zero, insufficient_evidence}`, so a Holm-significant negative shift (`T < S`, $|\hat{\Delta}| \ge \text{SESOI}$) is labeled `supports` and reported mandatorily with its negative sign (`T < S`). All hypotheses stay statistically tested via two-sided $p$-values under Holm–Bonferroni in both `(a)` and `(b)`.
 
 ### 2.3. Sensitivity Checks, Exploratory Family & Structural Zeros
 
@@ -125,7 +130,7 @@ Template R2 limits the Holm-controlled confirmatory family to **at most 3 primar
 | Rule | Status | Concrete Value / `OWNER DECISION` |
 |---|---|---|
 | **R1** Seed unit & disjoint range | Concrete | Paired CRN by seed (`U, S, T`); confirmation `seed_k = 810001 + 1000*k` (`k = 0..N-1`); smoke `999953` |
-| **R2** Confirmatory & exploratory families | `E3B-D2` (default `2A`) | Primary `m = 3` (`H1, H2, H3`, Holm $\alpha = 0.05$: `0.01667, 0.025, 0.05`); Exploratory BH-FDR `q = 0.05` |
+| **R2** Confirmatory & exploratory families | `E3B-D2` (`2A` + `(a)` def.) | Primary `m = 3` (`H1, H2, H3`, Holm $\alpha = 0.05$: `0.01667, 0.025, 0.05`; def. `(a)` directional `H1` vs alt. `(b)` two-sided `H1`); Exploratory BH-FDR `q = 0.05` |
 | **R3** Extinction rate & primary endpoint | `E3B-D3` (default `3A`) | `e3_b1_g4_fl1`: $p_{\text{ext}}$ `U=8.33%` (80% UB `22.96%`), `S=0%` (`12.55%`), `T=0%` (`12.55%`) $\implies$ **Worst-Rank primary** + RMST + SACE ($\hat{\pi}_{LL} \ge 0.85$) |
 | **R4** Pre-specified SESOI | `OWNER DECISION` (`E3B-D4`) | **4A:** `\|d_z\| = 0.8` / `\|r_c\| = 0.50` · **4B (rec.):** `\|d_z\| = 0.5` / `\|r_c\| = 0.35` · **4C:** `±log(1.25) = ±0.2231` |
 | **R5** Blind non-mass nuisance parameters | Concrete | Extracted strictly from `e3_b1_g4_fl1.json` (`880001..=880012`, `0` body-mass data read) |
@@ -133,7 +138,7 @@ Template R2 limits the Holm-controlled confirmatory family to **at most 3 primar
 | **R7** Minimum attainable $p$ vs $\alpha/3$ | Concrete | Threshold $n \ge 7$ ($2/2^7 = 0.01563 < 0.01667$); Worst-Rank $p_{\min}(30) = 1.86\times 10^{-9}$; SACE floor $p_{\min}(26) = 2.98\times 10^{-8}$ |
 | **R8** Full paired effect-size bundle | Concrete (`YES`) | $d_z$, $r_c$ (Kerby), $\hat{\Delta}_{\text{HL}}$ + 95% BCa CI, proportion $d_i > 0$ |
 | **R9** TOST equivalence bounds | Tied to `E3B-D4` | `[-SESOI, +SESOI]` with 90% CI ($\alpha_{\text{TOST}} = 0.05$ each tail) |
-| **R10** Closed decision table | Concrete | Closed mapping to `{supports, equivalent_to_zero, insufficient_evidence}` (plus `direction_tag`) |
+| **R10** Closed decision table | `E3B-D2` (`(a)` default) | Closed mapping across all `48/48` combinations to `{supports, opposite, equivalent_to_zero, insufficient_evidence}` (alt. `(b)` 3-label if `H1` two-sided) |
 
 ### R1 — Experimental Unit, Disjoint Confirmation Seeds & Forbidden List
 
@@ -201,18 +206,18 @@ All values below were computed directly from `artifacts/experiments/viab1-shared
 
 ### R6 — Sample Size Calculation (`N` Seeds) Showing Arithmetic
 
-Using the Template §4 noncentral-$t$ / asymptotic relative efficiency (`ARE = 0.955`) tables and exact SciPy TOST / binomial calculations at two-sided Holm step-1 **$\alpha/3 = 0.016667$** (`m = 3`) and power **$0.80$** (plus **$0.90$** sensitivity):
+**Plain Worst-Rank power disclosure:** **Worst-Rank power is not yet computed.** The pair counts below (`K = 21/27` and `K = 48/60`) come from the Template §4 paired-$t$ / Wilcoxon (`ARE = 0.955`) tables at two-sided Holm step-1 **$\alpha/3 = 0.016667$** (`m = 3`), which assume approximately normal paired differences and serve only as parametric / SACE design anchors (with exact SciPy TOST & binomial survival checks). Under `Option 3A` (Worst-Rank primary), **power must be confirmed by the pre-freeze non-mass Monte Carlo simulation** (`N_rep = 3,000–5,000`) before manifests freeze:
 
 | Quantity | Option 4A (`d_z = 0.80`) | Option 4B (`d_z = 0.50`) |
 |---|---|---|
-| Pairs for paired-$t$ at $\alpha/3 = 0.01667$ (`80%` / `90%` power) | `20` / `25` pairs | `45` / `57` pairs |
-| Pairs for paired Wilcoxon (`ceil(n_t / 0.955)`, `80%` / `90%` power) | **`K = 21`** / `27` pairs | **`K = 48`** / `60` pairs |
+| Pairs for paired-$t$ at $\alpha/3 = 0.01667$ (`80%` / `90%` normal-diff table) | `20` / `25` pairs | `45` / `57` pairs |
+| Pairs for paired Wilcoxon (`ceil(n_t / 0.955)`, `80%` / `90%` normal-diff table) | **`K = 21`** / `27` pairs | **`K = 48`** / `60` pairs |
 | Pairs for TOST equivalence `90% CI ⊂ [-SESOI, +SESOI]` at $\Delta = 0$ (`80%` / `90%`) | `t = 15 (W = 16)` / `t = 19 (W = 20)` | `t = 36 (W = 38)` / `t = 45 (W = 48)` |
 | Binomial inflation for $P(\text{LL pairs} \ge K_{80\%}) \ge 0.90$ ($\pi_{LL} = 0.85$ conservative) | `N = 27` (`25` at $\pi_{LL} = 11/12$) | `N = 61` (`55` at $\pi_{LL} = 11/12$) |
-| **Proposed Rounded Seed Count `N` (Total Runs `3N`)** | **`N = 30` seeds (`90` runs)** | **`N = 64` seeds (`192` runs)** *(or `N = 60` for Worst-Rank alone)* |
-| Achieved guarantees at chosen `N` | - Worst-Rank uses all `30` seeds (`> 27` $\implies > 90\%$ power directly)<br>- SACE $P(X \ge 21 \mid \pi_{LL}=0.85) = 0.9903$<br>- $P(X \ge 21 \mid \pi_{LL}=11/12) = 0.9999$<br>- $P(\text{LL} \ge 26\;[0.85N] \mid 11/12) = 0.9001$ | - Worst-Rank uses all `64` seeds (`> 60` $\implies > 92\%$ power directly)<br>- SACE $P(X \ge 48 \mid \pi_{LL}=0.85) = 0.9884$<br>- `N = 60` gives `0.8938` at `0.85` and `0.9989` at `11/12` |
+| **Proposed Rounded Seed Count `N` (Total Runs `3N`)** | **`N = 30` seeds (`90` runs)** | **`N = 64` seeds (`192` runs)** *(or `N = 60` candidate if Worst-Rank alone)* |
+| Achieved guarantees at chosen `N` | - Worst-Rank uses all `30` seeds (`> 27` Wilcoxon normal-diff anchor: **power to be confirmed by the pre-freeze Monte Carlo**)<br>- SACE $P(X \ge 21 \mid \pi_{LL}=0.85) = 0.9903$<br>- $P(X \ge 21 \mid \pi_{LL}=11/12) = 0.9999$<br>- $P(\text{LL} \ge 26\;[0.85N] \mid 11/12) = 0.9001$ | - Worst-Rank uses all `64` seeds (`> 60` Wilcoxon normal-diff anchor: **power to be confirmed by the pre-freeze Monte Carlo**; `N = 60` likewise **power to be confirmed by the pre-freeze Monte Carlo**)<br>- SACE $P(X \ge 48 \mid \pi_{LL}=0.85) = 0.9884$<br>- `N = 60` gives `0.8938` at `0.85` and `0.9989` at `11/12` |
 
-*(Template §5 check: Before freezing manifests under Worst-Rank/RMST primary, a follow-up pre-freeze check verifies Worst-Rank and RMST power across $N_{\text{rep}} = 3,000\text{--}5,000$ Monte Carlo draws using only non-mass R5 nuisance distributions $\text{RMST}, p_{\text{ext}}, \pi_{LL}, \rho_{\text{CRN}}$ — with synthetic shift deltas $\Delta$ matching R4 so zero real `trait_mass` data are touched.)*
+*(Template §5 requirement: Before freezing manifests under Worst-Rank/RMST primary, a mandatory pre-freeze check simulates Worst-Rank and RMST power across $N_{\text{rep}} = 3,000\text{--}5,000$ Monte Carlo draws using only non-mass R5 nuisance distributions $\text{RMST}, p_{\text{ext}}, \pi_{LL}, \rho_{\text{CRN}}$ — with synthetic shift deltas $\Delta$ matching R4 so zero real `trait_mass` data are touched.)*
 
 ### R7 — Minimum Attainable Two-Sided Exact $p$-Value
 
@@ -243,18 +248,23 @@ Two one-sided tests at $\alpha_{\text{TOST}} = 0.05$ each tail — equivalent to
 
 ### R10 — Closed Decision Table
 
-Every primary hypothesis $H_k \in \{H1, H2, H3\}$ evaluates via the following exhaustive, mutually exclusive table into **`{supports, equivalent_to_zero, insufficient_evidence}`** (`Null` / opposite findings never get rebranded as `supports`):
+Under **default `(a)` (`E3B-D2`: directional `H1` `T > S`; two-sided `H2, H3`)**, every primary hypothesis evaluates via the table below into the closed 4-label set **`{supports, opposite, equivalent_to_zero, insufficient_evidence}`** (`opposite` is a distinct refutation outcome — **never** `supports` and **never** `equivalent_to_zero`). Under **alternative `(b)` (`E3B-D2`: two-sided `H1`)**, Row 4 merges with Row 3 as `supports` (reported with negative sign `T < S`), using the 3-label set `{supports, equivalent_to_zero, insufficient_evidence}`:
 
-| WP-2 & Host Integrity Valid? | Stratum Sample Size Valid? (Worst-Rank: $0$ failed runs & $N \ge 7$; SACE: $\hat{\pi}_{LL} \ge 0.85$ & $n_{LL} \ge 7$) | Holm Adjusted $p_{\text{Holm}} < 0.05$? | Point Magnitude & Pre-Registered Sign | R9 TOST 90% CI Strictly Inside $(-\text{SESOI}, +\text{SESOI})$? | Closed Label (`R10`) | Mandatory Direction Annotation (`direction_tag`) |
+| WP-2 & Host Integrity Valid? | Stratum Sample Size Valid? (Worst-Rank: $0$ failed runs & $N \ge 7$; SACE: $\hat{\pi}_{LL} \ge 0.85$ & $n_{LL} \ge 7$) | Holm Adjusted $p_{\text{Holm}} < 0.05$? | Point Magnitude & Pre-Registered Sign | R9 TOST 90% CI Strictly Inside $(-\text{SESOI}, +\text{SESOI})$? | Closed Label (`R10`, def. `(a)`) | Mandatory Direction Annotation (`direction_tag`) |
 |---|---|---|---|---|---|---|
 | **No** | Any | Any | Any | Any | **`insufficient_evidence`** *(stop campaign on harness failure; never mask harness bug)* | `harness_invalid` |
 | Yes | **No** ($n < 7$, or SACE $\hat{\pi}_{LL} < 0.85$ when SACE is sole primary) | Any | Any | Any | **`insufficient_evidence`** | `underpowered_or_truncated` |
-| Yes | Yes | **Yes** | Positive (`T > S` on `H1`; or $|d| \ge \text{SESOI}$ on two-sided `H2,H3`) AND **$\|\hat{\Delta}\| \ge \text{SESOI}$** | No | **`supports`** | `predicted_positive` (`H1`) / `non_zero_two_sided` |
-| Yes | Yes | **Yes** | Negative on directional `H1` (`T < S`) AND **$\|\hat{\Delta}\| \ge \text{SESOI}$** | No | **`equivalent_to_zero`** *(or **`material_negative_opposite`** sub-label if split `OWNER DECISION` adopted; **never** `supports`)* | **`opposite_negative`** — refutes `H1` in opposite direction; triggers Stage 4 finding note |
-| Yes | Yes | **Yes** | $\|\hat{\Delta}\| < \text{SESOI}$ *(statistically non-zero but trivially small)* | Yes | **`equivalent_to_zero`** | `trivial_below_sesoi_equivalent` |
-| Yes | Yes | **Yes** | $\|\hat{\Delta}\| < \text{SESOI}$ | No *(90% CI still straddles $\pm\text{SESOI}$)* | **`insufficient_evidence`** | `inconclusive_straddles_sesoi` |
+| Yes | Yes | **Yes** | Positive (`T > S` on `H1`; or $\|\hat{\Delta}\| \ge \text{SESOI}$ on two-sided `H2,H3`) AND **$\|\hat{\Delta}\| \ge \text{SESOI}$** | No | **`supports`** | `predicted_positive` (`H1`) / `non_zero_two_sided` (`H2,H3`) |
+| Yes | Yes | **Yes** | Negative on directional `H1` (`T < S`) AND **$\|\hat{\Delta}\| \ge \text{SESOI}$** | No | **`opposite`** *(under `E3B-D2` alt. `(b)` two-sided `H1`: `supports` with sign `T < S`; **never** `equivalent_to_zero`)* | **`opposite_negative`** — material effect opposite to `H1`; triggers Stage 4 finding note |
+| Yes | Yes | **Yes** | $\|\hat{\Delta}\| < \text{SESOI}$ *(statistically non-zero but trivially small)* | **Yes** | **`equivalent_to_zero`** | `trivial_below_sesoi_equivalent` |
+| Yes | Yes | **Yes** | $\|\hat{\Delta}\| < \text{SESOI}$ | **No** *(90% CI still straddles $\pm\text{SESOI}$)* | **`insufficient_evidence`** | `inconclusive_straddles_sesoi` |
 | Yes | Yes | **No** | $\|\hat{\Delta}\| < \text{SESOI}$ | **Yes** | **`equivalent_to_zero`** | `equivalent_to_zero_powered_null` |
-| Yes | Yes | **No** | Any | **No** | **`insufficient_evidence`** | `inconclusive_wide_ci` |
+| Yes | Yes | **No** | Any (`>=` or `< SESOI`) | **No** | **`insufficient_evidence`** | `inconclusive_wide_ci` |
+| Yes | Yes | Any | $\|\hat{\Delta}\| \ge \text{SESOI}$ (pos or neg) | **Yes** *(degenerate CI inconsistency; impossible when $\hat{\Delta} \in \text{CI}_{90}$)* | **`insufficient_evidence`** | `ci_inconsistent_impossible` |
+
+- **Exhaustive 5-column partition verification (`48/48` combinations):** Treating the five columns as discrete inputs — `wp2_valid ∈ {Yes, No}` (`2`) × `stratum_valid ∈ {Yes, No}` (`2`) × `holm_sig ∈ {Yes, No}` (`2`) × `effect_sign_mag ∈ {pos_ge_sesoi, neg_ge_sesoi, lt_sesoi}` (`3`) × `tost_equiv ∈ {Yes, No}` (`2`) = **`48` combinations** — an exhaustive Python `itertools.product` check verified that **all `48/48` combinations match at least one and at most one row** (`len(matches) == 1` for every tuple):
+  - Default **(a)** (`4`-label set): `supports = 1`, `opposite = 1`, `equivalent_to_zero = 2`, `insufficient_evidence = 44` (`24` from Row 1 + `12` from Row 2 + `1` from Row 6 + `3` from Row 8 + `4` algebraically impossible guard tuples in Row 9; total = `48`).
+  - Alternative **(b)** (`3`-label set, two-sided `H1`): `supports = 2` (with sign reported explicitly), `equivalent_to_zero = 2`, `insufficient_evidence = 44` (total = `48`).
 
 *(Note on `H1`: On `H1`, any positive finding still carrying E3's pre-declared confound caveat is worded strictly as: "a productivity gradient created by West `Deforest 0.30` and East `AddNutrient 1.00` altered body-mass variance vs. uniform scarcity (`resource_capacity_scale = 0.42` + whole-map `AddNutrient 1.00`) at matched ~64k EU standing crop, initialized at `predator_fraction = <chosen>` and `<chosen founder pool>`, with predators extinct by `T = 18,000`." If `Option 5A` is chosen, the report must explicitly state that every arm started at `trait_mass_var = 0.0` from the `3.3`-mass clonal founder and carried the background `3.3 -> ~2.5` reduction trend measured in `U`.)*
 
@@ -303,7 +313,7 @@ Anchored to two measured Windows 1 benchmarks (without extrapolation beyond obse
 | ID | Decision Question | Options Summary | Recommended Default |
 |---|---|---|---|
 | **`E3B-D1`** | Initial `live.predator_fraction` (§1.2) | **1A:** Keep `0.3` (calibrated in `e3_b1_g4_fl1`; predators extinct `12/12`) · **1B:** Set `0.0` (clean herbivore-only genesis; needs 1 blind 70 s VIAB-1 cell) | Explicitly undecided (`1A` vs `1B`) |
-| **`E3B-D2`** | Third hypothesis in `m = 3` primary family (§2.2) | **2A:** `H3 = S - U` on `trait_mass_var` · **2B:** `T - S` on regional `S3` (`east - west`) | **2A** |
+| **`E3B-D2`** | Third hypothesis & `H1` directionality / R10 (§2.2, §3 R10) | Contrast: **2A** (`H3 = S - U` `trait_mass_var`) vs **2B** (`T - S` `east - west`) · `H1`/R10: **(a)** directional `H1` (`T > S`) + 4-label `{supports, opposite, equivalent_to_zero, insufficient_evidence}` vs **(b)** two-sided `H1` (3-label) | **2A** + **(a)** |
 | **`E3B-D3`** | Primary endpoint rule under R3 (§3 R3) | **3A:** Lachin Worst-Rank on `100%` of seeds (`+ RMST + SACE`) · **3B:** Complete-pair SACE on `T - S` (`H1`) + Worst-Rank on `H2, H3` | **3A** (or note equivalence on `T-S` if `0` extinctions) |
 | **`E3B-D4`** | SESOI & corresponding seed count `N` (§3 R4/R6) | **4A:** `d_z = 0.8` / `r_c = 0.50` (`N = 30`, `90` runs) · **4B:** `d_z = 0.5` / `r_c = 0.35` (`N = 64` / `192` runs or `60` WR) · **4C:** `±log(1.25)` ratio | **4B** |
 | **`E3B-D5`** | Founder pool & comparability with E3 (§1.3, `PR #216`) | **5A:** Keep clonal `3.3` founder (E3-comparable, calibrated in VIAB-1; carries `3.3 -> ~2.5` sweep) · **5B:** Adapted 2-seg `~2.5` founder (needs opt-in key + VIAB-1 re-cal) · **5C:** Standing-variation pool (needs schema/opt-in + VIAB-1 re-cal) | Explicitly undecided (`5A` vs `5B` vs `5C`) |
