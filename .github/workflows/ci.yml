@@ -268,7 +268,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # Full history: `scripts/paper/incident_dates.mjs` (tests/frontend/incidentDates.test.ts)
+      # resolves every commit named in docs/paper/data/incidents.csv and reads its committer date.
+      # The default depth-1 checkout has none of them, so the check could only fail here.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

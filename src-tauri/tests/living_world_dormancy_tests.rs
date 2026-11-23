@@ -92,6 +92,7 @@ fn payload(brain_value: Option<AgentBrain>) -> SerializedAgent {
         segments: vec![],
         brain: brain_value,
         sex: None,
+        live_id: None,
     }
 }
 

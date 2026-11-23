@@ -558,6 +558,8 @@ fn evolution_worker_resume_state_recovers_counters_and_history() {
             generation: 1,
             genotype: Some(high_node_genotype),
             cumulative_mutations: Some(0),
+            origin_tick: None,
+            destruction_tick: None,
         });
 
     let resume = evolution_worker_resume_state(Some(&state), 0x2a)
