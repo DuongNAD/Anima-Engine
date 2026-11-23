@@ -15,6 +15,6 @@ Run the project's documented acceptance checks in order and report a clear pass/
 
 Notes:
 - Do NOT run the full backend app (`npm run tauri dev` / `cargo run`) — it is heavy and has crashed the dev machine. Only `cargo test` and the build are part of verification.
-- **`--features desktop` is not optional.** A bare `cargo test` compiles the seven `networking`/`ml-wgpu`-gated test files into empty binaries that report `running 0 tests` and exit 0 — 1,877 lines of migration, cross-shard and GPU-fallback coverage silently skipped. To check for that, capture the output and run `node scripts/check_test_targets.mjs <file>`; it fails on any target that ran zero tests.
+- **`--features desktop` is not optional.** A bare `cargo test` compiles the eight `networking`/`ml-wgpu`-gated test files into empty binaries that report `running 0 tests` and exit 0 — 2,040 lines of migration, cross-shard and GPU-fallback coverage silently skipped. To check for that, capture the output and run `node scripts/check_test_targets.mjs <file>`; it fails on any target that ran zero tests.
 - If `cargo test` fails to find a GPU or Neo4j, that is expected — the backend has CPU and offline fallbacks; only treat actual test failures/compile errors as failures.
 - After running, report: ✅/❌ per step, plus the key failing output (compile errors, failed test names) if any. End with a one-line overall verdict.
