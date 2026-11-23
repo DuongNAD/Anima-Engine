@@ -787,6 +787,12 @@ function extractCiCargoTestFeatures(wt) {
     .filter(Boolean);
 }
 
+function buildCiCargoTestTargetCmd(wt, target) {
+  const feats = extractCiCargoTestFeatures(wt);
+  const featFlag = feats.length > 0 ? `--features ${feats.join(',')} ` : '';
+  return `cargo test ${featFlag}--test ${target} -- --nocapture`;
+}
+
 function extractCiWorldgenFeatures(wt) {
   const step = getWorkflowStep(
     wt,
@@ -1011,7 +1017,11 @@ export const GATES = [
     needsCargo: true,
     needsNodeModules: true,
     runClean(wt) {
-      return runShell('npm run check:licenses', wt, cargoEnv());
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').run,
+        wt,
+        cargoEnv(),
+      );
     },
     run(wt) {
       const env = cargoEnv();
@@ -1020,7 +1030,11 @@ export const GATES = [
         return { status: genRes.status, output: genRes.output };
       }
       ensureSafeAnimaCargo();
-      return runShell('npm run check:licenses', wt, env);
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').run,
+        wt,
+        env,
+      );
     },
     matchers: [/third-party licences check: up to date.*\b[1-9]\d* unresolved/i],
   },
@@ -1153,9 +1167,13 @@ export const GATES = [
     patch: 'cargo_deny.patch',
     needsCargo: true,
     run(wt) {
-      return runShell(getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo deny check').run, join(wt, 'src-tauri'), cargoEnv());
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'cargo deny check').run,
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
     },
-    matchers: [/error\[rejected\]: failed to satisfy license requirements/, /licenses FAILED/],
+    matchers: [/├ MIT - MIT License:/],
   },
   {
     id: 'cargo_clippy_desktop',
@@ -1237,13 +1255,13 @@ export const GATES = [
     patch: 'ts_rs_parity.patch',
     needsCargo: true,
     run(wt) {
-      const tauriDir = join(wt, 'src-tauri');
-      const env = cargoEnv();
-      const testRes = runShell('cargo test --lib export_bindings', tauriDir, env);
-      if (testRes.status !== 0) {
-        return testRes;
-      }
-      return runShell('git --no-pager diff --exit-code -- ../src/types/generated', tauriDir, env);
+      const step = getWorkflowStep(
+        wt,
+        '.github/workflows/ci.yml',
+        'rust',
+        'TypeScript IPC bindings match the Rust structs',
+      ).run;
+      return runBash(`set -e\n${step}`, join(wt, 'src-tauri'), { ...cargoEnv(), GIT_PAGER: 'cat' });
     },
     matchers: [/x_m2_fault/],
   },
@@ -1287,18 +1305,20 @@ export const GATES = [
   },
   {
     id: 'check_test_targets_unscheduled_profile',
-    source: 'scripts/check_test_targets.mjs:29',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
+    source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').source,
+    ciCommand: `[harness-assembled: 12 policy targets] ${getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'No test target ran zero tests').command}`,
     faultSummary:
-      'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184` (checked with `--profile desktop`)',
+      'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:184` (checked with CI step profile)',
     patch: 'check_test_targets_unscheduled.patch',
     cleanKey: 'check_test_targets:from_ci',
     needsCargo: (ctx, isClean) => (isClean ? !ctx.captures.clean_ci_from_ci : !ctx.captures.unscheduled),
     runClean(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'clean_ci_from_ci');
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, 'clean_ci_from_ci');
     },
     run(wt, tmpBase, ctx) {
-      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'unscheduled');
+      const profile = extractProfileFromStep(wt, 'No test target ran zero tests');
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, profile, 'unscheduled');
     },
     matchers: [/profile "desktop" enables "networking", so tests\/adversarial_challenger_tests\.rs must run/],
   },
@@ -1310,12 +1330,13 @@ export const GATES = [
     patch: 'cargo_test_worldgen.patch',
     needsCargo: true,
     run(wt) {
-      const feats = extractCiWorldgenFeatures(wt).join(',');
-      return runShell(
-        `cargo test -p anima-worldgen --features "${feats}" -- --nocapture`,
-        join(wt, 'src-tauri'),
-        cargoEnv(),
-      );
+      const step = getWorkflowStep(
+        wt,
+        '.github/workflows/ci.yml',
+        'rust',
+        'cargo test (anima-worldgen CPU reader/generate/bake)',
+      ).run;
+      return runBash(step, join(wt, 'src-tauri'), cargoEnv());
     },
     matchers: [/test tests::elevation_normalization_anchors_match_v3_vertical_scale \.\.\. FAILED/],
   },
@@ -1358,14 +1379,14 @@ export const GATES = [
   {
     id: 'feature_gated_targets',
     source: 'ci.yml (cargo test -> feature_gated_targets_tests)',
-    ciCommand: 'cargo test --test feature_gated_targets_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'feature_gated_targets_tests')}`,
     faultSummary:
       'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` in `src-tauri/Cargo.toml`',
     patch: 'feature_gated_targets.patch',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test feature_gated_targets_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'feature_gated_targets_tests'),
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
@@ -1375,31 +1396,34 @@ export const GATES = [
   {
     id: 'schedule_ambiguity_simrng',
     source: 'CARD M2 (ci.yml -> schedule_ambiguity_tests)',
-    ciCommand: 'cargo test --test schedule_ambiguity_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'schedule_ambiguity_tests')}`,
     faultSummary: 'Put `(spawn_food_system, seed_dropping_system)` in parallel in `simulation_schedule.rs`',
     patch: 'schedule_ambiguity_simrng.patch',
     cleanKey: 'cargo_test:schedule_ambiguity_tests',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test schedule_ambiguity_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'schedule_ambiguity_tests'),
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
     },
-    matchers: [/`ResMut<SimRng>` serialises draws, it does not order them/, /SIMRNG .*spawn_food_system.*seed_dropping_system/],
+    matchers: [
+      /SIMRNG\s+seed_dropping_system <-> spawn_food_system/,
+      /"seed_dropping_system <-> spawn_food_system"/,
+    ],
   },
   {
     id: 'schedule_ambiguity_energy',
     source: 'CARD M2 (ci.yml -> schedule_ambiguity_tests)',
-    ciCommand: 'cargo test --test schedule_ambiguity_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'schedule_ambiguity_tests')}`,
     faultSummary: 'Put `(combat_system, metabolic_decay_system)` in parallel in `simulation_schedule.rs`',
     patch: 'schedule_ambiguity_energy.patch',
     cleanKey: 'cargo_test:schedule_ambiguity_tests',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test schedule_ambiguity_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'schedule_ambiguity_tests'),
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
@@ -1412,13 +1436,13 @@ export const GATES = [
   {
     id: 'zero_alloc',
     source: 'CARD M2 (ci.yml -> emit_zero_alloc_tests)',
-    ciCommand: 'cargo test --test emit_zero_alloc_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'emit_zero_alloc_tests')}`,
     faultSummary: 'Allocate `Vec::<u8>::with_capacity(64)` in `refresh_tick_payload` (`emit.rs`)',
     patch: 'zero_alloc.patch',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test emit_zero_alloc_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'emit_zero_alloc_tests'),
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
@@ -1428,23 +1452,23 @@ export const GATES = [
   {
     id: 'closed_eu',
     source: 'CARD M2 (ci.yml -> energy_conservation_tests)',
-    ciCommand: 'cargo test --test energy_conservation_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'energy_conservation_tests')}`,
     faultSummary: 'Inject `+ 1.0` EU per entity in `metabolic_decay_system` (`world_systems.rs`)',
     patch: 'closed_eu.patch',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test energy_conservation_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'energy_conservation_tests'),
         join(wt, 'src-tauri'),
         { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '1000' },
       );
     },
-    matchers: [/eating food changed the closed total by|closed EU drifted|moved the closed total/i],
+    matchers: [/eating food changed the closed total by/i],
   },
   {
     id: 'live_experiment_fork',
     source: 'CARD M2 (ci.yml -> live_experiment_tests)',
-    ciCommand: 'cargo test --test live_experiment_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'live_experiment_tests')}`,
     faultSummary:
       'Pass control `manifest.interventions` instead of `effective_treatment.interventions` in `checkpoint_fork_with_exotic` (`experiment_runner/fork.rs`)',
     patch: 'live_experiment_fork.patch',
@@ -1452,7 +1476,7 @@ export const GATES = [
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test live_experiment_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'live_experiment_tests'),
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
@@ -1462,14 +1486,14 @@ export const GATES = [
   {
     id: 'live_experiment_saveload',
     source: 'CARD M2 (ci.yml -> live_experiment_tests)',
-    ciCommand: 'cargo test --test live_experiment_tests',
+    ciCommand: `[harness-assembled] ${buildCiCargoTestTargetCmd(REPO_ROOT, 'live_experiment_tests')}`,
     faultSummary: 'Reset `sim_rng_pos` to `0` on restore in `restore_energy_state` (`simulation_state.rs`)',
     patch: 'live_experiment_saveload.patch',
     cleanKey: 'cargo_test:live_experiment_tests',
     needsCargo: true,
     run(wt) {
       return runShell(
-        'cargo test --test live_experiment_tests -- --nocapture',
+        buildCiCargoTestTargetCmd(wt, 'live_experiment_tests'),
         join(wt, 'src-tauri'),
         cargoEnv(),
       );
@@ -1482,16 +1506,18 @@ export const GATES = [
   {
     id: 'determinism_golden_hash',
     source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'golden hash tất định').source,
-    ciCommand: 'cargo test --release --test determinism_tests',
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/hardening.yml', 'determinism', 'golden hash tất định').command,
     faultSummary: 'Perturb `SimRng::for_world(world_identity.seed.wrapping_add(1))` in `core/ecs.rs`',
     patch: 'determinism_golden_hash.patch',
     needsCargo: true,
     run(wt) {
-      return runShell(
-        'cargo test --release --test determinism_tests -- --nocapture',
-        join(wt, 'src-tauri'),
-        cargoEnv(),
-      );
+      const step = getWorkflowStep(
+        wt,
+        '.github/workflows/hardening.yml',
+        'determinism',
+        'golden hash tất định',
+      ).run;
+      return runBash(step, join(wt, 'src-tauri'), cargoEnv());
     },
     matchers: [/world_hash doi/],
   },
@@ -1506,7 +1532,11 @@ export const GATES = [
     needsCargo: true,
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:licenses', wt, cargoEnv());
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'Third-party licence texts are current and complete').run,
+        wt,
+        cargoEnv(),
+      );
     },
     matchers: [/sourceSha256.*differs|third-party-index\.json is out of date|sha256.*mismatch/i],
   },
@@ -1520,7 +1550,11 @@ export const GATES = [
     needsCargo: true,
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:sbom', wt, cargoEnv());
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'SBOM is current with the shipped dependency graph').run,
+        wt,
+        cargoEnv(),
+      );
     },
     matchers: [/sbom\.cdx\.json is out of date/i],
   },
@@ -1549,7 +1583,11 @@ export const GATES = [
     needsCargo: true,
     needsNodeModules: true,
     run(wt) {
-      return runShell('npm run check:notice', wt, cargoEnv());
+      return runShell(
+        getWorkflowStep(wt, '.github/workflows/ci.yml', 'rust', 'NOTICE is current with the shipped dependency graph').run,
+        wt,
+        cargoEnv(),
+      );
     },
     matchers: [/NOTICE is out of date with the dependency graph/i],
   },
@@ -1571,40 +1609,18 @@ export const GATES = [
   {
     id: 'verify_dataflow',
     source: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Module dependency graph matches dataflow.json').source,
-    ciCommand:
-      'cargo modules dependencies --lib --no-externs --package anima-engine > ../dataflow-truth.dot && python3 ../scripts/verify_dataflow.py ../dataflow.json ../dataflow-truth.dot 1',
+    ciCommand: getWorkflowCommandLine(REPO_ROOT, '.github/workflows/ci.yml', 'rust', 'Module dependency graph matches dataflow.json').command,
     faultSummary: 'Insert invented `physics -> commands` edge into `dataflow.json`',
     patch: 'verify_dataflow.patch',
     needsCargo: true,
-    run(wt, tmpBase) {
-      const dotPath = join(tmpBase, 'dataflow-truth.dot');
-      const tauriDir = join(wt, 'src-tauri');
-      const modRes = spawnSync(
-        'cargo',
-        ['modules', 'dependencies', '--lib', '--no-externs', '--package', 'anima-engine'],
-        { cwd: tauriDir, env: cargoEnv(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
-      );
-      if (modRes.status !== 0) {
-        return {
-          status: modRes.status ?? 1,
-          stdout: modRes.stdout || '',
-          stderr: modRes.stderr || '',
-          output: `${modRes.stdout || ''}\n${modRes.stderr || ''}`,
-        };
-      }
-      writeFileSync(dotPath, modRes.stdout || '', 'utf8');
-      const pyExe = process.platform === 'win32' ? 'python' : 'python3';
-      const pyRes = spawnSync(
-        pyExe,
-        [join(wt, 'scripts', 'verify_dataflow.py'), join(wt, 'dataflow.json'), dotPath, '1'],
-        { cwd: tauriDir, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
-      );
-      return {
-        status: pyRes.status ?? 1,
-        stdout: pyRes.stdout || '',
-        stderr: pyRes.stderr || '',
-        output: `${pyRes.stdout || ''}\n${pyRes.stderr || ''}`,
-      };
+    run(wt) {
+      const step = getWorkflowStep(
+        wt,
+        '.github/workflows/ci.yml',
+        'rust',
+        'Module dependency graph matches dataflow.json',
+      ).run;
+      return runBash(`set -e\n${step}`, join(wt, 'src-tauri'), cargoEnv());
     },
     matchers: [/physics\s*->\s*commands/],
   },
@@ -1714,7 +1730,7 @@ export const GATES = [
         wt,
       );
     },
-    matchers: [/eslint: \d+ errors, [1-9]\d* warnings/, /no-explicit-any/],
+    matchers: [/^ESLint warnings went up: 1 > 0\.$/m],
   },
   {
     id: 'typecheck_tests',
@@ -1841,11 +1857,7 @@ export const GATES = [
         wt,
       );
     },
-    matchers: [
-      /the 2D dashboard \(index\.html\) statically loads the three\.js chunk/,
-      /defineProperty is .*budget \d+ KiB/,
-      /bundle budget FAILED:/,
-    ],
+    matchers: [/the 2D dashboard \(index\.html\) statically loads the three\.js chunk/],
   },
   {
     id: 'check_e2e_specs',
@@ -1875,7 +1887,7 @@ export const GATES = [
         wt,
       );
     },
-    matchers: [/Error: Anima-owned console output on the dashboard:/, /Expected: 999/],
+    matchers: [/Expected:\s*999/],
   },
   {
     id: 'check_docs_links',
