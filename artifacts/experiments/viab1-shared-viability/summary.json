@@ -1,0 +1,5512 @@
+{
+  "experiment_id": "viab1-shared-viability",
+  "phase_a_commit": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+  "phase_b_commit": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+  "seeds": [
+    880001,
+    880002,
+    880003,
+    880004,
+    880005,
+    880006,
+    880007,
+    880008,
+    880009,
+    880010,
+    880011,
+    880012
+  ],
+  "world_source": "generated",
+  "world_identity_observed": {
+    "seed": 1337,
+    "generator_version": 1,
+    "width": 256,
+    "height": 256,
+    "checksum": 3152323152
+  },
+  "all_terrain_generated": true,
+  "body_mass_blind_verified": true,
+  "qd_viab1c_check": {
+    "cells_with_land_mask_on": 0,
+    "families_combining_grass_steering_and_land_mask": 0
+  },
+  "total_cells": 55,
+  "total_runs": 1920,
+  "probe_provenance": {
+    "hub_dir": "test_runs/anima-case_VIAB-1/viab1_probe/",
+    "file_sha256": {
+      "Cargo.toml": "09f6c9592af1d77c2d1cc6a47907055704e5ca458aa8602348a962f7549d5c6c",
+      "Cargo.lock": "c4d024b487f29947285f89c29a5ded4a00b01c0522d8fe803b1d9d81e55bf920",
+      "src/main.rs": "df07eee73b2b344e0201c5d0524a32537a4890ae7d69152928d32d06a6aba0f3"
+    },
+    "option1_binary_path": "D:\\teamwork_projects\\viab1_target\\release\\viab1_probe.exe",
+    "option1_binary_sha256_before": "79167208818D1CF6BCD212CC420DEEC175F93D0F2CADA5355C36A91144F77309",
+    "option1_binary_sha256_after": "79167208818D1CF6BCD212CC420DEEC175F93D0F2CADA5355C36A91144F77309",
+    "windows_update_interruption_utc": "2026-11-20T13:21:11Z",
+    "windows_update_event_id": 1074,
+    "interrupted_exit_code": 1073807364,
+    "option1_rerun_cell": "sel2p_b2_s075_k2k_fl2_12s",
+    "option1_start_utc": "2026-11-23T05:15:37.0764306Z",
+    "option1_end_utc": "2026-11-23T06:39:24.9924281Z"
+  },
+  "e3_cells": [
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_a_reg",
+      "description": "Registered E3 baseline (f=120, pf=0.3, lakes=2, layout=0, dehyd=120, cap=80, strict=0, grass=0)",
+      "overrides": [],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 39.2165533,
+      "survived": {
+        "u": 10,
+        "s": 5,
+        "t": 8
+      },
+      "all_arms_survived": 5,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 0,
+        "t": 4
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 37,
+        "s": 3,
+        "t": 20
+      },
+      "mean_n_avg": {
+        "u": 55.35555555555556,
+        "s": 21.369444444444444,
+        "t": 43.93611111111111
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5621019704853302,
+      "b1_shift_max": -0.5068812175533252,
+      "b2_mismatch_min": -0.00672524131838823,
+      "b2_mismatch_max": 0.005283825336830981,
+      "starvation_pct": {
+        "u": 25.07308297728806,
+        "s": 8.818978855079939,
+        "t": 17.640603566529492
+      },
+      "dehydration_pct": {
+        "u": 74.92691702271195,
+        "s": 91.18102114492007,
+        "t": 82.35939643347051
+      },
+      "max_abs_eu_drift": 1.4988472685217857e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "9fce48ff6c06020df077d831c987465c4b1d6ddf860d59c1d9abe45d2b33890f"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_b_strict",
+      "description": "E3 + live.strict_prey_cap=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 41.1994497,
+      "survived": {
+        "u": 10,
+        "s": 5,
+        "t": 9
+      },
+      "all_arms_survived": 5,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 1,
+        "t": 6
+      },
+      "all_arms_min_n_ge_10": 1,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 52,
+        "s": 14,
+        "t": 34
+      },
+      "mean_n_avg": {
+        "u": 52.455555555555556,
+        "s": 22.166666666666668,
+        "t": 37.93611111111111
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5632972991127791,
+      "b1_shift_max": -0.5046827012999626,
+      "b2_mismatch_min": -0.0026901245032951,
+      "b2_mismatch_max": 0.006419100017732137,
+      "starvation_pct": {
+        "u": 17.243816254416963,
+        "s": 5.1961823966065745,
+        "t": 11.247575953458306
+      },
+      "dehydration_pct": {
+        "u": 82.75618374558304,
+        "s": 94.80381760339343,
+        "t": 88.75242404654169
+      },
+      "max_abs_eu_drift": 1.4988472685217857e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "0007fdc3f55376e10317ab6ab465cf7695bda91d06ad5eca046bc218dcb8cdfa"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_c_grass",
+      "description": "E3 + live.grass_steering=1",
+      "overrides": [
+        [
+          "live.grass_steering",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 72.851577,
+      "survived": {
+        "u": 11,
+        "s": 5,
+        "t": 7
+      },
+      "all_arms_survived": 3,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 1,
+        "t": 4
+      },
+      "all_arms_min_n_ge_10": 1,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 48,
+        "s": 12,
+        "t": 18
+      },
+      "mean_n_avg": {
+        "u": 76.2027777777778,
+        "s": 28.58888888888889,
+        "t": 54.03333333333333
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5496673133973261,
+      "b1_shift_max": -0.45204804695553974,
+      "b2_mismatch_min": -0.022564641977263593,
+      "b2_mismatch_max": 0.03035303066826916,
+      "starvation_pct": {
+        "u": 14.204174820613177,
+        "s": 7.635467980295567,
+        "t": 13.081731882380181
+      },
+      "dehydration_pct": {
+        "u": 85.79582517938682,
+        "s": 92.36453201970443,
+        "t": 86.91826811761982
+      },
+      "max_abs_eu_drift": 1.1437805369496346e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "9a8dbcf38b4761734ddb52efa2b3b9df6eedade4a5dd0c276e8ba400d06d63fb"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_d_both",
+      "description": "E3 + strict_prey_cap=1 + grass_steering=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 47.1452326,
+      "survived": {
+        "u": 9,
+        "s": 4,
+        "t": 8
+      },
+      "all_arms_survived": 3,
+      "min_n_ge_10": {
+        "u": 7,
+        "s": 1,
+        "t": 4
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 63,
+        "s": 11,
+        "t": 24
+      },
+      "mean_n_avg": {
+        "u": 49.783333333333324,
+        "s": 25.20555555555556,
+        "t": 46.08888888888888
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5763766505031969,
+      "b1_shift_max": -0.48739107266928033,
+      "b2_mismatch_min": -0.01934055388129083,
+      "b2_mismatch_max": 0.009873408581571706,
+      "starvation_pct": {
+        "u": 11.26126126126126,
+        "s": 6.241519674355495,
+        "t": 9.98467824310521
+      },
+      "dehydration_pct": {
+        "u": 88.73873873873873,
+        "s": 93.7584803256445,
+        "t": 90.01532175689479
+      },
+      "max_abs_eu_drift": 1.3184035196900368e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "f429152069d3917b45cbca811b5d2cd89edd831316959d7cb1ae44afb982ff75"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_e1_sym100",
+      "description": "E3 + both + founders=100, prey_cap=100 (all 3 arms)",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 54.5344703,
+      "survived": {
+        "u": 11,
+        "s": 6,
+        "t": 8
+      },
+      "all_arms_survived": 6,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 0,
+        "t": 5
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 75,
+        "s": 7,
+        "t": 62
+      },
+      "mean_n_avg": {
+        "u": 70.83333333333333,
+        "s": 27.73888888888889,
+        "t": 56.70833333333332
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5664988283228967,
+      "b1_shift_max": -0.4633987764566784,
+      "b2_mismatch_min": -0.026756983672059118,
+      "b2_mismatch_max": 0.005283949105342211,
+      "starvation_pct": {
+        "u": 14.956521739130435,
+        "s": 10.225442834138486,
+        "t": 12.270714737507907
+      },
+      "dehydration_pct": {
+        "u": 85.04347826086956,
+        "s": 89.77455716586151,
+        "t": 87.7292852624921
+      },
+      "max_abs_eu_drift": 1.7316779121756554e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "6efe6cd2e58fa31d98059c095fa3ada74e78c91c7e7e1eceb8a542afd6362715"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_e2_sym160",
+      "description": "E3 + both + founders=160, prey_cap=160 (all 3 arms)",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 94.0911339,
+      "survived": {
+        "u": 11,
+        "s": 6,
+        "t": 8
+      },
+      "all_arms_survived": 5,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 0,
+        "t": 7
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 49,
+        "s": 9,
+        "t": 75
+      },
+      "mean_n_avg": {
+        "u": 94.70555555555556,
+        "s": 39.922222222222224,
+        "t": 95.34166666666665
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5634419958162462,
+      "b1_shift_max": -0.4363030602237833,
+      "b2_mismatch_min": -0.05223158816619497,
+      "b2_mismatch_max": 0.009995237544992486,
+      "starvation_pct": {
+        "u": 19.918195339613288,
+        "s": 13.108822710826606,
+        "t": 12.740799787431913
+      },
+      "dehydration_pct": {
+        "u": 80.08180466038671,
+        "s": 86.8911772891734,
+        "t": 87.25920021256809
+      },
+      "max_abs_eu_drift": 1.6851117834448814e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "d07ad6ea98fb47d09a0f96372d01305d908bee395ba7a4662af6463dc459b3d2"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_f1_lakes16",
+      "description": "E3 + both + lakes=16, lake_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 42.0841049,
+      "survived": {
+        "u": 8,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 2,
+        "s": 0,
+        "t": 5
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 2,
+        "t": 2
+      },
+      "min_n_max": {
+        "u": 25,
+        "s": 7,
+        "t": 49
+      },
+      "mean_n_avg": {
+        "u": 36.80833333333334,
+        "s": 26.41111111111111,
+        "t": 40.141666666666666
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5643562344247759,
+      "b1_shift_max": -0.5349163691697753,
+      "b2_mismatch_min": -0.009023360936087015,
+      "b2_mismatch_max": 0.005128738349597296,
+      "starvation_pct": {
+        "u": 40.514592933947775,
+        "s": 26.57766990291262,
+        "t": 23.457223001402525
+      },
+      "dehydration_pct": {
+        "u": 59.485407066052225,
+        "s": 73.42233009708738,
+        "t": 76.54277699859747
+      },
+      "max_abs_eu_drift": 4.269531928002834e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "93b32dda372a1d5acb2c032b315de3100462a48516cc40aa7a2c92994babba59"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_f2_dehyd960",
+      "description": "E3 + both + dehydration_ticks=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 53.2909005,
+      "survived": {
+        "u": 12,
+        "s": 8,
+        "t": 11
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 11,
+        "s": 4,
+        "t": 8
+      },
+      "all_arms_min_n_ge_10": 4,
+      "min_n_min": {
+        "u": 5,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 61,
+        "s": 22,
+        "t": 55
+      },
+      "mean_n_avg": {
+        "u": 74.98611111111111,
+        "s": 38.13888888888889,
+        "t": 71.50277777777777
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.520922007499406,
+      "b1_shift_max": -0.49480059145559446,
+      "b2_mismatch_min": -0.023378741292952237,
+      "b2_mismatch_max": 0.0047148797533975864,
+      "starvation_pct": {
+        "u": 32.246153846153845,
+        "s": 21.057347670250895,
+        "t": 17.238458280389665
+      },
+      "dehydration_pct": {
+        "u": 67.75384615384615,
+        "s": 78.94265232974911,
+        "t": 82.76154171961034
+      },
+      "max_abs_eu_drift": 1.4813849702477455e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "dfb15e3104cba9bfdbcc707e1cb96d1da46c8b984afd4fdf278e2c4eddea8fc5"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_f3_lakes16_dehyd960",
+      "description": "E3 + both + lakes=16, lake_layout=1, dehydration_ticks=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 50.1937155,
+      "survived": {
+        "u": 8,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 1,
+        "s": 2,
+        "t": 5
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 3,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 21,
+        "s": 10,
+        "t": 66
+      },
+      "mean_n_avg": {
+        "u": 37.96388888888889,
+        "s": 29.96388888888889,
+        "t": 46.827777777777776
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5641130085580301,
+      "b1_shift_max": -0.5333132365736911,
+      "b2_mismatch_min": -0.011228245198996482,
+      "b2_mismatch_max": 0.005344273435430289,
+      "starvation_pct": {
+        "u": 67.11555169417898,
+        "s": 49.05537459283388,
+        "t": 39.85751781027371
+      },
+      "dehydration_pct": {
+        "u": 32.884448305821024,
+        "s": 50.94462540716612,
+        "t": 60.14248218972629
+      },
+      "max_abs_eu_drift": 3.818422555923462e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "bea62788b2c14b3020e61aa2ebb06bc73cd533ea7aebe057660bc2153455cc8e"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_f4_sym100_water",
+      "description": "E3 + both + sym100 (f=100, cap=100) + lakes=16, lake_layout=1, dehydration_ticks=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 44.1191184,
+      "survived": {
+        "u": 10,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 1,
+        "s": 2,
+        "t": 6
+      },
+      "all_arms_min_n_ge_10": 0,
+      "min_n_min": {
+        "u": 0,
+        "s": 2,
+        "t": 3
+      },
+      "min_n_max": {
+        "u": 10,
+        "s": 12,
+        "t": 41
+      },
+      "mean_n_avg": {
+        "u": 34.74722222222222,
+        "s": 31.7,
+        "t": 44.302777777777784
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5660062004444002,
+      "b1_shift_max": -0.5373229449100851,
+      "b2_mismatch_min": 0.0008023243372315358,
+      "b2_mismatch_max": 0.005327431430965903,
+      "starvation_pct": {
+        "u": 76.99473471040908,
+        "s": 48.316597755463675,
+        "t": 41.81082075818918
+      },
+      "dehydration_pct": {
+        "u": 23.005265289590927,
+        "s": 51.683402244536325,
+        "t": 58.18917924181082
+      },
+      "max_abs_eu_drift": 4.3655745685100555e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "916afd32d80488162e3d664de7508b3b153598f3b47a528db10dba81b415e127"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_f5_sym160_water",
+      "description": "E3 + both + sym160 (f=160, cap=160) + lakes=16, lake_layout=1, dehydration_ticks=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 54.3503944,
+      "survived": {
+        "u": 9,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 9,
+      "min_n_ge_10": {
+        "u": 6,
+        "s": 2,
+        "t": 6
+      },
+      "all_arms_min_n_ge_10": 1,
+      "min_n_min": {
+        "u": 0,
+        "s": 2,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 42,
+        "s": 11,
+        "t": 46
+      },
+      "mean_n_avg": {
+        "u": 59.28888888888889,
+        "s": 45.419444444444444,
+        "t": 58.708333333333336
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5603112540500599,
+      "b1_shift_max": -0.5009564320265073,
+      "b2_mismatch_min": -3.1613188770703296e-05,
+      "b2_mismatch_max": 0.01076463578232095,
+      "starvation_pct": {
+        "u": 73.50180505415162,
+        "s": 47.73295251695823,
+        "t": 47.81059063136456
+      },
+      "dehydration_pct": {
+        "u": 26.498194945848375,
+        "s": 52.26704748304177,
+        "t": 52.18940936863544
+      },
+      "max_abs_eu_drift": 4.580942913889885e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "6f7e75fe7e420e1b98f4c3bb0409647d1e0c29b0ec52d4ad44c1d8cc4d46a0e8"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_f6_herb_sym100_water",
+      "description": "E3 + both + sym100 + lakes=16, lake_layout=1, dehyd=960 + predator_fraction=0",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 49.7718865,
+      "survived": {
+        "u": 8,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 5,
+        "s": 8,
+        "t": 6
+      },
+      "all_arms_min_n_ge_10": 5,
+      "min_n_min": {
+        "u": 0,
+        "s": 4,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 100,
+        "s": 41,
+        "t": 78
+      },
+      "mean_n_avg": {
+        "u": 54.96111111111111,
+        "s": 42.163888888888884,
+        "t": 45.800000000000004
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5584684602912511,
+      "b1_shift_max": -0.5219894616450537,
+      "b2_mismatch_min": -0.0029853569348955605,
+      "b2_mismatch_max": 0.01143210798174433,
+      "starvation_pct": {
+        "u": 51.8888096935139,
+        "s": 29.934013197360528,
+        "t": 35.69854561480829
+      },
+      "dehydration_pct": {
+        "u": 48.1111903064861,
+        "s": 70.06598680263947,
+        "t": 64.30145438519172
+      },
+      "max_abs_eu_drift": 4.2171450331807137e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "257b78ff356ec7f192cccbfa5ad1ced52b097f868edfaaf86bc56d8b99a59d80"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_g1_strict_lakes16",
+      "description": "E3 + strict_prey_cap=1, grass=0 + lakes=16, lake_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 26.1732676,
+      "survived": {
+        "u": 9,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 9,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 6,
+        "t": 7
+      },
+      "all_arms_min_n_ge_10": 5,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 70,
+        "s": 37,
+        "t": 61
+      },
+      "mean_n_avg": {
+        "u": 59.68888888888889,
+        "s": 38.044444444444444,
+        "t": 49.01666666666667
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.565827414283363,
+      "b1_shift_max": -0.5139594999635126,
+      "b2_mismatch_min": -0.005738321082384106,
+      "b2_mismatch_max": 0.0053087141658856125,
+      "starvation_pct": {
+        "u": 39.79827089337176,
+        "s": 20.900995285489785,
+        "t": 25.57761145460462
+      },
+      "dehydration_pct": {
+        "u": 60.20172910662824,
+        "s": 79.09900471451022,
+        "t": 74.42238854539538
+      },
+      "max_abs_eu_drift": 3.93774826079607e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "41bc73e1ee52bed0229fb424f46dba8226dd6fd92edd1bc61e426752a9b1f118"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_g2_strict_lakes16_dehyd960",
+      "description": "E3 + strict_prey_cap=1, grass=0 + lakes=16, lake_layout=1, dehydration_ticks=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 26.7963209,
+      "survived": {
+        "u": 10,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 9,
+        "t": 9
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 2
+      },
+      "min_n_max": {
+        "u": 71,
+        "s": 44,
+        "t": 70
+      },
+      "mean_n_avg": {
+        "u": 58.46666666666666,
+        "s": 45.83611111111111,
+        "t": 51.413888888888884
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5627463239309669,
+      "b1_shift_max": -0.5314750573430301,
+      "b2_mismatch_min": -0.0020181895199281974,
+      "b2_mismatch_max": 0.009389785969480237,
+      "starvation_pct": {
+        "u": 71.19529719137819,
+        "s": 42.46344206974128,
+        "t": 45.2991452991453
+      },
+      "dehydration_pct": {
+        "u": 28.804702808621816,
+        "s": 57.53655793025872,
+        "t": 54.7008547008547
+      },
+      "max_abs_eu_drift": 4.98257577419281e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "f4af11f2f9151b57c871ff23f5d472c6105d6c4f8c1dced431620dbd68785db0"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_g3_strict_sym100_water",
+      "description": "E3 + strict=1, grass=0 + sym100 (f=100, cap=100) + lakes=16, lake_layout=1, dehyd=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 30.6154767,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 11,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 8,
+        "t": 11
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 78,
+        "s": 41,
+        "t": 82
+      },
+      "mean_n_avg": {
+        "u": 71.82222222222222,
+        "s": 46.855555555555554,
+        "t": 72.31944444444444
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5717016102569814,
+      "b1_shift_max": -0.5123849044223977,
+      "b2_mismatch_min": -0.006140518115372276,
+      "b2_mismatch_max": 0.013446227496919006,
+      "starvation_pct": {
+        "u": 73.12743190661479,
+        "s": 41.2217659137577,
+        "t": 43.395728974426575
+      },
+      "dehydration_pct": {
+        "u": 26.872568093385215,
+        "s": 58.7782340862423,
+        "t": 56.604271025573425
+      },
+      "max_abs_eu_drift": 3.608874976634979e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "987ff9ed503d40fe5e814cc966c1b8b6b3bc3a9edebdf003bae57740f2003b4d"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_g4_strict_sym160_water",
+      "description": "E3 + strict=1, grass=0 + sym160 (f=160, cap=160) + lakes=16, lake_layout=1, dehyd=960",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 36.1888893,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 11
+      },
+      "all_arms_survived": 11,
+      "min_n_ge_10": {
+        "u": 10,
+        "s": 10,
+        "t": 8
+      },
+      "all_arms_min_n_ge_10": 8,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 83,
+        "s": 31,
+        "t": 59
+      },
+      "mean_n_avg": {
+        "u": 91.13611111111112,
+        "s": 57.39722222222222,
+        "t": 73.59166666666667
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5645785829280631,
+      "b1_shift_max": -0.49316691433546594,
+      "b2_mismatch_min": -0.005133801876218564,
+      "b2_mismatch_max": 0.009300186069039713,
+      "starvation_pct": {
+        "u": 74.66908431550317,
+        "s": 43.99589462880602,
+        "t": 49.6042216358839
+      },
+      "dehydration_pct": {
+        "u": 25.330915684496826,
+        "s": 56.00410537119398,
+        "t": 50.3957783641161
+      },
+      "max_abs_eu_drift": 4.272442311048508e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "b0024770c5965ccbfd5511f26df9cab0177f4772203610466327d0eab77e1a8c"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_g5_strict_herb_sym100_water",
+      "description": "E3 + strict=1, grass=0 + sym100 + lakes=16, lake_layout=1, dehyd=960 + predator_fraction=0",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 29.0890524,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 11
+      },
+      "all_arms_survived": 11,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 10,
+        "t": 10
+      },
+      "all_arms_min_n_ge_10": 8,
+      "min_n_min": {
+        "u": 0,
+        "s": 3,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 100,
+        "s": 75,
+        "t": 86
+      },
+      "mean_n_avg": {
+        "u": 70.60000000000001,
+        "s": 52.969444444444434,
+        "t": 63.311111111111124
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5572604266403707,
+      "b1_shift_max": -0.5165752886287874,
+      "b2_mismatch_min": -0.002270455075993492,
+      "b2_mismatch_max": 0.0047590584724971985,
+      "starvation_pct": {
+        "u": 62.862108922363845,
+        "s": 28.610957387935805,
+        "t": 39.91062220694397
+      },
+      "dehydration_pct": {
+        "u": 37.137891077636155,
+        "s": 71.3890426120642,
+        "t": 60.08937779305603
+      },
+      "max_abs_eu_drift": 1.775333657860756e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "17bb66751efdd09f7bad0eadb26dfb172d34ef727b3fa38e49ab94317616481d"
+    },
+    {
+      "suite": "e3",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "e3_g6_strict_herb_sym160_water",
+      "description": "E3 + strict=1, grass=0 + sym160 + lakes=16, lake_layout=1, dehyd=960 + predator_fraction=0",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 36.3864639,
+      "survived": {
+        "u": 10,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 9,
+        "t": 9
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 5,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 119,
+        "s": 70,
+        "t": 87
+      },
+      "mean_n_avg": {
+        "u": 95.14444444444445,
+        "s": 65.69722222222224,
+        "t": 71.39166666666667
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5584623133477087,
+      "b1_shift_max": -0.4922910710796053,
+      "b2_mismatch_min": -0.006838188181480749,
+      "b2_mismatch_max": 0.006369714671732141,
+      "starvation_pct": {
+        "u": 60.99133588555309,
+        "s": 33.59497645211931,
+        "t": 43.01417413942725
+      },
+      "dehydration_pct": {
+        "u": 39.00866411444691,
+        "s": 66.40502354788069,
+        "t": 56.98582586057275
+      },
+      "max_abs_eu_drift": 5.7392753660678864e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "09eeec28539872fef14951a7cac57bc83648fb725e1c79be6723f07cbccd19db"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b1_reg_fl1",
+      "description": "Phase B: Registered E3 + live.founder_layout=1 (walkable grid)",
+      "overrides": [
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 44.9885664,
+      "survived": {
+        "u": 9,
+        "s": 11,
+        "t": 9
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 7,
+        "s": 1,
+        "t": 7
+      },
+      "all_arms_min_n_ge_10": 1,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 72,
+        "s": 20,
+        "t": 77
+      },
+      "mean_n_avg": {
+        "u": 68.35833333333333,
+        "s": 33.68888888888889,
+        "t": 56.79722222222222
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5593873069366686,
+      "b1_shift_max": -0.46528651718087144,
+      "b2_mismatch_min": -0.013757676400607337,
+      "b2_mismatch_max": 0.005386052174724556,
+      "starvation_pct": {
+        "u": 17.911557041991824,
+        "s": 11.877695021560173,
+        "t": 19.60220994475138
+      },
+      "dehydration_pct": {
+        "u": 82.08844295800817,
+        "s": 88.12230497843983,
+        "t": 80.39779005524862
+      },
+      "max_abs_eu_drift": 1.8189894035458565e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "9414d22dccf78b5b0a41c7bc2806a657cee05a008248e999fc025a52545681a9"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b2_reg_fl2",
+      "description": "Phase B: Registered E3 + live.founder_layout=2 (walkable scatter)",
+      "overrides": [
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 48.6655102,
+      "survived": {
+        "u": 11,
+        "s": 9,
+        "t": 8
+      },
+      "all_arms_survived": 7,
+      "min_n_ge_10": {
+        "u": 10,
+        "s": 2,
+        "t": 6
+      },
+      "all_arms_min_n_ge_10": 2,
+      "min_n_min": {
+        "u": 0,
+        "s": 0,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 80,
+        "s": 34,
+        "t": 69
+      },
+      "mean_n_avg": {
+        "u": 74.25277777777778,
+        "s": 30.183333333333334,
+        "t": 58.87499999999999
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5637259639648137,
+      "b1_shift_max": -0.4467198883678333,
+      "b2_mismatch_min": -0.008803494711784722,
+      "b2_mismatch_max": 0.005267676990929252,
+      "starvation_pct": {
+        "u": 25.148986889153754,
+        "s": 14.981116240033572,
+        "t": 26.936879881781717
+      },
+      "dehydration_pct": {
+        "u": 74.85101311084624,
+        "s": 85.01888375996643,
+        "t": 73.06312011821828
+      },
+      "max_abs_eu_drift": 2.9453076422214508e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "d41fd888a7ae089d0b7c75821ca543e49a1bf8bb8e91bae917777fb47a14456a"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b1_strict_fl1",
+      "description": "Phase B: E3 + strict_prey_cap=1 + founder_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 43.0261882,
+      "survived": {
+        "u": 9,
+        "s": 12,
+        "t": 10
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 6,
+        "s": 4,
+        "t": 7
+      },
+      "all_arms_min_n_ge_10": 4,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 80,
+        "s": 15,
+        "t": 80
+      },
+      "mean_n_avg": {
+        "u": 52.675000000000004,
+        "s": 36.81111111111111,
+        "t": 53.67777777777778
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5603625452687014,
+      "b1_shift_max": -0.5062917119104091,
+      "b2_mismatch_min": -0.00804181948061138,
+      "b2_mismatch_max": 0.01788909514755865,
+      "starvation_pct": {
+        "u": 15.825797239409805,
+        "s": 7.6140218620429705,
+        "t": 12.688015526443474
+      },
+      "dehydration_pct": {
+        "u": 84.17420276059019,
+        "s": 92.38597813795703,
+        "t": 87.31198447355652
+      },
+      "max_abs_eu_drift": 2.4621840566396713e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "3c21d7bdce4f7c8b8f0088fb74fae2be12b15080209c3bfa9e6140ca55518f9d"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b2_strict_fl2",
+      "description": "Phase B: E3 + strict_prey_cap=1 + founder_layout=2",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 44.8284155,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 8
+      },
+      "all_arms_survived": 8,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 4,
+        "t": 5
+      },
+      "all_arms_min_n_ge_10": 4,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 58,
+        "s": 14,
+        "t": 79
+      },
+      "mean_n_avg": {
+        "u": 59.29444444444445,
+        "s": 33.666666666666664,
+        "t": 41.03888888888889
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5302028711367273,
+      "b1_shift_max": -0.47149494594274277,
+      "b2_mismatch_min": -0.010845493032881778,
+      "b2_mismatch_max": 0.012945952351725718,
+      "starvation_pct": {
+        "u": 25.32581209881346,
+        "s": 12.24818694601128,
+        "t": 22.733854619171733
+      },
+      "dehydration_pct": {
+        "u": 74.67418790118654,
+        "s": 87.75181305398871,
+        "t": 77.26614538082826
+      },
+      "max_abs_eu_drift": 1.4842953532934189e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "23dd6f17d884629f86e29376e0bfdc131f33a6564cebf168431a8c4d5300fd4f"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b1_g2_fl1",
+      "description": "Phase B: E3 g2 (strict=1, lakes=16, ll=1, dehyd=960) + founder_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 48.4452195,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 11
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 9,
+        "t": 11
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 4,
+        "t": 0
+      },
+      "min_n_max": {
+        "u": 64,
+        "s": 59,
+        "t": 80
+      },
+      "mean_n_avg": {
+        "u": 65.58333333333333,
+        "s": 57.072222222222216,
+        "t": 65.41388888888889
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5491031189299418,
+      "b1_shift_max": -0.5163029770670419,
+      "b2_mismatch_min": -0.0025101152564282786,
+      "b2_mismatch_max": 0.0054964088563033125,
+      "starvation_pct": {
+        "u": 76.51845393780877,
+        "s": 42.10799584631361,
+        "t": 48.93975092561427
+      },
+      "dehydration_pct": {
+        "u": 23.481546062191224,
+        "s": 57.89200415368639,
+        "t": 51.06024907438573
+      },
+      "max_abs_eu_drift": 2.7008354663848877e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "e30c5f44282cdb9bbe7440d2d471a83dcfef0f27d661869f2168f25e1de7986b"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b2_g2_fl2",
+      "description": "Phase B: E3 g2 (strict=1, lakes=16, ll=1, dehyd=960) + founder_layout=2",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 53.077498,
+      "survived": {
+        "u": 10,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 10,
+        "t": 9
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 5,
+        "t": 1
+      },
+      "min_n_max": {
+        "u": 70,
+        "s": 44,
+        "t": 76
+      },
+      "mean_n_avg": {
+        "u": 66.32222222222224,
+        "s": 56.305555555555564,
+        "t": 55.13055555555555
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5372614854907899,
+      "b1_shift_max": -0.5022808780712629,
+      "b2_mismatch_min": -0.003213610449485801,
+      "b2_mismatch_max": 0.007536576646629073,
+      "starvation_pct": {
+        "u": 83.86609614900578,
+        "s": 42.23635400105989,
+        "t": 52.57480862908838
+      },
+      "dehydration_pct": {
+        "u": 16.133903850994212,
+        "s": 57.76364599894011,
+        "t": 47.42519137091162
+      },
+      "max_abs_eu_drift": 3.66999302059412e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "664537b86a70a2341fde8015ef138da4ca11856e1c0cdc59b88887b33513a228"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b1_g3_fl1",
+      "description": "Phase B: E3 g3 (strict=1, f=100, cap=100, lakes=16, ll=1, dehyd=960) + founder_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 56.7132163,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 11,
+      "min_n_ge_10": {
+        "u": 10,
+        "s": 9,
+        "t": 9
+      },
+      "all_arms_min_n_ge_10": 8,
+      "min_n_min": {
+        "u": 0,
+        "s": 2,
+        "t": 4
+      },
+      "min_n_max": {
+        "u": 80,
+        "s": 58,
+        "t": 96
+      },
+      "mean_n_avg": {
+        "u": 79.35555555555557,
+        "s": 54.21111111111111,
+        "t": 74.06666666666668
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5577664111498956,
+      "b1_shift_max": -0.494849136993692,
+      "b2_mismatch_min": -0.005477959653905023,
+      "b2_mismatch_max": 0.005193648224377151,
+      "starvation_pct": {
+        "u": 76.22641509433963,
+        "s": 40.48757170172084,
+        "t": 46.734854445318646
+      },
+      "dehydration_pct": {
+        "u": 23.77358490566038,
+        "s": 59.51242829827916,
+        "t": 53.265145554681354
+      },
+      "max_abs_eu_drift": 4.2171450331807137e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "1eef46f01cd23022ad8713bf551821e38b4472771b22b4cd3890ae524f0d91c4"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b2_g3_fl2",
+      "description": "Phase B: E3 g3 (strict=1, f=100, cap=100, lakes=16, ll=1, dehyd=960) + founder_layout=2",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 59.3212853,
+      "survived": {
+        "u": 10,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 8,
+        "s": 11,
+        "t": 11
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 9,
+        "t": 2
+      },
+      "min_n_max": {
+        "u": 95,
+        "s": 53,
+        "t": 79
+      },
+      "mean_n_avg": {
+        "u": 72.12777777777778,
+        "s": 59.175000000000004,
+        "t": 70.31944444444444
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5656440343121029,
+      "b1_shift_max": -0.48472908193481495,
+      "b2_mismatch_min": -0.0033803185581434197,
+      "b2_mismatch_max": 0.007130732729919929,
+      "starvation_pct": {
+        "u": 83.31780055917987,
+        "s": 37.096774193548384,
+        "t": 45.49524342473419
+      },
+      "dehydration_pct": {
+        "u": 16.68219944082013,
+        "s": 62.903225806451616,
+        "t": 54.50475657526581
+      },
+      "max_abs_eu_drift": 4.330649971961975e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "c153c3e77883fdf7853e5e8fe82e53500674feefc29c50ae3376c6773d63463b"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b1_g4_fl1",
+      "description": "Phase B: E3 g4 (strict=1, f=160, cap=160, lakes=16, ll=1, dehyd=960) + founder_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 70.0321713,
+      "survived": {
+        "u": 11,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 11,
+      "min_n_ge_10": {
+        "u": 11,
+        "s": 11,
+        "t": 11
+      },
+      "all_arms_min_n_ge_10": 11,
+      "min_n_min": {
+        "u": 0,
+        "s": 7,
+        "t": 2
+      },
+      "min_n_max": {
+        "u": 74,
+        "s": 65,
+        "t": 115
+      },
+      "mean_n_avg": {
+        "u": 100.39166666666665,
+        "s": 79.75,
+        "t": 99.5138888888889
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5490328365489561,
+      "b1_shift_max": -0.4480640862402663,
+      "b2_mismatch_min": -0.007500617965223556,
+      "b2_mismatch_max": 0.006692197300378681,
+      "starvation_pct": {
+        "u": 74.88766849725413,
+        "s": 37.83076475719686,
+        "t": 46.64769695891873
+      },
+      "dehydration_pct": {
+        "u": 25.11233150274588,
+        "s": 62.16923524280314,
+        "t": 53.35230304108127
+      },
+      "max_abs_eu_drift": 2.9889633879065514e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": true,
+        "wp2_all_12": true,
+        "all_passed": true
+      },
+      "cell_json_sha256": "d2d836d9484c2b67a8a0ed9e43425d9ca9a14197d0dc73520b579b3a6748fb08"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b2_g4_fl2",
+      "description": "Phase B: E3 g4 (strict=1, f=160, cap=160, lakes=16, ll=1, dehyd=960) + founder_layout=2",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 72.8880071,
+      "survived": {
+        "u": 9,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 9,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 11,
+        "t": 10
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 0,
+        "s": 1,
+        "t": 5
+      },
+      "min_n_max": {
+        "u": 81,
+        "s": 38,
+        "t": 62
+      },
+      "mean_n_avg": {
+        "u": 89.89722222222223,
+        "s": 75.94444444444444,
+        "t": 86.90833333333335
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5665175839304555,
+      "b1_shift_max": -0.4338657046645305,
+      "b2_mismatch_min": -0.004774112428252142,
+      "b2_mismatch_max": 0.008011492547307004,
+      "starvation_pct": {
+        "u": 84.7504924491136,
+        "s": 36.39542275905912,
+        "t": 49.171055197971526
+      },
+      "dehydration_pct": {
+        "u": 15.249507550886408,
+        "s": 63.60457724094088,
+        "t": 50.828944802028474
+      },
+      "max_abs_eu_drift": 5.846959538757801e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "38e5be6615a42a7f708436670fe05f1981a2bf30d6aadc304a1128d57fb081fe"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b1_g5_fl1",
+      "description": "Phase B: E3 g5 herbivore (strict=1, f=100, cap=100, lakes=16, ll=1, dehyd=960, pred=0) + founder_layout=1",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 57.5472333,
+      "survived": {
+        "u": 12,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 12,
+      "min_n_ge_10": {
+        "u": 10,
+        "s": 12,
+        "t": 9
+      },
+      "all_arms_min_n_ge_10": 7,
+      "min_n_min": {
+        "u": 1,
+        "s": 11,
+        "t": 3
+      },
+      "min_n_max": {
+        "u": 100,
+        "s": 95,
+        "t": 100
+      },
+      "mean_n_avg": {
+        "u": 81.84722222222223,
+        "s": 72.47500000000001,
+        "t": 69.96944444444445
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5295145819077127,
+      "b1_shift_max": -0.49881091247969106,
+      "b2_mismatch_min": -0.0009999904844154792,
+      "b2_mismatch_max": 0.011938964877875824,
+      "starvation_pct": {
+        "u": 63.831148065238246,
+        "s": 26.365054602184088,
+        "t": 41.18673647469459
+      },
+      "dehydration_pct": {
+        "u": 36.168851934761754,
+        "s": 73.63494539781591,
+        "t": 58.81326352530541
+      },
+      "max_abs_eu_drift": 2.61643435806036e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": true,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "5b3a54138893753caa1baaa3ec9faf4a9ee135db9e9eeb826f9506447f4f5d82"
+    },
+    {
+      "suite": "e3",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "e3_b2_g5_fl2",
+      "description": "Phase B: E3 g5 herbivore (strict=1, f=100, cap=100, lakes=16, ll=1, dehyd=960, pred=0) + founder_layout=2",
+      "overrides": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.lakes",
+          16.0
+        ],
+        [
+          "live.lake_layout",
+          1.0
+        ],
+        [
+          "live.dehydration_ticks",
+          960.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 36,
+      "elapsed_secs": 60.1531214,
+      "survived": {
+        "u": 10,
+        "s": 12,
+        "t": 12
+      },
+      "all_arms_survived": 10,
+      "min_n_ge_10": {
+        "u": 9,
+        "s": 11,
+        "t": 11
+      },
+      "all_arms_min_n_ge_10": 8,
+      "min_n_min": {
+        "u": 0,
+        "s": 8,
+        "t": 3
+      },
+      "min_n_max": {
+        "u": 100,
+        "s": 100,
+        "t": 100
+      },
+      "mean_n_avg": {
+        "u": 79.63055555555555,
+        "s": 70.66388888888889,
+        "t": 76.4888888888889
+      },
+      "wp2": {
+        "b1": 12,
+        "b2": 12,
+        "c": 12,
+        "all": 12
+      },
+      "b1_shift_min": -0.5324778892281813,
+      "b1_shift_max": -0.5089589273907388,
+      "b2_mismatch_min": -0.003227834984837802,
+      "b2_mismatch_max": 0.009448342532684931,
+      "starvation_pct": {
+        "u": 61.85268575104535,
+        "s": 25.250924458531433,
+        "t": 37.955528103767755
+      },
+      "dehydration_pct": {
+        "u": 38.14731424895465,
+        "s": 74.74907554146857,
+        "t": 62.044471896232245
+      },
+      "max_abs_eu_drift": 1.7666025087237358e-08,
+      "card_targets": {
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "wp2_all_12": true,
+        "all_passed": false
+      },
+      "cell_json_sha256": "45b5db965537388de3eea30d7d3f5492602991af0fed7996115e88da8d9485ad"
+    }
+  ],
+  "sel2p_cells": [
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_a_reg",
+      "description": "Registered SEL2-P (base: f=100, cap=80, s=1.0; scarce: f=100, cap=320, s=0.63; strict=0, grass=0)",
+      "overrides_all": [],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 472.2637508,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 9,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880005,
+          880006,
+          880007,
+          880008,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 111724.0994889173,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 9,
+        "selected": 11,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 9,
+        "selected": 6,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 35,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 78.68952083333333,
+        "selected": 97.64529166666667,
+        "scarce_mut0": 9.017583333333333,
+        "scarce_drift": 14.3341875
+      },
+      "g_selected_min": 0.4005326687104255,
+      "g_selected_max": 0.574017366269537,
+      "selected_generations_proxy_min": 29.852333345804624,
+      "selected_generations_proxy_max": 45.40532077293425,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 11,
+        "c4": 12,
+        "c5": 2,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 7,
+        "c1_min10": 6,
+        "c2": 11,
+        "c3": 11,
+        "c4": 12,
+        "c5": 11
+      },
+      "starvation_pct": {
+        "baseline_ref": 46.8054977092878,
+        "selected": 73.98784718180336,
+        "scarce_mut0": 87.29522481700941
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 43157,
+        "actual_births": 5914,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 36845,
+        "missed_births_insolvent": 398,
+        "scheduled_deaths": 42953,
+        "actual_deaths": 7114,
+        "missed_deaths": 35839
+      },
+      "max_abs_eu_drift": 4.2869942262768745e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "a19ff877ede77b1614c659c5aa71327a1ae33694c807471be145c05070f2c93c"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_b_strict",
+      "description": "SEL2-P + live.strict_prey_cap=1 (all 4 arms)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 546.6399618,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 11,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006,
+          880007,
+          880008,
+          880009,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 124302.04851950993,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 11,
+        "selected": 11,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 11,
+        "selected": 6,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 35,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 73.07808333333334,
+        "selected": 97.64529166666667,
+        "scarce_mut0": 9.017583333333333,
+        "scarce_drift": 14.3341875
+      },
+      "g_selected_min": 0.3600033326927954,
+      "g_selected_max": 0.5159333583098448,
+      "selected_generations_proxy_min": 29.852333345804624,
+      "selected_generations_proxy_max": 45.40532077293425,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 11,
+        "c4": 12,
+        "c5": 2,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 7,
+        "c1_min10": 6,
+        "c2": 8,
+        "c3": 11,
+        "c4": 12,
+        "c5": 11
+      },
+      "starvation_pct": {
+        "baseline_ref": 40.253222310938746,
+        "selected": 73.98784718180336,
+        "scarce_mut0": 87.29522481700941
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 43157,
+        "actual_births": 5914,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 36845,
+        "missed_births_insolvent": 398,
+        "scheduled_deaths": 42953,
+        "actual_deaths": 7114,
+        "missed_deaths": 35839
+      },
+      "max_abs_eu_drift": 4.2869942262768745e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "ce30933c67c3b975988f35d7ea9b124607c144aac40659812566659a6ec325e2"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_c_grass",
+      "description": "SEL2-P + live.grass_steering=1 (all 4 arms)",
+      "overrides_all": [
+        [
+          "live.grass_steering",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 321.8374242,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 7,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880005,
+          880008,
+          880009,
+          880010,
+          880012
+        ],
+        "pooled_crop_second_half": 100128.79574397962,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 7,
+        "selected": 6,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 6,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 68,
+        "selected": 2,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 51.039187500000004,
+        "selected": 19.987437500000002,
+        "scarce_mut0": 3.4627708333333334,
+        "scarce_drift": 3.2332083333333337
+      },
+      "g_selected_min": 0.6057264042753445,
+      "g_selected_max": 0.8499284274022474,
+      "selected_generations_proxy_min": 27.694506971633402,
+      "selected_generations_proxy_max": 37.90224223660756,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 8,
+        "c4": 10,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 0,
+        "c1_min10": 0,
+        "c2": 0,
+        "c3": 8,
+        "c4": 10,
+        "c5": 6
+      },
+      "starvation_pct": {
+        "baseline_ref": 34.70775992883679,
+        "selected": 59.35072463768116,
+        "scarce_mut0": 89.50514779143141
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 7794,
+        "actual_births": 1685,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 5991,
+        "missed_births_insolvent": 118,
+        "scheduled_deaths": 8625,
+        "actual_deaths": 2885,
+        "missed_deaths": 5740
+      },
+      "max_abs_eu_drift": 3.699096851050854e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "d4028c454a48cc8331cc6f08330ce1b2f47c78fec4b2076da91cf35c3dd9741f"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_d_both",
+      "description": "SEL2-P + strict_prey_cap=1 + grass_steering=1 (all 4 arms)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 317.5085551,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 9,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880005,
+          880007,
+          880008,
+          880009,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 108956.01061017999,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 9,
+        "selected": 6,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 7,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 2,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 57.80822916666667,
+        "selected": 19.987437500000002,
+        "scarce_mut0": 3.4627708333333334,
+        "scarce_drift": 3.2332083333333337
+      },
+      "g_selected_min": 0.55665268093759,
+      "g_selected_max": 0.7810703551623076,
+      "selected_generations_proxy_min": 27.694506971633402,
+      "selected_generations_proxy_max": 37.90224223660756,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 8,
+        "c4": 10,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 0,
+        "c1_min10": 0,
+        "c2": 1,
+        "c3": 8,
+        "c4": 10,
+        "c5": 6
+      },
+      "starvation_pct": {
+        "baseline_ref": 25.151696011140952,
+        "selected": 59.35072463768116,
+        "scarce_mut0": 89.50514779143141
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 7794,
+        "actual_births": 1685,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 5991,
+        "missed_births_insolvent": 118,
+        "scheduled_deaths": 8625,
+        "actual_deaths": 2885,
+        "missed_deaths": 5740
+      },
+      "max_abs_eu_drift": 3.699096851050854e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "8356bdd0a5af8aa5195e4796acd7da989e428fe6b1cef8480f6c1809f9b63004"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_e1_sym100",
+      "description": "SEL2-P + both + symmetric founders=100, prey_cap=100 (all 4 arms incl. baseline)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 319.3133896,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 8,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880005,
+          880008,
+          880009,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 95540.89923269486,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 8,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 75,
+        "selected": 3,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 60.33483333333333,
+        "selected": 17.292333333333332,
+        "scarce_mut0": 4.005416666666666,
+        "scarce_drift": 2.9827291666666667
+      },
+      "g_selected_min": 0.577273612430612,
+      "g_selected_max": 0.960615579250361,
+      "selected_generations_proxy_min": 25.978252829351284,
+      "selected_generations_proxy_max": 33.64313450888026,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 0,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 0,
+        "c1_min10": 0,
+        "c2": 1,
+        "c3": 3,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 30.750857688800103,
+        "selected": 49.02293967714528,
+        "scarce_mut0": 67.39636702375408
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 6093,
+        "actual_births": 606,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 5348,
+        "missed_births_insolvent": 139,
+        "scheduled_deaths": 7062,
+        "actual_deaths": 1806,
+        "missed_deaths": 5256
+      },
+      "max_abs_eu_drift": 3.65253072232008e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "bde2c7e1b3427cf5ae48370472379fb2a1522d7d18b18b40db080c81d2244f86"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_e2_sym160",
+      "description": "SEL2-P + both + symmetric founders=160, prey_cap=160 (all 4 arms incl. baseline)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.grass_steering",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 398.4135835,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 11,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880004,
+          880005,
+          880007,
+          880008,
+          880009,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 79497.95773090878,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 11,
+        "selected": 4,
+        "scarce_mut0": 2,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 6,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 41,
+        "selected": 5,
+        "scarce_mut0": 5,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 103.33110416666666,
+        "selected": 20.352249999999998,
+        "scarce_mut0": 7.929125000000002,
+        "scarce_drift": 4.3698958333333335
+      },
+      "g_selected_min": 0.7182664433188704,
+      "g_selected_max": 1.1058237389064014,
+      "selected_generations_proxy_min": 25.55381928486074,
+      "selected_generations_proxy_max": 37.24539713599573,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 0,
+        "c4": 8,
+        "c5": 2,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 1,
+        "c1_min10": 0,
+        "c2": 0,
+        "c3": 3,
+        "c4": 8,
+        "c5": 6
+      },
+      "starvation_pct": {
+        "baseline_ref": 34.18944662489385,
+        "selected": 49.73586602225469,
+        "scarce_mut0": 63.54424122590213
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 7229,
+        "actual_births": 850,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 6252,
+        "missed_births_insolvent": 127,
+        "scheduled_deaths": 8897,
+        "actual_deaths": 2770,
+        "missed_deaths": 6127
+      },
+      "max_abs_eu_drift": 4.109460860490799e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "f2fd648a21f511a22a46b3be694f532bf438129330af609b76ace94f88fa50b2"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_f1_strict_sym100_nograss",
+      "description": "SEL2-P + strict=1, grass=0 + symmetric founders=100, prey_cap=100 (all 4 arms)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 243.7121146,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 113877.54762546816,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 3,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 98,
+        "selected": 31,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 80.69491666666666,
+        "selected": 59.169624999999996,
+        "scarce_mut0": 8.058749999999998,
+        "scarce_drift": 9.126958333333333
+      },
+      "g_selected_min": 0.5679311391980909,
+      "g_selected_max": 0.5916460594531915,
+      "selected_generations_proxy_min": 19.345623169204334,
+      "selected_generations_proxy_max": 30.63632660344137,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 0,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 4,
+        "c1_min10": 4,
+        "c2": 4,
+        "c3": 1,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 37.767903815995815,
+        "selected": 63.0726566833056,
+        "scarce_mut0": 74.48833888624465
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 8815,
+        "actual_births": 1416,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 7171,
+        "missed_births_insolvent": 228,
+        "scheduled_deaths": 9015,
+        "actual_deaths": 2016,
+        "missed_deaths": 6999
+      },
+      "max_abs_eu_drift": 4.2549800127744675e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "a5b3302ca9bc5786113f5e128f61e38d64f2333bdf1963ac410444d68e899502"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_f2_strict_sym160_nograss",
+      "description": "SEL2-P + strict=1, grass=0 + symmetric founders=160, prey_cap=160 (all 4 arms)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          160.0
+        ],
+        [
+          "live.prey_cap",
+          160.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 474.3018281,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 86910.56725274256,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 2,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 4,
+        "selected": 2,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 93,
+        "selected": 40,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 123.17233333333333,
+        "selected": 40.28508333333333,
+        "scarce_mut0": 9.02525,
+        "scarce_drift": 5.997083333333332
+      },
+      "g_selected_min": 0.6702246925301376,
+      "g_selected_max": 0.6981637076819526,
+      "selected_generations_proxy_min": 29.122295948643252,
+      "selected_generations_proxy_max": 30.289776609351247,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 1,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 2,
+        "c1_min10": 2,
+        "c2": 0,
+        "c3": 1,
+        "c4": 6,
+        "c5": 2
+      },
+      "starvation_pct": {
+        "baseline_ref": 50.17276856776799,
+        "selected": 68.24298346789696,
+        "scarce_mut0": 70.19655034095467
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 7083,
+        "actual_births": 786,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 6157,
+        "missed_births_insolvent": 140,
+        "scheduled_deaths": 7803,
+        "actual_deaths": 1746,
+        "missed_deaths": 6057
+      },
+      "max_abs_eu_drift": 4.400499165058136e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "023c7bad0a2095b61aae48919493577284167df367d8db3f3835e7a0ffd7d120"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_f3_strict_s075_cap320",
+      "description": "SEL2-P + strict=1, grass=0 + milder scarcity scale=0.75 (scarce arms only)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 214.0120208,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123429.01980717565,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 5,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 52,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.88066666666667,
+        "selected": 116.77016666666667,
+        "scarce_mut0": 13.072874999999998,
+        "scarce_drift": 7.121083333333334
+      },
+      "g_selected_min": 0.3541518888281809,
+      "g_selected_max": 0.5724875640173959,
+      "selected_generations_proxy_min": 31.82242490091359,
+      "selected_generations_proxy_max": 44.78485509001372,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 1,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 5,
+        "c1_min10": 4,
+        "c2": 4,
+        "c3": 6,
+        "c4": 6,
+        "c5": 5
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.383218842001966,
+        "selected": 68.0923076923077,
+        "scarce_mut0": 79.30333079074498
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 26206,
+        "actual_births": 1813,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 23988,
+        "missed_births_insolvent": 405,
+        "scheduled_deaths": 26000,
+        "actual_deaths": 2413,
+        "missed_deaths": 23587
+      },
+      "max_abs_eu_drift": 7.06349965184927e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "259f8c5a86721a3aaf7be08492f92271e1596cf883752736fa2979d32d017157"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_f4_strict_s063_k10k",
+      "description": "SEL2-P + strict=1, grass=0 + rolling drift_reset_ticks=10000 (scarce_drift only)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 256.2766249,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123429.01980717565,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 5,
+        "scarce_mut0": 0,
+        "scarce_drift": 3
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 2,
+        "scarce_mut0": 0,
+        "scarce_drift": 2
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 35,
+        "scarce_mut0": 0,
+        "scarce_drift": 35
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.88066666666667,
+        "selected": 83.69458333333334,
+        "scarce_mut0": 12.286666666666667,
+        "scarce_drift": 83.59991666666666
+      },
+      "g_selected_min": 0.38044600633496145,
+      "g_selected_max": 0.5195826187200726,
+      "selected_generations_proxy_min": 31.54741308095403,
+      "selected_generations_proxy_max": 45.40532077293425,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 2,
+        "drift_valid": 3,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 3,
+        "c1_min10": 2,
+        "c2": 3,
+        "c3": 6,
+        "c4": 6,
+        "c5": 5
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.383218842001966,
+        "selected": 74.75687763274222,
+        "scarce_mut0": 83.60702151755379
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          20
+        ],
+        "scheduled_births": 19226,
+        "actual_births": 19172,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 20,
+        "missed_births_insolvent": 34,
+        "scheduled_deaths": 19229,
+        "actual_deaths": 19211,
+        "missed_deaths": 18
+      },
+      "max_abs_eu_drift": 4.190951585769653e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "b63ed0363a3bda91436bb90a57173cc3c696cb74b6a58efa9f5d6433332562bb"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_f5_strict_s063_k2k",
+      "description": "SEL2-P + strict=1, grass=0 + rolling drift_reset_ticks=2000 (scarce_drift only)",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 277.7685979,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123429.01980717565,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 5,
+        "scarce_mut0": 0,
+        "scarce_drift": 5
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 2,
+        "scarce_mut0": 0,
+        "scarce_drift": 2
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 35,
+        "scarce_mut0": 0,
+        "scarce_drift": 35
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.88066666666667,
+        "selected": 83.69458333333334,
+        "scarce_mut0": 12.286666666666667,
+        "scarce_drift": 83.69458333333334
+      },
+      "g_selected_min": 0.38044600633496145,
+      "g_selected_max": 0.5195826187200726,
+      "selected_generations_proxy_min": 31.54741308095403,
+      "selected_generations_proxy_max": 45.40532077293425,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 2,
+        "drift_valid": 5,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 3,
+        "c1_min10": 2,
+        "c2": 3,
+        "c3": 6,
+        "c4": 6,
+        "c5": 5
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.383218842001966,
+        "selected": 74.75687763274222,
+        "scarce_mut0": 83.60702151755379
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 19226,
+        "actual_births": 19226,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 0,
+        "scheduled_deaths": 19229,
+        "actual_deaths": 19229,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 4.190951585769653e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "8e736fadcde06779203443e9327e517bf012a1e33d9139002a097bba3eb8ba22"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "A",
+      "trunk_sha": "d90be0bd26fe637e2a3db1ce0c238845cf4211fd",
+      "cell_id": "sel2p_f6_strict_s100_cap80_mut0",
+      "description": "SEL2-P + strict=1, grass=0 + prey_cap=80, scarce scale=1.0 control",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.prey_cap",
+          80.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 228.8234692,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123429.01980717565,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 5,
+        "scarce_mut0": 1,
+        "scarce_drift": 1
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 5,
+        "scarce_mut0": 1,
+        "scarce_drift": 1
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 80,
+        "scarce_mut0": 20,
+        "scarce_drift": 80
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.88066666666667,
+        "selected": 66.88066666666667,
+        "scarce_mut0": 24.134208333333333,
+        "scarce_drift": 26.7985
+      },
+      "g_selected_min": 0.9765740179744397,
+      "g_selected_max": 1.02527081841421,
+      "selected_generations_proxy_min": 17.834346600604167,
+      "selected_generations_proxy_max": 21.78183355297511,
+      "joint_gates": {
+        "c1_min5": 1,
+        "c1_min10_scarce": 1,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 0,
+        "c4": 1,
+        "c5": 1,
+        "drift_valid": 1,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 5,
+        "c1_min10": 5,
+        "c2": 0,
+        "c3": 1,
+        "c4": 1,
+        "c5": 5
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.383218842001966,
+        "selected": 38.383218842001966,
+        "scarce_mut0": 60.170648464163826
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 7952,
+        "actual_births": 3898,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 3738,
+        "missed_births_insolvent": 316,
+        "scheduled_deaths": 8152,
+        "actual_deaths": 4418,
+        "missed_deaths": 3734
+      },
+      "max_abs_eu_drift": 2.514570951461792e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "75a7e82b85675cfe75c720741fde3fe9694ff60516910e601298c26e3034e1c8"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b1_strict_s063_k0_fl1",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.63, K=0 + founder_layout=1",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 1369.238547,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123436.22916158839,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 1,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 79,
+        "selected": 20,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.46983333333334,
+        "selected": 91.541375,
+        "scarce_mut0": 6.254041666666667,
+        "scarce_drift": 6.458125
+      },
+      "g_selected_min": 0.31136155012408095,
+      "g_selected_max": 0.5149949354707672,
+      "selected_generations_proxy_min": 32.227593487803524,
+      "selected_generations_proxy_max": 42.53207171986655,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 3,
+        "c1_min10": 1,
+        "c2": 2,
+        "c3": 6,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.56389656038162,
+        "selected": 73.74827635395368,
+        "scarce_mut0": 78.76651982378854
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 21014,
+        "actual_births": 1758,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 19020,
+        "missed_births_insolvent": 236,
+        "scheduled_deaths": 21031,
+        "actual_deaths": 2358,
+        "missed_deaths": 18673
+      },
+      "max_abs_eu_drift": 3.841705620288849e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "c44dca613ab8acd1d887f383f93a2cea8c43fb1187821e552b26ec304b20a42e"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b2_strict_s063_k0_fl2",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.63, K=0 + founder_layout=2",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 821.0831914,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 124758.40868781919,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 4,
+        "selected": 3,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 16,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "mean_n_avg": {
+        "baseline_ref": 65.3025,
+        "selected": 62.08558333333334,
+        "scarce_mut0": 6.648958333333332,
+        "scarce_drift": 7.954166666666666
+      },
+      "g_selected_min": 0.32744137150351094,
+      "g_selected_max": 0.5977947388573699,
+      "selected_generations_proxy_min": 31.63981271549122,
+      "selected_generations_proxy_max": 42.50330384867967,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 0,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 4,
+        "c1_min10": 3,
+        "c2": 3,
+        "c3": 6,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 36.644621406397626,
+        "selected": 75.45647558386412,
+        "scarce_mut0": 81.08786610878661
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          1
+        ],
+        "scheduled_births": 14026,
+        "actual_births": 2013,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 11834,
+        "missed_births_insolvent": 179,
+        "scheduled_deaths": 14130,
+        "actual_deaths": 2613,
+        "missed_deaths": 11517
+      },
+      "max_abs_eu_drift": 4.720641300082207e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "02c345c10ad0b4319ab3d2b553ede4fed1f8857e1764748fdbca66a8f27be0aa"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b1_strict_s063_k2k_fl1",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.63, K=2000 + founder_layout=1",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 2480.9198564,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123436.22916158839,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 4
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 1,
+        "scarce_mut0": 0,
+        "scarce_drift": 1
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 79,
+        "selected": 20,
+        "scarce_mut0": 0,
+        "scarce_drift": 20
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.46983333333334,
+        "selected": 91.541375,
+        "scarce_mut0": 6.254041666666667,
+        "scarce_drift": 91.541375
+      },
+      "g_selected_min": 0.31136155012408095,
+      "g_selected_max": 0.5149949354707672,
+      "selected_generations_proxy_min": 32.227593487803524,
+      "selected_generations_proxy_max": 42.53207171986655,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 4,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 3,
+        "c1_min10": 1,
+        "c2": 2,
+        "c3": 6,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.56389656038162,
+        "selected": 73.74827635395368,
+        "scarce_mut0": 78.76651982378854
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 21014,
+        "actual_births": 21014,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 0,
+        "scheduled_deaths": 21031,
+        "actual_deaths": 21031,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 3.897002898156643e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "16abae462d915a6b57110ada83bab4eb7a709565285c41781d71dab12bb6ef96"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b2_strict_s063_k2k_fl2",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.63, K=2000 + founder_layout=2",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 1261.2141913,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 124758.40868781919,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 4
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 4,
+        "selected": 3,
+        "scarce_mut0": 0,
+        "scarce_drift": 3
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 16,
+        "scarce_mut0": 0,
+        "scarce_drift": 16
+      },
+      "mean_n_avg": {
+        "baseline_ref": 65.3025,
+        "selected": 62.08558333333334,
+        "scarce_mut0": 6.648958333333332,
+        "scarce_drift": 62.08525
+      },
+      "g_selected_min": 0.32744137150351094,
+      "g_selected_max": 0.5977947388573699,
+      "selected_generations_proxy_min": 31.63981271549122,
+      "selected_generations_proxy_max": 42.50330384867967,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 4,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 4,
+        "c1_min10": 3,
+        "c2": 3,
+        "c3": 6,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 36.644621406397626,
+        "selected": 75.45647558386412,
+        "scarce_mut0": 81.08786610878661
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 14026,
+        "actual_births": 14025,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 1,
+        "scheduled_deaths": 14130,
+        "actual_deaths": 14130,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 4.9389200285077095e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "4029ce64d2d288e1c23b2ffad4155e9be2694bf22ccd3e479c03cb8e998a9c4c"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b1_strict_s063_k10k_fl1",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.63, K=10000 + founder_layout=1",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 560.1183321,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123436.22916158839,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 3
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 1,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 79,
+        "selected": 20,
+        "scarce_mut0": 0,
+        "scarce_drift": 8
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.46983333333334,
+        "selected": 91.541375,
+        "scarce_mut0": 6.254041666666667,
+        "scarce_drift": 91.27883333333334
+      },
+      "g_selected_min": 0.31136155012408095,
+      "g_selected_max": 0.5149949354707672,
+      "selected_generations_proxy_min": 32.227593487803524,
+      "selected_generations_proxy_max": 42.53207171986655,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 3,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 3,
+        "c1_min10": 1,
+        "c2": 2,
+        "c3": 6,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.56389656038162,
+        "selected": 73.74827635395368,
+        "scarce_mut0": 78.76651982378854
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          20
+        ],
+        "scheduled_births": 21014,
+        "actual_births": 20839,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 14,
+        "missed_births_insolvent": 161,
+        "scheduled_deaths": 21031,
+        "actual_deaths": 21028,
+        "missed_deaths": 3
+      },
+      "max_abs_eu_drift": 3.958120942115784e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "2b1dbebfa5dcc87916caf1b9e47b32fa2f8244b033888b3aedb9c8b533df5ca7"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b2_strict_s063_k10k_fl2",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.63, K=10000 + founder_layout=2",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 336.6359802,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 124758.40868781919,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 3
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 4,
+        "selected": 3,
+        "scarce_mut0": 0,
+        "scarce_drift": 2
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 16,
+        "scarce_mut0": 0,
+        "scarce_drift": 16
+      },
+      "mean_n_avg": {
+        "baseline_ref": 65.3025,
+        "selected": 62.08558333333334,
+        "scarce_mut0": 6.648958333333332,
+        "scarce_drift": 61.759458333333335
+      },
+      "g_selected_min": 0.32744137150351094,
+      "g_selected_max": 0.5977947388573699,
+      "selected_generations_proxy_min": 31.63981271549122,
+      "selected_generations_proxy_max": 42.50330384867967,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 3,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 4,
+        "c1_min10": 3,
+        "c2": 3,
+        "c3": 6,
+        "c4": 6,
+        "c5": 4
+      },
+      "starvation_pct": {
+        "baseline_ref": 36.644621406397626,
+        "selected": 75.45647558386412,
+        "scarce_mut0": 81.08786610878661
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          20
+        ],
+        "scheduled_births": 14026,
+        "actual_births": 13866,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 98,
+        "missed_births_insolvent": 62,
+        "scheduled_deaths": 14130,
+        "actual_deaths": 14081,
+        "missed_deaths": 49
+      },
+      "max_abs_eu_drift": 6.530899554491043e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "22c33eaca0278a3e3a3807c1f28d33c7ce076590ec30e7237ee60f7961839244"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b1_strict_s075_k2k_fl1",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.75, cap=320, K=2000 + founder_layout=1",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 460.4653511,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 123436.22916158839,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 5,
+        "scarce_mut0": 0,
+        "scarce_drift": 5
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 5,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 4
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 79,
+        "selected": 43,
+        "scarce_mut0": 0,
+        "scarce_drift": 43
+      },
+      "mean_n_avg": {
+        "baseline_ref": 66.46983333333334,
+        "selected": 112.69725,
+        "scarce_mut0": 13.6975,
+        "scarce_drift": 112.69687499999999
+      },
+      "g_selected_min": 0.35094240184787484,
+      "g_selected_max": 0.6120335720189524,
+      "selected_generations_proxy_min": 34.01344729697965,
+      "selected_generations_proxy_max": 44.53684205219045,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 5,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 5,
+        "c1_min10": 4,
+        "c2": 3,
+        "c3": 6,
+        "c4": 6,
+        "c5": 5
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.56389656038162,
+        "selected": 67.95705545080233,
+        "scarce_mut0": 73.67001716106888
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 26213,
+        "actual_births": 26212,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 1,
+        "scheduled_deaths": 25987,
+        "actual_deaths": 25987,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 7.307971827685833e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "77e5b3b836a98f91b5d9de102f6da73f92d93579be0ca465f16e8ee1562dea00"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b2_strict_s075_k2k_fl2",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, s=0.75, cap=320, K=2000 + founder_layout=2",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 423.7692808,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 5,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 124758.40868781919,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 5,
+        "selected": 6,
+        "scarce_mut0": 1,
+        "scarce_drift": 6
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 4,
+        "selected": 4,
+        "scarce_mut0": 0,
+        "scarce_drift": 4
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 7,
+        "scarce_mut0": 0,
+        "scarce_drift": 7
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 44,
+        "scarce_mut0": 3,
+        "scarce_drift": 44
+      },
+      "mean_n_avg": {
+        "baseline_ref": 65.3025,
+        "selected": 132.748125,
+        "scarce_mut0": 18.278916666666664,
+        "scarce_drift": 132.748125
+      },
+      "g_selected_min": 0.3828046023403055,
+      "g_selected_max": 0.5744942781961195,
+      "selected_generations_proxy_min": 31.925257338701158,
+      "selected_generations_proxy_max": 45.2207563883925,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 6,
+        "c4": 6,
+        "c5": 1,
+        "drift_valid": 6,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 6,
+        "c1_min10": 4,
+        "c2": 5,
+        "c3": 6,
+        "c4": 6,
+        "c5": 6
+      },
+      "starvation_pct": {
+        "baseline_ref": 36.644621406397626,
+        "selected": 67.27144441084567,
+        "scarce_mut0": 75.11432926829268
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 30074,
+        "actual_births": 30074,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 0,
+        "scheduled_deaths": 29763,
+        "actual_deaths": 29763,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 7.232301868498325e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "8326ee4b83cf808a8b27bd4e9f9ca394e909f3f883d8ed37d170fc6e9b568d36"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b1_strict_sym100_k2k_fl1",
+      "description": "Phase B1: SEL2-P + strict=1, grass=0, f=100, cap=100, s=0.63, K=2000 + founder_layout=1",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founders",
+          100.0
+        ],
+        [
+          "live.prey_cap",
+          100.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 6,
+      "runs": 24,
+      "elapsed_secs": 352.0262686,
+      "pooled_baseline": {
+        "n_requested": 6,
+        "n_surviving": 6,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880004,
+          880005,
+          880006
+        ],
+        "pooled_crop_second_half": 113361.82384246432,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 6,
+        "selected": 3,
+        "scarce_mut0": 0,
+        "scarce_drift": 3
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 6,
+        "selected": 1,
+        "scarce_mut0": 0,
+        "scarce_drift": 1
+      },
+      "min_n_min": {
+        "baseline_ref": 17,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 55,
+        "selected": 13,
+        "scarce_mut0": 0,
+        "scarce_drift": 13
+      },
+      "mean_n_avg": {
+        "baseline_ref": 96.39829166666668,
+        "selected": 47.41675000000001,
+        "scarce_mut0": 8.795916666666669,
+        "scarce_drift": 47.41675000000001
+      },
+      "g_selected_min": 0.49396297063510924,
+      "g_selected_max": 0.6060647673133425,
+      "selected_generations_proxy_min": 26.04497714821877,
+      "selected_generations_proxy_max": 32.166913516646275,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 1,
+        "c4": 6,
+        "c5": 0,
+        "drift_valid": 3,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 2,
+        "c1_min10": 1,
+        "c2": 2,
+        "c3": 1,
+        "c4": 6,
+        "c5": 3
+      },
+      "starvation_pct": {
+        "baseline_ref": 38.07776962582538,
+        "selected": 62.56538278649548,
+        "scarce_mut0": 76.23564653020469
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 8110,
+        "actual_births": 8110,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 0,
+        "scheduled_deaths": 8412,
+        "actual_deaths": 8412,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 2.922024577856064e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": false,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "954df03fc79d370fcd1aa27bbb45300a8936956ceeca47ca878b9884a1b65140"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b0_s063_k2k_fl0_12s",
+      "description": "Phase B2 12s: SEL2-P + strict=1, grass=0, s=0.63, K=2000 + founder_layout=0",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 722.4164039,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 11,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006,
+          880007,
+          880008,
+          880009,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 124302.04851950993,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 11,
+        "selected": 11,
+        "scarce_mut0": 0,
+        "scarce_drift": 10
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 11,
+        "selected": 6,
+        "scarce_mut0": 0,
+        "scarce_drift": 6
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 35,
+        "scarce_mut0": 0,
+        "scarce_drift": 35
+      },
+      "mean_n_avg": {
+        "baseline_ref": 73.07808333333334,
+        "selected": 97.64529166666667,
+        "scarce_mut0": 9.017583333333333,
+        "scarce_drift": 97.64304166666666
+      },
+      "g_selected_min": 0.3600033326927954,
+      "g_selected_max": 0.5159333583098448,
+      "selected_generations_proxy_min": 29.852333345804624,
+      "selected_generations_proxy_max": 45.40532077293425,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 11,
+        "c4": 12,
+        "c5": 2,
+        "drift_valid": 10,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 7,
+        "c1_min10": 6,
+        "c2": 8,
+        "c3": 11,
+        "c4": 12,
+        "c5": 11
+      },
+      "starvation_pct": {
+        "baseline_ref": 40.253222310938746,
+        "selected": 73.98784718180336,
+        "scarce_mut0": 87.29522481700941
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 43157,
+        "actual_births": 43142,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 1,
+        "missed_births_insolvent": 14,
+        "scheduled_deaths": 42953,
+        "actual_deaths": 42953,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 4.359753802418709e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "735568f7c84a07e6e36f560cb65f09fab3e174f0ab6afa8078c02f18116c65c4"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b0_s075_k2k_fl0_12s",
+      "description": "Phase B2 12s: SEL2-P + strict=1, grass=0, s=0.75, cap=320, K=2000 + founder_layout=0",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 584.1107956,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 11,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006,
+          880007,
+          880008,
+          880009,
+          880010,
+          880011,
+          880012
+        ],
+        "pooled_crop_second_half": 124302.04851950993,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 11,
+        "selected": 11,
+        "scarce_mut0": 0,
+        "scarce_drift": 11
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 11,
+        "selected": 10,
+        "scarce_mut0": 0,
+        "scarce_drift": 10
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 52,
+        "scarce_mut0": 0,
+        "scarce_drift": 52
+      },
+      "mean_n_avg": {
+        "baseline_ref": 73.07808333333334,
+        "selected": 120.75133333333333,
+        "scarce_mut0": 10.439208333333331,
+        "scarce_drift": 120.751125
+      },
+      "g_selected_min": 0.35166452219861244,
+      "g_selected_max": 0.5782767348205843,
+      "selected_generations_proxy_min": 31.82242490091359,
+      "selected_generations_proxy_max": 45.23109551603142,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 12,
+        "c4": 12,
+        "c5": 1,
+        "drift_valid": 11,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 11,
+        "c1_min10": 10,
+        "c2": 10,
+        "c3": 12,
+        "c4": 12,
+        "c5": 11
+      },
+      "starvation_pct": {
+        "baseline_ref": 40.253222310938746,
+        "selected": 68.6785105865174,
+        "scarce_mut0": 83.31857100679068
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 53909,
+        "actual_births": 53907,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 2,
+        "scheduled_deaths": 53417,
+        "actual_deaths": 53417,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 7.095513865351677e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "2aaee53de0995549be5cf8e482ef3c29bf5cb4d7b9b1fcc8456369eb078269b0"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b1_s075_k2k_fl1_12s",
+      "description": "Phase B2 12s: SEL2-P + strict=1, grass=0, s=0.75, cap=320, K=2000 + founder_layout=1",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          1.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 560.2205448,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 9,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006,
+          880007,
+          880009,
+          880010,
+          880012
+        ],
+        "pooled_crop_second_half": 123356.02487211514,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 9,
+        "selected": 11,
+        "scarce_mut0": 0,
+        "scarce_drift": 11
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 9,
+        "selected": 8,
+        "scarce_mut0": 0,
+        "scarce_drift": 8
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 0,
+        "scarce_mut0": 0,
+        "scarce_drift": 0
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 43,
+        "scarce_mut0": 0,
+        "scarce_drift": 43
+      },
+      "mean_n_avg": {
+        "baseline_ref": 59.92270833333333,
+        "selected": 122.36829166666666,
+        "scarce_mut0": 12.366604166666667,
+        "scarce_drift": 122.36810416666667
+      },
+      "g_selected_min": 0.35117057948261476,
+      "g_selected_max": 0.6124315073271664,
+      "selected_generations_proxy_min": 31.541397638497486,
+      "selected_generations_proxy_max": 45.556591355839295,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 12,
+        "c4": 12,
+        "c5": 1,
+        "drift_valid": 11,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 11,
+        "c1_min10": 8,
+        "c2": 9,
+        "c3": 12,
+        "c4": 12,
+        "c5": 11
+      },
+      "starvation_pct": {
+        "baseline_ref": 41.34197687629486,
+        "selected": 68.14682380413763,
+        "scarce_mut0": 78.01026957637997
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 55318,
+        "actual_births": 55317,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 1,
+        "scheduled_deaths": 54814,
+        "actual_deaths": 54814,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 7.782364264130592e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "d53d2c3def978483774c7a02ce625ac5e726c12c76a95cde83ddb61b6ee247da"
+    },
+    {
+      "suite": "sel2p",
+      "phase": "B",
+      "trunk_sha": "4794b6fca720dc0fad4b3e66aa377a15e341bae6",
+      "cell_id": "sel2p_b2_s075_k2k_fl2_12s",
+      "description": "Phase B2 12s: SEL2-P + strict=1, grass=0, s=0.75, cap=320, K=2000 + founder_layout=2",
+      "overrides_all": [
+        [
+          "live.strict_prey_cap",
+          1.0
+        ],
+        [
+          "live.founder_layout",
+          2.0
+        ]
+      ],
+      "n_seeds": 12,
+      "runs": 48,
+      "elapsed_secs": 5027.5410913,
+      "pooled_baseline": {
+        "n_requested": 12,
+        "n_surviving": 9,
+        "min_required": 3,
+        "surviving_seeds": [
+          880001,
+          880002,
+          880003,
+          880005,
+          880006,
+          880008,
+          880009,
+          880010,
+          880011
+        ],
+        "pooled_crop_second_half": 125272.11362071072,
+        "sufficient": true
+      },
+      "survived": {
+        "baseline_ref": 9,
+        "selected": 12,
+        "scarce_mut0": 1,
+        "scarce_drift": 12
+      },
+      "min_n_ge_10": {
+        "baseline_ref": 7,
+        "selected": 10,
+        "scarce_mut0": 0,
+        "scarce_drift": 10
+      },
+      "min_n_min": {
+        "baseline_ref": 0,
+        "selected": 7,
+        "scarce_mut0": 0,
+        "scarce_drift": 7
+      },
+      "min_n_max": {
+        "baseline_ref": 80,
+        "selected": 66,
+        "scarce_mut0": 3,
+        "scarce_drift": 66
+      },
+      "mean_n_avg": {
+        "baseline_ref": 59.36724999999999,
+        "selected": 131.39483333333337,
+        "scarce_mut0": 12.834583333333335,
+        "scarce_drift": 131.39483333333337
+      },
+      "g_selected_min": 0.3812348306898391,
+      "g_selected_max": 0.5759409486323005,
+      "selected_generations_proxy_min": 31.925257338701158,
+      "selected_generations_proxy_max": 45.4756581367899,
+      "joint_gates": {
+        "c1_min5": 0,
+        "c1_min10_scarce": 0,
+        "c1_min10_with_base": 0,
+        "c2": 0,
+        "c3": 12,
+        "c4": 12,
+        "c5": 1,
+        "drift_valid": 12,
+        "gate_pass": 0
+      },
+      "selected_only_gates": {
+        "c1_min5": 12,
+        "c1_min10": 10,
+        "c2": 11,
+        "c3": 12,
+        "c4": 12,
+        "c5": 12
+      },
+      "starvation_pct": {
+        "baseline_ref": 39.197390380822334,
+        "selected": 68.10993975903614,
+        "scarce_mut0": 78.39513828599777
+      },
+      "drift_diagnostics": {
+        "window_counts": [
+          100
+        ],
+        "scheduled_births": 59013,
+        "actual_births": 59013,
+        "missed_births_capped": 0,
+        "missed_births_extinct": 0,
+        "missed_births_insolvent": 0,
+        "scheduled_deaths": 58432,
+        "actual_deaths": 58432,
+        "missed_deaths": 0
+      },
+      "max_abs_eu_drift": 8.923234418034554e-08,
+      "card_targets": {
+        "is_12_seed_confirmation": true,
+        "surv_ge_11_per_arm": false,
+        "min_n_ge_10_in_11_per_arm": false,
+        "joint_gates_ge_11": false,
+        "all_passed": false
+      },
+      "cell_json_sha256": "b65190b97d9a7c7074b552c7461040dd0b8c165cc71fdf7d8e27797a08019830"
+    }
+  ]
+}
