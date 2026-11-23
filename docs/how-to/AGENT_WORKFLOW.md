@@ -742,6 +742,11 @@ R5-AUTH   =
   only, one new note per card under docs/ai/planning/ (V2 SpeciesProfile, V3 lifecycle per your ADR-0013
   draft, V4 carcasses and decomposition with a bit-exact EU ledger, V5 soil water, nutrients and grass
   biomass as fields, V6 the four interventions with CauseId). No other path.
+  AUTHORIZATION (owner via the lead, 2026-11-24): for card WV2-2 (PR #199) only, you may also write
+  scripts/paper/gate_faults/feature_separation_worldgen.patch: regenerate it against the branch's
+  src-tauri/crates/anima-worldgen/Cargo.toml so that it injects exactly the same fault (one added line
+  bevy_ecs = "0.13.0" in [dependencies]) and nothing else. WV2-2 grew that Cargo.toml, so the M2 fault
+  patch no longer applied and gateControls.test.ts failed (CI job 137908480045). No other path.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
