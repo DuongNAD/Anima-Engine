@@ -19,6 +19,7 @@ pub mod experiment;
 pub mod experiment_runner;
 pub mod intervention;
 pub mod live_experiment;
+pub mod live_lineage;
 pub mod locomotion;
 pub mod mortality;
 pub mod networking_systems;

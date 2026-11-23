@@ -73,8 +73,25 @@ pub fn mutate_genotype(
     mutation_rate: f64,
     rng: &mut impl Rng,
 ) -> Result<(), NodeIdExhausted> {
+    mutate_genotype_reporting(genotype, node_id_counter, mutation_rate, rng).map(|_| ())
+}
+
+/// [`mutate_genotype`], also saying whether the genotype was actually changed.
+///
+/// `false` covers every way a call leaves the body as it was: the rate draw said no, no operator
+/// applied, the result was invalid and reverted, or the operator's result is bit-identical to the
+/// input (a parameter clamped back onto its old value). The draws are exactly those of
+/// [`mutate_genotype`] — it is a wrapper around this function — so a caller switching to this one
+/// replays the same stream. The live lineage path uses the answer to label a birth edge `Mutate`
+/// or `Clone` from what happened rather than from the rate.
+pub fn mutate_genotype_reporting(
+    genotype: &mut MorphologyGenotype,
+    node_id_counter: &mut u32,
+    mutation_rate: f64,
+    rng: &mut impl Rng,
+) -> Result<bool, NodeIdExhausted> {
     if !rng.gen_bool(mutation_rate) {
-        return Ok(());
+        return Ok(false);
     }
 
     let backup = genotype.clone();
@@ -223,8 +240,11 @@ pub fn mutate_genotype(
     if success && !is_valid_genotype(genotype) {
         *genotype = backup;
         *node_id_counter = backup_counter;
+        return Ok(false);
     }
-    Ok(())
+    // An operator can run and still leave the body as it was (a parameter already at its clamp),
+    // so "changed" is decided by comparing with the backup, not by `success`.
+    Ok(success && !genotype.is_bit_identical(&backup))
 }
 
 #[cfg(test)]

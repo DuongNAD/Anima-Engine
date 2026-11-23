@@ -114,6 +114,7 @@ nào là `Option` thì `None` trên save cũ hơn và trên run không dùng tí
 | Thí nghiệm sống | `experiment`: fingerprint, tick đồng hồ, causal ledger | 5 |
 | Tiến hoá | `evolution_worker`: RNG chính xác của worker, kho MAP-Elites, con trỏ định danh, trạng thái Meta-AI | 6 |
 | Học | `shared_learning`: model, trạng thái Adam, transition dở dang | 7 |
+| Phả hệ live (F-066, khoá `live.lineage_tracking`) | `live_lineage`: con trỏ id `birth-…`, ngưỡng nén kế tiếp, sàn nén, số fault. Đồ thị đi trong `lineage_nodes` / `lineage_relations` (mỗi node thêm `origin_tick` / `destruction_tick`), id riêng của từng cá thể sống trong `agents[].live_id`; khi khôi phục id đó được gắn lại nguyên vẹn, không mint lại (D01). Trường cộng thêm, không tăng schema: vắng khoá thì cả bốn là `None` và bị bỏ khỏi bytes, nên save cũ và save không khoá không đổi | 8 (cộng thêm) |
 | Truy nguyên | `loaded_from_schema`: file này được ghi ở version nào | — |
 
 ### 6.1 Trần trước khi đọc

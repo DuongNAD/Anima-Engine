@@ -26,6 +26,32 @@ pub struct LineageNode {
     /// approximating it: five `Mutate` edges compressed into one still read as five.
     #[serde(default)]
     pub cumulative_mutations: Option<u32>,
+    /// World tick at which this individual entered the live population — the ALife data
+    /// standard's `origin_time`. `Some(0)` for a founder.
+    ///
+    /// Recorded only by the opt-in live lineage path (`live.lineage_tracking`,
+    /// [`crate::core::live_lineage`]). `None` means *not recorded*: every MAP-Elites node, every
+    /// node of a save written before the field existed, and every node of a run without the key.
+    /// It never means "born at tick zero". Omitted from the bytes when `None`, so a save that
+    /// records no live lineage is byte-for-byte what it was before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_tick: Option<u64>,
+    /// World tick at which this individual left the live population (death, culling or
+    /// replacement) — the ALife data standard's `destruction_time`. `None` while it is alive, and
+    /// also whenever death was never recorded (see [`Self::origin_tick`]).
+    ///
+    /// Read the two together: a node with `origin_tick: Some(_)` and `destruction_tick: None` is an
+    /// **open** individual, which [`LineageTracker::compact`] keeps without being told to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destruction_tick: Option<u64>,
+}
+
+impl LineageNode {
+    /// An individual the tracker knows entered the live population and has not been recorded
+    /// leaving it. Compaction treats every open node as a sample.
+    pub fn is_open(&self) -> bool {
+        self.origin_tick.is_some() && self.destruction_tick.is_none()
+    }
 }
 
 /// Cumulative mutation count per node id, derived from edges alone.
@@ -219,6 +245,19 @@ pub trait LineageTracker: Send + Sync {
     ) -> Result<(), String>;
     fn get_lineage_graph(&self) -> Result<(Vec<LineageNode>, Vec<LineageRelation>), String>;
 
+    /// Stamp [`LineageNode::origin_tick`] on a node that is already in the store.
+    ///
+    /// Refuses an unknown id and a node whose origin is already set: an individual is born once,
+    /// and silently moving its birth would rewrite history the exporter has already read.
+    fn record_origin(&self, id: &str, tick: u64) -> Result<(), String>;
+
+    /// Stamp [`LineageNode::destruction_tick`] on a node that is already in the store.
+    ///
+    /// Refuses an unknown id, a node already recorded dead, and a tick before the node's origin.
+    /// A second death is a bookkeeping bug upstream (two despawns of one individual), and keeping
+    /// the first tick while reporting it is the only answer that does not invent a lifespan.
+    fn record_destruction(&self, id: &str, tick: u64) -> Result<(), String>;
+
     /// Drop every node with no `samples` descendant, freeing its genotype.
     ///
     /// # Why the caller supplies `samples`, and what must be in it
@@ -236,6 +275,13 @@ pub trait LineageTracker: Send + Sync {
     /// sample costs an ancestry link rather than producing an orphan edge that
     /// [`to_newick`](super::newick::to_newick) and [`simplify`](super::simplify::simplify) would
     /// later reject.
+    ///
+    /// **Open individuals are samples too.** Every node for which [`LineageNode::is_open`] holds —
+    /// recorded entering the live population and not recorded leaving it — is kept as though the
+    /// caller had named it. Only the opt-in live lineage path stamps those ticks, so on every other
+    /// path the sample set is exactly `samples`, as before. On the live path it means a caller
+    /// cannot prune a living individual by forgetting it, and the evolution thread, which does not
+    /// know who is alive, compacts a mixed store without deleting the live population's parents.
     ///
     /// # What it does, and what that costs
     ///
@@ -303,6 +349,8 @@ impl LineageTracker for InMemoryLineageTracker {
             genotype: Some(genotype),
             // A root has no ancestry, so zero is a recorded fact here, not a default.
             cumulative_mutations: Some(0),
+            origin_tick: None,
+            destruction_tick: None,
         };
         self.nodes.write().map_err(|e| e.to_string())?.push(node);
         Ok(())
@@ -351,6 +399,8 @@ impl LineageTracker for InMemoryLineageTracker {
             generation,
             genotype: Some(genotype),
             cumulative_mutations,
+            origin_tick: None,
+            destruction_tick: None,
         };
         nodes.push(node);
         // Known ids are read from the node list rather than kept as a side index: the list is
@@ -421,6 +471,21 @@ impl LineageTracker for InMemoryLineageTracker {
         // `simplify` decides what survives; the rewrite below is what applies it. Unary-path
         // splicing is now ON — it is the step that reaches the O(alive) bound, and it is what the
         // per-node count above was added to make safe.
+        //
+        // Open individuals join the caller's samples (see the trait doc). Allocated only when
+        // there is at least one: every store the live lineage path never touched compacts against
+        // exactly the slice it was given.
+        let with_open: Vec<String>;
+        let samples: &[String] = if nodes.iter().any(LineageNode::is_open) {
+            with_open = samples
+                .iter()
+                .cloned()
+                .chain(nodes.iter().filter(|n| n.is_open()).map(|n| n.id.clone()))
+                .collect();
+            &with_open
+        } else {
+            samples
+        };
         let plan = simplify_with(
             &nodes,
             &relations,
@@ -462,6 +527,43 @@ impl LineageTracker for InMemoryLineageTracker {
         let nodes = self.nodes.read().map_err(|e| e.to_string())?.clone();
         let relations = self.relations.read().map_err(|e| e.to_string())?.clone();
         Ok((nodes, relations))
+    }
+
+    fn record_origin(&self, id: &str, tick: u64) -> Result<(), String> {
+        let mut nodes = self.nodes.write().map_err(|e| e.to_string())?;
+        let node =
+            nodes.iter_mut().rev().find(|n| n.id == id).ok_or_else(|| {
+                format!("lineage: cannot record the origin of unknown node {id:?}")
+            })?;
+        if let Some(existing) = node.origin_tick {
+            return Err(format!(
+                "lineage: node {id:?} already has origin tick {existing}; refusing {tick}"
+            ));
+        }
+        node.origin_tick = Some(tick);
+        Ok(())
+    }
+
+    fn record_destruction(&self, id: &str, tick: u64) -> Result<(), String> {
+        let mut nodes = self.nodes.write().map_err(|e| e.to_string())?;
+        let node =
+            nodes.iter_mut().rev().find(|n| n.id == id).ok_or_else(|| {
+                format!("lineage: cannot record the death of unknown node {id:?}")
+            })?;
+        if let Some(existing) = node.destruction_tick {
+            return Err(format!(
+                "lineage: node {id:?} already died at tick {existing}; refusing a second death at \
+                 {tick}"
+            ));
+        }
+        if node.origin_tick.is_some_and(|origin| tick < origin) {
+            return Err(format!(
+                "lineage: node {id:?} cannot die at tick {tick}, before its origin {:?}",
+                node.origin_tick
+            ));
+        }
+        node.destruction_tick = Some(tick);
+        Ok(())
     }
 }
 
@@ -719,6 +821,8 @@ impl LineageTracker for FallbackLineageTracker {
                             // edge walk, which is exact here because Neo4j keeps the full,
                             // uncompacted graph.
                             cumulative_mutations: None,
+                            origin_tick: None,
+                            destruction_tick: None,
                         });
                     }
 
@@ -776,5 +880,17 @@ impl LineageTracker for FallbackLineageTracker {
     /// online run reports.
     fn compact(&self, samples: &[String]) -> Result<CompactionReport, String> {
         self.in_memory.compact(samples)
+    }
+
+    /// In-memory only. The ticks are not Neo4j columns yet, so with Neo4j online
+    /// `get_lineage_graph` returns them as `None`; the only writer today is the headless live
+    /// adapter, which never goes online.
+    fn record_origin(&self, id: &str, tick: u64) -> Result<(), String> {
+        self.in_memory.record_origin(id, tick)
+    }
+
+    /// In-memory only, for the reason on [`Self::record_origin`].
+    fn record_destruction(&self, id: &str, tick: u64) -> Result<(), String> {
+        self.in_memory.record_destruction(id, tick)
     }
 }
