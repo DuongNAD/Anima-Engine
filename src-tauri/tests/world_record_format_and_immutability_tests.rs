@@ -199,12 +199,27 @@ fn header_validates_platform_class_and_fork_links() {
         Err(WorldRecordError::InvalidForkLink)
     ));
 
-    let mut bad_fork_tick = hdr;
+    let mut bad_fork_tick = hdr.clone();
     bad_fork_tick.parent_run_id = None;
     bad_fork_tick.fork_tick = Some(180);
     assert!(matches!(
         WorldRecord::build_empty(bad_fork_tick),
         Err(WorldRecordError::InvalidForkLink)
+    ));
+
+    let mut orphan_fork_hash = hdr.clone();
+    orphan_fork_hash.fork_keyframe_hash = Some([0x11; 32]);
+    assert!(matches!(
+        WorldRecord::build_empty(orphan_fork_hash),
+        Err(WorldRecordError::InvalidForkLink)
+    ));
+
+    let mut era0_prev_hash = hdr;
+    era0_prev_hash.era_index = 0;
+    era0_prev_hash.prev_era_tail_hash = Some([0x22; 32]);
+    assert!(matches!(
+        WorldRecord::build_empty(era0_prev_hash),
+        Err(WorldRecordError::InvalidEraLink { era_index: 0 })
     ));
 }
 
@@ -268,6 +283,16 @@ fn canonical_encoding_normalizes_negative_zero_and_rejects_nonfinite_floats() {
         canonical_encode(&k_neg_zero).unwrap(),
         canonical_encode(&k_pos_zero).unwrap()
     );
+
+    // Non-finite primitives must be rejected directly by `canonical_encode` (never coerced to `null`).
+    assert!(matches!(
+        canonical_encode(&f64::NAN),
+        Err(WorldRecordError::NonFiniteFloat { .. })
+    ));
+    assert!(matches!(
+        canonical_encode(&f32::INFINITY),
+        Err(WorldRecordError::NonFiniteFloat { .. })
+    ));
 
     let mut bad_header = sample_header(true);
     bad_header
