@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -68,6 +68,39 @@ function runCli(args: string[]): { status: number | null; stdout: string; stderr
 }
 
 describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
+  it('reports a shallow clone once instead of every catalogued commit as missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anima-incident-dates-shallow-'));
+    try {
+      const origin = join(dir, 'origin');
+      const clone = join(dir, 'clone');
+      const git = (cwd: string, args: string[]) =>
+        execFileSync(
+          'git',
+          ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args],
+          { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+      execFileSync('git', ['init', origin], { stdio: 'ignore' });
+      for (const n of ['1', '2']) {
+        writeFileSync(join(origin, 'f.txt'), n, 'utf8');
+        git(origin, ['add', 'f.txt']);
+        git(origin, ['commit', '-m', n]);
+      }
+      execFileSync('git', ['clone', '--depth', '1', `file://${origin}`, clone], { stdio: 'ignore' });
+      writeFileSync(join(clone, 'incidents.csv'), readFileSync(CANONICAL_CSV_PATH, 'utf8'), 'utf8');
+
+      const result = (checkIncidentsCsv as (o: { csvPath: string; repoRoot: string }) => CheckResult)({
+        csvPath: 'incidents.csv',
+        repoRoot: clone,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].field).toBe('git');
+      expect(result.errors[0].message).toContain('shallow clone');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('verifies the committed docs/paper/data/incidents.csv cleanly via CLI --check', () => {
     const run = runCli(['--check']);
     expect(run.status).toBe(0);

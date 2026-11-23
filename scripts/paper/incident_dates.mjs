@@ -258,6 +258,32 @@ export function checkIncidentsCsv({ csvPath, repoRoot }) {
     };
   }
 
+  // A shallow clone (CI's default depth-1 checkout) has none of the catalogued commits. Say that
+  // once instead of reporting every row's commits as missing.
+  let isShallow = 'false';
+  try {
+    isShallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+      cwd: resolvedRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    // Not a git repository: the per-row commit checks report it.
+  }
+  if (isShallow === 'true') {
+    return {
+      ok: false,
+      rowCount: 0,
+      errors: [
+        {
+          id: '<repo>',
+          field: 'git',
+          message: `${resolvedRoot} is a shallow clone; run \`git fetch --unshallow\` (CI: actions/checkout with fetch-depth: 0)`,
+        },
+      ],
+    };
+  }
+
   let parsedRows;
   try {
     parsedRows = parseCsv(readFileSync(resolvedCsv, 'utf8'));
