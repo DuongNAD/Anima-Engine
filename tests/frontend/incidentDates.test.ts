@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 // @ts-expect-error -- incident_dates.mjs has no .d.mts declaration
 import { EXPECTED_HEADERS, checkIncidentsCsv, parseCsv, runSelfTest, validateSourceAnchor } from '../../scripts/paper/incident_dates.mjs';
 
@@ -85,7 +86,7 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
         git(origin, ['add', 'f.txt']);
         git(origin, ['commit', '-m', n]);
       }
-      execFileSync('git', ['clone', '--depth', '1', `file://${origin}`, clone], { stdio: 'ignore' });
+      execFileSync('git', ['clone', '--depth', '1', pathToFileURL(origin).href, clone], { stdio: 'ignore' });
       writeFileSync(join(clone, 'incidents.csv'), readFileSync(CANONICAL_CSV_PATH, 'utf8'), 'utf8');
 
       const result = (checkIncidentsCsv as (o: { csvPath: string; repoRoot: string }) => CheckResult)({
@@ -101,11 +102,11 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
     }
   });
 
-  it('verifies the committed docs/paper/data/incidents.csv cleanly via CLI --check', () => {
+  it('verifies the committed 47-row docs/paper/data/incidents.csv cleanly with was_suite_green=yes only', () => {
     const run = runCli(['--check']);
     expect(run.status).toBe(0);
     expect(run.stderr).toBe('');
-    expect(run.stdout).toMatch(/^incident_dates: OK \(\d+ rows verified\)\r?\n$/);
+    expect(run.stdout).toMatch(/^incident_dates: OK \(47 rows verified\)\r?\n$/);
 
     const apiResult = (
       checkIncidentsCsv as (opts: { csvPath: string; repoRoot: string }) => CheckResult
@@ -115,7 +116,13 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
     });
     expect(apiResult.ok).toBe(true);
     expect(apiResult.errors).toEqual([]);
-    expect(apiResult.rowCount).toBeGreaterThanOrEqual(46);
+    expect(apiResult.rowCount).toBe(47);
+
+    const parsed = (parseCsv as (text: string) => string[][])(readFileSync(CANONICAL_CSV_PATH, 'utf8'));
+    expect(parsed[0]).toEqual(EXPECTED_HEADERS);
+    for (const row of parsed.slice(1)) {
+      expect(row[10]).toBe('yes');
+    }
   });
 
   it('passes --self-test positive and negative controls', () => {
@@ -139,12 +146,12 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
       ['hello, world', 'say "hi"', 'plain'],
       ['', '', ''],
     ]);
-    expect(EXPECTED_HEADERS).toHaveLength(11);
+    expect(EXPECTED_HEADERS).toHaveLength(12);
     expect(() => parser('"unterminated,field')).toThrow(/unterminated/);
     expect(() => parser('"bad"tail,ok')).toThrow(/unexpected character/);
   });
 
-  it('exits 1 naming row and field when introduced_date or detected_date is tampered', () => {
+  it('exits 1 naming row and field when introduced_date, detected_date, or fixed_date is tampered', () => {
     withMutatedCsv(
       (rows) => {
         rows[1][6] = '2026-01-01T00:00:00+07:00';
@@ -158,7 +165,18 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
 
     withMutatedCsv(
       (rows) => {
-        rows[1][7] = '2026-12-31T00:00:00+07:00';
+        rows[1][8] = '2026-12-31T00:00:00+07:00';
+      },
+      (tmpCsv) => {
+        const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
+        expect(run.status).toBe(1);
+        expect(run.stderr).toContain('[INC-01] fixed_date:');
+      },
+    );
+
+    withMutatedCsv(
+      (rows) => {
+        rows[1][7] = '2026-02-30';
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
@@ -166,17 +184,39 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
         expect(run.stderr).toContain('[INC-01] detected_date:');
       },
     );
-  });
 
-  it('exits 1 naming row and days_to_detection when day count is tampered', () => {
     withMutatedCsv(
       (rows) => {
-        rows[2][8] = '999';
+        rows[2][7] = '2026-07-02'; // precedes INC-02 introduced_date 2026-07-03
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
         expect(run.status).toBe(1);
-        expect(run.stderr).toContain('[INC-02] days_to_detection:');
+        expect(run.stderr).toContain('[INC-02] detected_date:');
+      },
+    );
+
+    withMutatedCsv(
+      (rows) => {
+        rows[2][7] = '2026-07-28'; // follows INC-02 fixed_date 2026-07-27
+      },
+      (tmpCsv) => {
+        const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
+        expect(run.status).toBe(1);
+        expect(run.stderr).toContain('[INC-02] detected_date:');
+      },
+    );
+  });
+
+  it('exits 1 naming row and days_to_fix when day count is tampered', () => {
+    withMutatedCsv(
+      (rows) => {
+        rows[2][9] = '999';
+      },
+      (tmpCsv) => {
+        const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
+        expect(run.status).toBe(1);
+        expect(run.stderr).toContain('[INC-02] days_to_fix:');
       },
     );
   });
@@ -195,7 +235,7 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
 
     withMutatedCsv(
       (rows) => {
-        rows[1][9] = 'partial';
+        rows[1][10] = 'partial';
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
@@ -224,7 +264,7 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
         expect(run.status).toBe(1);
-        expect(run.stderr).toContain('[INC-01] detected_commit:');
+        expect(run.stderr).toContain('[INC-01] fixed_commit:');
       },
     );
 
@@ -233,21 +273,84 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
         rows[1][3] = '';
         rows[1][4] = '';
         rows[1][6] = '';
-        rows[1][7] = '';
         rows[1][8] = '';
+        rows[1][9] = '';
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
         expect(run.status).toBe(1);
-        expect(run.stderr).toContain('[INC-01] introduced_commit,detected_commit:');
+        expect(run.stderr).toContain('[INC-01] introduced_commit,fixed_commit:');
       },
     );
   });
 
-  it('exits 1 on missing source file, out-of-bounds source line, path traversal, or bad header', () => {
+  it('rejects off-trunk commits that are not ancestors of HEAD and keeps pinned anchors stable on working-tree line shifts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anima-incident-dates-ancestry-'));
+    try {
+      const git = (args: string[], extraEnv: Record<string, string> = {}) =>
+        execFileSync(
+          'git',
+          ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args],
+          { cwd: dir, env: { ...process.env, ...extraEnv }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        ).trim();
+
+      git(['init']);
+      writeFileSync(join(dir, 'doc.md'), 'header\n\nline three\n', 'utf8');
+      git(['add', 'doc.md']);
+      git(['commit', '-m', 'base'], {
+        GIT_AUTHOR_DATE: '2026-10-01T10:00:00+07:00',
+        GIT_COMMITTER_DATE: '2026-10-01T10:00:00+07:00',
+      });
+      const baseSha = git(['rev-parse', '--short=7', 'HEAD']);
+      const baseIso = git(['show', '-s', '--format=%cI', baseSha]);
+
+      // Create an unmerged side branch commit.
+      git(['checkout', '-b', 'side-only']);
+      writeFileSync(join(dir, 'side.txt'), 'side\n', 'utf8');
+      git(['add', 'side.txt']);
+      git(['commit', '-m', 'side commit'], {
+        GIT_AUTHOR_DATE: '2026-10-02T10:00:00+07:00',
+        GIT_COMMITTER_DATE: '2026-10-02T10:00:00+07:00',
+      });
+      const sideSha = git(['rev-parse', '--short=7', 'HEAD']);
+      const sideIso = git(['show', '-s', '--format=%cI', sideSha]);
+      git(['checkout', '-']);
+
+      const okCsv = serializeCsv([
+        EXPECTED_HEADERS,
+        ['INC-1', 'Pinned check', 'other', baseSha, '', 'audit', baseIso, '2026-10-01', '', '', 'yes', `doc.md@${baseSha}:3`],
+      ]);
+      writeFileSync(join(dir, 'incidents.csv'), okCsv, 'utf8');
+
+      // Working-tree prepend of 5 lines must not disturb pinned @sha:3.
+      writeFileSync(join(dir, 'doc.md'), '\n\n\n\n\nheader\n\nline three\n', 'utf8');
+      const shiftedOk = (checkIncidentsCsv as (o: { csvPath: string; repoRoot: string }) => CheckResult)({
+        csvPath: 'incidents.csv',
+        repoRoot: dir,
+      });
+      expect(shiftedOk.ok).toBe(true);
+
+      // Off-trunk commit must be rejected as not an ancestor of HEAD.
+      const offTrunkCsv = serializeCsv([
+        EXPECTED_HEADERS,
+        ['INC-1', 'Off-trunk check', 'other', sideSha, '', 'audit', sideIso, '2026-10-02', '', '', 'yes', `doc.md@${baseSha}:3`],
+      ]);
+      writeFileSync(join(dir, 'incidents.csv'), offTrunkCsv, 'utf8');
+      const offTrunkRes = (checkIncidentsCsv as (o: { csvPath: string; repoRoot: string }) => CheckResult)({
+        csvPath: 'incidents.csv',
+        repoRoot: dir,
+      });
+      expect(offTrunkRes.ok).toBe(false);
+      expect(offTrunkRes.errors.some((e) => e.field === 'introduced_commit' && e.message.includes('ancestor'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 1 on unpinned anchor, missing source file, out-of-bounds line, path traversal, or bad header', () => {
     withMutatedCsv(
       (rows) => {
-        rows[1][10] = 'does/not/exist.md:1';
+        rows[1][11] = 'FINDINGS.md:33';
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
@@ -258,7 +361,7 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
 
     withMutatedCsv(
       (rows) => {
-        rows[1][10] = 'FINDINGS.md:999999';
+        rows[1][11] = 'does/not/exist.md@6495c5c:1';
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
@@ -269,7 +372,18 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
 
     withMutatedCsv(
       (rows) => {
-        rows[1][10] = '../FINDINGS.md:1';
+        rows[1][11] = 'FINDINGS.md@6495c5c:999999';
+      },
+      (tmpCsv) => {
+        const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
+        expect(run.status).toBe(1);
+        expect(run.stderr).toContain('[INC-01] source:');
+      },
+    );
+
+    withMutatedCsv(
+      (rows) => {
+        rows[1][11] = '../FINDINGS.md@6495c5c:1';
       },
       (tmpCsv) => {
         const run = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
@@ -326,53 +440,41 @@ describe('scripts/paper/incident_dates.mjs (Card P1)', () => {
         encoding: 'utf8',
       });
       expect(okRun.status).toBe(0);
-      expect(okRun.stdout).toMatch(/^incident_dates: OK \(\d+ rows verified\)\r?\n$/);
+      expect(okRun.stdout).toMatch(/^incident_dates: OK \(47 rows verified\)\r?\n$/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it('rejects physicalLines + 1 on LF and CRLF trailing-newline files', () => {
-    const findingsRaw = readFileSync(resolve(REPO_ROOT, 'FINDINGS.md'), 'utf8');
-    const findingsPhysicalLines = findingsRaw.replace(/\r?\n$/, '').split(/\r?\n/).length;
-
-    withMutatedCsv(
-      (rows) => {
-        rows[1][10] = `FINDINGS.md:${findingsPhysicalLines}`;
-      },
-      (tmpCsv) => {
-        const okRun = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
-        expect(okRun.status).toBe(0);
-      },
-    );
-
-    withMutatedCsv(
-      (rows) => {
-        rows[1][10] = `FINDINGS.md:${findingsPhysicalLines + 1}`;
-      },
-      (tmpCsv) => {
-        const failRun = runCli(['--check', '--csv', tmpCsv, '--root', REPO_ROOT]);
-        expect(failRun.status).toBe(1);
-        expect(failRun.stderr).toContain('[INC-01] source:');
-      },
-    );
-
-    const anchorCheck = validateSourceAnchor as (
-      sourceText: string,
-      repoRoot: string,
-    ) => { ok: boolean; error?: string };
+  it('rejects physicalLines + 1 on LF and CRLF committed files at pinned anchors', () => {
     const dir = mkdtempSync(join(tmpdir(), 'anima-incident-dates-eol-'));
     try {
+      const git = (args: string[]) =>
+        execFileSync(
+          'git',
+          ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args],
+          { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        ).trim();
+
+      git(['init']);
       writeFileSync(join(dir, 'lf.md'), 'alpha\nbeta\n', 'utf8');
       writeFileSync(join(dir, 'crlf.md'), 'alpha\r\nbeta\r\n', 'utf8');
+      git(['add', 'lf.md', 'crlf.md']);
+      git(['commit', '-m', 'eol fixtures']);
+      const sha = git(['rev-parse', '--short=7', 'HEAD']);
 
-      expect(anchorCheck('lf.md:2', dir).ok).toBe(true);
-      const lfOffByOne = anchorCheck('lf.md:3', dir);
+      const anchorCheck = validateSourceAnchor as (
+        sourceText: string,
+        repoRoot: string,
+      ) => { ok: boolean; error?: string };
+
+      expect(anchorCheck(`lf.md@${sha}:2`, dir).ok).toBe(true);
+      const lfOffByOne = anchorCheck(`lf.md@${sha}:3`, dir);
       expect(lfOffByOne.ok).toBe(false);
       expect(lfOffByOne.error).toContain('out of range (1..2)');
 
-      expect(anchorCheck('crlf.md:2', dir).ok).toBe(true);
-      const crlfOffByOne = anchorCheck('crlf.md:3', dir);
+      expect(anchorCheck(`crlf.md@${sha}:2`, dir).ok).toBe(true);
+      const crlfOffByOne = anchorCheck(`crlf.md@${sha}:3`, dir);
       expect(crlfOffByOne.ok).toBe(false);
       expect(crlfOffByOne.error).toContain('out of range (1..2)');
     } finally {

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Card P1: verify docs/paper/data/incidents.csv against git history and source anchors.
+// Card P1: verify docs/paper/data/incidents.csv against git history and pinned source anchors.
 //
 // Usage:
 //   node scripts/paper/incident_dates.mjs --check [--csv <path>] [--root <path>]
 //   node scripts/paper/incident_dates.mjs --self-test
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,11 +16,12 @@ export const EXPECTED_HEADERS = [
   'title',
   'class',
   'introduced_commit',
-  'detected_commit',
+  'fixed_commit',
   'detected_how',
   'introduced_date',
   'detected_date',
-  'days_to_detection',
+  'fixed_date',
+  'days_to_fix',
   'was_suite_green',
   'source',
 ];
@@ -40,8 +41,10 @@ export const ALLOWED_CLASSES = new Set([
 export const ALLOWED_SUITE_GREEN = new Set(['yes', 'no', 'unknown']);
 
 const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/i;
-const SOURCE_ANCHOR_RE = /^([^:\r\n]+):(\d+)$/;
+const SOURCE_ANCHOR_RE = /^([^@:\r\n]+)@([0-9a-f]{7,40}):(\d+)$/i;
+const ISO_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MS_PER_DAY = 86_400_000;
+const GIT_LOG_CHUNK_SIZE = 200;
 
 /**
  * Parse RFC 4180 CSV text into an array of string rows.
@@ -133,47 +136,188 @@ export function parseCsv(rawText) {
   return rows;
 }
 
-export function verifyCommitAndGetDate(hash, repoRoot) {
-  if (!COMMIT_HASH_RE.test(hash)) {
-    return { ok: false, error: `invalid commit hash syntax "${hash}" (expected 7-40 hex chars)` };
-  }
-
-  let objectType;
-  try {
-    objectType = execFileSync('git', ['cat-file', '-t', hash], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `git cat-file -t ${hash} failed: ${msg.split(/\r?\n/)[0]}` };
-  }
-
-  if (objectType !== 'commit') {
-    return { ok: false, error: `git cat-file -t ${hash} returned "${objectType}" instead of "commit"` };
-  }
-
-  try {
-    const committerDate = execFileSync('git', ['show', '-s', '--format=%cI', hash], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
-    if (!committerDate || Number.isNaN(Date.parse(committerDate))) {
-      return { ok: false, error: `git show -s --format=%cI ${hash} returned invalid date "${committerDate}"` };
-    }
-    return { ok: true, date: committerDate };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `git show -s --format=%cI ${hash} failed: ${msg.split(/\r?\n/)[0]}` };
-  }
+export function isValidIsoDay(dayStr) {
+  const match = ISO_DAY_RE.exec(dayStr);
+  if (!match) return false;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return (
+    dt.getUTCFullYear() === year &&
+    dt.getUTCMonth() + 1 === month &&
+    dt.getUTCDate() === day
+  );
 }
 
-export function validateSourceAnchor(sourceText, repoRoot, lineCountCache = new Map()) {
+export function extractAnchorCommits(sourceText) {
+  if (!sourceText || sourceText.trim() === '') return [];
+  const commits = [];
+  for (const segment of sourceText.split(';').map((p) => p.trim())) {
+    const m = SOURCE_ANCHOR_RE.exec(segment);
+    if (m) commits.push(m[2]);
+  }
+  return commits;
+}
+
+/**
+ * Batch-verify commit hashes for object existence, type == "commit", ancestry of HEAD
+ * (via `git rev-list HEAD`), and committer ISO timestamp `%cI` using minimal git subprocesses.
+ */
+export function batchVerifyCommits(hashes, repoRoot) {
+  const resultMap = new Map();
+  const uniqueHashes = [...new Set(hashes.filter(Boolean))];
+  if (uniqueHashes.length === 0) return resultMap;
+
+  const validSyntaxHashes = [];
+  for (const h of uniqueHashes) {
+    if (!COMMIT_HASH_RE.test(h)) {
+      resultMap.set(h, {
+        ok: false,
+        error: `invalid commit hash syntax "${h}" (expected 7-40 hex chars)`,
+      });
+    } else {
+      validSyntaxHashes.push(h);
+    }
+  }
+
+  if (validSyntaxHashes.length === 0) return resultMap;
+
+  let ancestors;
+  try {
+    const revOut = execFileSync('git', ['rev-list', 'HEAD'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 1 << 24,
+    });
+    ancestors = new Set(revOut.split(/\r?\n/).filter(Boolean));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const firstLine = msg.split(/\r?\n/)[0];
+    for (const h of validSyntaxHashes) {
+      resultMap.set(h, { ok: false, error: `git rev-list HEAD failed: ${firstLine}` });
+    }
+    return resultMap;
+  }
+
+  let batchOut;
+  try {
+    batchOut = execFileSync('git', ['cat-file', '--batch-check=%(objectname)\t%(objecttype)'], {
+      cwd: repoRoot,
+      input: `${validSyntaxHashes.join('\n')}\n`,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 1 << 24,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const firstLine = msg.split(/\r?\n/)[0];
+    for (const h of validSyntaxHashes) {
+      resultMap.set(h, { ok: false, error: `git cat-file --batch-check failed: ${firstLine}` });
+    }
+    return resultMap;
+  }
+
+  const batchLines = batchOut.replace(/\r?\n$/, '').split(/\r?\n/);
+  const fullShaByInput = new Map();
+  const uniqueAncestorFullShas = new Set();
+
+  for (let i = 0; i < validSyntaxHashes.length; i += 1) {
+    const h = validSyntaxHashes[i];
+    const line = batchLines[i] ?? '';
+    const tabIdx = line.indexOf('\t');
+    if (tabIdx === -1) {
+      resultMap.set(h, {
+        ok: false,
+        error: `git object lookup failed for "${h}": ${line || 'missing'}`,
+      });
+      continue;
+    }
+
+    const fullSha = line.slice(0, tabIdx);
+    const objectType = line.slice(tabIdx + 1).trim();
+    if (objectType !== 'commit') {
+      resultMap.set(h, {
+        ok: false,
+        error: `git object ${h} has type "${objectType}" instead of "commit"`,
+      });
+      continue;
+    }
+
+    if (!ancestors.has(fullSha)) {
+      resultMap.set(h, {
+        ok: false,
+        error: `commit ${h} (${fullSha}) is not an ancestor of HEAD`,
+      });
+      continue;
+    }
+
+    fullShaByInput.set(h, fullSha);
+    uniqueAncestorFullShas.add(fullSha);
+  }
+
+  const ancestorList = [...uniqueAncestorFullShas];
+  const dateByFullSha = new Map();
+  for (let i = 0; i < ancestorList.length; i += GIT_LOG_CHUNK_SIZE) {
+    const chunk = ancestorList.slice(i, i + GIT_LOG_CHUNK_SIZE);
+    let logOut;
+    try {
+      logOut = execFileSync('git', ['log', '--no-walk', '--format=%H%x09%cI', ...chunk], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: 1 << 24,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const firstLine = msg.split(/\r?\n/)[0];
+      for (const [h, fullSha] of fullShaByInput.entries()) {
+        if (chunk.includes(fullSha)) {
+          resultMap.set(h, { ok: false, error: `git log --no-walk failed: ${firstLine}` });
+        }
+      }
+      continue;
+    }
+
+    for (const line of logOut.split(/\r?\n/)) {
+      if (!line) continue;
+      const tabIdx = line.indexOf('\t');
+      if (tabIdx === -1) continue;
+      const fullSha = line.slice(0, tabIdx);
+      const committerDate = line.slice(tabIdx + 1).trim();
+      dateByFullSha.set(fullSha, committerDate);
+    }
+  }
+
+  for (const [h, fullSha] of fullShaByInput.entries()) {
+    if (resultMap.has(h)) continue;
+    const committerDate = dateByFullSha.get(fullSha);
+    if (!committerDate || Number.isNaN(Date.parse(committerDate))) {
+      resultMap.set(h, {
+        ok: false,
+        error: `git log returned invalid date "${committerDate ?? ''}" for ${h}`,
+      });
+    } else {
+      resultMap.set(h, { ok: true, fullSha, date: committerDate });
+    }
+  }
+
+  return resultMap;
+}
+
+export function verifyCommitAndGetDate(hash, repoRoot) {
+  return batchVerifyCommits([hash], repoRoot).get(hash);
+}
+
+export function validateSourceAnchor(sourceText, repoRoot, commitMap, blobCache = new Map()) {
   if (!sourceText || sourceText.trim() === '') {
     return { ok: false, error: 'source anchor is empty' };
   }
+
+  const resolvedRoot = resolve(repoRoot);
+  const resolvedCommits =
+    commitMap ?? batchVerifyCommits(extractAnchorCommits(sourceText), resolvedRoot);
 
   const segments = sourceText.split(';').map((part) => part.trim());
   for (const segment of segments) {
@@ -182,47 +326,76 @@ export function validateSourceAnchor(sourceText, repoRoot, lineCountCache = new 
     }
     const match = SOURCE_ANCHOR_RE.exec(segment);
     if (!match) {
-      return { ok: false, error: `invalid source anchor "${segment}" (expected path:line)` };
+      return {
+        ok: false,
+        error: `invalid source anchor "${segment}" (expected pinned <path>@<sha>:<line>)`,
+      };
     }
 
     const relPath = match[1];
-    const lineNum = Number.parseInt(match[2], 10);
+    const anchorSha = match[2];
+    const lineNum = Number.parseInt(match[3], 10);
 
-    if (isAbsolute(relPath) || relPath.startsWith('/') || relPath.startsWith('\\') || /^[A-Za-z]:/.test(relPath)) {
+    if (
+      isAbsolute(relPath) ||
+      relPath.startsWith('/') ||
+      relPath.startsWith('\\') ||
+      /^[A-Za-z]:/.test(relPath)
+    ) {
       return { ok: false, error: `source path "${relPath}" must be relative to repo root` };
     }
     if (relPath.split(/[\\/]/).includes('..')) {
       return { ok: false, error: `source path "${relPath}" must not contain ".."` };
     }
 
-    const resolvedRoot = resolve(repoRoot);
     const resolvedFile = resolve(resolvedRoot, relPath);
     const relFromRoot = relative(resolvedRoot, resolvedFile);
     if (relFromRoot.startsWith('..') || isAbsolute(relFromRoot)) {
       return { ok: false, error: `source path "${relPath}" escapes repo root` };
     }
 
-    if (!existsSync(resolvedFile)) {
-      return { ok: false, error: `source file "${relPath}" does not exist` };
-    }
-
-    const stats = statSync(resolvedFile);
-    if (!stats.isFile()) {
-      return { ok: false, error: `source path "${relPath}" is not a regular file` };
-    }
-
-    let lineCount = lineCountCache.get(resolvedFile);
-    if (lineCount === undefined) {
-      const content = readFileSync(resolvedFile, 'utf8');
-      const normalized = content.replace(/\r?\n$/, '');
-      lineCount = content.length === 0 ? 0 : normalized.split(/\r?\n/).length;
-      lineCountCache.set(resolvedFile, lineCount);
-    }
-
-    if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > lineCount) {
+    const commitInfo = resolvedCommits.get(anchorSha);
+    if (!commitInfo || !commitInfo.ok) {
       return {
         ok: false,
-        error: `source line ${lineNum} in "${relPath}" is out of range (1..${lineCount})`,
+        error: `source anchor commit "${anchorSha}": ${commitInfo?.error ?? 'unverified'}`,
+      };
+    }
+
+    const gitRelPath = relPath.replaceAll('\\', '/');
+    const cacheKey = `${commitInfo.fullSha}:${gitRelPath}`;
+    let lines = blobCache.get(cacheKey);
+    if (lines === undefined) {
+      let content;
+      try {
+        content = execFileSync('git', ['show', `${commitInfo.fullSha}:${gitRelPath}`], {
+          cwd: resolvedRoot,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          maxBuffer: 1 << 24,
+        });
+      } catch {
+        return {
+          ok: false,
+          error: `source file "${gitRelPath}" does not exist at commit ${anchorSha}`,
+        };
+      }
+      const normalized = content.replace(/\r?\n$/, '');
+      lines = content.length === 0 ? [] : normalized.split(/\r?\n/);
+      blobCache.set(cacheKey, lines);
+    }
+
+    if (!Number.isInteger(lineNum) || lineNum < 1 || lineNum > lines.length) {
+      return {
+        ok: false,
+        error: `source line ${lineNum} in "${gitRelPath}@${anchorSha}" is out of range (1..${lines.length})`,
+      };
+    }
+
+    if (lines[lineNum - 1].trim().length === 0) {
+      return {
+        ok: false,
+        error: `source line ${lineNum} in "${gitRelPath}@${anchorSha}" is blank`,
       };
     }
   }
@@ -230,19 +403,22 @@ export function validateSourceAnchor(sourceText, repoRoot, lineCountCache = new 
   return { ok: true };
 }
 
-export function computeDaysToDetection(introducedIso, detectedIso) {
+export function computeDaysToFix(introducedIso, fixedIso) {
   const introducedMs = Date.parse(introducedIso);
-  const detectedMs = Date.parse(detectedIso);
-  if (Number.isNaN(introducedMs) || Number.isNaN(detectedMs)) {
-    return { ok: false, error: `unparseable ISO date(s): introduced="${introducedIso}", detected="${detectedIso}"` };
-  }
-  if (detectedMs < introducedMs) {
+  const fixedMs = Date.parse(fixedIso);
+  if (Number.isNaN(introducedMs) || Number.isNaN(fixedMs)) {
     return {
       ok: false,
-      error: `detected_date (${detectedIso}) precedes introduced_date (${introducedIso})`,
+      error: `unparseable ISO date(s): introduced="${introducedIso}", fixed="${fixedIso}"`,
     };
   }
-  return { ok: true, days: Math.round((detectedMs - introducedMs) / MS_PER_DAY) };
+  if (fixedMs < introducedMs) {
+    return {
+      ok: false,
+      error: `fixed_date (${fixedIso}) precedes introduced_date (${introducedIso})`,
+    };
+  }
+  return { ok: true, days: Math.round((fixedMs - introducedMs) / MS_PER_DAY) };
 }
 
 export function checkIncidentsCsv({ csvPath, repoRoot }) {
@@ -268,7 +444,7 @@ export function checkIncidentsCsv({ csvPath, repoRoot }) {
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
   } catch {
-    // Not a git repository: the per-row commit checks report it.
+    // Not a git repository: the commit checks below report it.
   }
   if (isShallow === 'true') {
     return {
@@ -326,18 +502,20 @@ export function checkIncidentsCsv({ csvPath, repoRoot }) {
     return { ok: false, rowCount: 0, errors };
   }
 
+  // Batch all commit lookups (introduced_commit, fixed_commit, source @sha) across all rows.
+  const idxIntro = EXPECTED_HEADERS.indexOf('introduced_commit');
+  const idxFix = EXPECTED_HEADERS.indexOf('fixed_commit');
+  const idxSource = EXPECTED_HEADERS.indexOf('source');
+  const allHashes = [];
+  for (const cols of dataRows) {
+    if (cols.length !== EXPECTED_HEADERS.length) continue;
+    if (cols[idxIntro]) allHashes.push(cols[idxIntro]);
+    if (cols[idxFix]) allHashes.push(cols[idxFix]);
+    allHashes.push(...extractAnchorCommits(cols[idxSource]));
+  }
+  const commitMap = batchVerifyCommits(allHashes, resolvedRoot);
+  const blobCache = new Map();
   const seenIds = new Set();
-  const commitCache = new Map();
-  const lineCountCache = new Map();
-
-  const getCommitInfo = (hash) => {
-    let cached = commitCache.get(hash);
-    if (!cached) {
-      cached = verifyCommitAndGetDate(hash, resolvedRoot);
-      commitCache.set(hash, cached);
-    }
-    return cached;
-  };
 
   for (let rowIndex = 0; rowIndex < dataRows.length; rowIndex += 1) {
     const cols = dataRows[rowIndex];
@@ -388,13 +566,13 @@ export function checkIncidentsCsv({ csvPath, repoRoot }) {
     }
 
     const introHash = record.introduced_commit;
-    const detHash = record.detected_commit;
+    const fixHash = record.fixed_commit;
 
-    if (introHash === '' && detHash === '') {
+    if (introHash === '' && fixHash === '') {
       errors.push({
         id: fallbackId,
-        field: 'introduced_commit,detected_commit',
-        message: 'at least one of introduced_commit or detected_commit must be non-empty',
+        field: 'introduced_commit,fixed_commit',
+        message: 'at least one of introduced_commit or fixed_commit must be non-empty',
       });
     }
 
@@ -408,9 +586,13 @@ export function checkIncidentsCsv({ csvPath, repoRoot }) {
         });
       }
     } else {
-      const info = getCommitInfo(introHash);
-      if (!info.ok) {
-        errors.push({ id: fallbackId, field: 'introduced_commit', message: info.error });
+      const info = commitMap.get(introHash);
+      if (!info || !info.ok) {
+        errors.push({
+          id: fallbackId,
+          field: 'introduced_commit',
+          message: info?.error ?? `unverified commit ${introHash}`,
+        });
       } else {
         verifiedIntroDate = info.date;
         if (record.introduced_date !== info.date) {
@@ -423,53 +605,80 @@ export function checkIncidentsCsv({ csvPath, repoRoot }) {
       }
     }
 
-    let verifiedDetDate = null;
-    if (detHash === '') {
-      if (record.detected_date !== '') {
+    let verifiedFixedDate = null;
+    if (fixHash === '') {
+      if (record.fixed_date !== '') {
         errors.push({
           id: fallbackId,
-          field: 'detected_date',
-          message: `expected "" when detected_commit is empty, got "${record.detected_date}"`,
+          field: 'fixed_date',
+          message: `expected "" when fixed_commit is empty, got "${record.fixed_date}"`,
         });
       }
     } else {
-      const info = getCommitInfo(detHash);
-      if (!info.ok) {
-        errors.push({ id: fallbackId, field: 'detected_commit', message: info.error });
+      const info = commitMap.get(fixHash);
+      if (!info || !info.ok) {
+        errors.push({
+          id: fallbackId,
+          field: 'fixed_commit',
+          message: info?.error ?? `unverified commit ${fixHash}`,
+        });
       } else {
-        verifiedDetDate = info.date;
-        if (record.detected_date !== info.date) {
+        verifiedFixedDate = info.date;
+        if (record.fixed_date !== info.date) {
           errors.push({
             id: fallbackId,
-            field: 'detected_date',
-            message: `expected "${info.date}" from git %cI of ${detHash}, got "${record.detected_date}"`,
+            field: 'fixed_date',
+            message: `expected "${info.date}" from git %cI of ${fixHash}, got "${record.fixed_date}"`,
           });
         }
       }
     }
 
-    if (introHash === '' || detHash === '') {
-      if (record.days_to_detection !== '') {
+    if (!isValidIsoDay(record.detected_date)) {
+      errors.push({
+        id: fallbackId,
+        field: 'detected_date',
+        message: `detected_date "${record.detected_date}" must be a valid YYYY-MM-DD calendar date`,
+      });
+    } else {
+      if (verifiedIntroDate !== null && record.detected_date < verifiedIntroDate.slice(0, 10)) {
         errors.push({
           id: fallbackId,
-          field: 'days_to_detection',
-          message: `expected "" when either commit is empty, got "${record.days_to_detection}"`,
+          field: 'detected_date',
+          message: `detected_date (${record.detected_date}) precedes introduced_date (${verifiedIntroDate.slice(0, 10)})`,
         });
       }
-    } else if (verifiedIntroDate !== null && verifiedDetDate !== null) {
-      const diff = computeDaysToDetection(verifiedIntroDate, verifiedDetDate);
-      if (!diff.ok) {
-        errors.push({ id: fallbackId, field: 'days_to_detection', message: diff.error });
-      } else if (record.days_to_detection !== String(diff.days)) {
+      if (verifiedFixedDate !== null && record.detected_date > verifiedFixedDate.slice(0, 10)) {
         errors.push({
           id: fallbackId,
-          field: 'days_to_detection',
-          message: `expected "${diff.days}" (Math.round((${verifiedDetDate} - ${verifiedIntroDate}) / 86400000)), got "${record.days_to_detection}"`,
+          field: 'detected_date',
+          message: `detected_date (${record.detected_date}) follows fixed_date (${verifiedFixedDate.slice(0, 10)})`,
         });
       }
     }
 
-    const sourceCheck = validateSourceAnchor(record.source, resolvedRoot, lineCountCache);
+    if (introHash === '' || fixHash === '') {
+      if (record.days_to_fix !== '') {
+        errors.push({
+          id: fallbackId,
+          field: 'days_to_fix',
+          message: `expected "" when either commit is empty, got "${record.days_to_fix}"`,
+        });
+      }
+    } else if (verifiedIntroDate !== null && verifiedFixedDate !== null) {
+      const diff = computeDaysToFix(verifiedIntroDate, verifiedFixedDate);
+      if (!diff.ok) {
+        errors.push({ id: fallbackId, field: 'days_to_fix', message: diff.error });
+      } else if (record.days_to_fix !== String(diff.days)) {
+        errors.push({
+          id: fallbackId,
+          field: 'days_to_fix',
+          message: `expected "${diff.days}" (Math.round((${verifiedFixedDate} - ${verifiedIntroDate}) / 86400000)), got "${record.days_to_fix}"`,
+        });
+      }
+    }
+
+    const sourceCheck = validateSourceAnchor(record.source, resolvedRoot, commitMap, blobCache);
     if (!sourceCheck.ok) {
       errors.push({ id: fallbackId, field: 'source', message: sourceCheck.error });
     }
@@ -505,22 +714,42 @@ export function runSelfTest() {
         stdio: ['ignore', 'pipe', 'pipe'],
       }).trim();
 
-    git(['init']);
-    git(['config', 'user.name', 'Test User']);
-    git(['config', 'user.email', 'test@example.com']);
+    const gitIdentityArgs = [
+      '-c',
+      'user.name=Test User',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+    ];
 
-    writeFileSync(join(dir, 'notes.md'), 'line 1\nline 2\nline 3\n', 'utf8');
-    git(['add', 'notes.md']);
-    git(['commit', '-m', 'init'], {
+    git(['init']);
+
+    writeFileSync(join(dir, 'notes.md'), 'line 1\n\nline 3\n', 'utf8');
+    writeFileSync(join(dir, 'crlf.md'), 'crlf 1\r\ncrlf 2\r\n', 'utf8');
+    git(['add', 'notes.md', 'crlf.md']);
+    git([...gitIdentityArgs, 'commit', '-m', 'init'], {
       GIT_AUTHOR_DATE: '2026-10-01T10:00:00+07:00',
       GIT_COMMITTER_DATE: '2026-10-01T10:00:00+07:00',
     });
     const c1 = git(['rev-parse', '--short=7', 'HEAD']);
     const d1 = git(['show', '-s', '--format=%cI', c1]);
 
-    writeFileSync(join(dir, 'notes.md'), 'line 1\nline 2\nline 3\nline 4\n', 'utf8');
+    // Off-trunk branch commit: valid git object, NOT an ancestor of trunk HEAD.
+    git(['checkout', '-b', 'off-trunk']);
+    writeFileSync(join(dir, 'off.md'), 'off trunk line 1\n', 'utf8');
+    git(['add', 'off.md']);
+    git([...gitIdentityArgs, 'commit', '-m', 'off-trunk'], {
+      GIT_AUTHOR_DATE: '2026-10-02T12:00:00+07:00',
+      GIT_COMMITTER_DATE: '2026-10-02T12:00:00+07:00',
+    });
+    const cOff = git(['rev-parse', '--short=7', 'HEAD']);
+    const dOff = git(['show', '-s', '--format=%cI', cOff]);
+    git(['checkout', '-']);
+
+    writeFileSync(join(dir, 'notes.md'), 'line 1\n\nline 3\nline 4\n', 'utf8');
     git(['add', 'notes.md']);
-    git(['commit', '-m', 'detect'], {
+    git([...gitIdentityArgs, 'commit', '-m', 'fix'], {
       GIT_AUTHOR_DATE: '2026-10-04T22:00:00+07:00',
       GIT_COMMITTER_DATE: '2026-10-04T22:00:00+07:00',
     });
@@ -529,13 +758,68 @@ export function runSelfTest() {
 
     const csvPath = join(dir, 'incidents.csv');
     const validRows = [
-      ['INC-T1', 'Title, with comma and "quotes"', 'vacuous-gate', c1, c2, 'manual audit', d1, d2, '4', 'yes', 'notes.md:2'],
-      ['INC-T2', 'Missing intro commit', 'other', '', c2, 'detected at c2', '', d2, '', 'unknown', 'notes.md:4'],
+      [
+        'INC-T1',
+        'Title, with comma and "quotes"',
+        'vacuous-gate',
+        c1,
+        c2,
+        'manual audit',
+        d1,
+        '2026-10-03',
+        d2,
+        '4',
+        'yes',
+        `notes.md@${c2}:1`,
+      ],
+      [
+        'INC-T2',
+        'Missing intro commit',
+        'other',
+        '',
+        c2,
+        'detected before fix',
+        '',
+        '2026-10-02',
+        d2,
+        '',
+        'yes',
+        `notes.md@${c2}:4`,
+      ],
+      [
+        'INC-T3',
+        'Open unfixed incident',
+        'vacuous-gate',
+        c1,
+        '',
+        'detected before fix',
+        d1,
+        '2026-10-02',
+        '',
+        '',
+        'yes',
+        `notes.md@${c1}:3`,
+      ],
     ];
 
     writeFileSync(csvPath, formatCsv(validRows), 'utf8');
     const pos = checkIncidentsCsv({ csvPath, repoRoot: dir });
-    recordCheck('positive control passes with quoted fields and rounded day count', pos.ok && pos.rowCount === 2);
+    recordCheck(
+      'positive control passes with 12-column schema and pinned anchors',
+      pos.ok && pos.rowCount === 3,
+      pos.ok ? '' : JSON.stringify(pos.errors),
+    );
+
+    // Inserting 5 lines into working-tree notes.md must NOT break pinned anchors.
+    const originalNotes = readFileSync(join(dir, 'notes.md'), 'utf8');
+    writeFileSync(join(dir, 'notes.md'), `\n\n\n\n\n${originalNotes}`, 'utf8');
+    const shiftedRes = checkIncidentsCsv({ csvPath, repoRoot: dir });
+    recordCheck(
+      'pinned anchor survives prepending 5 working-tree lines',
+      shiftedRes.ok,
+      shiftedRes.ok ? '' : JSON.stringify(shiftedRes.errors),
+    );
+    writeFileSync(join(dir, 'notes.md'), originalNotes, 'utf8');
 
     const mutateAndExpectFail = (label, mutator, expectedId, expectedField) => {
       const cloned = validRows.map((r) => [...r]);
@@ -556,20 +840,44 @@ export function runSelfTest() {
       'introduced_date',
     );
     mutateAndExpectFail(
-      'rejects tampered detected_date',
+      'rejects tampered fixed_date',
       (r) => {
-        r[0][7] = '2026-10-05T22:00:00+07:00';
+        r[0][8] = '2026-10-05T22:00:00+07:00';
+      },
+      'INC-T1',
+      'fixed_date',
+    );
+    mutateAndExpectFail(
+      'rejects invalid calendar detected_date',
+      (r) => {
+        r[0][7] = '2026-02-30';
       },
       'INC-T1',
       'detected_date',
     );
     mutateAndExpectFail(
-      'rejects tampered days_to_detection',
+      'rejects detected_date after fixed_date',
       (r) => {
-        r[0][8] = '3';
+        r[0][7] = '2026-10-05';
       },
       'INC-T1',
-      'days_to_detection',
+      'detected_date',
+    );
+    mutateAndExpectFail(
+      'rejects detected_date before introduced_date',
+      (r) => {
+        r[0][7] = '2026-09-30';
+      },
+      'INC-T1',
+      'detected_date',
+    );
+    mutateAndExpectFail(
+      'rejects tampered days_to_fix',
+      (r) => {
+        r[0][9] = '3';
+      },
+      'INC-T1',
+      'days_to_fix',
     );
     mutateAndExpectFail(
       'rejects invalid class enum',
@@ -582,7 +890,7 @@ export function runSelfTest() {
     mutateAndExpectFail(
       'rejects invalid was_suite_green enum',
       (r) => {
-        r[0][9] = 'maybe';
+        r[0][10] = 'maybe';
       },
       'INC-T1',
       'was_suite_green',
@@ -596,17 +904,43 @@ export function runSelfTest() {
       'introduced_commit',
     );
     mutateAndExpectFail(
-      'rejects out-of-range source line',
+      'rejects off-trunk commit not ancestor of HEAD',
       (r) => {
-        r[0][10] = 'notes.md:999';
+        r[1][3] = cOff;
+        r[1][6] = dOff;
+        r[1][9] = '3';
+      },
+      'INC-T2',
+      'introduced_commit',
+    );
+    mutateAndExpectFail(
+      'rejects unpinned source anchor without @sha',
+      (r) => {
+        r[0][11] = 'notes.md:1';
       },
       'INC-T1',
       'source',
     );
     mutateAndExpectFail(
-      'rejects missing source file',
+      'rejects blank line at pinned source anchor',
       (r) => {
-        r[0][10] = 'missing.md:1';
+        r[0][11] = `notes.md@${c2}:2`;
+      },
+      'INC-T1',
+      'source',
+    );
+    mutateAndExpectFail(
+      'rejects out-of-range source line',
+      (r) => {
+        r[0][11] = `notes.md@${c2}:999`;
+      },
+      'INC-T1',
+      'source',
+    );
+    mutateAndExpectFail(
+      'rejects missing source file at commit',
+      (r) => {
+        r[0][11] = `missing.md@${c2}:1`;
       },
       'INC-T1',
       'source',
@@ -614,7 +948,7 @@ export function runSelfTest() {
     mutateAndExpectFail(
       'rejects path traversal in source',
       (r) => {
-        r[0][10] = '../notes.md:1';
+        r[0][11] = `../notes.md@${c2}:1`;
       },
       'INC-T1',
       'source',
@@ -623,22 +957,23 @@ export function runSelfTest() {
       'rejects both commits empty',
       (r) => {
         r[1][4] = '';
-        r[1][7] = '';
+        r[1][8] = '';
       },
       'INC-T2',
       'introduced_commit',
     );
     mutateAndExpectFail(
-      'rejects detected_date earlier than introduced_date',
+      'rejects fixed_date earlier than introduced_date',
       (r) => {
         r[0][3] = c2;
         r[0][4] = c1;
         r[0][6] = d2;
-        r[0][7] = d1;
-        r[0][8] = '-4';
+        r[0][7] = '2026-10-04';
+        r[0][8] = d1;
+        r[0][9] = '-4';
       },
       'INC-T1',
-      'days_to_detection',
+      'days_to_fix',
     );
     mutateAndExpectFail(
       'rejects non-empty date when commit is empty',
@@ -649,7 +984,6 @@ export function runSelfTest() {
       'introduced_date',
     );
 
-    // Ensure non-commit git object (blob) is rejected
     mkdirSync(join(dir, 'sub'), { recursive: true });
     writeFileSync(join(dir, 'sub', 'blob.txt'), 'hello\n', 'utf8');
     const blobSha = git(['hash-object', '-w', 'sub/blob.txt']).slice(0, 7);
@@ -662,25 +996,23 @@ export function runSelfTest() {
       'introduced_commit',
     );
 
-    // Ensure trailing newline does not inflate physical lineCount by 1
     mutateAndExpectFail(
       'rejects trailing-newline off-by-1 source line (LF)',
       (r) => {
-        r[0][10] = 'notes.md:5';
+        r[0][11] = `notes.md@${c2}:5`;
       },
       'INC-T1',
       'source',
     );
 
-    writeFileSync(join(dir, 'crlf.md'), 'line 1\r\nline 2\r\n', 'utf8');
     recordCheck(
-      'accepts final physical line of CRLF-terminated source file',
-      validateSourceAnchor('crlf.md:2', dir).ok,
+      'accepts final physical line of CRLF-terminated file at pinned commit',
+      validateSourceAnchor(`crlf.md@${c1}:2`, dir).ok,
     );
     mutateAndExpectFail(
       'rejects trailing-newline off-by-1 source line (CRLF)',
       (r) => {
-        r[0][10] = 'crlf.md:3';
+        r[0][11] = `crlf.md@${c1}:3`;
       },
       'INC-T1',
       'source',
