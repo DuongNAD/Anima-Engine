@@ -555,7 +555,7 @@ impl Default for HydrologyConfig {
         Self {
             dx_m: 10.0,
             mfd_exponent_p: 1.6,
-            channel_init_threshold: 250.0,
+            channel_init_threshold: 500.0,
             force_pure_d8: false,
             reference_precip_m_yr: 1.0,
             min_precip_m_yr: 0.15,
@@ -701,8 +701,15 @@ pub fn route_hybrid_mfd_d8(
         }
 
         let init_criterion = area_m2[idx] * max_slope * max_slope;
-        let channelized = cfg.force_pure_d8 || init_criterion >= cfg.channel_init_threshold;
+        let channelized =
+            cfg.force_pure_d8 || is_channel[idx] || init_criterion >= cfg.channel_init_threshold;
         is_channel[idx] = channelized;
+        if channelized {
+            let rec_u = rec as usize;
+            if cfg.sea_level_m.is_none_or(|sl| filled_h[rec_u] > sl) {
+                is_channel[rec_u] = true;
+            }
+        }
 
         let a_here = area_m2[idx];
         let wa_here = weighted_area_m2[idx];
@@ -944,10 +951,14 @@ pub fn route_hybrid_mfd_d8_lean_halves(
             runoff_hi[idx - half]
         };
         let init_criterion = a_here * max_slope * max_slope;
-        let channelized = cfg.force_pure_d8 || init_criterion >= cfg.channel_init_threshold;
+        let channelized =
+            cfg.force_pure_d8 || is_channel[idx] || init_criterion >= cfg.channel_init_threshold;
         is_channel[idx] = channelized;
 
         let rec_u = dir_neighbor(idx, d, width);
+        if channelized && cfg.sea_level_m.is_none_or(|sl| filled_h[rec_u] > sl) {
+            is_channel[rec_u] = true;
+        }
 
         if cfg.force_pure_d8 {
             if rec_u < half {
@@ -1085,5 +1096,64 @@ pub fn route_hybrid_mfd_d8_lean(
         river_d_m: h.river_d_m,
         water_h_m: h.water_h_m,
         is_channel: h.is_channel,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_persistence_carries_channels_onto_flat_floodplains_while_hillslopes_remain_mfd() {
+        let w = 16usize;
+        let h = 9usize;
+        let mut elev = vec![0.0_f32; w * h];
+        for r in 0..h {
+            for c in 0..w {
+                let lat = libm::fabs(r as f64 - 4.0);
+                // Steep headwater on c=1..6 (dx=10 m -> drop ~8 m/cell), then flat 0.002 floodplain on c=7..14.
+                let long_h = if c == 0 || c + 1 == w || r == 0 || r + 1 == h {
+                    if c + 1 == w {
+                        0.0
+                    } else {
+                        80.0 + lat * 20.0
+                    }
+                } else if c <= 6 {
+                    60.0 - (c as f64 - 1.0) * 8.0 + lat * 12.0
+                } else {
+                    12.0 - (c as f64 - 6.0) * 0.02 + lat * 1.5
+                };
+                elev[r * w + c] = long_h as f32;
+            }
+        }
+        let pf = priority_flood_d8(&elev, w, h, Some(0.0));
+        let pf_lean = priority_flood_d8_lean(&elev, w, h, Some(0.0), false);
+        let p = vec![2.5_f32; w * h];
+        let pet = vec![0.5_f32; w * h];
+        let cfg = HydrologyConfig {
+            dx_m: 10.0,
+            channel_init_threshold: 500.0,
+            sea_level_m: Some(0.0),
+            ..HydrologyConfig::default()
+        };
+        let std_res = route_hybrid_mfd_d8(&pf.filled_h, &pf.d8_receiver, w, h, &p, &pet, &cfg);
+        let lean_res =
+            route_hybrid_mfd_d8_lean(&pf_lean.filled_h, &pf_lean.d8_dir, w, h, &p, &pet, &cfg);
+
+        // Channel initiates on steep upper trough and must persist onto the flat `slope = 0.002`
+        // floodplain (where local `A * S^2` falls well below `500 m^2`) in both full & lean routers.
+        assert!(std_res.is_channel[4 * w + 5], "expected channel head at (4,5)");
+        assert!(
+            std_res.is_channel[4 * w + 12],
+            "expected persistent channel on flat floodplain at (4,12)"
+        );
+        assert!(
+            lean_res.is_channel[4 * w + 12],
+            "expected lean router channel persistence on flat floodplain at (4,12)"
+        );
+        // Unchannelized gentle lateral hillslope remains on MFD (`!is_channel`).
+        assert!(!std_res.is_channel[1 * w + 10]);
+        assert!(!lean_res.is_channel[1 * w + 10]);
+        assert_eq!(std_res.is_channel, lean_res.is_channel);
     }
 }

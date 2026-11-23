@@ -695,7 +695,12 @@ pub fn generate_lakes_and_waterfalls(
         let mut runoff_acc = vec![0.0_f32; n];
         let mut queue: Vec<u32> = Vec::new();
         for i in 0..n {
-            let q_loc = (input.precip_m_yr[i] - input.pet_m_yr[i]).max(0.0) * cell_area_f32;
+            let q_loc = if cell_leaf[i] == NO_RECEIVER {
+                (input.precip_m_yr[i] - input.pet_m_yr[i]).max(0.0) * cell_area_f32
+            } else {
+                let e_c = input.pet_m_yr[i].max(0.05);
+                (input.precip_m_yr[i] - e_c).max(0.0) * cell_area_f32
+            };
             runoff_acc[i] = q_loc;
             if cell_leaf[i] == NO_RECEIVER && in_deg[i] == 0 {
                 queue.push(i as u32);
@@ -753,6 +758,7 @@ pub fn generate_lakes_and_waterfalls(
         nodes: &'a [DepNode],
         own_pool: &'a [(u32, u32)],
         elev_m: &'a [f32],
+        precip_m_yr: &'a [f32],
         pet_m_yr: &'a [f32],
         cell_area_m2: f64,
         w: usize,
@@ -782,14 +788,31 @@ pub fn generate_lakes_and_waterfalls(
         fn evap_to_sill(&mut self, u: u32, spill: f32) -> f64 {
             self.scratch_cells.clear();
             collect_subtree_cells(self.nodes, self.own_pool, u, &mut self.scratch_cells);
-            let mut pet_below = 0.0_f64;
+            let mut net_deficit = 0.0_f64;
             for &c in &self.scratch_cells {
                 let cu = c as usize;
                 if self.elev_m[cu] <= spill {
-                    pet_below += f64::from(self.pet_m_yr[cu]).max(0.05);
+                    let e_c = f64::from(self.pet_m_yr[cu]).max(0.05);
+                    let p_c = f64::from(self.precip_m_yr[cu]).max(0.0);
+                    net_deficit += (e_c - p_c).max(0.0);
                 }
             }
-            pet_below * self.cell_area_m2
+            net_deficit * self.cell_area_m2
+        }
+
+        fn direct_lake_rain(&mut self, u: u32, level: f32) -> f64 {
+            self.scratch_cells.clear();
+            collect_subtree_cells(self.nodes, self.own_pool, u, &mut self.scratch_cells);
+            let mut rain_sum = 0.0_f64;
+            for &c in &self.scratch_cells {
+                let cu = c as usize;
+                if self.elev_m[cu] <= level {
+                    let e_c = f64::from(self.pet_m_yr[cu]).max(0.05);
+                    let p_c = f64::from(self.precip_m_yr[cu]).max(0.0);
+                    rain_sum += p_c.min(e_c);
+                }
+            }
+            rain_sum * self.cell_area_m2
         }
 
         fn evaluate_basin(&mut self, u: u32, q_total: f64) {
@@ -820,11 +843,20 @@ pub fn generate_lakes_and_waterfalls(
                 self.filled_to_sill[u as usize] = true;
                 let ex = q_pos - evap_full;
                 self.excess_q[u as usize] = ex;
+                let mut direct_rain = 0.0_f64;
+                for &c in &self.scratch_cells {
+                    let cu = c as usize;
+                    if self.elev_m[cu] <= spill {
+                        let e_c = f64::from(self.pet_m_yr[cu]).max(0.05);
+                        let p_c = f64::from(self.precip_m_yr[cu]).max(0.0);
+                        direct_rain += p_c.min(e_c);
+                    }
+                }
                 self.upsert_pending(PendingLake {
                     node_idx: u,
                     water_level_m: spill,
                     is_endorheic: false,
-                    q_in_m3_yr: q_pos,
+                    q_in_m3_yr: q_pos + direct_rain * self.cell_area_m2,
                     q_out_m3_yr: ex,
                     spills_into_sib: None,
                 });
@@ -834,8 +866,9 @@ pub fn generate_lakes_and_waterfalls(
                     let cu = c as usize;
                     let hc = self.elev_m[cu];
                     if hc <= spill {
-                        self.scratch_elev_pet
-                            .push((hc, f64::from(self.pet_m_yr[cu]).max(0.05), c));
+                        let e_c = f64::from(self.pet_m_yr[cu]).max(0.05);
+                        let p_c = f64::from(self.precip_m_yr[cu]).max(0.0);
+                        self.scratch_elev_pet.push((hc, (e_c - p_c).max(0.0), c));
                     }
                 }
                 self.scratch_elev_pet
@@ -852,11 +885,12 @@ pub fn generate_lakes_and_waterfalls(
                     q_pos,
                     self.cell_area_m2,
                 );
+                let direct_rain_eq = self.direct_lake_rain(u, h_eq);
                 self.upsert_pending(PendingLake {
                     node_idx: u,
                     water_level_m: h_eq,
                     is_endorheic: true,
-                    q_in_m3_yr: q_pos,
+                    q_in_m3_yr: q_pos + direct_rain_eq,
                     q_out_m3_yr: 0.0,
                     spills_into_sib: None,
                 });
@@ -966,11 +1000,12 @@ pub fn generate_lakes_and_waterfalls(
                     self.absorbed_q[recv_c as usize] = q_recv_new;
                     self.filled_to_sill[recv_c as usize] = true;
                     self.excess_q[recv_c as usize] = excess;
+                    let direct_rain_recv = self.direct_lake_rain(recv_c, s_inner);
                     self.upsert_pending(PendingLake {
                         node_idx: recv_c,
                         water_level_m: s_inner,
                         is_endorheic: false,
-                        q_in_m3_yr: q_recv_new,
+                        q_in_m3_yr: q_recv_new + direct_rain_recv,
                         q_out_m3_yr: excess,
                         spills_into_sib: Some(other_c),
                     });
@@ -996,6 +1031,7 @@ pub fn generate_lakes_and_waterfalls(
         nodes: &nodes,
         own_pool: &own_pool,
         elev_m,
+        precip_m_yr: input.precip_m_yr,
         pet_m_yr: input.pet_m_yr,
         cell_area_m2,
         w,
@@ -2392,7 +2428,7 @@ mod tests {
         }
         for r in 30..42 {
             for c in 30..42 {
-                precip[r * n + c] = 6.5;
+                precip[r * n + c] = 4.0;
             }
         }
         // Humid shoreline ring around `sub2a` (`r in [2.5, 4.5]`) provides physical water-balance
@@ -2401,7 +2437,7 @@ mod tests {
             for c in 32..52 {
                 let d = libm::hypotf(r as f32 - 54.0, c as f32 - 42.0);
                 if (2.5..=4.5).contains(&d) {
-                    precip[r * n + c] = 9.0;
+                    precip[r * n + c] = 7.0;
                     pet[r * n + c] = 1.0;
                 }
             }
@@ -2515,8 +2551,8 @@ mod tests {
         for r in 0..n {
             for c in 0..n {
                 let d = libm::hypotf(r as f32 - 32.0, c as f32 - 32.0);
-                if (11.0..=13.5).contains(&d) {
-                    precip[r * n + c] = 2.0;
+                if (11.8..=13.5).contains(&d) {
+                    precip[r * n + c] = 1.35;
                     pet[r * n + c] = 1.0;
                 }
             }
@@ -3126,7 +3162,7 @@ mod tests {
                 for c in 20..36 {
                     let d_sp = libm::hypotf(r as f32 - 64.0, c as f32 - 28.0);
                     if d_sp <= 6.5 {
-                        precip[r * n + c] = 12.0;
+                        precip[r * n + c] = 11.0;
                         pet[r * n + c] = 1.0;
                     }
                 }
@@ -3136,7 +3172,7 @@ mod tests {
                 for c in 94..106 {
                     let d_fl = libm::hypotf(r as f32 - 64.0, c as f32 - 100.0);
                     if d_fl <= 6.0 {
-                        precip[r * n + c] = 2.05;
+                        precip[r * n + c] = 1.05;
                         pet[r * n + c] = 1.0;
                     }
                 }
@@ -3314,5 +3350,65 @@ mod tests {
             assert_ne!(wk[8 * n + 17], WaterKind::Waterfall as u8);
             assert_ne!(wk[8 * n + 16], WaterKind::Waterfall as u8);
         }
+    }
+
+    #[test]
+    fn humid_depression_with_p_gt_pet_fills_to_spill_without_double_pet_evaporation() {
+        // Uniform P = 1.6 m/yr, PET = 1.0 m/yr across a closed bowl without external runoff:
+        // under the former double-PET bug (`q = P - PET = 0.6 <= PET = 1.0`), this failed to spill.
+        // Under single PET net balance (`P > PET`), it must fill and spill cleanly (`FreshwaterLake`).
+        let n = 48usize;
+        let mut elev = vec![0.0_f32; n * n];
+        for r in 0..n {
+            for c in 0..n {
+                let idx = r * n + c;
+                if r == 0 || r + 1 == n || c == 0 || c + 1 == n {
+                    elev[idx] = -5.0;
+                } else {
+                    let d = libm::hypotf(r as f32 - 24.0, c as f32 - 24.0);
+                    elev[idx] = if d <= 10.0 {
+                        40.0 + 60.0 * (d / 10.0) * (d / 10.0)
+                    } else {
+                        100.0 - (d - 10.0) * 4.0
+                    };
+                }
+            }
+        }
+        let mut sed = vec![0.0_f32; n * n];
+        let mut wh = elev.clone();
+        let mut wk = vec![0_u8; n * n];
+        let precip = vec![1.6_f32; n * n];
+        let pet = vec![1.0_f32; n * n];
+        let q = vec![0.0_f32; n * n];
+        let rw = vec![0.0_f32; n * n];
+        let is_ch = vec![false; n * n];
+        let lith = vec![LithologyClass::GraniteCrystalline as u8; n * n];
+        let input = LakesFallsInput {
+            width: n,
+            height: n,
+            precip_m_yr: &precip,
+            pet_m_yr: &pet,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            is_channel: &is_ch,
+            lithology_id: &lith,
+        };
+        let field = generate_lakes_and_waterfalls(
+            &mut elev,
+            &mut sed,
+            &mut wh,
+            &mut wk,
+            &input,
+            &LakesFallsConfig::default(),
+        )
+        .expect("humid P>PET double-PET fix");
+        assert_eq!(field.endorheic_humid_fraction, 0.0);
+        let lake = field
+            .basins
+            .iter()
+            .find(|b| b.water_kind == WaterKind::FreshwaterLake as u8)
+            .expect("P=1.6 > PET=1.0 bowl must overflow as FreshwaterLake");
+        assert!(lake.q_out_m3_s > 0.0);
+        assert!((lake.water_level_m - lake.spill_elev_m).abs() < 1e-4);
     }
 }
