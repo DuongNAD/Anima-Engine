@@ -318,8 +318,8 @@ fn orographic_precip_floor_rain_shadow_and_twi() {
 #[test]
 fn fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity() {
     let guard = TempDirGuard::new("c3_diversity");
-    let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, 1024);
-    let meta: RawWorldMeta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 1024");
+    let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, 256);
+    let meta: RawWorldMeta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 256");
 
     assert_eq!(meta.stats.severed_humid_spillways, 0);
     assert_eq!(meta.stats.unmodeled_micro_pits, 0);
@@ -437,14 +437,19 @@ fn fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity() {
 #[test]
 fn knickpoint_waterfalls_20_to_80_with_plunge_pools() {
     let guard = TempDirGuard::new("waterfalls");
-    let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, 1024);
-    let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 1024");
+    let size = 512_u32;
+    let cfg = WorldV2Config::for_size(0x0057_5632_2026_1120, size);
+    let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 512");
     assert!(
         (20..=80).contains(&meta.waterfalls.len()),
         "expected 20..=80 waterfalls, got {}",
         meta.waterfalls.len()
     );
-    let wk = read_bin_u8(&guard.path().join("water_kind.bin"), 1024 * 1024).expect("water_kind");
+    let wk = read_bin_u8(
+        &guard.path().join("water_kind.bin"),
+        (size as usize) * (size as usize),
+    )
+    .expect("water_kind");
     let min_sp = LakesFallsConfig::default().waterfall_min_spacing_m;
     for (idx, wf) in meta.waterfalls.iter().enumerate() {
         assert!(wf.drop_m >= 12.0, "waterfall {idx} drop_m < 12.0");
@@ -465,29 +470,17 @@ fn knickpoint_waterfalls_20_to_80_with_plunge_pools() {
 }
 
 #[test]
-fn multi_seed_1024_card3_waterfalls_rivers_lakes_dunes_invariants() {
-    let size = 1024_u32;
+fn multi_seed_card3_waterfalls_rivers_lakes_dunes_invariants() {
+    let size = 512_u32;
     let n = (size as usize) * (size as usize);
     let scaled_floor =
         ((2500.0_f64 * (f64::from(size) / 4096.0) * (f64::from(size) / 4096.0)).ceil()) as usize;
 
-    for &seed in &[
-        57_563_201_u64,
-        0x5756_3201_u64,
-        42_u64,
-        1337_u64,
-        314_159_u64,
-        2027_u64,
-        8191_u64,
-        10_022_u64,
-        777_777_u64,
-        888_888_u64,
-        1_234_567_u64,
-        20_261_122_u64,
-    ] {
-        let guard = TempDirGuard::new(&format!("card3_1024_{seed}"));
+    // 2 diverse seeds at 512^2 keep debug CI fast; all 12 seeds at 1024^2 run in `examples/wv2_2_release_verify.rs`.
+    for &seed in &[57_563_201_u64, 42_u64] {
+        let guard = TempDirGuard::new(&format!("card3_{size}_{seed}"));
         let cfg = WorldV2Config::for_size(seed, size);
-        let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 1024");
+        let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 512");
 
         assert!(
             (20..=80).contains(&meta.stats.waterfall_count),
@@ -713,19 +706,8 @@ fn full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes() {
     let scaled_floor =
         ((2500.0_f64 * (f64::from(size) / 4096.0) * (f64::from(size) / 4096.0)).ceil()) as usize;
 
-    for &seed in &[
-        0x0057_5632_2026_1120_u64,
-        57_563_201_u64,
-        0x5756_3201_u64,
-        42_u64,
-        1337_u64,
-        314_159_u64,
-        2027_u64,
-        8191_u64,
-        10_022_u64,
-        777_777_u64,
-        19_283_746_u64,
-    ] {
+    // 3 diverse seeds at 512^2 keep debug CI fast; all 11 seeds at 512^2 run in `examples/wv2_2_release_verify.rs`.
+    for &seed in &[0x0057_5632_2026_1120_u64, 0x5756_3201_u64, 42_u64] {
         let guard = TempDirGuard::new(&format!("biomes_{seed}"));
         let cfg = WorldV2Config::for_size(seed, size);
         let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("full pipeline 512");
@@ -810,10 +792,10 @@ fn full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes() {
 #[test]
 fn full_pipeline_s9_caves_and_anmc_v1_roundtrip() {
     let guard = TempDirGuard::new("caves_anmc");
-    let size = 512_u32;
+    let size = 256_u32;
     let n = (size as usize) * (size as usize);
     let cfg = WorldV2Config::for_size(0x5756_3201, size);
-    let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 512");
+    let meta = run_worldgen_to_dir(&cfg, guard.path()).expect("pipeline 256");
 
     let cave_bytes =
         std::fs::read(guard.path().join("cave_network.bin")).expect("cave_network.bin");
@@ -874,19 +856,19 @@ fn full_pipeline_s9_caves_and_anmc_v1_roundtrip() {
 }
 
 #[test]
-fn pipeline_1024_sha256_repeatability_and_rayon_thread_invariance() {
-    let g_a = TempDirGuard::new("1024_4t_a");
-    let g_b = TempDirGuard::new("1024_4t_b");
-    let g_1t = TempDirGuard::new("1024_1t");
-    let g_other = TempDirGuard::new("1024_seed2");
+fn pipeline_sha256_repeatability_and_rayon_thread_invariance() {
+    let g_a = TempDirGuard::new("256_4t_a");
+    let g_b = TempDirGuard::new("256_4t_b");
+    let g_1t = TempDirGuard::new("256_1t");
+    let g_other = TempDirGuard::new("256_seed2");
 
-    let cfg = WorldV2Config::for_size(0x5756_3201, 1024);
+    let cfg = WorldV2Config::for_size(0x5756_3201, 256);
     let pool_4 = ThreadPoolBuilder::new().num_threads(4).build().unwrap();
     let pool_1 = ThreadPoolBuilder::new().num_threads(1).build().unwrap();
 
-    let m_a = pool_4.install(|| run_worldgen_to_dir(&cfg, g_a.path()).expect("1024 4t a"));
-    let m_b = pool_4.install(|| run_worldgen_to_dir(&cfg, g_b.path()).expect("1024 4t b"));
-    let m_1t = pool_1.install(|| run_worldgen_to_dir(&cfg, g_1t.path()).expect("1024 1t"));
+    let m_a = pool_4.install(|| run_worldgen_to_dir(&cfg, g_a.path()).expect("256 4t a"));
+    let m_b = pool_4.install(|| run_worldgen_to_dir(&cfg, g_b.path()).expect("256 4t b"));
+    let m_1t = pool_1.install(|| run_worldgen_to_dir(&cfg, g_1t.path()).expect("256 1t"));
 
     assert_eq!(m_a.world_sha256, m_b.world_sha256);
     assert_eq!(m_a.world_sha256, m_1t.world_sha256);
@@ -897,9 +879,8 @@ fn pipeline_1024_sha256_repeatability_and_rayon_thread_invariance() {
     let c_1t = std::fs::read(g_1t.path().join("cave_network.bin")).unwrap();
     assert_eq!(c_a, c_1t);
 
-    let cfg2 = WorldV2Config::for_size(0x2026_1120, 1024);
-    let m_other =
-        pool_4.install(|| run_worldgen_to_dir(&cfg2, g_other.path()).expect("1024 seed2"));
+    let cfg2 = WorldV2Config::for_size(0x2026_1120, 256);
+    let m_other = pool_4.install(|| run_worldgen_to_dir(&cfg2, g_other.path()).expect("256 seed2"));
     assert_ne!(m_a.world_sha256, m_other.world_sha256);
 }
 

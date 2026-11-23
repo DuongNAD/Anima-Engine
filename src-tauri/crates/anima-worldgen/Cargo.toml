@@ -52,3 +52,7 @@ required-features = ["generate"]
 [[test]]
 name = "wv2_2_climate_biome_cave_tests"
 required-features = ["generate"]
+
+[[example]]
+name = "wv2_2_release_verify"
+required-features = ["reader", "generate", "bake"]
