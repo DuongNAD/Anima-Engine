@@ -1,16 +1,17 @@
 ---
 phase: implementation
 feature: readme-claude-md-refresh
-title: Proposal — Refresh of README.md, README.vi.md, and CLAUDE.md against trunk 6495c5c
-description: Proposal-only audit and minimal diffs for README.md, README.vi.md, and CLAUDE.md against origin/feat/ecological-selection (6495c5c) with verified source commits.
+title: Proposal — Refresh of README.md, README.vi.md, and CLAUDE.md against trunk e576350
+description: Proposal-only audit and minimal diffs for README.md, README.vi.md, and CLAUDE.md against origin/feat/ecological-selection (e576350) with verified source commits.
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-23
 ---
 
 # Proposal: Refresh of `README.md`, `README.vi.md`, and `CLAUDE.md` (`CARD DOC7`)
 
-- **Baseline trunk:** `origin/feat/ecological-selection` at `6495c5c5a39b3bd171f900501624d7cf5cf4a93f` (`6495c5c`, Merge pull request #206, `2026-11-23T00:54:08+07:00`).
+- **Baseline trunk:** `origin/feat/ecological-selection` at `e576350fc2a8b9c6765eea81a94ecfa705fcc528` (`e576350`, Merge pull request #213, `2026-11-23T13:35:50+07:00`).
+- **Pending dependency note:** PRs `#201`–`#205` (along with `#196`, `#199`, `#200`, `#208`, `#210`, `#211`) remain unmerged on `e576350`; a final re-pass on these proposals may follow once `#201`–`#205` land on trunk.
 - **Scope:** Proposal-only (`status: proposed`). All target documents (`README.md`, `README.vi.md`, `CLAUDE.md`) and `docs/ai/README.md` are untouched here because root `README*` and `CLAUDE.md` are human-reviewed R5 contracts requiring explicit owner authorization ([`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) §4–§5).
 - **Policy adherence:** Follows [`DOCUMENTATION_POLICY.md`](../../governance/DOCUMENTATION_POLICY.md) Rule 4 (`README` is a map that links to canonical sources rather than copying them), Rule 8 ([`STATE_OF_THE_PROJECT.md`](../../planning/STATE_OF_THE_PROJECT.md) §1 is the single home for authoritative measurements), Rule 9 (classify numbers), and Rule 10 (preserve honesty boundaries verbatim).
 
@@ -18,83 +19,89 @@ last_reviewed: 2026-11-22
 
 ## 1. Target File Resolution: Retirement of `README.en.md` (`d2ae358`)
 
-Although `CARD DOC7` in [`docs/ai/planning/2026-11-05-swarm-prompts.md`](../planning/2026-11-05-swarm-prompts.md) (lines 1789–1802) originally named `README.md`, `README.en.md`, and `CLAUDE.md`, **`README.en.md` no longer exists at `6495c5c`**:
+Although `CARD DOC7` in [`docs/ai/planning/2026-11-05-swarm-prompts.md`](../planning/2026-11-05-swarm-prompts.md) (lines 1789–1802) originally named `README.md`, `README.en.md`, and `CLAUDE.md`, **`README.en.md` no longer exists at `e576350`**:
 
 - Commit `d2ae358` (PR `#187` `c674db8`, `2026-11-20`): deleted `README.en.md`, promoted the English README to [`README.md`](../../../README.md) (320 lines), moved the Vietnamese README to [`README.vi.md`](../../../README.vi.md) (315 lines), and updated [`scripts/root_allowlist.json`](../../../scripts/root_allowlist.json) lines 28–29 (`"README.md": "README in English, the default GitHub shows"`, `"README.vi.md": "README in Vietnamese"`).
-- **Decision:** Do **not** recreate `README.en.md`. All English README updates (`R1`–`R15`) target [`README.md`](../../../README.md), and matching parity updates (`V1`–`V15`) are proposed for [`README.vi.md`](../../../README.vi.md) alongside [`CLAUDE.md`](../../../CLAUDE.md) (`C1`–`C11`).
+- **Decision:** Do **not** recreate `README.en.md`. All remaining English README updates (`R1`–`R14`) target [`README.md`](../../../README.md), and matching parity updates (`V1`–`V14`) are proposed for [`README.vi.md`](../../../README.vi.md) alongside remaining [`CLAUDE.md`](../../../CLAUDE.md) updates (Section 6).
 
-### Note on `DOC1`–`DOC5` Dependencies at `6495c5c`
+### Note on `DOC1`–`DOC5` Dependencies at `e576350`
 
-None of `DOC1`–`DOC5` have merged on `6495c5c` (`docs/tutorials/` contains only `README.md`; `docs/how-to/` lacks `RUN_EXPERIMENTS.md` et al.; `docs/explanation/` lacks `ARCHITECTURE.md` / `WHY_THE_GATES.md`; `docs/reference/` lacks `OBSERVABLES.md` / `ANIMA_LAB_CLI.md` / `MANIFEST_SCHEMA.md`). Every link proposed below targets **only files that already exist on `6495c5c`**.
+None of `DOC1`–`DOC5` have merged on `e576350` (`docs/tutorials/` contains only `README.md`; `docs/how-to/` lacks `RUN_EXPERIMENTS.md` et al.; `docs/explanation/` lacks `ARCHITECTURE.md` / `WHY_THE_GATES.md`; `docs/reference/` lacks `OBSERVABLES.md` / `ANIMA_LAB_CLI.md` / `MANIFEST_SCHEMA.md`). Every link proposed below targets **only files that already exist on `e576350`**.
 
 ---
 
-## 2. Already Accurate on `6495c5c` (No Spurious Edits Proposed)
+## 2. Already Accurate on `e576350` (No Spurious Edits Proposed)
 
-Verification against `6495c5c` confirms the following items are **already accurate** and require no change:
+Verification against `e576350` (incorporating PR `#213` `4fe3d7a` and PR `#212` `14e7c14`) confirms the following items are **already accurate** and require no rewrite:
 
 | Document & Lines | Existing Accurate Content | Trunk Verification |
 |---|---|---|
-| [`CLAUDE.md`](../../../CLAUDE.md):41 | `**burn is at 0.22.1**`, `burn-flex` deterministic reference (`Device::flex()`), `burn-wgpu` under `ml-wgpu` + `ANIMA_USE_GPU`, `LIVE_MODEL_VERSION` `"live-bevy-world/2"`, snapshot schema 8, `bevy_ecs` 0.13. | `74dcd31`, PR `#127` `f461466`; `src-tauri/Cargo.toml:48,55`; zero `0.13.2` occurrences in `README.md`, `README.vi.md`, or `CLAUDE.md`. |
-| [`CLAUDE.md`](../../../CLAUDE.md):193 | `36 commands` in `tauri::generate_handler![...]` and `7 events` via `handle.emit(...)`; mentions `npm run check:docs` and `npm run check:ipc`. | `e0ec7ed`, `19e67fa`; `src-tauri/src/lib.rs:63-100`. |
+| [`CLAUDE.md`](../../../CLAUDE.md):13 | Three workspace crates: `anima-engine`, `crates/anima-domain`, and offline `crates/anima-worldgen`. | Updated in `4fe3d7a` (PR `#213` `e576350`); `src-tauri/Cargo.toml:85`. |
+| [`CLAUDE.md`](../../../CLAUDE.md):34 | Full `--features desktop` rationale (2,040 skipped lines matching `check_test_targets.mjs:15`) plus `cargo test -p anima-worldgen --features "reader,generate,bake"` (`--profile worldgen-cpu`). | Updated in `4fe3d7a` (PR `#213` `e576350`). |
+| [`CLAUDE.md`](../../../CLAUDE.md):35 | `check_test_targets.mjs --profile {default\|desktop\|worldgen-cpu}`. | Updated in `4fe3d7a` (PR `#213` `e576350`). |
+| [`CLAUDE.md`](../../../CLAUDE.md):37 | Release desktop binary vs Playwright E2E (`test:e2e` runs against Vite dev server with `tests/e2e/tauri-mock.ts`). | Updated in `4fe3d7a` (PR `#213` `e576350`). |
 | [`CLAUDE.md`](../../../CLAUDE.md):39 | Dependency advisory gates `cargo audit` and `npm run check:audit` (`scripts/check_npm_audit.mjs`). | `18ae1e6`; `package.json:46` defines `check:audit` (not `check:npm-audit`). |
+| [`CLAUDE.md`](../../../CLAUDE.md):41 | `**burn is at 0.22.1**`, `burn-flex` deterministic reference (`Device::flex()`), `burn-wgpu` under `ml-wgpu` + `ANIMA_USE_GPU`, `LIVE_MODEL_VERSION` `"live-bevy-world/2"`, snapshot schema 8, `bevy_ecs` 0.13. | `74dcd31`, PR `#127` `f461466`; `src-tauri/Cargo.toml:48,55`; zero `0.13.2` occurrences in `README.md`, `README.vi.md`, or `CLAUDE.md`. |
+| [`CLAUDE.md`](../../../CLAUDE.md):47 | `@react-three/fiber` mocked in Vitest while real `three` runs headless. | Updated in `4fe3d7a` (PR `#213` `e576350`). |
+| [`CLAUDE.md`](../../../CLAUDE.md):111 | Single A2C objective in `core::training::a2c_loss` (actor coefficient `+td`). | Updated in `4fe3d7a` (PR `#213` `e576350`). |
+| [`CLAUDE.md`](../../../CLAUDE.md):193 | `36 commands` in `tauri::generate_handler![...]` and `7 events` via `handle.emit(...)`; mentions `npm run check:docs` and `npm run check:ipc`. | `e0ec7ed`, `19e67fa`; `src-tauri/src/lib.rs:63-100`. |
+| [`README.md`](../../../README.md):63-64 & [`README.vi.md`](../../../README.vi.md):60-62 | F051 resolved: headless runs generate their own terrain and never read the app's world file. | Updated in `4fe3d7a` (PR `#213` `e576350`). |
 | [`README.md`](../../../README.md):99 & [`README.vi.md`](../../../README.vi.md):97 | Burn actor-critic, `burn-flex` CPU deterministic reference, `burn-wgpu` GPU on request. | `74dcd31`, `f461466`. |
 | [`README.md`](../../../README.md):88-91 & [`README.vi.md`](../../../README.vi.md):86-89 | `utf8-chars` 3.0.7 Apache-2.0 election under `MIT OR Apache-2.0`; `licensing/UNRESOLVED.md` empty; open legal question preserved. | `dc66ec8`, `f99dc6d`, PR `#175` `0dc00fb`. |
 
 ---
 
-## 3. Boundary: Merged Trunk (`6495c5c`) vs. Open Draft PRs & Non-Trunk Work
+## 3. Boundary: Merged Trunk (`e576350`) vs. Open Draft PRs & Non-Trunk Work
 
-The proposals in Sections 4–6 reflect **only** what is merged in `6495c5c`. None of the unmerged items below may be claimed as landed:
+The proposals in Sections 4–6 reflect **only** what is merged in `e576350`. None of the unmerged items below may be claimed as landed:
 
-| Item / PR | Status at `6495c5c` | Head / Ref | What Is Excluded from `CARD DOC7` Proposed Diffs |
+| Item / PR | Status at `e576350` | Ref | What Is Excluded from `CARD DOC7` Proposed Diffs |
 |---|---|---|---|
-| PR `#208` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc8-doc-commands-gate` (`5fc3ea4`) | `npm run check:doc-commands`, `scripts/check_doc_commands.mjs`, `.github/workflows/docs-commands.yml`. |
-| PR `#207` | OPEN / Ready (`NOT_ANCESTOR`) | `fix/live-lineage-births` (`bf63ca2`) | `F-066` fix, `live.lineage_tracking`. |
-| PR `#205` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc2-how-to` (`62cbcfb`) | Six `DOC2` how-to guides (`RUN_EXPERIMENTS.md`, `WRITE_A_MANIFEST.md`, etc.). |
-| PR `#204` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc1-first-experiment` (`dafd4ae`) | `DOC1` `docs/tutorials/01-first-headless-experiment.md`. |
-| PR `#202` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc3-explanation` (`5674870`) | `DOC3` `docs/explanation/ARCHITECTURE.md` and `WHY_THE_GATES.md`. |
-| PR `#201` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc5-doc6-reconcile-contributing` (`4ed57fe`) | `DOC5`/`DOC6` `CONTRIBUTING.md` CI alignment and `STATE`/`BENCHMARKING` updates. |
-| PR `#200` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/r5-findings-fixes` (`ffbf0e1`) | `F053-FIX` (`live.mean_lifespan` windowing) and `F-055`..`F-065` fixes. |
-| PR `#199` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/wv2-2` (`84c9545`) | `WV2-2` stages `S4`/`S6`/`S7`/`S8`/`S9`, `pipeline.rs`, and `[[bin]] anima-worldgen` CLI (`src/bin/anima-worldgen.rs`). On `6495c5c`, `anima-worldgen` contains **only `WV2-1a..1c`** (`S1` tectonics, `S2` hydrology, `S3` fluvial/thermal erosion). |
-| PR `#196` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/m2-gate-controls` (`60172d6`) | `scripts/paper/gate_controls.mjs`, `docs/paper/data/gate_controls.md`, `tests/frontend/gateControls.test.ts`. |
-| PR `#188` | OPEN / Draft (`NOT_ANCESTOR`) | `dell/m2-gate-controls` (`82a7a60`) | Earlier `M2` gate-controls draft. |
-| Sibling `M2` cards | Pending (not on `6495c5c`) | `mac/p1-incidents`, `mac/gate-conflict-marker-scan` | `docs/paper/data/incidents.csv` (`CARD P1`) and `npm run check:conflict-markers` (`M2` Finding #5). |
-| Base checkout `HEAD` | Older ancestor of `6495c5c` | `mac/research-docs-2026-11-22` (`c1ed63c`) | Missing PR `#203` (`url` 2.5.9) and PR `#206` merge commit; audit is strictly against `6495c5c`. |
-| Proposed contracts | `status: proposed` at `6495c5c` | — | [`ADR-0009`](../../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), and [`CREATURE_PROMPT_CONTRACT.md`](../../reference/CREATURE_PROMPT_CONTRACT.md) remain `proposed`, not `accepted`. |
+| PR `#208` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc8-doc-commands-gate` | `npm run check:doc-commands`, `scripts/check_doc_commands.mjs`, `.github/workflows/docs-commands.yml`. |
+| PR `#207` | OPEN (`NOT_ANCESTOR`) | `fix/live-lineage-births` | `F-066` fix, `live.lineage_tracking`. |
+| PR `#205` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc2-how-to` | Six `DOC2` how-to guides (`RUN_EXPERIMENTS.md`, `WRITE_A_MANIFEST.md`, etc.). |
+| PR `#204` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc1-first-experiment` | `DOC1` `docs/tutorials/01-first-headless-experiment.md`. |
+| PR `#202` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc3-explanation` | `DOC3` `docs/explanation/ARCHITECTURE.md` and `WHY_THE_GATES.md`. |
+| PR `#201` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/doc5-doc6-reconcile-contributing` | `DOC5`/`DOC6` `CONTRIBUTING.md` CI alignment and `STATE`/`BENCHMARKING` updates. |
+| PR `#200` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/r5-findings-fixes` | `F053-FIX` (`live.mean_lifespan` windowing) and `F-055`..`F-065` fixes. |
+| PR `#199` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/wv2-2` | `WV2-2` stages `S4`/`S6`/`S7`/`S8`/`S9`, `pipeline.rs`, and `[[bin]] anima-worldgen` CLI (`src/bin/anima-worldgen.rs`). On `e576350`, `anima-worldgen` contains **only `WV2-1a..1c`** (`S1` tectonics, `S2` hydrology, `S3` fluvial/thermal erosion). |
+| PR `#196` | OPEN / Draft (`NOT_ANCESTOR`) | `mac/m2-gate-controls` | `scripts/paper/gate_controls.mjs`, `docs/paper/data/gate_controls.md`, `tests/frontend/gateControls.test.ts`. |
+| PR `#188` | OPEN / Draft (`NOT_ANCESTOR`) | `dell/m2-gate-controls` | Earlier `M2` gate-controls draft. |
+| Sibling `M2` cards | Pending (not on `e576350`) | `mac/p1-incidents`, `mac/gate-conflict-marker-scan` | `docs/paper/data/incidents.csv` (`CARD P1`) and `npm run check:conflict-markers` (`M2` Finding #5). |
+| Proposed contracts | `status: proposed` at `e576350` | — | [`ADR-0009`](../../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), and [`CREATURE_PROMPT_CONTRACT.md`](../../reference/CREATURE_PROMPT_CONTRACT.md) remain `proposed`, not `accepted`. |
 
 ---
 
-## 4. Proposed Changes to `README.md` (`R1`–`R15`)
+## 4. Proposed Changes to `README.md` (`R1`–`R14`)
 
-All line numbers and current excerpts below were verified directly against `6495c5c:README.md` (320 lines).
+All line numbers and current excerpts below were verified directly against `e576350:README.md` (320 lines).
 
-### `R1` — Remove resolved F051 exception and link `DETERMINISM_CONTRACT.md`
+### `R1` — Optional link to `DETERMINISM_CONTRACT.md` (`F051` already landed in `#213`)
 
 - **Target:** `README.md:62-64`
-- **Source commits:** `62c70cc` (PR `#174`), `6a9b9a2` (PR `#179`)
-- **Reason:** F051 and F051b are merged on `6495c5c`: `build_live_world` calls `init_world_with(TerrainSource::Generated)` (`src-tauri/src/core/ecs.rs:38,64`, `src-tauri/src/core/live_experiment.rs:2606`), completely isolated from `ANIMA_WORLD_ARTIFACT` and `<temp_dir>/anima_world_artifact.anmw`, and records `terrain_source` and `world_identity` in `RunProvenance`.
+- **Source commits:** `62c70cc` (PR `#174`), `6a9b9a2` (PR `#179`), `4fe3d7a` (PR `#213` `e576350`)
+- **Reason:** `#213` (`4fe3d7a`) already removed the resolved F051 exception from `README.md:63-64`; only a concise pointer to [`DETERMINISM_CONTRACT.md`](../../reference/DETERMINISM_CONTRACT.md) remains optional.
 
-Current (`README.md:62-64`):
+Current (`e576350:README.md:62-64`):
 ```markdown
 - **Reproducible.** The same seed, commit and operating system give the same checksum. Trajectories differ across
-  operating systems, so tests compare two runs instead of pinning an absolute number. One exception is being fixed
-  (card F051): a headless run still takes its terrain from the app's world file if the machine has one.
+  operating systems, so tests compare two runs instead of pinning an absolute number. Headless runs generate their
+  own terrain and never read the app's world file (card F051), and each run records the terrain it used.
 ```
 
 Proposed:
 ```markdown
 - **Reproducible.** The same seed, commit and operating system give the same checksum. Trajectories differ across
-  operating systems, so tests compare two runs instead of pinning an absolute number. Headless experiments generate
-  their own terrain independently of the app's world file and record `terrain_source` and `world_identity` in run
-  provenance ([`DETERMINISM_CONTRACT.md`](docs/reference/DETERMINISM_CONTRACT.md)).
+  operating systems, so tests compare two runs instead of pinning an absolute number. Headless runs generate their
+  own terrain and never read the app's world file (card F051), and each run records the terrain it used
+  ([`DETERMINISM_CONTRACT.md`](docs/reference/DETERMINISM_CONTRACT.md)).
 ```
 
 ### `R2` — Update boundaries section date
 
 - **Target:** `README.md:67`
-- **Source commit:** `6495c5c`
-- **Reason:** Reflects trunk updates merged between 2026-11-19 and 2026-11-22 (F051/F051b, SEL2-P smoke, E3 confirmation, `FOUNDER-LAYOUT`, `WV2-1a..1c`, F-054 CI fixes).
+- **Source commit:** `e576350`
+- **Reason:** Reflects trunk updates merged between 2026-11-19 and 2026-11-23 (F051/F051b, SEL2-P smoke, E3 confirmation, `FOUNDER-LAYOUT`, `WV2-1a..1c`, F-054 CI fixes, `#212`/`#213`).
 
 Current (`README.md:67`):
 ```markdown
@@ -103,14 +110,14 @@ Current (`README.md:67`):
 
 Proposed:
 ```markdown
-## Current boundaries (2026-11-22)
+## Current boundaries (2026-11-23)
 ```
 
-### `R3` — Update scientific experiment boundary (SEL2-P & E3)
+### `R3` — Update scientific experiment boundary (SEL2-P & E3, linking `summary.md` and `STATE §3`)
 
 - **Target:** `README.md:74-79`
 - **Source commits:** `e9c92dc` (PR `#173`), `d90be0b` (PR `#181`), `1ef4f0d` (PR `#183`), `a3d7ab6` (PR `#191` `d64e536`)
-- **Reason:** SEL2-P stopped at smoke (`gate_pass=false` in `artifacts/experiments/sel2-p-food-scarcity/smoke/summary.md`). E3 completed full confirmation (36 runs: 12 seeds × 3 arms × 18,000 ticks) with `insufficient_evidence` due to 6 scarcity extinctions (`artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/summary.md`, `docs/planning/STATE_OF_THE_PROJECT.md:696`). Per Rule 4 and Rule 10, state outcomes concisely without inflating evidence and link to `STATE §3`.
+- **Reason:** Per Rule 4 (`README` links rather than mirroring outcome counts) and Rule 8, link directly to E3 [`summary.md`](../../../artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/summary.md) and [`STATE §3`](../../planning/STATE_OF_THE_PROJECT.md) without embedding experimental run counts here.
 
 Current (`README.md:74-79`):
 ```markdown
@@ -127,9 +134,9 @@ Proposed:
 - **There is no strong scientific result yet.**
   - The experiment infrastructure exists.
   - Experiment E2 gave a null result because of a floor effect, and the E-SEL1 preregistration was closed before it ran.
-  - SEL2-P stopped at its smoke gate (`gate_pass=false`); E3 completed full confirmation (36 runs) with
-    `insufficient_evidence` after 6/12 scarcity-arm extinctions. Current follow-up status (VIAB-1, E3b, SEL2-P2) is in
-    [STATE §3](docs/planning/STATE_OF_THE_PROJECT.md).
+  - SEL2-P stopped at its smoke gate (`gate_pass=false`), and E3 confirmation ended with `insufficient_evidence`
+    ([E3 summary.md](artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/summary.md)). Current outcomes
+    and follow-up work (VIAB-1, E3b, SEL2-P2) live in [STATE §3](docs/planning/STATE_OF_THE_PROJECT.md).
 ```
 
 ### `R4` — Document additional opt-in `live.*` genesis/ecological controls
@@ -173,7 +180,7 @@ Proposed:
 ### `R6` — Fix `LINDEMAN_EFFICIENCY` value (`about 30%` -> `40%`)
 
 - **Target:** `README.md:101`
-- **Source commits:** `61d7805` (and `6495c5c` code in `src-tauri/crates/anima-domain/src/laws.rs:46` & `src-tauri/src/core/ecology.rs:155`)
+- **Source commits:** `61d7805` (and `e576350` code in `src-tauri/crates/anima-domain/src/laws.rs:46` & `src-tauri/src/core/ecology.rs:155`)
 - **Reason:** Both `anima-domain/src/laws.rs:46` and `core/ecology.rs:155` define `LINDEMAN_EFFICIENCY = 0.40` (40%), matching `PROJECT.md:14`. Saying "about 30%" contradicts the code. Also link [`ENERGY_LEDGER_CONTRACT.md`](../../reference/ENERGY_LEDGER_CONTRACT.md).
 
 Current (`README.md:101`):
@@ -277,11 +284,11 @@ licensing/                third-party licence texts and bundle closure
 map-views/                canonical 1280x720 Map 1 PNG renders referenced by map_manifest.json
 ```
 
-### `R10` — Align `Verification` Frontend gates with `package.json` and `.github/workflows/ci.yml`
+### `R10` — Keep `Verification` Frontend quick-start concise and link to `CONTRIBUTING.md` (`## Gates`)
 
 - **Target:** `README.md:195-204`
 - **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6` (PR `#197` `03b9d3d`), `6adf6e3`
-- **Reason:** CI's Frontend job enforces additional gates beyond the 6 listed (`eslint_ratchet`, `typecheck:tests`, `check:audit`, `check:text-hygiene`, `check:root-hygiene`, `check:ipc`, `check:e2`, `check:e3`, `check:csp`, `check:bundle`, `check:bundle-closure`, `check_e2e_specs.mjs`), and the Rust job additionally runs `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:flora-footprint` after `npm ci`. Note `package.json:46` defines `check:audit` (not `check:npm-audit`), and `package.json:51` `check:compliance` wraps `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:text-hygiene` (so `check:text-hygiene` does not need a duplicate invocation). Link `.github/workflows/ci.yml` and `CONTRIBUTING.md` per Rule 4.
+- **Reason:** Per Policy Rule 4, `README.md` should link to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) instead of copying every CI gate (`eslint_ratchet`, `typecheck:tests`, `check:audit`, `check:text-hygiene`, `check:root-hygiene`, `check:ipc`, `check:e2`, `check:e3`, `check:csp`, `check:bundle`, `check:bundle-closure`, `check_e2e_specs.mjs`, `check:flora-footprint`, `check:compliance`). Note explicitly that `npm run check:compliance` (licenses, SBOM, NOTICE) runs against the Windows host `cargo tree --features desktop` inventory (`.github/workflows/ci.yml:210-213`) and reports stale on macOS/Linux by design — never suggest running it on macOS without that caveat.
 
 Current (`README.md:195-204`):
 ````markdown
@@ -299,28 +306,25 @@ npm run check:docs
 
 Proposed:
 ````markdown
-Frontend:
+Frontend (common local loop):
 
 ```bash
-npm run lint && node scripts/eslint_ratchet.mjs
-npm run typecheck:tests
-npm run test && npm run test:frontend
-node scripts/check_e2e_specs.mjs && npm run test:e2e
+npm run lint
+npm run test
+npm run test:frontend
+npm run test:e2e
 npm run build
-npm run check:bundle-closure && npm run check:csp && npm run check:bundle
-npm run check:docs && npm run check:ipc
-npm run check:audit && npm run check:root-hygiene
-npm run check:e2 && npm run check:e3 && npm run check:compliance && npm run check:flora-footprint
+npm run check:docs
 ```
 
-See [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and [`CONTRIBUTING.md`](CONTRIBUTING.md) for the exact CI order (`check:compliance` runs `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:text-hygiene`).
+For the full CI gate list (including `eslint_ratchet`, `typecheck:tests`, `check:ipc`, `check:bundle`, `check:flora-footprint`, `check:e2`, `check:e3`, and Windows-only `check:compliance` per `.github/workflows/ci.yml:210-213`), see [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 ````
 
-### `R11` — Align `Verification` Backend gates with `.github/workflows/ci.yml`
+### `R11` — Link Backend CI gates to `CONTRIBUTING.md` instead of copying the list
 
 - **Target:** `README.md:206-212`
 - **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `427a0e6` (PR `#197` `03b9d3d`), `3c06491`, `043930c`, `9a31a99`, `f402447`
-- **Reason:** The Rust CI job also gates on `cargo fmt --check`, `cargo deny check`, `--no-default-features` clippy + `cargo tree` boundary checks, `anima-worldgen` clippy and tests (`--features reader,generate,bake`), `cargo test --lib export_bindings`, and `cargo modules` + `verify_dataflow.py`.
+- **Reason:** Per Policy Rule 4, keep the everyday Backend verification commands in `README.md` concise (adding `cargo test -p anima-worldgen --features "reader,generate,bake"` alongside `anima-engine`) and link to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) for the complete Rust CI sequence (`cargo fmt --check`, `cargo deny check`, `--no-default-features` + `cargo tree` boundary checks, `export_bindings`, `verify_dataflow.py`, and Windows compliance).
 
 Current (`README.md:206-212`):
 ````markdown
@@ -338,17 +342,13 @@ Proposed:
 Backend (run in `src-tauri/`):
 
 ```bash
-cargo fmt --check
-cargo audit && cargo deny check
-cargo clippy --all-targets --features desktop -- -D warnings
-cargo clippy --all-targets --no-default-features -- -D warnings
-cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings
-cargo test --lib export_bindings
 cargo test --features desktop
 cargo test -p anima-worldgen --features "reader,generate,bake"
+cargo clippy --all-targets --features desktop -- -D warnings
+cargo audit
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) also runs `cargo tree` feature-isolation checks and the module dependency graph check (`dataflow.json`).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](.github/workflows/ci.yml) for the full CI gate list (`cargo fmt --check`, `cargo deny check`, `cargo tree` isolation checks, `export_bindings`, `dataflow.json`, and Windows-host licensing/SBOM/NOTICE checks).
 ````
 
 ### `R12` — Document `--profile worldgen-cpu` alongside `--profile desktop`
@@ -376,7 +376,7 @@ Proposed:
 ### `R13` — Point to operational/diagnostic `ANIMA_*` flags in code (Rule 4)
 
 - **Target:** `README.md:248-249`
-- **Source commit:** `6495c5c` (`src-tauri/src/lib.rs:105,186`, `src-tauri/src/core/resources.rs:602-603,1277,1315`, `src-tauri/src/evolution/fitness.rs:84`, `src-tauri/src/core/tick_capture.rs:368,394`, `src-tauri/src/core/aggregate_population.rs:205`)
+- **Source commit:** `e576350` (`src-tauri/src/lib.rs:105,186`, `src-tauri/src/core/resources.rs:602-603,1277,1315`, `src-tauri/src/evolution/fitness.rs:84`, `src-tauri/src/core/tick_capture.rs:368,394`, `src-tauri/src/core/aggregate_population.rs:205`)
 - **Reason:** Alongside the 10 simulation variables in the table, code reads operational/diagnostic flags (`ANIMA_FRESH_START`, `ANIMA_AUTOSTART`, `ANIMA_STARVE_TICKS`, `ANIMA_DEHYDRATION_TICKS`, `ANIMA_W_SURPLUS`, `ANIMA_TICK_CAPTURE`, `ANIMA_TICK_CAPTURE_OUT`, `ANIMA_AGGREGATE_LOD`). Per Rule 4, keep the table focused and link to the source files rather than mirroring every env var.
 
 Current (`README.md:248-249`):
@@ -416,54 +416,38 @@ the IPC surface: `npm run check:docs` fails when the list and the code disagree,
 camelCase argument keys at every frontend `invoke(...)` call site.
 ```
 
-### `R15` — Fix License table asset path (`preview images at the root` -> `map-views/`)
-
-- **Target:** `README.md:292`
-- **Source commits:** `84e77c3` (and `6495c5c` root tree / `scripts/root_allowlist.json:48`)
-- **Reason:** No preview images exist at repository root on `6495c5c`; canonical Map 1 renders live in `map-views/`.
-
-Current (`README.md:292`):
-```markdown
-| **Documentation and assets** (`docs/`, `public/`, `src-tauri/icons/`, `.github/assets/` including the logo, preview images at the root) | same dual license |
-```
-
-Proposed:
-```markdown
-| **Documentation and assets** (`docs/`, `public/`, `src-tauri/icons/`, `.github/assets/` including the logo, `map-views/`) | same dual license |
-```
-
 ---
 
-## 5. Proposed Parity Updates to `README.vi.md` (`V1`–`V15`)
+## 5. Proposed Parity Updates to `README.vi.md` (`V1`–`V14`)
 
-`README.vi.md` (315 lines at `6495c5c`, created in `d2ae358` / PR `#187` `c674db8`) is the Vietnamese translation of `README.md` and exhibits the exact same 15 discrepancies. Each `V#` corresponds 1-to-1 with `R#` and cites the same verified trunk commits.
+`README.vi.md` (315 lines at `e576350`, created in `d2ae358` / PR `#187` `c674db8`) is the Vietnamese translation of `README.md` and exhibits the matching discrepancies. Each `V#` corresponds 1-to-1 with `R#` and cites the same verified trunk commits.
 
-### `V1` — Remove resolved F051 exception (`README.vi.md:59-62`)
+### `V1` — Optional link to `DETERMINISM_CONTRACT.md` (`F051` already landed in `#213`, `README.vi.md:59-62`)
 
 - **Target:** `README.vi.md:59-62`
-- **Source commits:** `62c70cc` (PR `#174`), `6a9b9a2` (PR `#179`)
-- **Reason:** Matches `R1`; F051 and F051b are merged on `6495c5c` (`TerrainSource::Generated`).
+- **Source commits:** `62c70cc` (PR `#174`), `6a9b9a2` (PR `#179`), `4fe3d7a` (PR `#213` `e576350`)
+- **Reason:** Matches `R1`; `#213` (`4fe3d7a`) already updated `README.vi.md:60-62` for F051.
 
-Current (`README.vi.md:59-62`):
+Current (`e576350:README.vi.md:59-62`):
 ```markdown
 - **Tái lập được.** Cùng hạt giống, cùng commit và cùng hệ điều hành thì cho cùng checksum. Giữa các hệ điều hành,
-  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Còn một
-  ngoại lệ đang được sửa (thẻ F051): lượt chạy không giao diện vẫn lấy địa hình từ file thế giới của app nếu máy
-  có file đó.
+  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Lượt chạy
+  không giao diện tự sinh địa hình và không bao giờ đọc file thế giới của app (thẻ F051); mỗi lượt ghi lại địa hình
+  nó đã dùng.
 ```
 
 Proposed:
 ```markdown
 - **Tái lập được.** Cùng hạt giống, cùng commit và cùng hệ điều hành thì cho cùng checksum. Giữa các hệ điều hành,
-  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Thí nghiệm
-  không giao diện tự sinh địa hình độc lập với file thế giới của app và ghi `terrain_source` cùng `world_identity`
-  vào provenance ([`DETERMINISM_CONTRACT.md`](docs/reference/DETERMINISM_CONTRACT.md)).
+  quỹ đạo mô phỏng có khác, nên test luôn so hai lượt chạy với nhau, không ghim một con số tuyệt đối. Lượt chạy
+  không giao diện tự sinh địa hình và không bao giờ đọc file thế giới của app (thẻ F051); mỗi lượt ghi lại địa hình
+  nó đã dùng ([`DETERMINISM_CONTRACT.md`](docs/reference/DETERMINISM_CONTRACT.md)).
 ```
 
 ### `V2` — Update boundaries section date (`README.vi.md:65`)
 
 - **Target:** `README.vi.md:65`
-- **Source commit:** `6495c5c`
+- **Source commit:** `e576350`
 - **Reason:** Matches `R2`.
 
 Current (`README.vi.md:65`):
@@ -473,14 +457,14 @@ Current (`README.vi.md:65`):
 
 Proposed:
 ```markdown
-## Ranh giới hiện tại (2026-11-22)
+## Ranh giới hiện tại (2026-11-23)
 ```
 
 ### `V3` — Update scientific experiment boundary (`README.vi.md:72-77`)
 
 - **Target:** `README.vi.md:72-77`
 - **Source commits:** `e9c92dc` (PR `#173`), `d90be0b` (PR `#181`), `1ef4f0d` (PR `#183`), `a3d7ab6` (PR `#191` `d64e536`)
-- **Reason:** Matches `R3` (SEL2-P stopped at smoke; E3 completed 36-run confirmation with `insufficient_evidence`).
+- **Reason:** Matches `R3` (link directly to E3 [`summary.md`](../../../artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/summary.md) and [`STATE §3`](../../planning/STATE_OF_THE_PROJECT.md) without duplicating experimental run counts).
 
 Current (`README.vi.md:72-77`):
 ```markdown
@@ -497,9 +481,8 @@ Proposed:
 - **Chưa có kết quả khoa học có sức mạnh.**
   - Hạ tầng thí nghiệm đã có.
   - Thí nghiệm E2 cho kết quả null vì hiệu ứng sàn, và bản đăng ký E-SEL1 bị đóng trước khi chạy.
-  - SEL2-P dừng ở cổng smoke (`gate_pass=false`); E3 hoàn tất đủ vòng xác nhận (36 lượt) với kết luận
-    `insufficient_evidence` vì nhánh khan hiếm tuyệt chủng ở 6/12 hạt giống. Tình trạng tiếp nối (VIAB-1, E3b,
-    SEL2-P2) nằm ở [STATE §3](docs/planning/STATE_OF_THE_PROJECT.md).
+  - SEL2-P dừng ở cổng smoke (`gate_pass=false`), còn E3 kết thúc vòng xác nhận với kết luận
+    `insufficient_evidence` ([E3 summary.md](artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/summary.md)). Kết quả và việc tiếp nối (VIAB-1, E3b, SEL2-P2) nằm ở [STATE §3](docs/planning/STATE_OF_THE_PROJECT.md).
 ```
 
 ### `V4` — Document additional opt-in `live.*` controls (`README.vi.md:83-85`)
@@ -543,7 +526,7 @@ Proposed:
 ### `V6` — Fix `LINDEMAN_EFFICIENCY` value (`README.vi.md:99`)
 
 - **Target:** `README.vi.md:99`
-- **Source commit:** `61d7805` (and `6495c5c` code in `laws.rs:46`, `ecology.rs:155`)
+- **Source commit:** `61d7805` (and `e576350` code in `laws.rs:46`, `ecology.rs:155`)
 - **Reason:** Matches `R6` (`0.40` / 40%, not "khoảng 30%").
 
 Current (`README.vi.md:99`):
@@ -647,11 +630,11 @@ licensing/                văn bản giấy phép bên thứ ba và bundle closu
 map-views/                tám ảnh PNG chuẩn 1280x720 của Map 1 ghi trong map_manifest.json
 ```
 
-### `V10` — Align `Kiểm chứng` Frontend gates (`README.vi.md:192-201`)
+### `V10` — Keep `Kiểm chứng` Frontend concise and link to `CONTRIBUTING.md` (`## Gates`, `README.vi.md:192-201`)
 
 - **Target:** `README.vi.md:192-201`
 - **Source commits:** `2d7543e`, `19e67fa`, `920c369`, `84e77c3`, `ce558b2`, `7d53660`, `18ae1e6`, `b507bb4`, `427a0e6`, `6adf6e3`
-- **Reason:** Matches `R10` (`check:compliance` wraps `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice`, and `check:text-hygiene`).
+- **Reason:** Matches `R10` (links to [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#gates) and [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml) instead of copying the full gate list, with the explicit Windows-only note for `check:compliance` per `.github/workflows/ci.yml:210-213`).
 
 Current (`README.vi.md:192-201`):
 ````markdown
@@ -669,24 +652,21 @@ npm run check:docs
 
 Proposed:
 ````markdown
-Frontend:
+Frontend (vòng kiểm tra cục bộ thường dùng):
 
 ```bash
-npm run lint && node scripts/eslint_ratchet.mjs
-npm run typecheck:tests
-npm run test && npm run test:frontend
-node scripts/check_e2e_specs.mjs && npm run test:e2e
+npm run lint
+npm run test
+npm run test:frontend
+npm run test:e2e
 npm run build
-npm run check:bundle-closure && npm run check:csp && npm run check:bundle
-npm run check:docs && npm run check:ipc
-npm run check:audit && npm run check:root-hygiene
-npm run check:e2 && npm run check:e3 && npm run check:compliance && npm run check:flora-footprint
+npm run check:docs
 ```
 
-Xem [`.github/workflows/ci.yml`](.github/workflows/ci.yml) và [`CONTRIBUTING.md`](CONTRIBUTING.md) để biết thứ tự đầy đủ trên CI (`check:compliance` bao gồm `check:licenses`, `check:sbom`, `check:sbom-schema`, `check:notice` và `check:text-hygiene`).
+Danh sách đầy đủ các cổng CI (gồm `eslint_ratchet`, `typecheck:tests`, `check:ipc`, `check:bundle`, `check:flora-footprint`, `check:e2`, `check:e3`, và `check:compliance` chỉ chạy trên Windows theo `.github/workflows/ci.yml:210-213`) nằm tại [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) và [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 ````
 
-### `V11` — Align `Kiểm chứng` Backend gates (`README.vi.md:203-209`)
+### `V11` — Link `Kiểm chứng` Backend CI gates to `CONTRIBUTING.md` (`README.vi.md:203-209`)
 
 - **Target:** `README.vi.md:203-209`
 - **Source commits:** `f523e3c`, `25cf7f6`, `427a0e6`, `3c06491`, `043930c`, `9a31a99`, `f402447`
@@ -708,17 +688,13 @@ Proposed:
 Backend (chạy trong `src-tauri/`):
 
 ```bash
-cargo fmt --check
-cargo audit && cargo deny check
-cargo clippy --all-targets --features desktop -- -D warnings
-cargo clippy --all-targets --no-default-features -- -D warnings
-cargo clippy -p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings
-cargo test --lib export_bindings
 cargo test --features desktop
 cargo test -p anima-worldgen --features "reader,generate,bake"
+cargo clippy --all-targets --features desktop -- -D warnings
+cargo audit
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) cũng chạy các bước `cargo tree` cô lập feature và kiểm tra đồ thị phụ thuộc mô-đun (`dataflow.json`).
+Xem [`CONTRIBUTING.md`](CONTRIBUTING.md#gates) và [`.github/workflows/ci.yml`](.github/workflows/ci.yml) để biết chuỗi cổng Rust đầy đủ trên CI (`cargo fmt --check`, `cargo deny check`, `cargo tree` cô lập feature, `export_bindings`, `dataflow.json`, và các cổng license/SBOM/NOTICE trên Windows).
 ````
 
 ### `V12` — Document `--profile worldgen-cpu` (`README.vi.md:213-216`)
@@ -746,7 +722,7 @@ Proposed:
 ### `V13` — Point to operational/diagnostic `ANIMA_*` flags (`README.vi.md:245-246`)
 
 - **Target:** `README.vi.md:245-246`
-- **Source commit:** `6495c5c` (`resources.rs`, `tick_capture.rs`, `fitness.rs`, `lib.rs`, `aggregate_population.rs`)
+- **Source commit:** `e576350` (`resources.rs`, `tick_capture.rs`, `fitness.rs`, `lib.rs`, `aggregate_population.rs`)
 - **Reason:** Matches `R13`.
 
 Current (`README.vi.md:245-246`):
@@ -785,43 +761,17 @@ bề mặt IPC: `npm run check:docs` đỏ khi danh sách lệch với mã, và 
 camelCase ở mọi điểm gọi `invoke(...)` phía giao diện.
 ```
 
-### `V15` — Fix License table asset path (`README.vi.md:288`)
-
-- **Target:** `README.vi.md:288`
-- **Source commit:** `84e77c3` (and `6495c5c` root tree / `scripts/root_allowlist.json:48`)
-- **Reason:** Matches `R15`.
-
-Current (`README.vi.md:288`):
-```markdown
-| **Tài liệu và asset** (`docs/`, `public/`, `src-tauri/icons/`, `.github/assets/` gồm cả logo, ảnh preview ở thư mục gốc) | cùng cấp phép kép như trên |
-```
-
-Proposed:
-```markdown
-| **Tài liệu và asset** (`docs/`, `public/`, `src-tauri/icons/`, `.github/assets/` gồm cả logo, `map-views/`) | cùng cấp phép kép như trên |
-```
-
 ---
 
 ## 6. Proposed Code-Driven Changes to `CLAUDE.md` (`C1`–`C11`)
 
-Per `CARD DOC7`, proposals for `CLAUDE.md` (193 lines at `6495c5c`) are strictly limited to changes made necessary by trunk code: new workspace crates, new commands, new CI gates, or correcting factually stale build/mock/script statements.
+Per `CARD DOC7`, proposals for `CLAUDE.md` (193 lines at `e576350`) are strictly limited to changes made necessary by trunk code: new workspace crates, new commands, new CI gates, or correcting factually stale build/mock/script statements. Note that PR `#213` (`4fe3d7a`) already landed several of these fixes (`C1`, `C5`, `C7`, `C10`, plus most of `C4`) directly onto `e576350`; those rows record `ALREADY LANDED IN #213` while preserving their historical IDs.
 
-### `C1` — Add `crates/anima-worldgen` to workspace package summary
+### `C1` — Add `crates/anima-worldgen` to workspace package summary *(ALREADY LANDED IN `#213` `4fe3d7a`)*
 
 - **Target:** `CLAUDE.md:13`
-- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `95b1338` (PR `#195` `45238ff`)
-- **Reason:** `src-tauri/Cargo.toml:85` (`members = ["crates/*"]`) now holds three workspace packages: `anima-engine`, `crates/anima-domain`, and `crates/anima-worldgen`.
-
-Current (`CLAUDE.md:13`):
-```markdown
-Anima-Engine is a real-time, GPU-accelerated Artificial Life & Evolution simulator built as a **Tauri v2 desktop app**. Backend is Rust (Bevy ECS + Burn ML) running a 60 FPS background simulation thread; frontend is TypeScript/React/Vite communicating over Tauri IPC. Cargo workspace rooted at `src-tauri/` (the `anima-engine` package, plus `crates/anima-domain` holding the world laws); `tests/` is a second npm package with its own `node_modules`.
-```
-
-Proposed:
-```markdown
-Anima-Engine is a real-time, GPU-accelerated Artificial Life & Evolution simulator built as a **Tauri v2 desktop app**. Backend is Rust (Bevy ECS + Burn ML) running a 60 FPS background simulation thread; frontend is TypeScript/React/Vite communicating over Tauri IPC. Cargo workspace rooted at `src-tauri/` (the `anima-engine` package, `crates/anima-domain` holding the world laws, and `crates/anima-worldgen` for offline World v2 generation, not yet wired into `anima-engine`); `tests/` is a second npm package with its own `node_modules`.
-```
+- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `95b1338` (PR `#195` `45238ff`), `4fe3d7a` (PR `#213` `e576350`)
+- **Status at `e576350`:** Already updated on trunk (`CLAUDE.md:13` now lists `anima-engine`, `crates/anima-domain`, and `crates/anima-worldgen, the offline World v2 generator`). Only an optional phrase noting `(not yet wired into anima-engine)` could be appended.
 
 ### `C2` — Update Vite entry count (`two entries` -> `three entries`)
 
@@ -864,43 +814,33 @@ Proposed (`CLAUDE.md:24-27`):
 - `npm run check:ipc` — verifies camelCase argument keys at every frontend `invoke(...)` call site (`scripts/check_ipc_arg_case.mjs`).
 - `npm run check:bundle-closure` — verifies `licensing/bundle-closure.json` matches a fresh `dist/` build.
 - `node scripts/check_e2e_specs.mjs && npm run test:e2e` — verifies Playwright schedules the committed spec policy (`scripts/e2e_spec_policy.mjs`) and runs browser-scope E2E against `tests/e2e/tauri-mock.ts`.
-- `npm run check:compliance` (and `npm run check:flora-footprint`) — checks `check:licenses`, `check:sbom`, `check:sbom-schema` (CycloneDX 1.5), `check:notice` (which runs `node scripts/gen_notice.mjs --check` below), `check:text-hygiene`, and flora footprints.
+- `npm run check:flora-footprint` — verifies declared flora radii in `floraClearance.ts` match headless `three` geometry (not part of `check:compliance`).
+- `npm run check:compliance` — checks `check:licenses`, `check:sbom`, `check:sbom-schema` (CycloneDX 1.5), `check:notice` (which runs `node scripts/gen_notice.mjs --check` below), and `check:text-hygiene`. Targets the Windows `cargo tree --features desktop` graph (`.github/workflows/ci.yml:210-213`), so `check:licenses`, `check:sbom`, and `check:notice` report stale off Windows by design.
 - `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.
 - `npm run check:docs` — docs link check plus `scripts/check_docs_metadata.mjs`: required front matter, allowed `status`/`review_cycle` values, a README index in every `docs/` directory, and every document linked from an index — except that a note under `docs/ai/` may arrive **without** a row in `docs/ai/README.md`: it is *pending* when its front matter has `title`, `status` and `description`, and `npm run gen:docs-index` (run by the lead in a docs PR) appends its row. Agents do not edit that README. Both scripts also read untracked files, so a new document is checked before it is staged. The metadata checker runs its own negative controls first and exits 2 if one of them passes. The rules it enforces are in `docs/governance/DOCUMENTATION_POLICY.md` ("Metadata tối thiểu", and "Chỉ mục sinh" for the generated index, whose logic lives in `scripts/lib/docs_index.mjs`); change them together. `--report` lists overdue reviews, which are reported but never fail the run.
 - `npm run gen:world-manifest` — regenerates `map_manifest.json` **and** `artifacts/world_256.anmw` together, with a real SHA-256. Never hand-edit that manifest; `tests/frontend/mapManifestEvidence.test.ts` hashes the bytes it names.
-```
+````
 
-### `C4` — Update Backend `cargo test` description for 3 crates & 10 feature-gated targets
+### `C4` — Keep full `--features desktop` rationale (`2,040` lines, already updated in `#213`) and note 2 `anima-worldgen` gated targets
 
 - **Target:** `CLAUDE.md:34`
-- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `95b1338` (PR `#195` `45238ff`)
-- **Reason:** Workspace now has 3 packages (`src-tauri/Cargo.toml:85,96`, `members` and `default-members`); `scripts/test_target_policy.mjs:113-124` and `src-tauri/tests/feature_gated_targets_tests.rs:25-32` now track **10** feature-gated targets across 2 crates (8 in `src-tauri/tests/` for `networking`/`ml-wgpu` + 2 in `crates/anima-worldgen/tests/` for `generate`), and CI runs `cargo test -p anima-worldgen --features "reader,generate,bake"` separately (`.github/workflows/ci.yml:199`).
+- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `25cf7f6` (PR `#194` `bfbb9c2`), `95b1338` (PR `#195` `45238ff`), `4fe3d7a` (PR `#213` `e576350`)
+- **Reason:** PR `#213` (`4fe3d7a`) already updated `e576350:CLAUDE.md:34` to **`2,040`** lines (`scripts/check_test_targets.mjs:15`), added the separate `cargo test -p anima-worldgen --features "reader,generate,bake"` (`--profile worldgen-cpu`) note, and **preserved the full `--features desktop` rationale**. Any remaining proposal only adds the count of two `generate`-gated `anima-worldgen` targets (`scripts/test_target_policy.mjs:122-123` and `src-tauri/tests/feature_gated_targets_tests.rs:25-32`) while keeping the entire `--features desktop` explanation and `2,040` count intact.
 
-Current (`CLAUDE.md:34`):
+Current (`e576350:CLAUDE.md:34`):
 ```markdown
-- `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** eight test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps the two halves of that declaration from drifting.
+- `cargo test --features desktop` — unit + integration tests, across the workspace's default members (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). It does **not** run `anima-worldgen`'s tests: every module and test target there needs its `generate` feature, so CI runs them in a separate step, `cargo test -p anima-worldgen --features "reader,generate,bake"`, checked with `--profile worldgen-cpu`. **Pass `--features desktop`, which is what CI runs:** eight test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 2,040 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps the two halves of that declaration from drifting.
 ```
 
-Proposed:
+Proposed (preserves the full `e576350` rationale and `2,040` line count verbatim, only noting the 2 `anima-worldgen` gated targets in the last sentence):
 ```markdown
-- `cargo test --features desktop` — unit + integration tests across workspace `default-members` (`src-tauri/Cargo.toml`). **Pass `--features desktop`, which is what CI runs:** eight test files in `src-tauri/tests/` carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all. For `anima-worldgen` (which adds two `generate`-gated targets in `crates/anima-worldgen/tests/`), CI runs `cargo test -p anima-worldgen --features "reader,generate,bake"`. `tests/feature_gated_targets_tests.rs` keeps the crate-level `#![cfg]` and `[[test]] required-features` declarations in sync across both crates.
+- `cargo test --features desktop` — unit + integration tests, across the workspace's default members (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). It does **not** run `anima-worldgen`'s tests: every module and test target there needs its `generate` feature, so CI runs them in a separate step, `cargo test -p anima-worldgen --features "reader,generate,bake"`, checked with `--profile worldgen-cpu`. **Pass `--features desktop`, which is what CI runs:** eight test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 2,040 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps those declarations (plus two `generate`-gated targets in `crates/anima-worldgen/tests/`) in sync with `[[test]] required-features`.
 ```
 
-### `C5` — Add `worldgen-cpu` profile to `check_test_targets.mjs`
+### `C5` — Add `worldgen-cpu` profile to `check_test_targets.mjs` *(ALREADY LANDED IN `#213` `4fe3d7a`)*
 
 - **Target:** `CLAUDE.md:35`
-- **Source commits:** `f523e3c` (PR `#193` `cb61b00`), `427a0e6` (PR `#197` `03b9d3d`)
-- **Reason:** `scripts/test_target_policy.mjs:127-131` and `.github/workflows/ci.yml:203` define three profiles: `default`, `desktop`, and `worldgen-cpu`.
-
-Current (`CLAUDE.md:35`):
-```markdown
-- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture into one file with both streams in write order:** on macOS/Linux a plain `cargo test ... > out.txt 2>&1` in bash/zsh does that; on Windows use `cmd /c "cargo test ... > out.txt 2>&1"`, **not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
-```
-
-Proposed (`CLAUDE.md:35`):
-```markdown
-- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop|worldgen-cpu}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture into one file with both streams in write order:** on macOS/Linux a plain `cargo test ... > out.txt 2>&1` in bash/zsh does that; on Windows use `cmd /c "cargo test ... > out.txt 2>&1"`, **not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
-```
+- **Status at `e576350`:** Already updated in `4fe3d7a` (`--profile {default|desktop|worldgen-cpu}`). No change needed.
 
 ### `C6` — Document exact CI `cargo clippy` invocations
 
@@ -918,36 +858,25 @@ Proposed:
 - `cargo clippy --all-targets --features desktop -- -D warnings` (plus `--no-default-features` and `-p anima-worldgen --all-targets --features reader,generate,bake -- -D warnings` in CI).
 ```
 
-### `C7` — Correct stale `cargo build --release` requirement for Playwright E2E
+### `C7` — Playwright E2E does not need the release binary *(ALREADY LANDED IN `#213` `4fe3d7a`)*
 
 - **Target:** `CLAUDE.md:37`
-- **Source commit:** `9230e1d`
-- **Reason:** Factually contradicts code and CI: `npm run test:e2e` drives `tests/e2e/tauri-mock.ts` and needs **no** release binary (`.github/workflows/ci.yml:404-418`, `README.md:224`). `src-tauri/target/release/anima-engine` is required **only** when `ANIMA_E2E_REQUIRE_BACKEND=1` is set (`tests/e2e/real_backend.spec.ts:31-45`).
-
-Current (`CLAUDE.md:37`):
-```markdown
-- `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
-```
-
-Proposed:
-```markdown
-- `cargo build --release --features desktop` — builds the release binary in `src-tauri/target/release/`; browser-scope `npm run test:e2e` drives `tests/e2e/tauri-mock.ts` and needs no binary, whereas `ANIMA_E2E_REQUIRE_BACKEND=1` (`tests/e2e/real_backend.spec.ts`) fails closed without it.
-```
+- **Status at `e576350`:** Already corrected in `4fe3d7a` (`CLAUDE.md:37` now states: `Playwright E2E does **not** need it: test:e2e runs against the Vite dev server with the Tauri mock in tests/e2e/tauri-mock.ts (tests/e2e/playwright.config.ts).`, with `tests/e2e/real_backend.spec.ts` using `ANIMA_E2E_REQUIRE_BACKEND=1` optionally). No further edit needed unless noting `ANIMA_E2E_REQUIRE_BACKEND=1`.
 
 ### `C8` — Add `cargo fmt --check`, `cargo deny check`, `export_bindings`, and `dataflow` gate to Backend commands
 
-- **Target:** after `CLAUDE.md:37` (inserted at the end of the Backend commands list, before blank line `38` and `Dependency advisories` at line `39`)
+- **Target:** after `CLAUDE.md:37` (retaining `e576350:CLAUDE.md:37` / `C7` unchanged above the inserted lines)
 - **Source commits:** `f523e3c`, `427a0e6` (PR `#197` `03b9d3d`), `3c06491`, `043930c`, `9a31a99`, `f402447`
 - **Reason:** `.github/workflows/ci.yml:92,122,157-158,263-264` runs all four as mandatory Rust CI gates (`src-tauri/deny.toml`, `src/types/generated/`, `dataflow.json`).
 
-Current (`CLAUDE.md:37`):
+Current (`e576350:CLAUDE.md:37`):
 ```markdown
-- `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
+- `cargo build --release --features desktop` — the release desktop binary. Playwright E2E does **not** need it: `test:e2e` runs against the Vite dev server with the Tauri mock in `tests/e2e/tauri-mock.ts` (`tests/e2e/playwright.config.ts`).
 ```
 
-Proposed (after `CLAUDE.md:37`; retain `C7`'s updated line 37 text when applying both `C7` and `C8`):
+Proposed (keeping `e576350:CLAUDE.md:37` verbatim and inserting the 4 CI commands below it):
 ```markdown
-- `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
+- `cargo build --release --features desktop` — the release desktop binary. Playwright E2E does **not** need it: `test:e2e` runs against the Vite dev server with the Tauri mock in `tests/e2e/tauri-mock.ts` (`tests/e2e/playwright.config.ts`).
 - `cargo fmt --check` — formatting gate (first step of Rust CI).
 - `cargo deny check` — Rust license allow-list gate (`src-tauri/deny.toml`).
 - `cargo test --lib export_bindings && git diff --exit-code -- ../src/types/generated` — verifies `ts-rs` TypeScript IPC bindings match Rust structs.
@@ -970,26 +899,15 @@ Proposed:
 CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-latest`; alongside `determinism-matrix.yml` and `hardening.yml`); it runs the gates above plus `cargo tree` checks confirming that `--no-default-features` excludes optional crates, default `anima-engine` excludes `anima-worldgen`, and `anima-worldgen` excludes `bevy_ecs`/`tauri`/`wgpu`.
 ```
 
-### `C10` — Fix stale Vitest `three` mock aliasing claim
+### `C10` — Vitest `@react-three/fiber` mock vs headless `three` *(ALREADY LANDED IN `#213` `4fe3d7a`)*
 
 - **Target:** `CLAUDE.md:47`
-- **Source commits:** `67db7c6`, `b576309`
-- **Reason:** `three` is **not** mocked or present in `tests/mocks/`. `vite.config.ts:200-202` explicitly states `Only the R3F reconciler is mocked under jsdom; real three runs headless`; `tsconfig.json:25-28` aliases `"@/*": ["src/*"]` on line `26` and `"@react-three/fiber": ["tests/mocks/react-three-fiber-mock.ts"]` on line `27` (and does **not** alias `three`); `tests/vitest.config.ts:52-53` pins `'three'` to `../node_modules/three` and aliases only `@react-three/fiber` to `./mocks/react-three-fiber-mock.ts`.
-
-Current (`CLAUDE.md:47`):
-```markdown
-- **Test-mode mock aliasing.** When Vitest runs (`mode === 'test'`), `three` and `@react-three/fiber` are aliased to mocks in `tests/mocks/`. These aliases are duplicated in `vite.config.ts`, `tsconfig.json` paths, and `tests/vitest.config.ts` — keep them in sync. Tests run under jsdom; WebGL/R3F are mocked. `PixiViewport.tsx` falls back to a Canvas 2D path under Vitest to avoid jsdom WebGL crashes.
-```
-
-Proposed:
-```markdown
-- **Test-mode mock aliasing.** When Vitest runs (`mode === 'test'`), `@react-three/fiber` is aliased to `tests/mocks/react-three-fiber-mock.ts` while real `three` runs headless (pinned in `tests/vitest.config.ts` to root `node_modules/three` so `tests/` does not resolve a duplicate copy). Keep the `@react-three/fiber` alias in `vite.config.ts`, `tsconfig.json`, and `tests/vitest.config.ts` in sync. `PixiViewport.tsx` falls back to a Canvas 2D path under Vitest to avoid jsdom WebGL crashes.
-```
+- **Status at `e576350`:** Already updated in `4fe3d7a` (`CLAUDE.md:47` now states `@react-three/fiber` is mocked and real `three` runs headless). No change needed.
 
 ### `C11` — Fix `npm run tauri dev` typo (`npm run tauri:dev`)
 
 - **Target:** `CLAUDE.md:52`
-- **Source commit:** `6495c5c` (`package.json:15-16`; also preserves the historical `fddbdee` deletion note verbatim)
+- **Source commit:** `e576350` (`package.json:15-16`; also preserves the historical `fddbdee` deletion note verbatim)
 - **Reason:** `package.json:16` defines `tauri:dev` (`tauri dev --features desktop`), whereas `npm run tauri dev` invokes bare `tauri` without `--features desktop`. Matches `CLAUDE.md:31`.
 
 Current (`CLAUDE.md:52`):
@@ -1014,12 +932,16 @@ Recorded here for visibility only — **not** part of `README.md`, `README.vi.md
 
 ---
 
-## 8. Verified Trunk Source Commit Ledger (`6495c5c` Ancestry)
+## 8. Verified Trunk Source Commit Ledger (`e576350` Ancestry)
 
-Every SHA cited in this proposal was verified on `6495c5c` via `git cat-file -t <sha>` (`commit`) and `git merge-base --is-ancestor <sha> 6495c5c` (exit `0`):
+Every SHA cited in this proposal was verified on `e576350` via `git cat-file -t <sha>` (`commit`) and `git merge-base --is-ancestor <sha> e576350` (exit `0`):
 
 | Short SHA | Full 40-char SHA | Committer Date | Subject |
 |---|---|---|---|
+| `e576350` | `e576350fc2a8b9c6765eea81a94ecfa705fcc528` | `2026-11-23T13:35:50+07:00` | `Merge pull request #213 from DuongNAD/lead/docs-drift-2026-11-23` |
+| `14e7c14` | `14e7c142fd9d3b260320c119544105231c7874ce` | `2026-11-23T12:57:45+07:00` | `Merge pull request #212 from DuongNAD/lead/decisions-2026-11-23` |
+| `4fe3d7a` | `4fe3d7afd35af797dd7cbe98fc40beb41d5aa362` | `2026-11-23T12:15:18+07:00` | `docs: correct statements in CLAUDE.md and READMEs that the code contradicts` |
+| `f40ae07` | `f40ae078b95aaa34d29807e7e63969796e07e285` | `2026-11-23T11:59:11+07:00` | `docs(workflow): record the owner's 2026-11-23 decisions and authorizations` |
 | `6495c5c` | `6495c5c5a39b3bd171f900501624d7cf5cf4a93f` | `2026-11-23T00:54:08+07:00` | `Merge pull request #206 from DuongNAD/mac/research-docs-2026-11-22` |
 | `45238ff` | `45238ffee7794a54468510edfbb4e948c62a085c` | `2026-11-22T21:20:28+07:00` | `Merge pull request #195 from DuongNAD/mac/wv2-1c` |
 | `03b9d3d` | `03b9d3d93d1669d9fc1e5bf1a4b62b7c3d95b288` | `2026-11-22T20:56:27+07:00` | `Merge pull request #197 from DuongNAD/mac/fix-vacuous-gates-f054` |
