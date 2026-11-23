@@ -596,7 +596,9 @@ describe('check_conflict_markers gate', () => {
 
       const mergeRes = spawnSync(
         'git',
-        ['-c', 'merge.conflictstyle=merge', 'merge', 'branch-ours'],
+        // `git merge` needs a committer identity even when it stops on a conflict. Without the
+        // -c identity a runner with no global user.email (GitHub's ubuntu image) exits 128.
+        [...gitCommitArgs, '-c', 'merge.conflictstyle=merge', 'merge', 'branch-ours'],
         { cwd: dir, env: gitEnv, encoding: 'utf8' },
       );
       expect(mergeRes.status).toBe(1);
