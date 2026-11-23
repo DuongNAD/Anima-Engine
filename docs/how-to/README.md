@@ -1,73 +1,73 @@
 ---
-title: Hướng dẫn thao tác
+title: How-to Guides
 status: active
 owner: maintainers
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-23
 review_cycle: per-release
 ---
 
 # How-to
 
-## Danh sách hướng dẫn thao tác
+## Task Guides
 
-| Nhiệm vụ | Tài liệu | Nội dung chính |
+| Task | Guide | Summary |
 |---|---|---|
-| Chạy thí nghiệm headless | [RUN_EXPERIMENTS.md](RUN_EXPERIMENTS.md) | Build và chạy `anima-lab` (`ensemble`, `sweep`, `branch`, JSON/CSV, negative control) |
-| Viết và kiểm chứng manifest | [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md) | Schema `ExperimentManifest`, `WorldLawSet`, `LIVE_KEYS`, `SweepManifest`, `BranchTreeManifest` |
-| Thêm biến quan sát mới | [ADD_AN_OBSERVABLE.md](ADD_AN_OBSERVABLE.md) | Đăng ký `ObservableSpec`, `LIVE_EXTENDED_OBSERVABLE_IDS`, `live_observables` vs `peek`, kiểm thử |
-| Thêm can thiệp mới | [ADD_AN_INTERVENTION.md](ADD_AN_INTERVENTION.md) | `InterventionKind`, `validate_intervention`, tag băm, `apply_live_interventions_system`, `EnergyLedger` |
-| Thêm cổng kiểm tra (gate) mới | [ADD_A_GATE.md](ADD_A_GATE.md) | Exit code, đối chứng âm (`selfTest()` / `--self-test` / Vitest), nối `package.json` và CI |
-| Tái lập thí nghiệm E2 | [REPRODUCE_E2.md](REPRODUCE_E2.md) | Chạy seam test, `--smoke`, `--ensemble`, `--replay`, và xác minh `npm run check:e2` |
-| Giao việc cho coding agent | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | Hàng đợi thẻ, quyết định chủ dự án đã điền sẵn, luật agent và lệnh xác minh macOS |
-| Đo hiệu năng từng system | [BENCHMARKING.md](BENCHMARKING.md) | Chạy Criterion `tick_systems`, `ANIMA_TICK_CAPTURE`, bảng baseline và checklist 1.000 agent |
-| Chụp và so sánh bản đồ 3D | [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md) | `npm run capture:map` (prototype), chụp before/after và đọc báo cáo FPS/draw call |
-| Buổi dùng thử đầu tiên | [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md) | Dựng bản Windows 1, danh sách kiểm và cài đặt thử nghiệm lên máy ngoài |
+| Run headless experiments | [RUN_EXPERIMENTS.md](RUN_EXPERIMENTS.md) | Build and run `anima-lab` (`ensemble`, `sweep`, `branch`, JSON/CSV, negative controls) |
+| Author and validate manifests | [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md) | `ExperimentManifest`, `WorldLawSet`, `LIVE_KEYS`, `SweepManifest`, `BranchTreeManifest` schemas |
+| Add a new observable | [ADD_AN_OBSERVABLE.md](ADD_AN_OBSERVABLE.md) | Register `ObservableSpec`, `LIVE_EXTENDED_OBSERVABLE_IDS`, `live_observables` vs peek, tests |
+| Add a new intervention | [ADD_AN_INTERVENTION.md](ADD_AN_INTERVENTION.md) | `InterventionKind`, `validate_intervention`, canonical hash tags, `apply_live_interventions_system`, `EnergyLedger` |
+| Add a new CI gate | [ADD_A_GATE.md](ADD_A_GATE.md) | Exit codes, negative controls (`selfTest()` / `--self-test` / Vitest), wiring `package.json` and CI |
+| Reproduce E2 end-to-end | [REPRODUCE_E2.md](REPRODUCE_E2.md) | Run seam tests, `--smoke`, `--ensemble`, `--replay`, and verify with `npm run check:e2` |
+| Dispatch or follow agent workflow | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | Card queues, recorded owner decisions, agent rules, and macOS verification commands |
+| Benchmark per-system performance | [BENCHMARKING.md](BENCHMARKING.md) | Run Criterion `tick_systems`, `ANIMA_TICK_CAPTURE`, baseline table, and 1,000-agent checklist |
+| Capture and compare 3D map views | [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md) | `npm run capture:map` (prototype), before/after renders, reading FPS/draw calls |
+| First external user trial run | [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md) | Package Windows build 1, preflight checklist, and external-machine trial install |
 
-## Trên macOS và Linux
+## On macOS and Linux
 
-Các khối lệnh trong trang này và trong [BENCHMARKING.md](BENCHMARKING.md) được viết cho **Windows/PowerShell**,
-vì đó là máy đích. Lệnh `npm`, `node` và `cargo` chạy y nguyên trong zsh/bash. Những chỗ khác nhau:
+Commands on this page and in [BENCHMARKING.md](BENCHMARKING.md) are written for **Windows PowerShell**,
+the primary target machine. `npm`, `node`, and `cargo` commands work as-is in zsh/bash, with these differences:
 
-| Windows / PowerShell | macOS / zsh | Đã thử trên macOS? |
+| Windows / PowerShell | macOS / zsh | Tested on macOS? |
 |---|---|---|
-| `$env:TEN = "1"` rồi chạy lệnh | `TEN=1 lệnh`, hoặc `export TEN=1` | Cú pháp shell chuẩn |
-| `py scripts\verify_newick.py` | `python3 scripts/verify_newick.py` (cần `pip install dendropy`) | Chạy 2026-11-17 khi **chưa** cài `dendropy`: script dừng với mã thoát 1 và in cách cài. Chưa chạy với `dendropy` |
-| `.\src-tauri\target\release\anima-engine.exe` | `./src-tauri/target/release/anima-engine` | Chưa: app chưa được chạy trên máy macOS này |
-| `%APPDATA%\com.anima.engine\` (save, capture) | `~/Library/Application Support/com.anima.engine/` | Chưa: thư mục chưa tồn tại ở đây, vì app chưa chạy lần nào. Đường dẫn suy từ `identifier` trong `tauri.conf.json` |
-| `Get-NetTCPConnection -LocalPort 5173 -State Listen` | `lsof -nP -iTCP:5173 -sTCP:LISTEN` | Chạy 2026-11-17: không in gì và mã thoát 1 khi không tiến trình nào nghe cổng đó |
-| `Get-Content file.json -Raw \| ConvertFrom-Json` | `jq . file.json`, hoặc `python3 -m json.tool file.json` | Công cụ có sẵn; chưa thử trên một file capture thật |
-| `cmd /c "cargo test ... > out.txt 2>&1"` | `cargo test ... > out.txt 2>&1` | Đây là dạng `CLAUDE.md` chỉ định cho macOS/Linux |
-| `Win+Shift+S` (chụp màn hình) | `Cmd+Shift+4` | Phím tắt hệ thống |
+| `$env:NAME = "1"` then command | `NAME=1 command`, or `export NAME=1` | Standard POSIX syntax |
+| `py scripts\verify_newick.py` | `python3 scripts/verify_newick.py` (needs `pip install dendropy`) | Run 2026-11-17 without `dendropy`: exited 1 with install hint. Not yet run with `dendropy` |
+| `.\src-tauri\target\release\anima-engine.exe` | `./src-tauri/target/release/anima-engine` | No: desktop app not yet launched on this macOS host |
+| `%APPDATA%\com.anima.engine\` (saves, captures) | `~/Library/Application Support/com.anima.engine/` | No: directory absent here because desktop app has not run; path inferred from `identifier` in `tauri.conf.json` |
+| `Get-NetTCPConnection -LocalPort 5173 -State Listen` | `lsof -nP -iTCP:5173 -sTCP:LISTEN` | Run 2026-11-17: silent exit 1 when port is free |
+| `Get-Content file.json -Raw \| ConvertFrom-Json` | `jq . file.json`, or `python3 -m json.tool file.json` | Tools installed; not tested on a capture JSON file |
+| `cmd /c "cargo test ... > out.txt 2>&1"` | `cargo test ... > out.txt 2>&1` | Required form on macOS/Linux per `CLAUDE.md` |
+| `Win+Shift+S` (screenshot) | `Cmd+Shift+4` | System shortcut |
 
-Hai điều không phụ thuộc hệ điều hành và dễ quên: `NOTICE` và hồ sơ giấy phép phải sinh trên Windows
-(`gen_notice.mjs --check` báo cũ trên macOS, và đó là hành vi đúng); và checksum của thế giới khác nhau giữa
-các nền tảng, nên chỉ so hai lượt chạy trên cùng một máy.
+Two platform rules are easy to overlook: `NOTICE` and license inventories must be generated on Windows
+(`gen_notice.mjs --check` fails as stale on macOS by design); and generated terrain / simulation
+checksums differ across OS `libm` targets, so always compare runs on the same platform.
 
-## Cài và chạy frontend
+## Install and Run Frontend
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Build production:
+Production build:
 
 ```powershell
 npm run build
 ```
 
-Chạy ứng dụng Tauri:
+Launch full Tauri desktop app:
 
 ```powershell
 npm run tauri:dev
 ```
 
-Dùng `tauri:dev` / `tauri:build`, không dùng `tauri dev` trần: `tauri.conf.json` không có trường cho
-Cargo feature, nên lệnh trần build `default = []` — không Neo4j, không migration giữa shard, learner
-CPU — và không báo lỗi gì. Chạy app đầy đủ rất nặng và từng làm treo máy phát triển; chỉ mở khi cần một
-con người nhìn.
+Always use `tauri:dev` / `tauri:build`, never bare `tauri dev`: `tauri.conf.json` has no field for Cargo
+features, so bare commands build `default = []` (no Neo4j lineage, no cross-shard migration, CPU learner)
+without failing loudly. Running the full desktop app is heavy and has frozen dev machines; launch it only
+when a human needs interactive UI inspection.
 
-## Chạy kiểm tra
+## Run Tests and Checks
 
 ```powershell
 npm run test:frontend
@@ -75,42 +75,38 @@ npm run lint
 cargo test --manifest-path src-tauri/Cargo.toml --features desktop
 ```
 
-`--features desktop` là bắt buộc và là thứ CI chạy: các file test bị gate theo feature `networking` hoặc
-`ml-wgpu` không được lên lịch nếu thiếu nó.
+`--features desktop` is mandatory for full backend coverage and matches CI: without it, the test targets
+gated on `networking` or `ml-wgpu` are skipped. Run Cargo tests after core changes, and run both Rust
+and frontend checks after codec, artifact, or coordinate changes to catch cross-language drift.
 
-Chỉ thay đổi simulation core thì tối thiểu chạy Cargo test; thay codec/artifact/tọa
-độ phải chạy cả Rust và frontend để bắt sai khác đa ngôn ngữ.
+## Measure Baselines
 
-## Đo baseline
+Two distinct tools exist; keep them separate:
 
-Hai thứ khác nhau, đừng lẫn:
-
-**Số đo thật, theo từng system** (OSS-010) — chạy từ `src-tauri/`:
+**Real per-system timings** (OSS-010) — run inside `src-tauri/`:
 
 ```powershell
 cargo bench --bench tick_systems
 ```
 
-Cách chạy, cách so mốc, cách gỡ và **bảng baseline đã cam kết** nằm ở
-[`BENCHMARKING.md`](BENCHMARKING.md). Đây là bộ trả lời câu "một tick tốn bao nhiêu", vì nó đo từng
-system headless — không Tauri, không GPU device.
+Usage, baseline comparison, rollback, and the **committed baseline table** live in
+[`BENCHMARKING.md`](BENCHMARKING.md). This measures per-system headless cost with no Tauri or GPU device.
 
-**Harness report** (M0.4) — chạy từ repo root, **sau** `cargo bench --bench tick_systems`:
+**Harness summary report** (M0.4) — run from repository root **after** `cargo bench --bench tick_systems`:
 
 ```powershell
 node scripts/bench_baseline.mjs
 ```
 
-Đọc cách diễn giải và metadata bắt buộc tại
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Report gồm hai nguồn: các mục `criterion/*` là số
-đo thật đọc từ `src-tauri/target/criterion`; phần còn lại là **proxy theo thiết kế** — một vòng fBm, không
-phải engine. Trên một clone mới chưa chạy bench, script **từ chối** ghi đè report đã commit (exit 1); đặt
-`ANIMA_BENCH_ALLOW_PROXY_ONLY=1` nếu thật sự muốn một report chỉ có proxy. Không so hai report nếu khác
-build mode, workload, seed hoặc cấu hình máy mà không ghi rõ.
+Read mandatory interpretation and metadata rules in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
+The report combines `criterion/*` timings from `src-tauri/target/criterion` with a synthetic fBm **proxy**
+(not the engine loop). On an unbenched clone, the script **refuses** to overwrite the committed report
+(exits `1`); set `ANIMA_BENCH_ALLOW_PROXY_ONLY=1` only if you explicitly want a proxy-only report. Never
+compare reports across differing build modes, workloads, seeds, or hardware without recording the difference.
 
-## Kiểm tra phả hệ bằng một parser bên ngoài
+## Validate Lineage Trees with an External Parser
 
-Gate của OSS-070 là **hai nửa trên cùng một file**; không nửa nào đứng một mình có giá trị.
+The OSS-070 gate has **two halves over the same file**; neither half is sufficient alone.
 
 ```powershell
 cargo test --test newick_export_tests
@@ -120,59 +116,55 @@ cargo test --test newick_export_tests
 py scripts\verify_newick.py
 ```
 
-Trên macOS/Linux: `python3 scripts/verify_newick.py`. Thiếu `dendropy` thì script dừng với mã thoát khác 0 và
-in cách cài, nên một lần chạy "không lỗi" luôn nghĩa là parser đã thật sự đọc fixture.
+On macOS/Linux: `python3 scripts/verify_newick.py`. Without `dendropy`, the Python script exits non-zero
+with installation instructions so a exit-0 run proves **DendroPy** actually parsed the output.
 
-Nửa đầu (chạy từ `src-tauri/`) ghim output Newick vào
+The Rust half (inside `src-tauri/`) writes deterministic Newick output to
 [`tests/fixtures/newick/lineage_forest.nwk`](../../src-tauri/tests/fixtures/newick/lineage_forest.nwk);
-nửa sau bắt **DendroPy** đọc chính file đó. Round-trip thuần Rust chỉ chứng minh serializer nhất
-quán với chính nó — thứ đáng hỏi là một parser do người chưa từng thấy repo này viết có công nhận
-output là cây hợp lệ không.
+the Python half parses that same file independently. A Rust-only round-trip proves only self-consistency;
+external validation proves an independent phylogenetic parser accepts the tree. `dendropy` is **dev-only**
+(`pip install dendropy`). Details live in [OPEN_SOURCE_ADOPTION_PLAN.md §OSS-070](../planning/OPEN_SOURCE_ADOPTION_PLAN.md).
 
-`dendropy` là **dev-only** (`pip install dendropy`); không có gì trong sản phẩm phụ thuộc Python.
-Thiếu nó thì script thoát kèm hướng dẫn cài và nửa Rust vẫn chạy. Chi tiết ở
-[kế hoạch nguồn mở §OSS-070](../planning/OPEN_SOURCE_ADOPTION_PLAN.md).
+## Generate or Verify World Artifact Fixtures
 
-## Tạo/kiểm tra world artifact fixture
-
-Xem script hiện có:
+Existing generator script:
 
 ```powershell
 npm run gen:artifact-fixture
 ```
 
-Sau khi thay format, phải:
+After changing the artifact format:
 
-1. tăng version khi thay đổi không tương thích;
-2. giữ reader/migration cho version được hỗ trợ;
-3. tái tạo fixture có provenance;
-4. chạy parity test Rust/TypeScript;
-5. cập nhật reference/schema.
+1. bump the format version on breaking changes;
+2. maintain readers/migrations for supported versions;
+3. regenerate fixtures with provenance;
+4. run Rust/TypeScript parity tests;
+5. update reference/schema documentation.
 
-## Kiểm tra bản đồ bắt buộc
+## Required Map Vision Workflow
 
-Theo `AGENTS.md`, mọi công việc liên quan map/terrain/biome/ecosystem/navigation/
-collision/water/lighting phải dùng Animal Map Vision theo thứ tự:
+Per `AGENTS.md`, any work touching maps, terrain, biomes, ecosystems, navigation, collision, water,
+or lighting must follow Animal Map Vision in order:
 
 1. `discover_map_artifacts`
 2. `validate_map_manifest`
 3. `prepare_team_review`
 4. `inspect_map_views`
 
-Nếu MCP chưa xuất hiện, chạy từ repository của MCP:
+If the MCP is missing, run from the MCP repository:
 
 ```powershell
-npm run doctor -- --project <đường-dẫn-tới-repo-Anima-Engine>
+npm run doctor -- --project <path-to-Anima-Engine>
 ```
 
-Sau đó reload `/mcp`. Không tuyên bố map hoàn tất nếu thiếu manifest gate, ảnh
-before/after chuẩn, navigation reachability hoặc còn mâu thuẫn sinh thái critical/high.
+Then reload `/mcp`. Do not mark map work complete without passing manifest validation, canonical
+before/after renders, reachable navigation, and resolved critical/high ecological contradictions.
 
-## Thêm dependency nguồn mở
+## Add an Open-Source Dependency
 
-1. Đọc [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md).
-2. Ghi upstream/tag/license/integration type.
-3. Tạo fixture và baseline trước pilot.
-4. Tạo ADR từ [template](../decisions/ADR-0000-template.md).
-5. Dùng adapter + feature flag; thêm test và rollback.
-6. Cập nhật inventory/NOTICE và tài liệu bị ảnh hưởng.
+1. Read [OPEN_SOURCE_POLICY.md](../governance/OPEN_SOURCE_POLICY.md).
+2. Record upstream repo/tag, license, and integration boundary.
+3. Capture fixtures and baseline before piloting.
+4. Draft an ADR from [ADR-0000-template.md](../decisions/ADR-0000-template.md).
+5. Wrap behind an adapter + feature flag; add tests and rollback notes.
+6. Update license inventories / `NOTICE` and affected documentation.

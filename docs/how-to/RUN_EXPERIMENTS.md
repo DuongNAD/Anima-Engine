@@ -1,24 +1,24 @@
 ---
-title: Cách chạy thí nghiệm headless bằng anima-lab
+title: How to Run Headless Experiments with anima-lab
 status: active
 owner: maintainers
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-23
 review_cycle: per-release
 ---
 
-# Cách chạy thí nghiệm headless bằng `anima-lab`
+# How to Run Headless Experiments with `anima-lab`
 
-Hướng dẫn này trình bày các bước thực hành để biên dịch và chạy CLI headless `anima-lab` cho ba chế độ: **ensemble** (chạy nhiều seed theo một manifest), **sweep** (quét không gian tham số nhiều chiều), và **branch** (cây phân nhánh đối chứng nhân–quả).
+This guide shows how to compile and run the headless `anima-lab` CLI across its three subcommands: **ensemble** (multi-seed manifest execution), **sweep** (multi-dimensional parameter sampling), and **branch** (counterfactual causal branching).
 
-> **Lộ trình và hợp đồng liên quan:** nếu bạn mới làm quen từ bản clone sạch, xem [chỉ mục Tutorials](../tutorials/README.md). Các bất biến định lượng nằm tại [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) *(proposed)*, [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) và [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+> **Related onboarding and contracts:** if you are starting from a fresh clone, see the [Tutorials index](../tutorials/README.md). Quantitative contracts live in [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) *(proposed)*, [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md), and [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ---
 
-## 1. Biên dịch binary `anima-lab` ở chế độ `--release`
+## 1. Compile the `--release` `anima-lab` Binary
 
-`anima-lab` được định nghĩa trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) (`[[bin]] name = "anima-lab"`, mã nguồn tại [`src-tauri/src/bin/anima-lab.rs`](../../src-tauri/src/bin/anima-lab.rs)) và dùng bộ `default` features — **không** cần `--features desktop`, Tauri window, Neo4j hay GPU device.
+`anima-lab` is declared in [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) (`[[bin]] name = "anima-lab"`, source at [`src-tauri/src/bin/anima-lab.rs`](../../src-tauri/src/bin/anima-lab.rs)) and compiles cleanly under `default` features — **no** `--features desktop`, Tauri window, Neo4j client, or GPU device required.
 
-Từ thư mục gốc của repository, biên dịch binary release rồi in hướng dẫn sử dụng:
+From the repository root, build the release binary and print `--help`:
 
 <!-- doc-test -->
 ```bash
@@ -26,9 +26,9 @@ cargo build --manifest-path src-tauri/Cargo.toml --release --bin anima-lab
 ./src-tauri/target/release/anima-lab --help
 ```
 
-> **Trên Windows PowerShell:** đường dẫn file thực thi là `.\src-tauri\target\release\anima-lab.exe`. Luôn biên dịch rồi gọi trực tiếp file nhị phân thay vì dùng `cargo run` hay `npm run tauri:dev`.
+> **Windows PowerShell *(not verified on Windows here)*:** the binary path is `.\src-tauri\target\release\anima-lab.exe`. Building first and invoking the compiled release binary directly (avoiding `npm run tauri:dev` and avoiding `cargo run`) is good practice everywhere and **mandatory** for preregistered E2 verification (`e2-preregistration.json` / `scripts/verify_e2_artifacts.mjs`), which explicitly forbids `cargo run`.
 
-Kết quả `--help` quan sát được nguyên văn từ binary (`macOS arm64`, ngày `2026-11-22`, commit `03b9d3d`):
+Observed `--help` output verbatim (`macOS arm64`, `2026-11-22`, commit `03b9d3d`):
 
 ```text
 anima-lab — headless experimentation, multidimensional parameter sweeps, and causal branching
@@ -50,18 +50,18 @@ Exit Codes:
     1: Preserved runtime failures or invalid manifest
 ```
 
-Lưu ý từ mã nguồn của CLI:
+CLI behavior notes from `anima-lab.rs`:
 
-- Nếu bỏ qua subcommand, `anima-lab` mặc định chọn `ensemble`.
-- `--format` và `--threads` **chỉ hợp lệ** cho subcommand `sweep` (truyền cho `ensemble` hoặc `branch` sẽ báo lỗi với exit code `1`).
-- Giới hạn kích thước file manifest đầu vào là `16 MiB` (`16 * 1024 * 1024` byte).
-- Mọi kết quả chuẩn (`ensemble` JSON, `sweep` JSON/CSV, `branch` JSON) đều được ghi ra **`stdout`**; thông báo lỗi validation ghi ra **`stderr`**. Nếu một seed thất bại ở runtime trong `ensemble`, `anima-lab` vẫn in JSON đầy đủ ra `stdout` (ghi nhận trong trường `failed`) và thoát với mã `1`.
+- Omitting a subcommand defaults to `ensemble`.
+- `--format` and `--threads` apply **only** to `sweep` (passing them to `ensemble` or `branch` exits `1`).
+- Maximum manifest file size is `16 MiB` (`16 * 1024 * 1024` bytes).
+- Structured results (`ensemble` JSON, `sweep` JSON/CSV, `branch` JSON) print to **`stdout`**; validation errors print to **`stderr`**. If any seed panics/fails during an `ensemble`, `anima-lab` still prints full JSON to `stdout` (preserving failure metadata under `failed`) and exits `1`.
 
 ---
 
-## 2. Chạy `ensemble` trên mô hình `reference` (mặc định)
+## 2. Run `ensemble` on the `reference` Model (Default)
 
-Khi `--model` là `reference` (hoặc bỏ qua), `anima-lab` dùng `ReferenceEvolutionWorld` cùng registry `ObservableRegistry::reference_default()`. Hai fixture có sẵn trong [`src-tauri/tests/fixtures/experiments/`](../../src-tauri/tests/fixtures/experiments) minh họa trường hợp không có exotic energy và trường hợp có trường `Mana` (`MU`):
+When `--model` is `reference` (or omitted), `anima-lab` executes `ReferenceEvolutionWorld` with `ObservableRegistry::reference_default()`. Two committed fixtures under [`src-tauri/tests/fixtures/experiments/`](../../src-tauri/tests/fixtures/experiments) demonstrate runs without and with an exotic `Mana` (`MU`) field:
 
 <!-- doc-test -->
 ```bash
@@ -75,7 +75,7 @@ mkdir -p src-tauri/target/doc2-runs
 node -e "for (const f of ['baseline.json','mana.json']) { const r = JSON.parse(require('fs').readFileSync('src-tauri/target/doc2-runs/' + f, 'utf8')); console.log(f, { tool: r.tool, model: r.model, id: r.experiment_id, completed: r.completed_runs, failed: r.failed.length, metrics: r.metrics.map(m => [m.observable, Number(m.mean.toFixed(4))]) }); }"
 ```
 
-Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` tại commit `03b9d3d` với hai lệnh `anima-lab` ở trên, rút gọn qua Node):
+Observed output (`macOS arm64`, `2026-11-22`, commit `03b9d3d`, summarized via Node):
 
 ```text
 baseline.json {
@@ -117,13 +117,13 @@ mana.json {
 }
 ```
 
-Các trường chính ở tầng gốc của `EnsembleReport` JSON: `tool`, `manifest`, `model`, `registry`, `experiment_id`, `manifest_fingerprint`, `requested_runs`, `completed_runs`, `failed`, `seed_order`, `runs` (chứa time series và `final_observables` từng seed), và `metrics` (thống kê tổng hợp theo từng observable).
+Top-level keys in `EnsembleReport` JSON: `tool`, `manifest`, `model`, `registry`, `experiment_id`, `manifest_fingerprint`, `requested_runs`, `completed_runs`, `failed`, `seed_order`, `runs` (per-seed time series and `final_observables`), and `metrics` (cross-seed summaries per observable).
 
 ---
 
-## 3. Chạy `ensemble` trên mô hình `live`
+## 3. Run `ensemble` on the `live` Model
 
-Để lái `LiveExperimentAdapter` (thế giới Bevy headless trên đúng `simulation_schedule::build_tick_schedule`), truyền `--model live`. Registry chuyển sang `ObservableRegistry::live_default()` và `initial_conditions` chỉ chấp nhận danh sách khóa `live.*`:
+Pass `--model live` to drive `LiveExperimentAdapter` (the headless Bevy ECS schedule `simulation_schedule::build_tick_schedule`). The registry switches to `ObservableRegistry::live_default()` and `initial_conditions` accepts only `live.*` keys:
 
 <!-- doc-test -->
 ```bash
@@ -134,7 +134,7 @@ mkdir -p src-tauri/target/doc2-runs
 node -e "const r = JSON.parse(require('fs').readFileSync('src-tauri/target/doc2-runs/e2-live.json','utf8')); console.log({ model: r.model, registry: r.registry, completed: r.completed_runs, final_count: r.runs[0].final_observables.length, final_head: r.runs[0].final_observables.slice(0, 5) });"
 ```
 
-Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` tại commit `03b9d3d` với lệnh `--model live` ở trên, 1 seed × 18.000 tick):
+Observed output (`macOS arm64`, `2026-11-22`, commit `03b9d3d`, 1 seed × 18,000 ticks):
 
 ```text
 {
@@ -152,13 +152,13 @@ Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` t�
 }
 ```
 
-> **Lưu ý giới hạn model:** chạy `--model live` trên `mana-patchy-renewable.json` bị từ chối ngay (`observable 'herbivores' is not in the registry`, exit `1`), và `LiveExperimentAdapter` cũng từ chối mọi manifest có `laws.exotic_energy != null`. Để tái lập đầy đủ thí nghiệm E2 (ghép cặp 12 seed, kiểm chứng `E2-G1..G6`, `npm run check:e2`), xem [REPRODUCE_E2.md](REPRODUCE_E2.md).
+> **Model boundary:** running `--model live` on `mana-patchy-renewable.json` fails validation (`observable 'herbivores' is not in the registry`, exit `1`), and `LiveExperimentAdapter` rejects manifests with `laws.exotic_energy != null`. For full preregistered E2 reproduction (12 paired seeds, `E2-G1..G6`, `npm run check:e2`), see [REPRODUCE_E2.md](REPRODUCE_E2.md).
 
 ---
 
-## 4. Chạy `sweep` (xuất JSON và CSV, kiểm soát `--threads`)
+## 4. Run `sweep` (JSON/CSV Output and `--threads`)
 
-Repository hiện **chưa** có file `.json` fixture riêng cho `SweepManifest` dưới `src-tauri/tests/fixtures/` (các sweep test hiện dựng manifest bằng mã Rust). Để chạy ngay một lượt quét `Sobol` 4 điểm trên hai chiều `precip` và `plants`, ghi manifest vào thư mục gitignored `src-tauri/target/doc2-runs/` rồi chạy cả `--format json` và `--format csv --threads 2`:
+No committed JSON fixture exists for `SweepManifest` yet (tests build sweeps in Rust). To run a 4-point `Sobol` sweep across `precip` and `plants` into gitignored `src-tauri/target/doc2-runs/` with both `--format json` and `--format csv --threads 2`:
 
 <!-- doc-test -->
 ```bash
@@ -229,7 +229,7 @@ node -e "const s = JSON.parse(require('fs').readFileSync('src-tauri/target/doc2-
 head -n 5 src-tauri/target/doc2-runs/sweep.csv
 ```
 
-Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` tại commit `03b9d3d` với lệnh `sweep` ở trên):
+Observed output (`macOS arm64`, `2026-11-22`, commit `03b9d3d`):
 
 ```text
 {
@@ -247,17 +247,17 @@ point_index,precip_init,plants_init,completed_runs,failed_runs,detritus_mean,det
 3,0.875,95,1,0,2.6595887891964374,0,2.6595887891964374,2.6595887891964374,37.05104528796427,0,...
 ```
 
-Lưu ý đọc kết quả `sweep`:
+Notes for reading `sweep` output:
 
-- Trong `SweepResult` JSON, `global_metrics` là một object ánh xạ `ten_observable -> { mean, std, min, max, parameter_correlations }`, trong đó `parameter_correlations` xếp đúng theo thứ tự `parameter_names`.
-- Khi xuất `--format csv`, mỗi điểm chiếm một hàng gồm `point_index,<tên tham số...>,completed_runs,failed_runs,<obs>_mean,<obs>_std,<obs>_min,<obs>_max` theo thứ tự chữ cái của observable.
-- Nếu có bất kỳ run nào trong sweep thất bại (`failed_runs > 0`), CLI thoát với mã `1`.
+- In `SweepResult` JSON, `global_metrics` maps `observable_id -> { mean, std, min, max, parameter_correlations }` ordered to match `parameter_names`.
+- `--format csv` emits one row per point with `point_index,<params...>,completed_runs,failed_runs,<obs>_mean,<obs>_std,<obs>_min,<obs>_max` in alphabetical observable order.
+- Any failed point (`failed_runs > 0`) returns exit code `1`.
 
 ---
 
-## 5. Chạy `branch` (cây phân nhánh đối chứng nhân–quả)
+## 5. Run `branch` (Counterfactual Branching Trees)
 
-Tương tự `sweep`, hiện chưa có file JSON `BranchTreeManifest` sẵn trong `src-tauri/tests/fixtures/`. Ví dụ dưới đây dựng một cây hai nhánh (`id: 1` gốc chạy 600 tick; `id: 2` rẽ nhánh tại `fork_tick: 300`, giữ nguyên luồng RNG `InheritStream` và áp dụng `Deforest` từ tick `301` trong `120` tick) rồi tính phân kỳ cặp `(1, 2)`:
+Like `sweep`, `BranchTreeManifest` currently has no committed JSON fixture under `src-tauri/tests/fixtures/`. The example below builds a two-node tree (root `id: 1` for 600 ticks; child `id: 2` forking at `fork_tick: 300`, keeping `InheritStream` RNG, and applying `Deforest` from tick `301` for `120` ticks) and computes pair divergence `(1, 2)`:
 
 <!-- doc-test -->
 ```bash
@@ -346,7 +346,7 @@ EOF
 node -e "const b = JSON.parse(require('fs').readFileSync('src-tauri/target/doc2-runs/branch.json','utf8')); console.log({ tree_id: b.tree_id, root_id: b.root_id, nodes: Object.keys(b.nodes).map(k => ({ id: k, label: b.nodes[k].spec.label, status: b.nodes[k].status })), phase_space: b.divergences[0].phase_space, plants_div: b.divergences[0].observables.find(o => o.observable_id === 'plants') });"
 ```
 
-Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` tại commit `03b9d3d` với lệnh `branch` ở trên):
+Observed output (`macOS arm64`, `2026-11-22`, commit `03b9d3d`):
 
 ```text
 {
@@ -376,9 +376,9 @@ Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` t�
 
 ---
 
-## 6. Kiểm tra đối chứng âm (Negative Control) với manifest lỗi
+## 6. Run a Negative Control with an Invalid Manifest
 
-Luôn kiểm tra manifest lỗi bị từ chối với mã thoát `1` thay vì chạy thầm lặng. Fixture [`invalid-negative-source.json`](../../src-tauri/tests/fixtures/experiments/invalid-negative-source.json) cố tình đặt `source_rate: -0.05`:
+Always verify malformed manifests exit `1` rather than running silently. Fixture [`invalid-negative-source.json`](../../src-tauri/tests/fixtures/experiments/invalid-negative-source.json) intentionally sets `source_rate: -0.05`:
 
 <!-- doc-test -->
 ```bash
@@ -391,7 +391,7 @@ cat src-tauri/target/doc2-runs/err.txt
 grep -q "exotic energy source_rate must be >= 0" src-tauri/target/doc2-runs/err.txt
 ```
 
-Kết quả quan sát được trên `stderr` (`macOS arm64`, chạy ngày `2026-11-22` tại commit `03b9d3d`, exit code `1`, `stdout` rỗng):
+Observed `stderr` output (`macOS arm64`, `2026-11-22`, commit `03b9d3d`, exit `1`, empty `stdout`):
 
 ```text
 anima-lab: ensemble rejected: invalid world law: exotic energy source_rate must be >= 0 (got -0.05)
@@ -399,8 +399,8 @@ anima-lab: ensemble rejected: invalid world law: exotic energy source_rate must 
 
 ---
 
-## Bước tiếp theo
+## Next Steps
 
-- Tự viết hoặc chỉnh sửa manifest: [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md).
-- Tái lập thí nghiệm E2 đã tiền đăng ký: [REPRODUCE_E2.md](REPRODUCE_E2.md).
-- Danh sách hợp đồng kiến trúc & thí nghiệm: [chỉ mục Reference](../reference/README.md) và [chỉ mục Explanation](../explanation/README.md).
+- Author or edit manifests directly: [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md).
+- Reproduce the full preregistered E2 suite: [REPRODUCE_E2.md](REPRODUCE_E2.md).
+- Architecture & contract indexes: [Reference index](../reference/README.md) and [Explanation index](../explanation/README.md).

@@ -1,85 +1,85 @@
 ---
-title: Cách thêm một loại can thiệp (intervention) mới
+title: How to Add a New Intervention Kind
 status: active
 owner: maintainers
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-23
 review_cycle: monthly
 ---
 
-# Cách thêm một loại can thiệp (intervention) mới
+# How to Add a New Intervention Kind
 
-Hướng dẫn này trình bày các bước thêm một biến thể `InterventionKind` thường dùng cho các tác động sinh học/phi sinh học qua `InterventionCommand` (áp dụng trên cả thế giới sống `LiveExperimentAdapter` lẫn thế giới tham chiếu `ReferenceEcosystem`).
+This guide describes how to add a new `InterventionKind` variant executed through `InterventionCommand` across both the headless live world (`LiveExperimentAdapter`) and the synthetic reference world (`ReferenceEcosystem`).
 
-> **Phân biệt với exotic forcing:** các tác động lên trường `MU` (`AddSource`, `RemoveSource`, `Pulse`) nằm riêng tại `ExoticInterventionKind` ([`src-tauri/src/core/exotic_energy/forcings.rs`](../../src-tauri/src/core/exotic_energy/forcings.rs)) và bị `LiveExperimentAdapter` từ chối. Hợp đồng chuẩn cho intervention nằm tại [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) *(proposed)* (`ER01`, `ER03`, `ER07`, `ER08`), [`ENERGY_LEDGER_CONTRACT.md`](../reference/ENERGY_LEDGER_CONTRACT.md) (§1–§6), và [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) (§2, §5).
-
----
-
-## Bước 1 — Thêm biến thể vào `InterventionKind`
-
-Mở [`src-tauri/crates/anima-domain/src/intervention.rs`](../../src-tauri/crates/anima-domain/src/intervention.rs) (được re-export qua `core::intervention`) và thêm biến thể mới vào enum `InterventionKind`:
-
-- Giữ crate `anima-domain` thuần túy, không phụ thuộc Bevy, và giữ đầy đủ derive `Clone, Debug, Serialize, Deserialize, PartialEq`.
-- Tận dụng các trường bao sẵn của `InterventionCommand` (`id`, `cause_id`, `region: Region`, `start_tick`, `duration_ticks`, `intensity: f32`, `signed_negative: bool`, `curve: Curve`, `reversible: bool`) thay vì lặp lại trường thời gian hoặc vùng trong biến thể mới.
+> **Exotic forcings live elsewhere:** `MU`-field interventions (`AddSource`, `RemoveSource`, `Pulse`) are defined in `ExoticInterventionKind` ([`src-tauri/src/core/exotic_energy/forcings.rs`](../../src-tauri/src/core/exotic_energy/forcings.rs)) and are rejected by `LiveExperimentAdapter`. Intervention contracts live in [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) *(proposed)* (`ER01`, `ER03`, `ER07`, `ER08`), [`ENERGY_LEDGER_CONTRACT.md`](../reference/ENERGY_LEDGER_CONTRACT.md) (§1–§6), and [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) (§2, §5).
 
 ---
 
-## Bước 2 — Xác thực đầu vào manifest tại `validate_intervention`
+## Step 1 — Add the Variant to `InterventionKind`
 
-Mở [`src-tauri/src/core/experiment/interventions.rs`](../../src-tauri/src/core/experiment/interventions.rs). Hàm `validate_intervention(cmd, run_ticks)` đã tự động kiểm tra:
-- `cmd.intensity` hữu hạn và `>= 0.0` (chiều âm dùng `signed_negative`);
-- `Region::Rect` không đảo ngược biên và `Region::Radius` có tâm/bán kính hữu hạn với `r > 0.0`;
-- `start_tick + effective_duration()` không tràn `u64` và cửa sổ giao với `1..=run_ticks`.
+Open [`src-tauri/crates/anima-domain/src/intervention.rs`](../../src-tauri/crates/anima-domain/src/intervention.rs) (re-exported via `core::intervention`) and add the new variant to `InterventionKind`:
 
-Nếu biến thể mới mang thêm tham số số học riêng (như `center_x`, `radius`, `toxicity_level`, `transmission_rate` ở các biến thể hiện có), hãy thêm nhánh kiểm tra `is_finite()` và miền giá trị hợp lệ trong `validate_intervention` để từ chối bằng `ExperimentError`.
-
-> **Lưu ý khi viết manifest:** `ExperimentManifest::validate` từ chối mọi `InterventionCommand` có `cause_id == CAUSE_OBSERVER` (dành riêng cho hành động runtime của `ObserverPolicy::Inhabit`).
+- Keep `anima-domain` pure with no Bevy dependencies, and preserve `Clone, Debug, Serialize, Deserialize, PartialEq`.
+- Reuse the outer `InterventionCommand` fields (`id`, `cause_id`, `region: Region`, `start_tick`, `duration_ticks`, `intensity: f32`, `signed_negative: bool`, `curve: Curve`, `reversible: bool`) rather than duplicating timing or spatial fields inside the variant.
 
 ---
 
-## Bước 3 — Gán thẻ băm chuẩn (canonical tag) duy nhất
+## Step 2 — Validate Manifest Inputs in `validate_intervention`
 
-Mở [`src-tauri/src/core/experiment/manifest.rs`](../../src-tauri/src/core/experiment/manifest.rs) và thêm nhánh tương ứng trong `canonicalize_intervention_kind`:
+Open [`src-tauri/src/core/experiment/interventions.rs`](../../src-tauri/src/core/experiment/interventions.rs). `validate_intervention(cmd, run_ticks)` already checks:
+- `cmd.intensity` is finite and `>= 0.0` (negative direction uses `signed_negative`);
+- `Region::Rect` bounds are non-inverted and `Region::Radius` has finite center and `r > 0.0`;
+- `start_tick + effective_duration()` does not overflow `u64` and the active window intersects `1..=run_ticks`.
 
-1. Chọn một byte tag **chưa dùng** (các biến thể hiện tại dùng `0x50..=0x57`, nên thẻ tiếp theo là **`0x58`**).
-2. Tuần tự hóa từng trường payload bằng các helper chuẩn (`c.u32(...)`, `c.f32(...)`, `c.u64(...)`, thẻ độ dài/hiện diện) — không dùng `Debug` formatting.
-3. Mở [`src-tauri/src/core/experiment/tests.rs`](../../src-tauri/src/core/experiment/tests.rs) và thêm biến thể mới vào mảng `kinds` trong test `intervention_kind_tags_are_distinct` để khóa chắc chắn mọi biến thể có hash riêng biệt.
+If your variant introduces numeric payload parameters (like `center_x`, `radius`, `toxicity_level`, or `transmission_rate` in existing variants), add explicit `is_finite()` and range validation returning `ExperimentError`.
 
----
-
-## Bước 4 — Triển khai thực thi trong `apply_live_interventions_system`
-
-Mở [`src-tauri/src/core/live_experiment.rs`](../../src-tauri/src/core/live_experiment.rs), tại hàm `apply_live_interventions_system` (chạy trong chuỗi lịch trình duy nhất [`simulation_schedule::build_tick_schedule`](../../src-tauri/src/core/simulation_schedule.rs)):
-
-1. **Phân loại rate forcing vs stock/entity forcing:**
-   - **Rate forcing** (như `RainfallDelta`, `TemperatureDelta`): tính lại từ giá trị trung hòa (`1.0` / `0.0`) trên **mọi tick** vào `LiveForcings` để khi hết cửa sổ tác động dừng ngay lập tức, và chỉ ghi `state.ledger.record(...)` khi `SimClock::fires(tick, ECOLOGY_PERIOD)`.
-   - **Stock / entity forcing** (như `Deforest`, `AddNutrient`, `RemovePredators`, `ToxicityPlume`, `PathogenTransmission`): đặt bên trong nhánh `if !SimClock::fires(tick, ECOLOGY_PERIOD) { return; }` (`ECOLOGY_PERIOD = 60`).
-2. **Bảo đảm tính tất định (determinism):**
-   - Mọi phép lặp query ECS (`Entity`) phải thu thập vào buffer và `sort_unstable_by_key(|e| (e.index(), e.generation()))` trước khi tác động — tuyệt đối không phụ thuộc thứ tự archetype của Bevy.
-   - Khi phân phối lên ô lưới (như `fertilise_region`), bảo đảm kết quả không phụ thuộc thứ tự duyệt ô.
-3. **Bảo toàn Closed-EU qua `EnergyLedger`:**
-   - **Tuyệt đối không** sửa trực tiếp `EcosystemBiomass::plants` hay `EcosystemBiomass::animals` (đây chỉ là bản sao census hiển thị!).
-   - Luôn tác động lên kho thẩm quyền (`ResourceField::r`, `HomeostaticState::energy`, `EcosystemBiomass::detritus`), đo lại phần chênh lệch thực tế ở `f64` (`f32 -> f64`), và định tuyến qua `EnergyLedger::transfer(..., EnergyEvent::Intervention)`, `energy_ledger::debit_reserve` + `settle_reserve_outflow_to_detritus`, hoặc `ReclaimAndDespawnAgentCommand`. Sai số sau cùng phải nằm trong `RESIDUAL_ABS_TOLERANCE_EU = 1e-3`.
-4. **Ghi nhận nhân–quả:** ghi dấu vết vào `state.ledger.record(cmd.cause_id, None, tick, ...)` và tăng `state.applied_interventions += 1`.
-
-> **Ghi chú trung thực về `GeneticInjection` trên thân cây hiện tại:** trong `apply_live_interventions_system`, `GeneticInjection` hiện ghi bản ghi `live.genetic_injection` vào `state.ledger` và tăng `applied_interventions` chứ chưa sửa trực tiếp genotype của agent đang sống (xem quy tắc `ER03` và `D06`).
+> **Manifest rule:** `ExperimentManifest::validate` rejects any `InterventionCommand` with `cause_id == CAUSE_OBSERVER` (reserved for runtime `ObserverPolicy::Inhabit` actions).
 
 ---
 
-## Bước 5 — Triển khai tương ứng trong `ReferenceEcosystem::step`
+## Step 3 — Assign a Unique Canonical Fingerprint Tag
 
-Mở [`src-tauri/src/core/scenario.rs`](../../src-tauri/src/core/scenario.rs) và thêm nhánh match cho biến thể mới trong `ReferenceEcosystem::step` (chạy ở `ECOLOGY_PERIOD` cho những lệnh thỏa `cmd.affects(0, 0)`). Giữ hướng tác động nhất quán với thế giới sống và ghi bản ghi vào `CausalLedger` dưới `cmd.cause_id`.
+Open [`src-tauri/src/core/experiment/manifest.rs`](../../src-tauri/src/core/experiment/manifest.rs) and handle the variant in `canonicalize_intervention_kind`:
+
+1. Pick an **unused** byte tag (`0x50..=0x57` are currently assigned, so the next available tag is **`0x58`**).
+2. Serialize each payload field deterministically via canonical writers (`c.u32(...)`, `c.f32(...)`, `c.u64(...)`, length/presence tags) — never `Debug` formatting.
+3. Add an instance to the `kinds` list in `intervention_kind_tags_are_distinct` inside [`src-tauri/src/core/experiment/tests.rs`](../../src-tauri/src/core/experiment/tests.rs) so distinctness is enforced by tests.
 
 ---
 
-## Bước 6 — Chạy bộ kiểm thử xác minh
+## Step 4 — Implement Execution in `apply_live_interventions_system`
 
-Mở rộng test cho:
-- Validate đầu vào lỗi (`core/experiment/tests.rs`);
-- Khác biệt tag hash (`intervention_kind_tags_are_distinct`);
-- Bảo toàn closed-EU (`src-tauri/tests/ledger_bypass_tests.rs`);
-- Hành vi kịch bản tham chiếu (`core::scenario::tests`) và fork sau checkpoint (`core/experiment_runner/fork.rs`).
+Open [`src-tauri/src/core/live_experiment.rs`](../../src-tauri/src/core/live_experiment.rs) at `apply_live_interventions_system` (scheduled inside [`simulation_schedule::build_tick_schedule`](../../src-tauri/src/core/simulation_schedule.rs)):
 
-Chạy các lệnh kiểm chứng từ thư mục gốc repository:
+1. **Rate forcing vs stock/entity forcing:**
+   - **Rate forcings** (such as `RainfallDelta`, `TemperatureDelta`): recompute from neutral defaults (`1.0` / `0.0`) on **every tick** into `LiveForcings` so effects stop immediately when the window ends, and record `state.ledger.record(...)` only when `SimClock::fires(tick, ECOLOGY_PERIOD)`.
+   - **Stock / entity forcings** (such as `Deforest`, `AddNutrient`, `RemovePredators`, `ToxicityPlume`, `PathogenTransmission`): guard inside `if !SimClock::fires(tick, ECOLOGY_PERIOD) { return; }` (`ECOLOGY_PERIOD = 60`).
+2. **Guarantee determinism:**
+   - Collect ECS query entities into a buffer and `sort_unstable_by_key(|e| (e.index(), e.generation()))` before iterating — never rely on Bevy archetype iteration order.
+   - Grid updates (e.g., `fertilise_region`) must be order-independent across cells.
+3. **Preserve Closed-EU via `EnergyLedger`:**
+   - **Never** mutate `EcosystemBiomass::plants` or `EcosystemBiomass::animals` directly (they are display/census caches!).
+   - Mutate authoritative pools (`ResourceField::r`, `HomeostaticState::energy`, `EcosystemBiomass::detritus`), measure actual realized deltas in `f64` (`f32 -> f64`), and route transfers through `EnergyLedger::transfer(..., EnergyEvent::Intervention)`, `energy_ledger::debit_reserve` + `settle_reserve_outflow_to_detritus`, or `ReclaimAndDespawnAgentCommand`, keeping residual error within `RESIDUAL_ABS_TOLERANCE_EU = 1e-3`.
+4. **Record causal provenance:** emit `state.ledger.record(cmd.cause_id, None, tick, ...)` and increment `state.applied_interventions += 1`.
+
+> **Truthfulness note on `GeneticInjection`:** on trunk today, `apply_live_interventions_system` records `live.genetic_injection` in `state.ledger` and increments `applied_interventions` without directly mutating living agents' genotypes (see rule `ER03` in `EVOLUTION_EXPERIMENT_CONTRACT.md`).
+
+---
+
+## Step 5 — Implement the Matching Branch in `ReferenceEcosystem::step`
+
+Open [`src-tauri/src/core/scenario.rs`](../../src-tauri/src/core/scenario.rs) and add the corresponding match arm inside `ReferenceEcosystem::step` (running on `ECOLOGY_PERIOD` for commands where `cmd.affects(0, 0)` holds). Keep directional effects consistent with the live world and log to `CausalLedger` under `cmd.cause_id`.
+
+---
+
+## Step 6 — Run Verification Tests
+
+Extend tests covering:
+- Invalid input rejection (`core/experiment/tests.rs`);
+- Canonical tag distinctness (`intervention_kind_tags_are_distinct`);
+- Closed-EU conservation (`src-tauri/tests/ledger_bypass_tests.rs`);
+- Reference scenario behavior (`core::scenario::tests`) and checkpoint forks (`core/experiment_runner/fork.rs`).
+
+Run the verification suite from the repository root:
 
 <!-- doc-test -->
 ```bash
@@ -90,19 +90,20 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib core::scenario::tests
 cargo test --manifest-path src-tauri/Cargo.toml --test ledger_bypass_tests
 ```
 
-Kết quả quan sát được trên `macOS arm64` (chạy ngày `2026-11-22` tại commit `03b9d3d` bằng 5 lệnh `cargo test` ở trên; tổng số test toàn dự án có thẩm quyền xem tại [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)):
+Summarized test results — *not raw verbatim stdout* — on `macOS arm64` (`2026-11-22`, commit `03b9d3d`; authoritative repo totals live in [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)):
 
 ```text
-running 23 tests (anima-domain) ... ok. 23 passed; 0 failed; 0 ignored
-running 1 test (core::experiment::tests::defect_b_manifest_rejects_invalid_intervention_values) ... ok
-running 1 test (core::experiment::tests::intervention_kind_tags_are_distinct) ... ok
-running 11 tests (core::scenario::tests) ... ok. 11 passed; 0 failed; 0 ignored
-running 5 tests (ledger_bypass_tests) ... ok. 5 passed; 0 failed; 0 ignored
+[Summary across the 5 commands — not verbatim stdout]
+anima-domain: 23 passed, 0 failed, 0 ignored
+core::experiment::tests::defect_b_manifest_rejects_invalid_intervention_values: 1 passed, 0 failed
+core::experiment::tests::intervention_kind_tags_are_distinct: 1 passed, 0 failed
+core::scenario::tests: 11 passed, 0 failed, 0 ignored
+ledger_bypass_tests: 5 passed, 0 failed, 0 ignored
 ```
 
 ---
 
-## Bước tiếp theo
+## Next Steps
 
-- Khai báo `InterventionCommand` trong JSON manifest: [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md).
-- Thêm biến quan sát mới: [ADD_AN_OBSERVABLE.md](ADD_AN_OBSERVABLE.md).
+- Declare `InterventionCommand` in JSON manifests: [WRITE_A_MANIFEST.md](WRITE_A_MANIFEST.md).
+- Add a scalar observable: [ADD_AN_OBSERVABLE.md](ADD_AN_OBSERVABLE.md).
