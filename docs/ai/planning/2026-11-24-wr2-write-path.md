@@ -27,8 +27,10 @@ Implements step **H2** of [ADR-0008](../../decisions/ADR-0008-world-past-and-tim
 - When `RingProducer::available_slots() <= 1` on a non-seal entry (one slot is reserved for segment seals) or `try_push` fails, the tick system never blocks and never reallocates: it increments `pending_dropped_inputs` / `pending_dropped_events` and cumulative counters (`WorldRecordRecorder::dropped_inputs()`, `dropped_events()`).
 - If a `SegmentSeal` itself cannot be queued while the writer thread is stalled, `segment_start_tick` is preserved and `pending_dropped_events` increments so the next seal remains strictly contiguous with accurate overflow totals, marking `VerificationReport::is_complete() == false` and `replayable == false`.
 
-## 4. Verification Gates
+## 4. Verification Gates & Merged Trunk Record
 
-- `src-tauri/tests/world_record_zero_alloc_tests.rs`: `ThreadTrackingAllocator` asserts `allocs == 0` across quiet ticks, ticks with events & inputs, segment-seal ticks, and tiny-buffer overflow ticks, plus an explicit allocator self-control.
-- `src-tauri/tests/world_record_writer_tests.rs`: verifies tiny-buffer overflow drop counting, atomic disk writes with synthetic `.tmp` crash residue + tamper detection, and async writer zero-feedback checksum parity across `0, 180, 1800, 18000` ticks on default and learning+reproduction worlds.
+- **Merged base:** Merged `origin/feat/ecological-selection` (`92bf0df0cfcb84f098c330326c6597f12affd960`, containing WR1 PR `#236` merged at `ee4fc287`) into `win/wr2` cleanly with `0` conflicts.
+- `src-tauri/tests/world_record_zero_alloc_tests.rs` (`1/1`): `ThreadTrackingAllocator` asserts `allocs == 0` across quiet ticks, ticks with events & inputs, segment-seal ticks, and tiny-buffer overflow ticks, plus an explicit allocator self-control.
+- `src-tauri/tests/world_record_writer_tests.rs` (`3/3`): verifies tiny-buffer overflow drop counting, atomic disk writes with synthetic `.tmp` crash residue + tamper detection, and async writer zero-feedback checksum parity across `0, 180, 1800, 18000` ticks on default and learning+reproduction worlds.
+- `src-tauri/tests/world_record_format_and_immutability_tests.rs` (`7/7`) and `src-tauri/tests/world_record_no_feedback_tests.rs` (`3/3`): passing on merged trunk (`full cargo test --features desktop --no-fail-fast`: `181` test targets, `1,698` passed, `0` failed, `2` allow-listed ignored; `check_test_targets.mjs --profile desktop` exit `0`).
 - Clarification to [2026-11-24-wr1-world-record-format.md](2026-11-24-wr1-world-record-format.md): ADR-0008 assigns the ring-buffered write path to `WR2` (H2, this card) and keyframe replay/fork reconstruction to `WR3` (H3).
