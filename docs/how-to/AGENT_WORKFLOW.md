@@ -403,6 +403,19 @@ QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (
             and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
             QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
             recommended option for each of G1-G4.)
+QD-ADR0014 = ADR-0014 (shared island, host and guests; PR #256) is accepted with all 24 D-slots as recommended:
+            immediate release on disconnect; exclusive possession; bincode quantized deltas at about 20 Hz with a
+            LAN cap of 16 guests; interest-area culling with a low-rate global summary; guest-input overflow
+            rejected at the socket; LAN discovery by IP:port + PIN and a UDP beacon; adaptive 2-3 tick playout,
+            no client prediction; third-person default camera, sensory first person after milestone 1, free
+            spectator camera; grass cells watch-only; one day = 20 minutes and one year = 90 minutes of real
+            time; World v2 C01 terrain after WV2-7; a headless prehistory before guests; persistent islands;
+            G2 producers-first by a closed-EU viability trigger with at least 3 founder pools; the G3 spike
+            time-boxed to 2 weeks (success: an emergent lineage passes the G2 screen); the listed chronicle
+            triggers, extinct-branch compaction, clade threshold and naming proposed in the ADR and approved
+            by the lead; opt-in OpenRouter :free narration through a provider-agnostic endpoint with the key in
+            an environment variable or keychain. The Internet milestone (ISLAND-D7) stays open. (Owner in chat,
+            2026-11-24: "Duyệt theo khuyến nghị".)
 QD-SHAREDISLAND = the project's main goal is now many machines in one island: one host machine runs the
             simulation and holds the island's truth; guests on other machines watch (Spectate) or inhabit
             (Inhabit) over the network; every guest action reaches the host as a declared intervention with
