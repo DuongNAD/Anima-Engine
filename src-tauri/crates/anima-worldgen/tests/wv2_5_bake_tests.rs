@@ -780,6 +780,83 @@ fn assets_lod_impostor_pipeline_and_qd_assets_manifest_validation() {
     assert!(parse_glb_mesh(b"glTF\x02\x00\x00\x00").is_err());
     assert!(parse_glb_mesh(b"BAD!00000000000000000000").is_err());
 
+    let build_test_glb = |json_obj: &serde_json::Value, bin_bytes: &[u8]| -> Vec<u8> {
+        let mut jp = serde_json::to_vec(json_obj).unwrap();
+        while !jp.len().is_multiple_of(4) {
+            jp.push(b' ');
+        }
+        let mut bp = bin_bytes.to_vec();
+        while !bp.len().is_multiple_of(4) {
+            bp.push(0);
+        }
+        let total = 12 + 8 + jp.len() + 8 + bp.len();
+        let mut out = Vec::with_capacity(total);
+        out.extend_from_slice(b"glTF");
+        out.extend_from_slice(&2_u32.to_le_bytes());
+        out.extend_from_slice(&(total as u32).to_le_bytes());
+        out.extend_from_slice(&(jp.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x4E4F_534A_u32.to_le_bytes());
+        out.extend_from_slice(&jp);
+        out.extend_from_slice(&(bp.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x004E_4942_u32.to_le_bytes());
+        out.extend_from_slice(&bp);
+        out
+    };
+    let mut tri_bin = Vec::new();
+    for v in [0.0_f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+        tri_bin.extend_from_slice(&v.to_le_bytes());
+    }
+    let bad_overflow_glb = build_test_glb(
+        &serde_json::json!({
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": tri_bin.len()}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": tri_bin.len(), "byteStride": 12}],
+            "accessors": [{"bufferView": 0, "componentType": 5126, "type": "VEC3", "count": (u64::MAX / 12) + 1}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}]
+        }),
+        &tri_bin,
+    );
+    assert!(
+        parse_glb_mesh(&bad_overflow_glb).is_err(),
+        "GLB accessor (count-1)*stride overflow must return Err cleanly"
+    );
+
+    let bad_trs_glb = build_test_glb(
+        &serde_json::json!({
+            "asset": {"version": "2.0"},
+            "scene": 0,
+            "scenes": [{"nodes": [0]}],
+            "nodes": [{"mesh": 0, "scale": [1e40, 1.0, 1.0]}],
+            "buffers": [{"byteLength": tri_bin.len()}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": tri_bin.len()}],
+            "accessors": [{"bufferView": 0, "componentType": 5126, "type": "VEC3", "count": 3}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}]
+        }),
+        &tri_bin,
+    );
+    assert!(
+        parse_glb_mesh(&bad_trs_glb).is_err(),
+        "GLB non-finite TRS scale must return Err cleanly"
+    );
+
+    let cyclic_glb = build_test_glb(
+        &serde_json::json!({
+            "asset": {"version": "2.0"},
+            "scene": 0,
+            "scenes": [{"nodes": [0]}],
+            "nodes": [{"mesh": 0, "children": [0, 0]}],
+            "buffers": [{"byteLength": tri_bin.len()}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": tri_bin.len()}],
+            "accessors": [{"bufferView": 0, "componentType": 5126, "type": "VEC3", "count": 3}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}]
+        }),
+        &tri_bin,
+    );
+    assert!(
+        parse_glb_mesh(&cyclic_glb).is_err(),
+        "GLB cyclic node graph must fail cleanly without exponential recursion"
+    );
+
     let _ = fs::remove_dir_all(&root);
 }
 

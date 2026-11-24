@@ -37,10 +37,10 @@ Usage: scripts/grid_bake_world_v2.sh [--dry-run] <probe-gpu|generate|verify|fiel
 
 Environment overrides:
   GRID_WORKER          Target worker name (default: desktop-3epv830; always required)
-  GRID_WORKSPACE       Registered workspace (anima-t1 or anima-t2; default: anima-t1)
+  GRID_WORKSPACE       Registered workspace (anima-t1, anima-t2, anima-trunk, anima-verify, anima-worldbake; default: anima-t1)
   GRID_FIELD_STRIPS    Strip count K for JOB-W3 sharding (default: 4)
   WORLD_V2_PRESET      Preset TOML path relative to repo root (default: artifacts/world-v2/preset_v2.toml)
-  WORLD_V2_RELEASE_TAG Tag recorded into index.json (default: world-v2-c01-provisional)
+  WORLD_V2_RELEASE_TAG Tag recorded into index.json (default: v0.9.0-internal)
 USAGE
 }
 

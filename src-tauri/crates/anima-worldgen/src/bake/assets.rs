@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path};
 
 /// Magic bytes for `species_*.meshopt.lod<k>.bin` (`ANMM`).
 pub const ANMM_MAGIC: [u8; 4] = *b"ANMM";
@@ -131,7 +131,18 @@ pub fn validate_asset_sources_manifest(
                 entry.species_id, entry.licence_url
             )));
         }
-        let obj_bytes = fs::read(manifest_dir.join(&entry.obj_path))?;
+        let rel_path = Path::new(&entry.obj_path);
+        if rel_path.is_absolute()
+            || rel_path
+                .components()
+                .any(|c| matches!(c, Component::ParentDir | Component::RootDir))
+        {
+            return Err(BakeError::new(format!(
+                "QD-ASSETS rejection: obj_path '{}' must be a clean relative path",
+                entry.obj_path
+            )));
+        }
+        let obj_bytes = fs::read(manifest_dir.join(rel_path))?;
         let actual_len = obj_bytes.len() as u64;
         let reported_or_actual = entry.download_bytes.max(actual_len);
         total_dl = total_dl
@@ -334,55 +345,78 @@ fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     out
 }
 
-fn json_f32_array(val: Option<&serde_json::Value>, default: &[f32], out: &mut [f32]) {
+fn json_f32_array(
+    val: Option<&serde_json::Value>,
+    field_name: &str,
+    default: &[f32],
+    out: &mut [f32],
+) -> Result<(), BakeError> {
     out.copy_from_slice(default);
-    if let Some(arr) = val.and_then(|v| v.as_array()) {
-        for (dst, src) in out.iter_mut().zip(arr.iter()) {
-            if let Some(x) = src.as_f64() {
-                *dst = x as f32;
-            }
-        }
+    let Some(raw_val) = val else {
+        return Ok(());
+    };
+    let arr = raw_val
+        .as_array()
+        .ok_or_else(|| BakeError::new(format!("glTF node.{field_name} must be an array")))?;
+    if arr.len() != out.len() {
+        return Err(BakeError::new(format!(
+            "glTF node.{field_name} must have {} elements",
+            out.len()
+        )));
     }
+    for (dst, src) in out.iter_mut().zip(arr.iter()) {
+        let f = src
+            .as_f64()
+            .ok_or_else(|| BakeError::new(format!("glTF node.{field_name} contains non-number")))?
+            as f32;
+        if !f.is_finite() {
+            return Err(BakeError::new(format!(
+                "glTF node.{field_name} contains non-finite value"
+            )));
+        }
+        *dst = f;
+    }
+    Ok(())
 }
 
 fn gltf_node_local_mat4(node: &serde_json::Value) -> Result<[f32; 16], BakeError> {
     if let Some(mat_val) = node.get("matrix") {
-        let arr = mat_val
-            .as_array()
-            .ok_or_else(|| BakeError::new("glTF node.matrix must be an array"))?;
-        if arr.len() != 16 {
-            return Err(BakeError::new("glTF node.matrix must have 16 elements"));
-        }
         let mut out = [0.0_f32; 16];
-        for (i, item) in arr.iter().enumerate() {
-            let v = item
-                .as_f64()
-                .ok_or_else(|| BakeError::new("glTF node.matrix contains non-number"))?
-                as f32;
-            if !v.is_finite() {
-                return Err(BakeError::new("glTF node.matrix contains non-finite value"));
-            }
-            out[i] = v;
-        }
+        let defaults = MAT4_IDENTITY;
+        json_f32_array(Some(mat_val), "matrix", &defaults, &mut out)?;
         return Ok(out);
     }
 
     let mut t = [0.0_f32; 3];
     let mut r = [0.0_f32; 4];
     let mut s = [0.0_f32; 3];
-    json_f32_array(node.get("translation"), &[0.0, 0.0, 0.0], &mut t);
-    json_f32_array(node.get("rotation"), &[0.0, 0.0, 0.0, 1.0], &mut r);
-    json_f32_array(node.get("scale"), &[1.0, 1.0, 1.0], &mut s);
+    json_f32_array(
+        node.get("translation"),
+        "translation",
+        &[0.0, 0.0, 0.0],
+        &mut t,
+    )?;
+    json_f32_array(
+        node.get("rotation"),
+        "rotation",
+        &[0.0, 0.0, 0.0, 1.0],
+        &mut r,
+    )?;
+    json_f32_array(node.get("scale"), "scale", &[1.0, 1.0, 1.0], &mut s)?;
 
-    let qlen = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[3] * r[3])
-        .sqrt()
-        .max(1e-6);
+    let q_sq = r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[3] * r[3];
+    if !q_sq.is_finite() {
+        return Err(BakeError::new(
+            "glTF node.rotation norm squared overflows f32",
+        ));
+    }
+    let qlen = q_sq.sqrt().max(1e-6);
     let [qx, qy, qz, qw] = [r[0] / qlen, r[1] / qlen, r[2] / qlen, r[3] / qlen];
     let (xx, yy, zz) = (qx * qx, qy * qy, qz * qz);
     let (xy, xz, yz) = (qx * qy, qx * qz, qy * qz);
     let (xw, yw, zw) = (qx * qw, qy * qw, qz * qw);
 
-    Ok([
+    let out = [
         (1.0 - 2.0 * (yy + zz)) * s[0],
         (2.0 * (xy + zw)) * s[0],
         (2.0 * (xz - yw)) * s[0],
@@ -399,7 +433,11 @@ fn gltf_node_local_mat4(node: &serde_json::Value) -> Result<[f32; 16], BakeError
         t[1],
         t[2],
         1.0,
-    ])
+    ];
+    if !out.iter().all(|v| v.is_finite()) {
+        return Err(BakeError::new("glTF node TRS matrix is non-finite"));
+    }
+    Ok(out)
 }
 
 #[inline]
@@ -481,16 +519,20 @@ impl<'a> GlbAccessor<'a> {
                 "glTF accessor {acc_idx} unsupported componentType {comp_type}"
             )));
         }
-        let count =
-            acc.get("count")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| BakeError::new("glTF accessor missing count"))? as usize;
-        let bv_idx = acc
+        let count_u64 = acc
+            .get("count")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| BakeError::new("glTF accessor missing count"))?;
+        let count = usize::try_from(count_u64)
+            .map_err(|_| BakeError::new("glTF accessor count overflows usize"))?;
+        let bv_idx_u64 = acc
             .get("bufferView")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| BakeError::new("glTF accessor missing bufferView"))?
-            as usize;
-        let acc_off = acc.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            .ok_or_else(|| BakeError::new("glTF accessor missing bufferView"))?;
+        let bv_idx = usize::try_from(bv_idx_u64)
+            .map_err(|_| BakeError::new("glTF accessor bufferView index overflows usize"))?;
+        let acc_off = usize::try_from(acc.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0))
+            .map_err(|_| BakeError::new("glTF accessor byteOffset overflows usize"))?;
 
         let buffer_views = gltf
             .get("bufferViews")
@@ -502,12 +544,14 @@ impl<'a> GlbAccessor<'a> {
         if bv.get("buffer").and_then(|v| v.as_u64()).unwrap_or(0) != 0 {
             return Err(BakeError::new("GLB primitive references non-zero buffer"));
         }
-        let bv_off = bv.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        let bv_len = bv
-            .get("byteLength")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| BakeError::new("glTF bufferView missing byteLength"))?
-            as usize;
+        let bv_off = usize::try_from(bv.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0))
+            .map_err(|_| BakeError::new("glTF bufferView byteOffset overflows usize"))?;
+        let bv_len = usize::try_from(
+            bv.get("byteLength")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| BakeError::new("glTF bufferView missing byteLength"))?,
+        )
+        .map_err(|_| BakeError::new("glTF bufferView byteLength overflows usize"))?;
         let comp_size = match comp_type {
             GLTF_COMPONENT_UNSIGNED_BYTE => 1_usize,
             GLTF_COMPONENT_UNSIGNED_SHORT => 2_usize,
@@ -521,11 +565,11 @@ impl<'a> GlbAccessor<'a> {
             _ => unreachable!("checked above"),
         };
         let elem_bytes = comp_size * lanes;
-        let stride = bv
-            .get("byteStride")
-            .and_then(|v| v.as_u64())
-            .map(|s| s as usize)
-            .unwrap_or(elem_bytes);
+        let stride = match bv.get("byteStride").and_then(|v| v.as_u64()) {
+            Some(s) => usize::try_from(s)
+                .map_err(|_| BakeError::new("glTF bufferView byteStride overflows usize"))?,
+            None => elem_bytes,
+        };
         if stride < elem_bytes {
             return Err(BakeError::new(
                 "glTF bufferView byteStride smaller than element",
@@ -544,9 +588,10 @@ impl<'a> GlbAccessor<'a> {
             ));
         }
         if count > 0 {
-            let need_end = base_off
-                .checked_add((count - 1) * stride)
-                .and_then(|s| s.checked_add(elem_bytes))
+            let need_end = (count - 1)
+                .checked_mul(stride)
+                .and_then(|span| base_off.checked_add(span))
+                .and_then(|end| end.checked_add(elem_bytes))
                 .ok_or_else(|| BakeError::new("glTF accessor range overflow"))?;
             if need_end > bv_end {
                 return Err(BakeError::new(
@@ -603,16 +648,24 @@ fn collect_scene_mesh_instances(
 ) -> Result<Vec<(usize, [f32; 16])>, BakeError> {
     let nodes = gltf.get("nodes").and_then(|v| v.as_array());
     let scenes = gltf.get("scenes").and_then(|v| v.as_array());
-    let default_scene = gltf.get("scene").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let default_scene = usize::try_from(gltf.get("scene").and_then(|v| v.as_u64()).unwrap_or(0))
+        .map_err(|_| BakeError::new("glTF default scene index overflows usize"))?;
     let roots: Option<Vec<usize>> = scenes
         .and_then(|sc| sc.get(default_scene))
         .and_then(|s| s.get("nodes"))
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|x| x.as_u64().map(|n| n as usize))
-                .collect()
-        });
+                .map(|x| {
+                    let u = x
+                        .as_u64()
+                        .ok_or_else(|| BakeError::new("invalid root node index in glTF scene"))?;
+                    usize::try_from(u)
+                        .map_err(|_| BakeError::new("glTF scene root index overflows usize"))
+                })
+                .collect::<Result<Vec<usize>, BakeError>>()
+        })
+        .transpose()?;
 
     let (Some(nodes), Some(roots)) = (nodes, roots) else {
         return Ok((0..mesh_count).map(|mi| (mi, MAT4_IDENTITY)).collect());
@@ -622,35 +675,51 @@ fn collect_scene_mesh_instances(
         nodes: &[serde_json::Value],
         node_idx: usize,
         parent_mat: [f32; 16],
-        depth: usize,
+        ancestors: &mut Vec<usize>,
         out: &mut Vec<(usize, [f32; 16])>,
     ) -> Result<(), BakeError> {
-        if depth > 64 {
-            return Err(BakeError::new("glTF node hierarchy depth limit exceeded"));
+        if ancestors.contains(&node_idx) {
+            return Err(BakeError::new(format!(
+                "cyclic glTF node hierarchy at node {node_idx}"
+            )));
+        }
+        if ancestors.len() > 64 || out.len() >= 4096 {
+            return Err(BakeError::new(
+                "glTF node hierarchy depth/count limit exceeded",
+            ));
         }
         let node = nodes
             .get(node_idx)
             .ok_or_else(|| BakeError::new(format!("glTF node index {node_idx} out of bounds")))?;
         let local = gltf_node_local_mat4(node)?;
         let world = mat4_mul(&parent_mat, &local);
-        if let Some(mi) = node.get("mesh").and_then(|v| v.as_u64()) {
-            out.push((mi as usize, world));
+        if !world.iter().all(|v| v.is_finite()) {
+            return Err(BakeError::new("glTF world transform matrix is non-finite"));
         }
+        if let Some(mi) = node.get("mesh").and_then(|v| v.as_u64()) {
+            let mi_usize = usize::try_from(mi)
+                .map_err(|_| BakeError::new("glTF mesh index overflows usize"))?;
+            out.push((mi_usize, world));
+        }
+        ancestors.push(node_idx);
         if let Some(children) = node.get("children").and_then(|v| v.as_array()) {
             for ch in children {
-                let ci = ch
+                let ci_u64 = ch
                     .as_u64()
-                    .ok_or_else(|| BakeError::new("invalid child index in glTF node"))?
-                    as usize;
-                walk(nodes, ci, world, depth + 1, out)?;
+                    .ok_or_else(|| BakeError::new("invalid child index in glTF node"))?;
+                let ci = usize::try_from(ci_u64)
+                    .map_err(|_| BakeError::new("glTF child node index overflows usize"))?;
+                walk(nodes, ci, world, ancestors, out)?;
             }
         }
+        ancestors.pop();
         Ok(())
     }
 
     let mut out = Vec::new();
+    let mut ancestors = Vec::new();
     for root_idx in roots {
-        walk(nodes, root_idx, MAT4_IDENTITY, 0, &mut out)?;
+        walk(nodes, root_idx, MAT4_IDENTITY, &mut ancestors, &mut out)?;
     }
     Ok(out)
 }
@@ -678,6 +747,9 @@ pub fn parse_glb_mesh(bytes: &[u8]) -> Result<AssetMesh, BakeError> {
     let mut bin_chunk: Option<&[u8]> = None;
     let mut off = 12_usize;
     while off < total_len {
+        if off + 8 > total_len {
+            return Err(BakeError::new("truncated GLB chunk header"));
+        }
         let clen = read_le_u32(bytes, off)? as usize;
         let ctype = read_le_u32(bytes, off + 4)?;
         let data_start = off + 8;
@@ -781,7 +853,8 @@ pub fn parse_glb_mesh(bytes: &[u8]) -> Result<AssetMesh, BakeError> {
                 None => None,
             };
 
-            let base_vert = vertices.len() as u32;
+            let base_vert = u32::try_from(vertices.len())
+                .map_err(|_| BakeError::new("GLB total vertex count exceeds u32::MAX"))?;
             let mut local_verts = Vec::with_capacity(pos_acc.count);
             for i in 0..pos_acc.count {
                 let pos = transform_point_mat4(&world_mat, pos_acc.read_vec3(i)?);
@@ -789,6 +862,11 @@ pub fn parse_glb_mesh(bytes: &[u8]) -> Result<AssetMesh, BakeError> {
                     Some(na) => transform_normal_mat4(&world_mat, na.read_vec3(i)?),
                     None => [0.0, 0.0, 0.0],
                 };
+                if !pos.iter().all(|v| v.is_finite()) || !normal.iter().all(|v| v.is_finite()) {
+                    return Err(BakeError::new(
+                        "transformed GLB vertex/normal contains non-finite value",
+                    ));
+                }
                 let uv = match &uv_acc {
                     Some(ua) => ua.read_vec2(i)?,
                     None => [0.0, 0.0],
