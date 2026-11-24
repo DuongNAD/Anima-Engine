@@ -178,13 +178,16 @@ pub fn validate_header(header: &WorldRecordHeader) -> Result<(), WorldRecordErro
             .parent_run_id
             .as_deref()
             .is_some_and(|p| p.trim().is_empty())
+        || (header.fork_keyframe_hash.is_some() && header.parent_run_id.is_none())
     {
         return Err(WorldRecordError::InvalidForkLink);
     }
     if header.segment_ticks == 0 {
         return Err(WorldRecordError::InvalidSegmentTicks(header.segment_ticks));
     }
-    if header.era_index > 0 && header.prev_era_tail_hash.is_none() {
+    if (header.era_index > 0 && header.prev_era_tail_hash.is_none())
+        || (header.era_index == 0 && header.prev_era_tail_hash.is_some())
+    {
         return Err(WorldRecordError::InvalidEraLink {
             era_index: header.era_index,
         });
