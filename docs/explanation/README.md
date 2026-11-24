@@ -2,7 +2,7 @@
 title: Explanation index
 status: active
 owner: architecture
-last_reviewed: 2026-11-23
+last_reviewed: 2026-11-24
 review_cycle: quarterly
 ---
 
@@ -14,8 +14,8 @@ review_cycle: quarterly
 | Runtime architecture, crate boundaries, tick schedule, and experiment runners | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | Why the gate suite exists and what failure mode each gate blocks | [`WHY_THE_GATES.md`](WHY_THE_GATES.md) |
 | Ecosystem and experience vision | [`WORLD_DESIGN.md`](../../WORLD_DESIGN.md) |
-| Genotype + environment + selection producing phenotype | [`CREATURE_MORPHOGENESIS.md`](CREATURE_MORPHOGENESIS.md) |
-| Same world under alternate laws/sources producing different evolutionary histories | [`ALTERNATE_EVOLUTIONARY_REGIMES.md`](ALTERNATE_EVOLUTIONARY_REGIMES.md) *(proposed)* |
+| Genotype + environment + selection producing phenotype | [`CREATURE_MORPHOGENESIS.md`](CREATURE_MORPHOGENESIS.md) ([vi](CREATURE_MORPHOGENESIS.vi.md)) |
+| Same world under alternate laws/sources producing different evolutionary histories | [`ALTERNATE_EVOLUTIONARY_REGIMES.md`](ALTERNATE_EVOLUTIONARY_REGIMES.md) ([vi](ALTERNATE_EVOLUTIONARY_REGIMES.vi.md)) *(proposed)* |
 | Rationale and evidence for open-source selections | [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) |
 | Settled architecture decisions | [ADR index](../decisions/) |
 

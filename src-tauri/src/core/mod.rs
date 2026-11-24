@@ -44,6 +44,7 @@ pub mod thread_supervisor;
 pub mod tick_capture;
 pub mod training;
 pub mod world_artifact;
+pub mod world_record;
 pub mod world_systems;
 
 pub use engine::SegmentState;

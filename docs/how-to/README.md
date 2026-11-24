@@ -2,7 +2,7 @@
 title: How-to Guides
 status: active
 owner: maintainers
-last_reviewed: 2026-11-23
+last_reviewed: 2026-11-24
 review_cycle: per-release
 ---
 
@@ -19,11 +19,13 @@ review_cycle: per-release
 | Add a new CI gate | [ADD_A_GATE.md](ADD_A_GATE.md) | Exit codes, negative controls (`selfTest()` / `--self-test` / Vitest), wiring `package.json` and CI |
 | Reproduce E2 end-to-end | [REPRODUCE_E2.md](REPRODUCE_E2.md) | Run seam tests, `--smoke`, `--ensemble`, `--replay`, and verify with `npm run check:e2` |
 | Dispatch or follow agent workflow | [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) | Card queues, recorded owner decisions, agent rules, and macOS verification commands |
-| Benchmark per-system performance | [BENCHMARKING.md](BENCHMARKING.md) | Run Criterion `tick_systems`, `ANIMA_TICK_CAPTURE`, baseline table, and 1,000-agent checklist |
-| Capture and compare 3D map views | [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md) | `npm run capture:map` (prototype), before/after renders, reading FPS/draw calls |
-| First external user trial run | [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md) | Package Windows build 1, preflight checklist, and external-machine trial install |
+| Benchmark per-system performance | [BENCHMARKING.md](BENCHMARKING.md) ([vi](BENCHMARKING.vi.md)) | Run Criterion `tick_systems`, `ANIMA_TICK_CAPTURE`, baseline table, and 1,000-agent checklist |
+| Capture and compare 3D map views | [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md) ([vi](MAP_VISUAL_CHECK.vi.md)) | `npm run capture:map` (prototype), before/after renders, reading FPS/draw calls |
+| First external user trial run | [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md) ([vi](OWNER_TRIAL_RUN.vi.md)) | Package Windows build 1, preflight checklist, and external-machine trial install |
 | Install and run release 0.9 | [INSTALL.md](INSTALL.md) | Download CI installers, handle Windows SmartScreen / macOS Gatekeeper, prerequisites |
 | Cut a release build | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Pre-release gates, compliance artifacts (NOTICE, SBOM, licenses), audit, and MP-5.1 sessions |
+
+<a id="trên-macos-và-linux"></a>
 
 ## On macOS and Linux
 

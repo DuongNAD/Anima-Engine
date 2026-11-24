@@ -1,5 +1,5 @@
 ---
-title: Creature Morphogenesis — genotype, môi trường và chọn lọc
+title: Creature Morphogenesis — Genotype, Environment, and Selection
 status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-11-17
@@ -10,23 +10,19 @@ plan: ../planning/CREATURE_MORPHOGENESIS_PLAN.md
 
 # Creature Morphogenesis
 
-Tài liệu này giải thích cách Anima Engine tạo một sinh vật mới sao cho có quan hệ hợp
-lý với môi trường nhưng vẫn giữ được tiến hóa emergent. Nó không phải contract API;
-quy tắc bắt buộc nằm trong
-[`CREATURE_DEVELOPMENT_CONTRACT.md`](../reference/CREATURE_DEVELOPMENT_CONTRACT.md).
+> *Vietnamese version / Bản tiếng Việt: [CREATURE_MORPHOGENESIS.vi.md](CREATURE_MORPHOGENESIS.vi.md).*
 
-## Câu trả lời ngắn
+This document explains how Anima Engine develops a new creature so that morphology responds meaningfully to its environment while preserving emergent evolution. It is not an API contract; binding rules live in [`CREATURE_DEVELOPMENT_CONTRACT.md`](../reference/CREATURE_DEVELOPMENT_CONTRACT.md).
 
-Không “tô” một sinh vật theo biome tại mỗi frame. Anima dùng ba cơ chế khác nhau:
+## Short Answer
 
-1. **Genesis prior:** khi tạo một dòng sống hoàn toàn mới, environment bias nhẹ phân
-   bố genotype ban đầu để quần thể không chết ngay.
-2. **Developmental plasticity:** genotype + environment lúc sinh tạo phenotype một lần.
-3. **Natural selection:** environment quyết định phenotype nào sống và sinh sản qua
-   nhiều thế hệ.
+Do not "repaint" a creature to match its biome on every frame. Anima separates three distinct mechanisms:
 
-Chỉ cơ chế 3 chứng minh thích nghi tiến hóa. Prior và plasticity tạo điểm xuất phát
-hoặc phản ứng trong đời; chúng không tự chứng minh fitness.
+1. **Genesis prior:** when creating an entirely new founding lineage, the environment gently biases the initial genotype distribution so founders do not die immediately.
+2. **Developmental plasticity:** genotype + birth environment develop a phenotype once at birth.
+3. **Natural selection:** the environment determines which phenotypes survive and reproduce across generations.
+
+Only mechanism 3 demonstrates evolutionary adaptation. Priors and plasticity set initial conditions or within-lifetime responses; by themselves they do not prove evolutionary fitness.
 
 ```mermaid
 flowchart LR
@@ -41,221 +37,176 @@ flowchart LR
     H --> V["Save + migration + renderer"]
 ```
 
-## Hiện trạng engine
+## Current Engine State
 
-> **Rà toàn văn 2026-11-17.** Tài liệu viết tháng 7; cả trang đã được đối chiếu với mã trên thân cây.
-> Ba điểm của hiện trạng đã đổi:
+> **Full-text audit 2026-11-17.** Originally written in July; the entire page was re-checked against the trunk codebase. Three aspects of engine status changed:
 >
-> - Sổ cái closed-EU nay có **bốn** ngăn: thêm `dormant` cho agent ngủ đông
->   ([hợp đồng sổ cái §1.1](../reference/ENERGY_LEDGER_CONTRACT.md)).
-> - Sinh sản không còn chỉ là epoch replacement. `autonomous_reproduction_system` (sinh sản liên tục
->   theo ngưỡng năng lượng, vốn của con non trừ từ reserve của cha/mẹ) nằm trong lịch tick chung.
->   **Trong app desktop nó chạy mặc định**, vì `ReproductionPolicy` vắng mặt nghĩa là bật. **Trong
->   adapter thí nghiệm sống nó tắt** cho tới khi manifest khai `live.reproduction`
->   ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)). Cái chết vì đói và khát tắt mặc
->   định ở cả hai nơi: app bật bằng `ANIMA_MORTALITY`, adapter bằng `live.mortality`. Đây chưa phải
->   vòng đời M5: con non vẫn được dựng bằng `decode_genotype`, không qua một bước development nào.
-> - Các tên của vòng đời đích (`DevelopedPhenotype`, `EnvSample`, `EnvironmentSnapshot`, `RuntimeState`,
->   `LocomotionMedium`, `develop_at_birth`, `spawn_developed`, `development_version`) **vẫn chưa có
->   trong mã**. Mục "Điểm nguy hiểm hiện tại" bên dưới vì thế vẫn nguyên hiệu lực, và `decode_genotype`
->   nay có **bảy** call-site thay vì bốn: thêm `SpawnOffspringCommand::apply`, `genesis` của
->   `live_experiment` và `RehydrateCommand::apply`
->   ([bảng trong hợp đồng](../reference/CREATURE_DEVELOPMENT_CONTRACT.md)).
+> - The closed-EU ledger now has **four** buckets: adding `dormant` for hibernating agents ([energy ledger contract §1.1](../reference/ENERGY_LEDGER_CONTRACT.md)).
+> - Reproduction is no longer solely epoch replacement. `autonomous_reproduction_system` (continuous energy-threshold reproduction where offspring capital is debited from the parent's reserve) is wired into the shared tick schedule. **In the desktop app it runs by default**, because an absent `ReproductionPolicy` means enabled. **In the live experiment adapter it stays off** unless a manifest declares `live.reproduction` ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)). Starvation and dehydration mortality are off by default in both paths: enabled via `ANIMA_MORTALITY` in the app and `live.mortality` in the adapter. This is not yet the M5 lifecycle: offspring still spawn via `decode_genotype` with no development step.
+> - None of the target lifecycle types or functions (`DevelopedPhenotype`, `EnvSample`, `EnvironmentSnapshot`, `RuntimeState`, `LocomotionMedium`, `develop_at_birth`, `spawn_developed`, `development_version`) **exist in code yet**. The "Current Danger Points" warning below therefore remains fully active, and `decode_genotype` now has **seven** call sites instead of four: adding `SpawnOffspringCommand::apply`, `live_experiment::genesis`, and `RehydrateCommand::apply` ([table in contract](../reference/CREATURE_DEVELOPMENT_CONTRACT.md)).
 >
-> Cách đọc phần còn lại: từ "Bốn lớp dữ liệu" trở xuống là **thiết kế đích**. Chỗ nào mã hiện tại đã có
-> một phần, hoặc làm khác đi, có một dòng *Trạng thái mã*.
+> How to read the rest: from "Four Data Layers" onward describes **target design**. Where existing code implements a subset or differs, an *Implementation status* note explains the exact difference.
 
-### Đã có
+### Already Implemented
 
-- `MorphologyGenotype`: graph node/edge với length, radius, mass, joint anchor/axis.
-- `decode_genotype`: dựng root/child entities, rigid body, collider, CPG và homeostasis.
-- `TerrainMap`: elevation, moisture, temperature, biome và flow.
-- `ResourceField`: resource hiện tại `r` và carrying capacity `r_max`.
-- Closed-EU ledger: plants, animals, detritus, và từ đó tới nay thêm ngăn `dormant`.
-- MAP-Elites, mutation/crossover, lineage và migration.
-- Pixi 2D simulation view và Three.js landscape view.
+- `MorphologyGenotype`: node/edge graph storing segment length, radius, mass, joint anchor, and joint axis.
+- `decode_genotype`: instantiates root/child entities, rigid bodies, colliders, CPG oscillators, and homeostasis.
+- `TerrainMap`: elevation, moisture, temperature, biome, and flow fields.
+- `ResourceField`: standing resource `r` and carrying capacity `r_max`.
+- Closed-EU ledger: plants, animals, detritus, plus the added `dormant` bucket.
+- MAP-Elites archive, mutation/crossover, lineage tracking, and cross-shard migration.
+- Pixi 2D simulation view and Three.js 3D landscape view.
 
-### Chưa có
+### Missing
 
-- Representation phenotype tách khỏi genotype.
-- Species/habitat profile độc lập với environment.
-- Development version và birth-environment snapshot.
-- Pigment/thermal strategy/plasticity strength có thể di truyền.
-- Reproduction M5 thật sự. Tháng 7 chỉ có epoch replacement; nay có thêm sinh sản liên tục theo ngưỡng
-  năng lượng (xem ghi chú đầu mục), vẫn chưa phải M5.
-- Sensor terrain/water/shade của M7.1.
-- Save/migration cho phenotype.
+- Separate developed phenotype representation distinct from genotype.
+- Environment-independent species/habitat profile.
+- Development version and birth-environment snapshot.
+- Heritable pigment, thermal strategy, and plasticity slopes.
+- Full M5 reproduction. In July only epoch replacement existed; continuous threshold reproduction now exists (see banner note above), still not full M5 lifecycle.
+- M7.1 terrain, water, and shade sensors.
+- Persistence and migration of developed phenotypes.
 
-### Điểm nguy hiểm hiện tại
+### Current Danger Points
 
-`decode_genotype` được dùng cho cả cá thể mới và cá thể đã tồn tại. Vì vậy environment
-không được đọc ngầm trong hàm này. Nếu không tách lifecycle, migration sang shard nóng
-sẽ làm cá thể “sinh lại” thành hình khác.
+`decode_genotype` is called both for newborn/founder individuals and when restoring or migrating existing individuals. Consequently it must never sample the environment implicitly. Until development is split from instantiation, migrating into a warmer shard would effectively "re-grow" an adult creature into a different body.
 
-## Bốn lớp dữ liệu
+## Four Data Layers
 
-### 1. Genotype — cái có thể di truyền
+### 1. Genotype — What Is Heritable
 
-- Morphology node/edge gốc.
-- Pigment gene hoặc `None` cho legacy.
+- Base morphology node/edge graph.
+- Pigment gene (or `None` for legacy saves).
 - Developmental reaction slopes.
 - Habitat/locomotion preference.
-- Thermal strategy khi M5.4 bắt đầu.
+- Thermal strategy once M5.4 begins.
 
-Genotype không chứa environment hiện tại và không chứa kết quả cuối của development.
+Genotypes contain neither the current environment nor the realized outcome of development.
 
-### 2. Birth environment — cue phát triển
+### 2. Birth Environment — Developmental Cue
 
-`EnvSample` là snapshot nhỏ:
+`EnvSample` is a compact scalar snapshot:
 
 ```text
 legacy_biome, field_temperature, moisture, elevation, flow,
 resource_capacity, standing_resource
 ```
 
-MVP dùng backend 11-biome projection. Khi cần ecotone/taxonomy 22-biome đầy đủ, phải mở
-rộng artifact/backend contract; không giả vờ dữ liệu đã còn nguyên sau downsample.
+MVP uses the backend's 11-biome projection. Expanding to a full ecotone or 22-biome taxonomy requires updating the artifact and backend contracts first; never assume lost categories survive downsampling.
 
-### 3. Developed phenotype — kết quả ổn định
+### 3. Developed Phenotype — Stable Realized Body
 
-- Developed nodes/edges.
-- Total mass thực tế.
-- Collider/anchor-compatible geometry.
+- Developed nodes and edges.
+- Realized total mass.
+- Mutually coherent collider, rigid-body, and joint-anchor geometry.
 - Display color.
 - Habitat/thermal phenotype.
-- Development version và birth-environment fingerprint.
+- Development version and birth-environment fingerprint.
 
-Đây là dữ liệu physics, MAP-Elites descriptor và renderer phải cùng đọc.
+Physics, MAP-Elites descriptors, and renderers must all read this single authoritative structure.
 
-### 4. Runtime state — cái thay đổi mỗi tick
+### 4. Runtime State — What Changes Every Tick
 
-- Position/rotation/velocity.
-- Energy/hydration/body temperature.
-- CPG phase, brain transition, evaluation và feature tracker.
+- Position, rotation, and velocity.
+- Energy, hydration, and body temperature.
+- CPG phase, brain transitions, evaluation metrics, and feature trackers.
 
-Save/load ghép `DevelopedPhenotype` với `RuntimeState`; không tái phát triển.
+Save/load pairs `DevelopedPhenotype` with `RuntimeState` without ever re-running development.
 
-## Các quy luật sinh học chỉ là policy có phạm vi
+## Biological Rules Are Scoped Policies Only
 
-Bergmann, Allen và Gloger hữu ích để tạo prior/response ban đầu nhưng không phải luật
-phổ quát:
+Bergmann's, Allen's, and Gloger's rules help shape initial priors and response curves, not universal laws:
 
-- Bergmann/Allen liên quan mạnh nhất tới endotherm và phản ứng có thể phi tuyến, đảo
-  chiều ở miền nhiệt cực đoan.
-- Gloger có nhiều cách diễn giải; humidity/temperature không cho một công thức màu
-  đúng với mọi clade.
-- Resource productivity thường giới hạn tổng biomass, density và trophic structure;
-  nó không mặc định quyết định body mass từng cá thể.
+- Bergmann/Allen trends hold mainly for endotherms and can be nonlinear or invert under thermal extremes.
+- Gloger's rule has multiple mechanisms; humidity and temperature do not yield one universal pigment equation across all clades.
+- Resource productivity often caps total biomass, population density, and trophic structure; it does not universally dictate individual body mass.
 
-Vì vậy mỗi response phải có:
+Every developmental response must therefore declare:
 
-| Thành phần | Yêu cầu |
+| Element | Requirement |
 |---|---|
-| Cue | Field nào, đơn vị/miền nào |
-| Scope | Thermal strategy/medium nào được áp |
-| Heritable strength | Slope/bound nằm trong genotype |
-| Cost/trade-off | Benefit ở môi trường A phải có giới hạn hoặc chi phí |
-| Clamp | Hình học/sinh lý không ra ngoài miền hợp lệ |
-| Evidence | Property test + experiment, không chỉ screenshot |
+| Cue | Which field, units, and valid domain |
+| Scope | Which thermal strategy or locomotion medium applies |
+| Heritable strength | Reaction slopes and bounds stored in genotype |
+| Cost / trade-off | Gains in environment A carry a bound or physiological cost |
+| Clamping | Geometry and physiology stay within valid bounds |
+| Evidence | Property tests and controlled experiments, never screenshots alone |
 
-Nguồn khoa học nền:
+Supporting scientific literature:
 
-- [Temperature-dependent plasticity và giới hạn của Bergmann/Allen](https://pmc.ncbi.nlm.nih.gov/articles/PMC10503470/)
-- [Review Gloger’s rule](https://onlinelibrary.wiley.com/doi/10.1111/brv.12503)
-- [Costs và limits của adaptive plasticity](https://pmc.ncbi.nlm.nih.gov/articles/PMC2842679/)
-- [Local adaptation và reciprocal transplant](https://www.nature.com/articles/nrg3522)
+- [Temperature-dependent plasticity and limits of Bergmann/Allen rules](https://pmc.ncbi.nlm.nih.gov/articles/PMC10503470/)
+- [Review of Gloger's rule](https://onlinelibrary.wiley.com/doi/10.1111/brv.12503)
+- [Costs and limits of adaptive plasticity](https://pmc.ncbi.nlm.nih.gov/articles/PMC2842679/)
+- [Local adaptation and reciprocal transplants](https://www.nature.com/articles/nrg3522)
 
-## Policy MVP
+## MVP Policies
 
 ### Morphology
 
-Developmental slopes mặc định bằng 0 cho legacy. Genesis mới lấy mẫu slope nhỏ có
-bound. Một response được áp đúng một lần:
+Developmental slopes default to `0` for legacy genotypes. New genesis founders may sample small bounded slopes. Any response applies at most once:
 
 ```text
 developed_value = clamp(genetic_value × response(genetic_slope, cue))
 ```
 
-Không áp cùng Bergmann multiplier trong cả prior và development. Prior thay phân bố
-`genetic_value`/slope; development dùng slope.
+Never apply the same Bergmann multiplier twice in both the genesis prior and developmental plasticity. Priors shift the initial distribution of `genetic_value` and slope; development applies the slope at birth.
 
 ### Habitat
 
-Medium thuộc sinh vật:
+Locomotion medium belongs to the organism:
 
 ```text
 Aquatic | Terrestrial | Amphibious | Arboreal | Alpine | Aerial
 ```
 
-Environment được phân loại riêng thành water/land/elevation/slope class. S27 là phép
-so sánh hai phía, không phải suy medium từ ô rồi kiểm lại chính ô.
+The environment is classified separately into water, land, elevation, and slope classes. S27 tests both sides independently rather than inferring organism medium from its current cell and asserting a match.
 
-*Trạng thái mã:* `LocomotionMedium` chưa tồn tại. Sáu giá trị trên mới chỉ được liệt kê ở trang này;
-hợp đồng phác `HabitatPreference { medium, elevation_range }` mà không liệt kê biến thể.
+*Implementation status:* `LocomotionMedium` does not exist yet. Only this page lists those six variants; the contract sketches `HabitatPreference { medium, elevation_range }` without enumerating variants.
 
-*Ứng viên chi phí (chưa quyết định):* hai số hạng có thể đi cùng medium, cả hai cộng vào `total_cost`
-trong `metabolic_decay_system` như `cognition_cost`, không bao giờ trừ riêng: chi phí bảo dưỡng giác
-quan (mắt tốn nhiều hơn râu hay thụ thể hoá học, để chọn lọc tự đào thải mắt trong bóng tối) và ngân
-sách khối lượng cơ bay cho `Aerial`, cố định lúc sinh. Nguồn và giới hạn: xem
-[`QD_REALMS_HABITATS_RESEARCH_2026-11-22.md`](../research/QD_REALMS_HABITATS_RESEARCH_2026-11-22.md).
+*Cost candidates (undecided):* two energy terms could accompany medium, both added into `total_cost` inside `metabolic_decay_system` like `cognition_cost` and never subtracted outside it: sensory organ maintenance (eyes costing more than antennae or chemoreceptors, letting selection prune eyes in darkness) and flight-muscle mass overhead for `Aerial`, fixed at birth. Sources and constraints: [`QD_REALMS_HABITATS_RESEARCH_2026-11-22.md`](../research/QD_REALMS_HABITATS_RESEARCH_2026-11-22.md).
 
 ### Pigment
 
-Pigment gene tạo màu cơ sở. Developmental slope có thể tác động nhẹ theo cue. Màu
-phenotype được lưu lúc sinh và không đổi khi cá thể bước qua biên biome. Crypsis chỉ
-được gọi là thích nghi khi reciprocal-transplant/selection chứng minh fitness.
+Pigment genes supply a base coloration. Developmental slopes can nudge coloration slightly from birth cues. Phenotype color is stored at birth and stays fixed when a creature crosses biome boundaries. Crypsis may only be claimed as adaptive when reciprocal-transplant selection proves higher fitness.
 
-Legacy genotype dùng `pigment: None`; renderer tiếp tục fallback theo predator/prey,
-tránh save cũ biến thành màu đen do `Default`.
+Legacy genotypes keep `pigment: None`; renderers continue falling back to predator/prey colors so old saves never turn black from `Default`.
 
-*Trạng thái mã:* chưa có trường pigment nào. Cả hai renderer hiện tô màu theo predator/prey.
+*Implementation status:* no pigment field exists yet. Both renderers currently color creatures by predator vs prey.
 
-### Nhiệt và nước
+### Thermal and Water Physiology
 
-Phase đầu chỉ lưu strategy/trait; chưa nối trực tiếp vào survival.
+Early phases store strategy and trait fields only, without hooking them into survival:
 
-- Body temperature chỉ bị environment tác động khi có heat-exchange mechanism M3/M5.
-- `temp_target` là preferred range/strategy, không đơn giản là tuyến tính từ climate.
-- Hydration efficiency phải có cost/trade-off và không giả định surface-water pool đã
-  được bảo toàn trước M3.
+- Body temperature couples to the environment once M3/M5 heat exchange lands.
+- `temp_target` represents a preferred range/strategy, not a naive linear function of climate.
+- Hydration efficiency must carry a trade-off cost and must not assume conserved surface water before M3.
 
-## Genesis, birth và replacement
+## Genesis, Birth, and Replacement
 
 ### Genesis
 
-Genesis là điều kiện biên `t=0`:
+Genesis sets the `t=0` boundary condition:
 
-1. Chọn spawn region hợp habitat.
+1. Select a spawn region compatible with habitat.
 2. Sample environment.
-3. Lấy mẫu genotype từ prior yếu.
-4. Develop một lần.
-5. Spawn.
-6. Chốt baseline `plants + animals + detritus + dormant`.
+3. Sample genotype from a weak prior.
+4. Develop once.
+5. Spawn entity hierarchy.
+6. Lock closed-EU baseline (`plants + animals + detritus + dormant`).
 
-*Trạng thái mã:* chỉ bước 6 đã có (`EnergyLedger::lock_baseline`, ở lần census đầu). Genesis hiện đặt
-founder trên một đường thẳng, hoặc trên một lưới khi đặt `ANIMA_FOUNDING_POPULATION`, với cùng một
-genotype; không chọn vùng theo habitat, không lấy mẫu môi trường, không có prior và không có bước
-development.
+*Implementation status:* only step 6 exists (`EnergyLedger::lock_baseline` on the first census). Genesis currently places founders along a line, or across a grid when `ANIMA_FOUNDING_POPULATION` is set, all sharing one genotype; it performs no habitat filtering, environment sampling, priors, or development.
 
-### Birth M5
+### M5 Birth
 
-Birth cần parent entities, maturity và energy transaction. Con non không lấy 100 EU
-miễn phí. Đây là M5.3/S29 và không được “vá” vào epoch replacement.
+Biological birth requires parent entities, maturity, and a conserved energy transaction. Newborns never materialize `100 EU` for free. This belongs to M5.3/S29 and must not be patched onto epoch replacement.
 
-*Trạng thái mã:* một đường sinh có giao dịch năng lượng đã tồn tại: `autonomous_reproduction_system` →
-`SpawnOffspringCommand`, một cha/mẹ, vốn của con non trừ từ reserve của cha/mẹ. Nó không có điều kiện
-trưởng thành, không có bạn tình, và con non vẫn được dựng bằng `decode_genotype`, nên nó chưa phải M5.3.
+*Implementation status:* one energy-conserving birth path exists today: `autonomous_reproduction_system` → `SpawnOffspringCommand`, single parent, newborn endowment debited from parent reserves. It lacks maturity gating and mate choice, and still instantiates via `decode_genotype`, so it is not yet full M5.3.
 
-### Evolutionary replacement legacy
+### Legacy Evolutionary Replacement
 
-Cơ chế hiện tại thay cá thể cuối epoch bằng genotype từ archive
-(`apply_staggered_evolution_system` → `SpawnGenotypeCommand`). `EvolutionaryReplacement` là tên gọi của
-hợp đồng; trong mã không có kiểu nào mang tên đó. Reserve của cá thể bị thay trả về detritus, và cá thể
-mới rút vốn từ detritus qua sự kiện sổ cái `EnergyEvent::Replacement`; nếu detritus không đủ, phần thiếu
-được đếm là `refused` thay vì thế giới tự có thêm năng lượng. Việc thay thế chưa được ghi vào
-`CausalLedger`. Cơ chế này có thể tiếp tục phục vụ MAP-Elites trước khi reproduction M5 hoàn chỉnh.
+The current mechanism replaces individuals at epoch boundaries from the archive (`apply_staggered_evolution_system` → `SpawnGenotypeCommand`). `EvolutionaryReplacement` is the contract's conceptual term; no code type bears that name. A replaced creature's reserves return to detritus, and the replacement draws capital from detritus via ledger event `EnergyEvent::Replacement`; when detritus is insufficient, the shortfall increments `refused` rather than creating energy out of thin air. Replacement is not yet recorded in `CausalLedger`. It can continue serving MAP-Elites until full M5 reproduction is ready.
 
-## Save, load và migration
+## Save, Load, and Migration
 
 ```mermaid
 sequenceDiagram
@@ -270,69 +221,56 @@ sequenceDiagram
     P->>S: serialize phenotype + runtime state
     S->>R: payload
     R->>R: spawn_developed(payload phenotype)
-    Note over R: Không gọi develop_at_birth
+    Note over R: Do not call develop_at_birth
 ```
 
-*Trạng thái mã:* sơ đồ trên là đích. Hôm nay `SerializedAgent` lưu genotype, và restore lẫn migration
-gọi lại `decode_genotype`.
+*Implementation status:* the diagram above shows target behavior. Today `SerializedAgent` stores genotypes only, and both snapshot restore and migration invoke `decode_genotype`.
 
-Save cũ không có phenotype đi qua một migration versioned duy nhất. Migration này có
-thể phát triển từ genotype + saved position để tạo phenotype legacy, nhưng phải ghi
-`development_version` và không lặp ở lần load sau.
+Legacy saves lacking a serialized phenotype pass through one versioned migration path. That migration may develop a legacy phenotype from the saved genotype and position, recording `development_version` so subsequent loads never re-develop.
 
 ## Determinism
 
-Nguồn seed chuẩn là `WorldIdentity.seed`. Mỗi stream có key:
+The canonical seed source is `WorldIdentity.seed`. Streams are keyed cleanly:
 
 ```text
 derive_seed(world_seed, event_kind, tick_or_epoch, lineage_key)
 ```
 
-Mutation/crossover/development nhận RNG từ caller. `thread_rng()` và UUID v4 không
-được dùng trong test path deterministic; lineage ID có thể sinh từ seed + counter/hash.
+Mutation, crossover, and development all accept an RNG from the caller. Deterministic paths never call `thread_rng()` or random UUID v4; lineage IDs derive deterministically from seed plus counter/hash.
 
-*Trạng thái mã:* chưa có hàm `derive_seed` bốn thành phần. Mỗi stream hiện được tách bằng
-`derived_seed(run_seed, stream)` (`core/resources.rs`) với một hằng số cho từng stream. Mutation và
-crossover đã nhận RNG từ caller, và mã không gọi `thread_rng()`. UUID v4 vẫn còn ở đường chạy mặc định
-của app; chế độ tất định sinh id từ `RunIdentity`.
+*Implementation status:* the four-part `derive_seed` helper does not exist yet. Each stream is separated via `derived_seed(run_seed, stream)` (`core/resources.rs`) using per-stream constants. Mutation and crossover already accept caller RNGs and never call `thread_rng()`. UUID v4 still runs in the default desktop app mode; deterministic mode derives IDs from `RunIdentity`.
 
-## Render và IPC
+## Rendering and IPC
 
-Rust `SegmentState` (`core/simulation_state.rs`) đã mang `length` và `radius`; còn thiếu `color` và
-`phenotype_version`. Kiểu TypeScript tương ứng được sinh bằng ts-rs
-(`src/types/generated/SegmentState.ts`) và không sửa tay: đổi struct Rust rồi sinh lại. Phía frontend phải
-đồng bộ:
+Rust `SegmentState` (`core/simulation_state.rs`) already carries `length` and `radius`; `color` and `phenotype_version` are still missing. Its TypeScript counterpart is generated via ts-rs (`src/types/generated/SegmentState.ts`) and must not be hand-edited: change the Rust struct and regenerate. Frontend files that stay synchronized:
 
 - `src/utils/agentHierarchy.ts` (`RenderSegment`, `buildAgentHierarchy`);
 - `src/types/index.ts::RenderSegment`;
 - `src/PixiViewport.tsx`;
-- renderer 3D `src/components/Landscape/LiveAgents.tsx`;
-- `PROJECT.md` Interface Contracts và mocks/tests.
+- 3D renderer `src/components/Landscape/LiveAgents.tsx`;
+- `PROJECT.md` Interface Contracts and test mocks.
 
-Danh sách tháng 7 còn kể `src/hooks/useSimulation.ts` và bản sao kiểu trong `src/App.tsx`. File đầu đã bị
-xoá, và `App.tsx` nay nhập từ `utils/agentHierarchy`.
+The older July list also named `src/hooks/useSimulation.ts` and duplicate type definitions in `src/App.tsx`. The first file was removed, and `App.tsx` now imports from `utils/agentHierarchy`.
 
-Renderer không tự sample biome để đổi phenotype. Nó chỉ render dữ liệu Rust gửi.
+Renderers never sample biome fields to alter phenotype appearance; they solely render serialized data sent from Rust.
 
-## Chứng minh thích nghi
+## Proving Adaptation
 
-Ba mức bằng chứng:
+Three tiers of evidence:
 
-1. **Mechanism:** cue đổi phenotype đúng bound.
-2. **Performance:** phenotype tạo khác biệt intake/cost/movement đúng cơ chế.
-3. **Adaptation:** genotype địa phương có reproductive fitness cao hơn genotype ngoại
-   lai trong reciprocal transplant qua nhiều seed.
+1. **Mechanism:** cues alter developed phenotypes within declared bounds.
+2. **Performance:** realized phenotypes create expected differences in intake, cost, or movement.
+3. **Adaptation:** local genotypes achieve higher reproductive fitness than foreign genotypes in multi-seed reciprocal transplants.
 
-Trait–biome correlation chỉ là mô tả, không đủ cho mức 3. S43 vẫn dành cho coevolution
-Red-Queen predator–prey; local adaptation dùng CM-S11.
+Trait–biome correlations alone are purely descriptive and never establish tier 3. `S43` remains reserved for Red-Queen predator–prey coevolution; local adaptation uses `CM-S11`.
 
-## Ngoài phạm vi đợt đầu
+## Out of Scope for Phase 1
 
-- Full 22-biome preservation ở backend.
+- Full 22-biome backend preservation.
 - Dynamic camouflage.
-- Aerial/swimming physics hoàn chỉnh.
-- Species taxonomy sinh học thực.
-- Reproduction, age/life stage và mate choice hoàn chỉnh.
-- Hydrology/water balance trước M3.
+- Complete aerial/swimming physics.
+- True biological species taxonomy.
+- Full reproduction, age/life stage, and mate choice.
+- Hydrology and water balance prior to M3.
 
-Các phần này được mở bằng task/ADR riêng, không chèn ngầm vào Phase đầu.
+Each of these belongs to its own dedicated card or ADR rather than being smuggled into Phase 1.

@@ -1,0 +1,90 @@
+{
+  "arms": [
+    {
+      "agent_count_final": 165.0,
+      "arm": "control_uniform",
+      "detritus_at_warmup": 11584.075412276323,
+      "detritus_final": 56371.558119897956,
+      "final_checksum": 4154339718,
+      "first_positive_detritus_before_warmup": [
+        600,
+        2546.9743583446975
+      ],
+      "max_abs_eu_drift": 1.8917489796876907e-9,
+      "predator_count_final": 5.0,
+      "standing_crop_final": 107714.67657537013,
+      "standing_crop_post_warmup_mean": 124673.58954909166,
+      "status": "Completed"
+    },
+    {
+      "agent_count_final": 157.0,
+      "arm": "control_uniform_scarcity",
+      "detritus_at_warmup": 92758.99763079468,
+      "detritus_final": 101688.03669753877,
+      "final_checksum": 3415484089,
+      "first_positive_detritus_before_warmup": [
+        600,
+        90593.72165071477
+      ],
+      "max_abs_eu_drift": 4.307366907596588e-8,
+      "predator_count_final": 4.0,
+      "standing_crop_final": 63690.741382559994,
+      "standing_crop_post_warmup_mean": 63715.66567776399,
+      "status": "Completed"
+    },
+    {
+      "agent_count_final": 164.0,
+      "arm": "treatment_gradient",
+      "detritus_at_warmup": 93191.46631665426,
+      "detritus_final": 98119.66716941576,
+      "final_checksum": 2934444428,
+      "first_positive_detritus_before_warmup": [
+        600,
+        86836.9112282136
+      ],
+      "max_abs_eu_drift": 4.5547494664788246e-8,
+      "predator_count_final": 4.0,
+      "standing_crop_final": 63958.5336730327,
+      "standing_crop_post_warmup_mean": 64047.13821968107,
+      "status": "Completed"
+    }
+  ],
+  "body_mass_consulted": false,
+  "duration_ticks": 18000,
+  "elapsed_seconds": 38.4740051,
+  "ended_utc": "2026-11-24T00:39:07Z",
+  "kind": "e3b-blind-smoke-report",
+  "sample_period": 600,
+  "seed": 999953,
+  "started_utc": "2026-11-24T00:38:29Z",
+  "warmup_ticks": 3000,
+  "wp2_a_resource_field": {
+    "capacity_ratio": 0.4199999822125479,
+    "height": 256,
+    "initial_closed_eu_scarcity": 153587.24986362457,
+    "initial_closed_eu_treatment": 153587.24986362457,
+    "initial_closed_eu_uniform": 153587.24986362457,
+    "passed": true,
+    "rng_stream_identical": true,
+    "scarcity_capacity_eu": 64506.642210796475,
+    "uniform_capacity_eu": 153587.24986362457,
+    "width": 256,
+    "world_identity_identical": true
+  },
+  "wp2_b1_gradient_vs_uniform": {
+    "passed": true,
+    "relative_post_warmup_shift": -0.4862814293602915,
+    "treatment_add_nutrient_events": 300,
+    "treatment_deforest_events": 300
+  },
+  "wp2_b2_scarcity_vs_gradient": {
+    "passed": true,
+    "relative_post_warmup_mismatch": -0.005175446571556897,
+    "scarcity_add_nutrient_events": 300,
+    "scarcity_deforest_events": 0
+  },
+  "wp2_c_detritus_active": {
+    "passed": true
+  },
+  "wp2_passed": true
+}
