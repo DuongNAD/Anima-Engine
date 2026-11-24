@@ -2,7 +2,7 @@
 title: Đánh giá công nghệ R&D cho đường dữ liệu, Meta-AI và sinh asset 3D
 status: proposed
 owner: architecture
-last_reviewed: 2026-08-07
+last_reviewed: 2026-11-24
 review_cycle: quarterly
 ---
 
@@ -26,25 +26,25 @@ nghiệm tương ứng nằm ở
 
 ## Bằng chứng từ code hiện tại
 
-> **Rà toàn mục 2026-11-17.** Mọi khẳng định về mã trong mục này đã được đối chiếu lại bằng cách đọc
-> mã; không chạy test hay benchmark nào.
+> **Rà toàn mục 2026-11-24 (thân cây `f976e66d`; kế tiếp lượt rà 2026-11-17).** Mọi khẳng định về mã trong
+> mục này đã được đối chiếu lại bằng cách đọc mã và `git grep`; **không** chạy `cargo` test hay benchmark nào.
 >
-> - **Còn đúng:** worker vẫn transfer buffer; IndexedDB giữ typed array; `worldCache.ts` vẫn gọi
->   `save_world_artifact` với `Array.from(new Uint8Array(buf))`; cả bảy event vẫn đi qua
->   `tauri::Emitter` dưới dạng JSON; benchmark vẫn chưa đo bridge serialization, JS parse hay dropped
->   frames.
+> - **Còn đúng trên `f976e66d`:**
+>   - `worldGen.worker.ts:24,49` vẫn transfer các `ArrayBuffer` theo zero-copy;
+>   - `worldCache.ts:7,17-18` vẫn xuất artifact ở `SIM_ARTIFACT_SIZE = 256` (`1.114.148` byte = `36 + 256×256×17`, `worldArtifact.ts:28-29`, `world_artifact.rs:43`) và gọi `save_world_artifact` với `Array.from(new Uint8Array(buf))`; lưu ý nhánh World v2 (`WV2-3`, `#242`) đã thêm reader `ANMW v3` (`terrain_map_from_v3_sim` ở `world_artifact.rs:530`), còn đường desktop tiền chuyển đổi vẫn từ chối `ANMW v3` tới `WV2-7` (`world_artifact.rs:245-250,270-275`);
+>   - cả `7` Tauri event (`check_ipc_reference`: `36` commands, `7` events) vẫn đi qua `tauri::Emitter` dưới dạng JSON (`emit.rs:253,260,268,273`, `networking_systems.rs:278,448,464`, `simulation_loop.rs:792,863`), `PheromoneEmitGate` giữ tại `emit.rs:115`, và ước lượng pheromone JSON `150–200 KB` tại `emit.rs:109` giữ nguyên `(not re-measured 2026-11-24)`;
+>   - [`BENCHMARKING.md`](../how-to/BENCHMARKING.md) (nay là trang tiếng Anh kèm bản dịch `BENCHMARKING.vi.md`) vẫn ghi nhận số đo `WorldArtifact::{to_bytes, from_bytes, checksum}` (`1.46 ms`, `1.13 ms`, `1.37 ms` tại `:110-112`, `(not re-measured 2026-11-24)`) và vẫn chưa có benchmark đo bridge serialization, JS parse hay dropped frames.
 > - **Đính chính:** câu về phân loại phản hồi Gemini bằng chuỗi con ở mục "Meta-AI" **đã sai ngay khi
 >   tài liệu này được viết**. Commit `ef1c28e` (2026-07-30) đã thay cách đó bằng
->   `parse_environmental_event`, và `a0a551c` (cùng ngày) đã chặn kích thước thân phản hồi; cả hai có
+>   `parse_environmental_event` (`meta_ai.rs:32`), và `a0a551c` (cùng ngày) đã chặn kích thước thân phản hồi bằng `MAX_META_AI_RESPONSE_BYTES` / `read_meta_ai_json_from_reader` (`meta_ai.rs:9,49-75`, unit test tại `:315-321`); cả hai có
 >   trước ngày 2026-08-07. Hàm đó so khớp nguyên tên biến thể, không phân biệt hoa thường, và từ chối
 >   mọi thứ khác. Phần "pattern nên nhận" vì thế đã được đáp ứng ở điểm 3 và 5 theo một cách hẹp hơn;
 >   điểm 1, 2 và 4 thì chưa: mã không yêu cầu schema từ provider, không deserialize bằng serde vào enum
 >   và không có repair retry.
 > - **Chưa bắt đầu:** không ứng viên nào trong bảng kết luận có mã, dependency, ADR hay thẻ đang chạy.
->   Kế hoạch tương ứng được xếp là thẻ X10, sau `v1.0.0`.
+>   Kế hoạch tương ứng ([`RD_TECH_UPGRADE_PLAN_2026-08-07.md`](../planning/RD_TECH_UPGRADE_PLAN_2026-08-07.md)) được xếp là thẻ X10, sau `v1.0.0`.
 >
-> Bảng kết luận ở trên không đổi. Các con số của upstream (VRAM, độ trễ) và năm link ở cuối trang là
-> của ngày 2026-08-07 và **chưa** được kiểm lại; vì thế `last_reviewed` của trang chưa đổi.
+> **Phạm vi đối chiếu 2026-11-24:** Bảng kết luận không đổi; mọi số liệu benchmark runtime không chạy lại bằng `cargo`, thông số upstream (`6 GiB` / `16 GiB` VRAM, `< 480 ns`) và 5 link ngoài ghi ngày `2026-08-07` đều mang nhãn `(not re-measured 2026-11-24)`. `last_reviewed` cập nhật lên `2026-11-24`.
 
 ### Đường dữ liệu
 
@@ -54,10 +54,10 @@ nghiệm tương ứng nằm ở
   artifact (1.114.148 byte) thành `Array.from(Uint8Array)` trước khi qua Tauri:
   [`worldCache.ts`](../../src/components/Landscape/utils/worldCache.ts).
 - Emit thread tái sử dụng buffer Rust, nhưng `simulation-tick`, `pheromone-update` và các event khác
-  vẫn đi qua `tauri::Emitter`; ghi chú hiện tại ước lượng pheromone JSON khoảng 150–200 KB mỗi lần, và
+  vẫn đi qua `tauri::Emitter`; ghi chú hiện tại ước lượng pheromone JSON khoảng 150–200 KB mỗi lần (`src-tauri/src/core/emit.rs:109`, `(not re-measured 2026-11-24)`), và
   `pheromone-update` có giới hạn tần suất riêng (`PheromoneEmitGate`):
   [`emit.rs`](../../src-tauri/src/core/emit.rs).
-- Benchmark hiện có đo encode/decode/checksum artifact, nhưng chưa đo bridge serialization, JS parse,
+- Benchmark hiện có đo encode/decode/checksum artifact (`BENCHMARKING.md:110-112`, `(not re-measured 2026-11-24)`), nhưng chưa đo bridge serialization, JS parse,
   main-thread cost hoặc dropped frames:
   [`BENCHMARKING.md`](../how-to/BENCHMARKING.md).
 
@@ -87,7 +87,7 @@ fail-closed thay vì đoán bằng substring.
 Hunyuan3D-2 phù hợp làm công cụ ngoại tuyến: prompt/image → mesh → kiểm tra → simplify/LOD → GLB →
 artifact registry. Không gọi model từ simulation tick hoặc learner.
 
-Repository upstream công bố khoảng 6 GiB VRAM cho shape và 16 GiB cho shape + texture. Máy 16 GiB
+Repository upstream công bố khoảng 6 GiB VRAM cho shape và 16 GiB cho shape + texture (`(not re-measured 2026-11-24)`). Máy 16 GiB
 vì vậy cần chạy độc quyền GPU, không đồng thời với LIVA LLM, và phải có cancel/unload/recovery.
 
 ## Ràng buộc kiến trúc
@@ -101,7 +101,7 @@ vì vậy cần chạy độc quyền GPU, không đồng thời với LIVA LLM,
 
 ## Nguồn upstream
 
-Kiểm ngày 2026-08-07:
+Kiểm ngày 2026-08-07 (`(not re-measured 2026-11-24)`):
 
 - [Apache Arrow](https://github.com/apache/arrow) — IPC format, off-heap buffers và memory mapping.
 - [PydanticAI](https://github.com/pydantic/pydantic-ai) — typed output, model abstraction và observability.
