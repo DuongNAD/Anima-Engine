@@ -14,6 +14,15 @@
 
 ---
 
+# 2026-11-24 — MAP-D3, E3b Runner (`#234`), Map v2 `WV2-2` (`#199`) & Wave `STATE-SYNC` (`#232`)
+
+- **Owner decisions & governance (`#230`, `56cc6ca9`):** Merged `MAP-D3` ([design §MAP-D3](docs/ai/design/2026-11-20-world-v2-design.md#map-d3-2026-11-24-card-3-gates-not-met-after-the-physics-rework), leaving unmet Card 3 gates unedited and tracked via `scripts/test_target_policy.mjs`), `QD-E3B-D1a` (two-trophic E3b with `live.predator_fraction = 0.3`), and `QD-WAVE1124` ([`AGENT_WORKFLOW.md` §4](docs/how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0)).
+- **E3b experiment runner (`#234`, `454771e5`):** Merged `C1. E3B-RUNNER` ([spec](docs/ai/planning/2026-11-24-e3b-runner.md), `src-tauri/examples/run_e3b_experiment.rs`, `src-tauri/tests/e3b_runner_tests.rs`; `177` desktop test targets, `1,680` passed in PR `#234`); as of `2026-11-24` (`ed634d8c`), `E3B-SMOKE` (`#240`) and `WR1` (`#236`) remain in review/verification.
+- **Map v2 `WV2-2` (`#199`, `ed634d8c`):** Merged `S4`/`S6`/`S7`/`S8`/`S9`, lean `4096²` multigrid pipeline, `anima-worldgen` CLI, and `WV2-2-PHYS` Step B ([`2026-11-23-wv2-2.md`](docs/ai/planning/2026-11-23-wv2-2.md); `96 passed; 0 failed; 5 ignored` under `--profile worldgen-cpu`, single-run `4096²` CLI `1.165 GiB < 1.2 GiB` max RSS, unmet Card 3 shortfalls honestly recorded under `MAP-D3`).
+- **State sync (`#232`, `f074a243`) & Stage 5/6 queue (as of `2026-11-24` at `ed634d8c`):** First wave `STATE-SYNC` merged; draft PRs `#233` (`REL09-CI`), `#238` (`REL09-DOCS`), `#237` (`DOC-EN`), `#235` (`V-ADR`), and `#239` (`V-SPECS`) await peer review / green CI / lead merge (with `#235`/`#239` leaving `ADR-0013` `proposed` and owner gates open before `V0–V6` coding cards). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17) for sourced status (Rule 8).
+
+---
+
 # 2026-11-22 → 2026-11-23 — VIAB-1/1b, E3b Draft v2, M2/R5/F-066 Hardening, Map v2 WV2-1c & Diátaxis Docs
 
 - **Viability & `E3b`:** `VIAB-1` (`#215`, 55 cells / 1,920 body-mass-blind runs across `d90be0bd` + `4794b6fc`, [results](docs/ai/planning/2026-11-23-viab1-results.md)) found 1/30 E3b cells passing (`pred_final > 0`: `0/0/0`) and 0/25 SEL2-P2 cells passing due to `mut0` collapse without scarcity; `#216` ([diagnosis](docs/ai/planning/2026-11-23-mut0-collapse-diagnosis.md)) diagnosed a maladapted clonal founder. `FOUNDER-2SEG` (`#224`, [note](docs/ai/planning/2026-11-23-founder-2seg.md)) added opt-in `live.founder_genotype`; `VIAB-1b` (`#228`, 72 runs at `98054ba`, [results](docs/ai/planning/2026-11-23-viab1b-results.md)) passed both `e3b_fg1_g4_fl1` and `_mut0` (`12/12/12/12` survival, `pred_final > 0`: `12/11/12`). `E3b` template, power analysis, `QD-E3B` `D1–D5`, draft v2, and freeze landed (`#214`, `#217`, `#218`, `#223`, `#229`, and `#231` `E3B-FREEZE`, [frozen preregistration](docs/ai/planning/2026-11-24-e3b-preregistration.md) + `npm run check:e3b`); `#230` (`MAP-D3` + `QD-E3B-D1a` + `QD-WAVE1124`) remains open on GitHub at `1a2d1d62`.
