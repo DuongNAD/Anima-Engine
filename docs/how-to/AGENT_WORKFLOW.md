@@ -403,6 +403,24 @@ QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (
             and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
             QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
             recommended option for each of G1-G4.)
+QD-BIO-D1 = open energy flow: declared sunlight in and declared heat loss out become an opt-in world law with
+            its own ADR, and the experiment contract's closed-EU rule is amended to "closed accounting over
+            declared sources and sinks". Today respiration returns to detritus (world_systems.rs:223), so energy
+            never leaves the system and trophic transfer efficiency has no ceiling; all six research reports
+            asked for this independently. The legacy closed path stays the default and bit-identical; every new
+            charge still goes through total_cost.
+QD-BIO-D2 = once E3b is closed (#252 merged), the frozen E3b manifest test may pin "the 31 live keys and 28
+            observables at freeze time" instead of "all LIVE_KEYS", and new live.* keys and observables are
+            accepted when absent by default; the frozen manifests and artifacts stay untouched (same kind of
+            change as QD-E3B-T).
+QD-BIO-D3 = geological eras (QD-LIFE tier 3) get their own world-record field; era_index keeps its meaning of
+            engine-compatibility era (world_record/types.rs:157-160, ADR-0008).
+QD-BIO-D4 = a brain-body interface ADR (per-segment CPG drive by the brain) comes before any body-growth or
+            segment-cap work: today only the first two segments by id get brain-driven CPG parameters
+            (agent_systems.rs:1893-1909) and every other joint runs a fixed CpgOscillator::new(1.0, 0.5)
+            (genotype.rs:253).
+            (D1-D4: owner in chat, 2026-11-24: "Duyệt D1–D4", on the lead's review of the six Gemini Deep
+            Research reports, hub RESEARCH_REVIEW_2026-11-24_modern_biology.md.)
 QD-ADR0014 = ADR-0014 (shared island, host and guests; PR #256) is accepted with all 24 D-slots as recommended:
             immediate release on disconnect; exclusive possession; bincode quantized deltas at about 20 Hz with a
             LAN cap of 16 guests; interest-area culling with a low-rate global summary; guest-input overflow
