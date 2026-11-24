@@ -291,6 +291,8 @@ Thêm vào đó:
 | D-4 | Lấy bản ghi tick thật bằng đường nào? (a) Chủ dự án chạy `npm run tauri:dev` một lần trên máy case và ghi ở giao diện; luật hub cấm agent chạy app. (b) Tách đoạn dựng payload ở `simulation_loop.rs:2068` thành hàm công khai để một test headless xuất bản ghi tất định; đường này sửa `src-tauri/src` | (a) cho lần xem đầu. (b) khi có dòng uỷ quyền, vì chỉ (b) cho bản ghi lặp lại được trên CI |
 | D-5 | Kế hoạch này dùng khối ghép làm cách vẽ mặc định, đẩy A2–A4 và N2–N4 của Thế giới sống ra sau. Có đồng ý thứ tự đó không? | Đồng ý; các nhánh kia giữ trạng thái `proposed` |
 
+> **Note (2026-11-24):** `D-1` was answered `2026-11-17` (Dell Vostro 3530 floor, `30 FPS` Low; [`COMPLETION_ROADMAP_2026-10-31.md` §4.1](../../planning/COMPLETION_ROADMAP_2026-10-31.md#41-quyết-định-sau-2026-11-14-ghi-thêm-2026-11-17) and [Map v2 Requirements](../requirements/2026-11-20-feature-map-v2.md)); `D-2`, `D-4`, and `D-5` defaults were implemented in merged `RW-*` cards (`#52`–`#69`), with `D-5` later superseded by continuous SkinnedMesh bodies (`#153`) and `QD-MAPV2` (`#185`/`#192`); `D-3` is superseded by `QĐ-TIME` ([`COMPLETION_ROADMAP_2026-10-31.md` §4.2](../../planning/COMPLETION_ROADMAP_2026-10-31.md#42-ba-mục-về-quá-khứ-thời-gian-và-rẽ-luật-ghi-2026-11-17-theo-lời-chủ-dự-án-trong-chat)) and `QD-ADR0014` (`#256`, [ADR-0014](../../decisions/ADR-0014-shared-island-host-and-guests.md)).
+
 ## 9. Rủi ro
 
 | Rủi ro | Dấu hiệu | Cách xử lý |
