@@ -1,19 +1,19 @@
 ---
 title: ADR-0019 — Brain–Body Interface (Shared Motor Modulation + Per-Segment Gene for Variable Morphologies)
-status: proposed
+status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-11-24
-decision_date: pending
+decision_date: 2026-11-24
 supersedes: none
 superseded_by: none
 ---
 
 # ADR-0019 — Brain–Body Interface (Per-Segment CPG Drive for Variable Morphologies)
 
-> **Status: `proposed` — awaiting owner decision (`QD-BRAINBODY` `D1–D5`).**
-> Do **not** implement brain–body interface changes until the owner accepts this ADR and records
-> decisions `D1–D5`. Initiated per `QD-BIO-D4` (`MSG_20261124_133000`, `PR #255`) from
-> `RESEARCH_REVIEW_2026-11-24_modern_biology.md` §2 Finding 2.
+> **Status: `accepted` (2026-11-24 — owner decision `QD-BRAINBODY` `D1–D5 = A`, "Đồng ý" on the lead's summary of Option A).**
+> Initiated per `QD-BIO-D4` (`MSG_20261124_133000`, `PR #255`) from `RESEARCH_REVIEW_2026-11-24_modern_biology.md` §2 Finding 2;
+> accepted in chat to the lead on `2026-11-24` and recorded via `MSG_20261124_143000` (`## 9`).
+> Implementation cards follow separately after PR `#259` merges and wait for `C12 E3B-PIN` (`QD-BIO-D2`) because `live.brain_body_interface` adds a new `live.*` key.
 > Code anchors below are verified on `origin/feat/ecological-selection` at commit
 > `facc800c50a15cdca960c8c006cc5f861e4c703a`.
 
@@ -377,10 +377,20 @@ Lane W after Island Milestone 1 cards `I1–I11` per `MSG_20261124_133000` §4.)
 
 ---
 
-## 9. Owner Decision Block (To Be Filled on Acceptance)
+## 9. Owner Decision Block (Recorded 2026-11-24)
 
 ```text
-QD-BRAINBODY (owner, <YYYY-MM-DD>) = ACCEPT ADR-0019:
-  D1 = <A|B|C>, D2 = <A|B>, D3 = <A|B>, D4 = <A|B>, D5 = <A|B>;
-  brain-body implementation authorized per ADR-0019 (status -> accepted, decision_date -> <YYYY-MM-DD>)
+QD-BRAINBODY (owner, 2026-11-24, "Đồng ý" on the lead's summary of Option A) = ACCEPT ADR-0019:
+  D1 = A, D2 = A, D3 = A, D4 = A, D5 = A;
+  status -> accepted, decision_date -> 2026-11-24;
+  implementation cards follow after PR #259 merges (and wait for C12 E3B-PIN / QD-BIO-D2
+  for the new live.brain_body_interface key).
 ```
+
+| Slot | Decision |
+|---|---|
+| **D1** | Keep `EVOLVED_ARCH 15->64->64->8`. Add shared 2-channel modulation and a per-edge heritable `JointCpgGene` (`channel_mix`, `phase_offset`, `freq_scale`, `amp_gain`). |
+| **D2** | Opt-in only: `BrainBodyPolicy.enabled` / `live.brain_body_interface = 1.0`. With the flag off, the trunk is preserved bug-for-bug: the root skips slot 0, and ids >= 2 stay fixed at `(1.0, 0.5)`. |
+| **D3** | 2 channels, no change to the 8 outputs. |
+| **D4** | With the policy on, `drive_from_cpg` aggregates over all oscillating descendant segments, in a deterministic order. |
+| **D5** | Land `BrainBodyPolicy` + `JointCpgGene` on today's `crossover.rs` first. The later B7 homologous crossover preserves node and edge ids. |

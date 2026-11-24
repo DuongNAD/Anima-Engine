@@ -21,7 +21,7 @@ last_reviewed: 2026-11-24
 | [`ADR-0010`](ADR-0010-pinned-world-artifact.md) | accepted | Một world artifact ghim, chia ô, là nguồn sự thật cho mô phỏng và bản đồ (thế giới thật trên bản đồ, 2026-11-19) |
 | [`ADR-0012`](ADR-0012-ui-free-simulation-core.md) | accepted | Lõi mô phỏng chạy đủ không cần giao diện; giao diện là client chỉ đọc (ghi chỉ qua ADR-0004); giao diện cho máy (CLI, manifest, artifact, IPC) là hạng nhất; tầng ảnh chẩn đoán tách khỏi UI sản phẩm. ADR-0011 để dành cho lựa chọn renderer sau NR-SPIKE |
 | [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) | proposed | Live creature lifecycle for V3: chronological age, life stages (juvenile/adult/senescent), maturation gate & cost, costly reproduction cooldown, and senescence mortality (opt-in, closed-EU via `total_cost`) |
-| [`ADR-0019`](ADR-0019-brain-body-interface.md) | proposed | Brain–body interface for variable morphologies: fixed brain shape (ADR-0003 / EB-S02 / Schema 8) + shared 2-channel motor modulation + per-edge heritable `JointCpgGene` (opt-in, growth & homologous-crossover ready, `QD-BIO-D4`) |
+| [`ADR-0019`](ADR-0019-brain-body-interface.md) | accepted | Brain–body interface for variable morphologies: fixed brain shape (ADR-0003 / EB-S02 / Schema 8) + shared 2-channel motor modulation + per-edge heritable `JointCpgGene` (opt-in, growth & homologous-crossover ready, `QD-BIO-D4`; accepted 2026-11-24, `QD-BRAINBODY D1–D5 = A`) |
 
 **Front matter thắng banner trong thân.** ADR-0005, 0006 và 0007 mở đầu thân bằng dòng "Trạng thái: đề xuất,
 chờ chủ dự án", viết lúc soạn; mỗi ADR có một mục "Quyết định (2026-11-16)" ở cuối ghi việc chấp nhận, và
