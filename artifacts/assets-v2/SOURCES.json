@@ -1,0 +1,161 @@
+{
+  "entries": [
+    {
+      "asset_id": "fern_02",
+      "base_rgb": [
+        46,
+        108,
+        44
+      ],
+      "committed": true,
+      "download_bytes": 183075,
+      "download_urls": [
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fern_02/fern_02.bin"
+      ],
+      "licence": "CC0-1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "obj_path": "meshes/fern_02.glb",
+      "processing": "Fetched 1K glTF + binary buffer from Poly Haven API with MD5 verification; stripped image textures/samplers while keeping geometry JSON accessors/bufferViews and raw BIN buffer verbatim inside binary glTF 2.0 (.glb)",
+      "sha256": "c0a6306f5d62fdb892a89dc836744ca7cd2e5cfdd9ad7edb074e6d2ecc634455",
+      "source": "Poly Haven",
+      "source_url": "https://polyhaven.com/a/fern_02",
+      "species_id": "rainforest_understory_fern",
+      "upstream_md5": {
+        "bin": "c061e9255f7d36ae9ce0e92ef3e100b2",
+        "gltf": "cf276874d37bfb73c299504a6b355b77"
+      }
+    },
+    {
+      "asset_id": "calathea_orbifolia_01",
+      "base_rgb": [
+        38,
+        96,
+        48
+      ],
+      "committed": true,
+      "download_bytes": 417277,
+      "download_urls": [
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/calathea_orbifolia_01/calathea_orbifolia_01_1k.gltf",
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/calathea_orbifolia_01/calathea_orbifolia_01.bin"
+      ],
+      "licence": "CC0-1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "obj_path": "meshes/calathea_orbifolia_01.glb",
+      "processing": "Fetched 1K glTF + binary buffer from Poly Haven API with MD5 verification; stripped image textures/samplers while keeping geometry JSON accessors/bufferViews and raw BIN buffer verbatim inside binary glTF 2.0 (.glb)",
+      "sha256": "19cd2ea3bc6d9a795ef9961b7506c2202800b82e87d4e0fb965d4f80a224e92f",
+      "source": "Poly Haven",
+      "source_url": "https://polyhaven.com/a/calathea_orbifolia_01",
+      "species_id": "rainforest_broadleaf_calathea",
+      "upstream_md5": {
+        "bin": "71dd2ea7aaba98bbd675db12ae382bbd",
+        "gltf": "7ff4de041509fbaa45f8f3dd52b3113d"
+      }
+    },
+    {
+      "asset_id": "grass_medium_02",
+      "base_rgb": [
+        78,
+        122,
+        52
+      ],
+      "committed": true,
+      "download_bytes": 280912,
+      "download_urls": [
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/grass_medium_02/grass_medium_02_1k.gltf",
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/grass_medium_02/grass_medium_02.bin"
+      ],
+      "licence": "CC0-1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "obj_path": "meshes/grass_medium_02.glb",
+      "processing": "Fetched 1K glTF + binary buffer from Poly Haven API with MD5 verification; stripped image textures/samplers while keeping geometry JSON accessors/bufferViews and raw BIN buffer verbatim inside binary glTF 2.0 (.glb)",
+      "sha256": "bbd52285377a15c5ef80e4dec131e6039183ef0de74891de6ca7a0cc070aef8e",
+      "source": "Poly Haven",
+      "source_url": "https://polyhaven.com/a/grass_medium_02",
+      "species_id": "montane_meadow_grass",
+      "upstream_md5": {
+        "bin": "145041ae03fe02783a0adbd1cdcb4988",
+        "gltf": "dd8f166a6399238553bc3b2931677b68"
+      }
+    },
+    {
+      "asset_id": "moss_01",
+      "base_rgb": [
+        64,
+        110,
+        56
+      ],
+      "committed": true,
+      "download_bytes": 25741,
+      "download_urls": [
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/moss_01/moss_01_1k.gltf",
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/4k/moss_01/moss_01.bin"
+      ],
+      "licence": "CC0-1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "obj_path": "meshes/moss_01.glb",
+      "processing": "Fetched 1K glTF + binary buffer from Poly Haven API with MD5 verification; stripped image textures/samplers while keeping geometry JSON accessors/bufferViews and raw BIN buffer verbatim inside binary glTF 2.0 (.glb)",
+      "sha256": "38bf9bccd4ff423d7eb64dd8d710b74f9654e2085512ac01d3894a0b5e595918",
+      "source": "Poly Haven",
+      "source_url": "https://polyhaven.com/a/moss_01",
+      "species_id": "cloud_forest_moss",
+      "upstream_md5": {
+        "bin": "cdb092878a81b3208a162d79546892fe",
+        "gltf": "1baba498fd3936673609dda5ecfe960a"
+      }
+    },
+    {
+      "asset_id": "rock_moss_set_01",
+      "base_rgb": [
+        108,
+        114,
+        96
+      ],
+      "committed": true,
+      "download_bytes": 1476367,
+      "download_urls": [
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_moss_set_01/rock_moss_set_01.bin"
+      ],
+      "licence": "CC0-1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "obj_path": "meshes/rock_moss_set_01.glb",
+      "processing": "Fetched 1K glTF + binary buffer from Poly Haven API with MD5 verification; stripped image textures/samplers while keeping geometry JSON accessors/bufferViews and raw BIN buffer verbatim inside binary glTF 2.0 (.glb)",
+      "sha256": "a00fd1ba433a0b5aa9b4c7dfc15c999245792ec26f10c28a6b998a916865c41c",
+      "source": "Poly Haven",
+      "source_url": "https://polyhaven.com/a/rock_moss_set_01",
+      "species_id": "montane_moss_boulder",
+      "upstream_md5": {
+        "bin": "207a51c9f56d34732e9814bbf9cc07b1",
+        "gltf": "75113cc1c21806cca5d8badad4737af7"
+      }
+    },
+    {
+      "asset_id": "dead_tree_trunk_02",
+      "base_rgb": [
+        102,
+        84,
+        66
+      ],
+      "committed": true,
+      "download_bytes": 1977201,
+      "download_urls": [
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/dead_tree_trunk_02/dead_tree_trunk_02_1k.gltf",
+        "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/dead_tree_trunk_02/dead_tree_trunk_02.bin"
+      ],
+      "licence": "CC0-1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "obj_path": "meshes/dead_tree_trunk_02.glb",
+      "processing": "Fetched 1K glTF + binary buffer from Poly Haven API with MD5 verification; stripped image textures/samplers while keeping geometry JSON accessors/bufferViews and raw BIN buffer verbatim inside binary glTF 2.0 (.glb)",
+      "sha256": "40adc9dbe696c141576d0ea46e1b380a79b6e5113d6ea971f241ead3a8fa9569",
+      "source": "Poly Haven",
+      "source_url": "https://polyhaven.com/a/dead_tree_trunk_02",
+      "species_id": "montane_deadwood_trunk",
+      "upstream_md5": {
+        "bin": "7848170c88b67d9e1d5e7d111db7b7ff",
+        "gltf": "c16595a5951634914898e1eb6bb0ed3d"
+      }
+    }
+  ],
+  "format_version": 1
+}
