@@ -316,7 +316,8 @@ QD-SCOPE  = scope freeze for about 3 months from 2026-11-19: continue SEL2-P, E3
             artifact (W1-W3 full), Inhabit federation; after the trial, graphics = bug fixes only. Public
             docs and papers in English; an external reviewer before the island preregistration (owner in
             chat, 2026-11-19: "Đồng ý", "Cả hai"). AMENDED 2026-11-20 by QD-MAPV2: the native renderer, the full
-            tiled world artifact and graphics work are no longer paused; they follow the Map v2 phases
+            tiled world artifact and graphics work are no longer paused; they follow the Map v2 phases.
+            AMENDED 2026-11-24 by QD-SHAREDISLAND: Inhabit federation is no longer paused; it is the main goal
 QD-REALMS = real ecosystems in water, sky and underground are added one at a time after the SEL2-P
             result, each with its own ADR: water first, then sky, then underground (walk-in caves);
             until then fish, birds, wildlife and caves stay labelled decoration (owner in chat,
@@ -357,6 +358,164 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+QD-PLAYRULES = rules of play on a shared island (QD-SHAREDISLAND): (1) one creature's lifespan is about 1-2 hours
+            of real time, slow enough to watch hunting and growing up, through a declared real-time ecology
+            profile pinned in the manifest (science runs keep their own profiles; faster than real time only
+            with no guest present); (2) animals reproduce sexually (two sexes, mates found by proximity and
+            signals, recombination of homologous parts plus mutation, no offspring from an incompatible pair,
+            compatibility falling with genetic distance so reproductive isolation can emerge, "species" only
+            for isolated clusters passing AE-S11/AE-S14); plants are hermaphrodite with outcrossing, selfing at
+            an inbreeding cost and clonal grass spread; (3) an inhabited organism that dies is not respawned:
+            its carcass decomposes and the guest may inhabit an offspring, a young relative or another allowed
+            organism; (4) if all life dies, the host opens a new era; (5) a guest controls one organism with no
+            powers beyond that organism's own, environment interventions are host-only, and the host may remove
+            a guest; (6) built for a small LAN group now, with foundations for more (stable IDs, interest
+            management, record compaction). Points (2) and (3) were delegated to the lead as "the most
+            biologically correct". (Owner in chat, 2026-11-24.)
+QD-SIGNALS = a language system means creatures communicating: evolved signalling, not scripted meanings, over
+            chemical (the existing pheromone grid), acoustic and visual channels, with an energy cost through
+            total_cost and eavesdropping by predators; "language" is claimed only with evidence (information
+            carried, receivers' response, shuffled-signal controls); a guest speaks only through its organism's
+            channels, and human chat is out of world. ADR-0017 (proposed). (Owner in chat, 2026-11-24: "hệ thống
+            ngôn ngữ", "Sinh vật giao tiếp với nhau".)
+QD-ECOSCALE = the ecosystem sustains itself through cycles, not caps: energy from sunlight flows up the food chain
+            under the closed-EU contract, detritus and carcasses return nutrients through decomposers (V4, V5),
+            and populations are regulated by food, predation and space (density dependence); live.prey_cap
+            becomes a legacy option, off on shared islands once that works. Organisms of very different sizes
+            use three tiers: individuals (medium and large animals, trees, shrubs; inhabitable), swarms or
+            super-individuals (a mosquito swarm, a fish school), and per-cell population fields (grass,
+            plankton, soil fauna, larvae). Pace scales with size (Kleiber); QD-PLAYRULES' 1-2 h lifespan is for
+            the typical inhabitable animal. Milestone 1 inhabits individuals only. ADR-0018 (proposed); numbers
+            stay D-slots. (Owner in chat, 2026-11-24: "oke đồng ý".)
+QD-WV25   = the three World v2 WV2-5 gates, answered in advance: (a) staging CC0 source assets for grid bake
+            workers is allowed within QD-ASSETS (ambientCG and Poly Haven only, CC0-1.0 only, at most 60 MB
+            downloaded and 20 MB committed, SOURCES.json with one licence_url per entry, GRID WORKER jobs under
+            QD-OXS); (b) the baked tile pack is not published now: it stays an internal artifact and is published
+            as a GitHub Release asset with v0.9.0 (QD-REL09 G3); (c) the lead may approve a new crate with a
+            permissive licence (MIT, Apache-2.0, BSD-2/3, ISC, Zlib, or a dual licence containing one), given its
+            licence, transitive dependency list, a clean cargo audit and the reason; any other licence goes to
+            the owner. (Owner in chat, 2026-11-24, choosing the recommended option for each gate.)
+QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (B) a release candidate
+            v0.9.0-rc.1 first, for the three MP-5.1 trial sessions, then v0.9.0 after fixes; G2 (A) unsigned
+            installers, with the SmartScreen / Gatekeeper steps of docs/how-to/INSTALL.md (QD-M8 signing stays
+            a later decision); G3 (C) the rc goes to trial users as release-build workflow artifacts only, and
+            v0.9.0 is then published as a GitHub Release; G4 (A) main is fast-forwarded to the release commit
+            and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
+            QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
+            recommended option for each of G1-G4.)
+QD-SCALE-TRIAL = during the trial and demo phase a shared island targets about 100 individual animals, not 1,000.
+            The measured headless cost is about 0.33 ms per tick at 100 agents and 5.64 ms at 1,000 (scaling about
+            N^1.86; docs/paper/data/scaling.md), so 100 leaves ample room for plants, fields, guests and rendering.
+            1,000 stays the long-term design target and benchmark point: new mechanisms must stay scale-aware
+            (no O(N^2) designs, allocation-free ticks), but no card is blocked on reaching 1,000. The owner's
+            H6/H7 hands-on run uses about 100 agents. (Owner in chat, 2026-11-24: "hiện tại thử nghiệm nên con số
+            k lớn đến thế tầm 100".)
+QD-OPENC  = group C of the lead's open-question sweep, decided as the lead suggested (owner in chat, 2026-11-24:
+            "đồng ý hết theo ý bạn"): QD-M8 signing and auto-update are decided before v1.0 (no purchase now);
+            QD-M4 second platform = macOS unsigned, if NM-2 shows its checksums match the Windows class;
+            D-H11-3 = v1.0 requires World v2 in the app; MP-5.6 = a bundled sample world in 0.9, creature
+            export/import in 1.0; QD-2/QD-H tail = Map 2 is shown only once its decoration is labelled (card C14)
+            and the Research Dashboard ships read-only; paper = figures count as data and may live in this public
+            repository, prose drafts go to a private repository the owner creates (name to follow); the island-rule
+            external reviewer is chosen by the owner, the lead drafts the letter; brain_metabolic_cost and
+            locomotion stay off by default in the app until the island slice (shared islands turn them on
+            through the real-time ecology profile). Left open on purpose: G-REF (owner's visual approval per
+            biome), H6/H7 (owner runs the release app at 1,000 agents), EB-S09 threshold, AE-006 MU tolerance,
+            island size by area, ISLAND-D7 and the QD-M3 remainder (Internet transport).
+QD-OPENQ  = groups A and B of the lead's open-question sweep (hub OPEN_QUESTIONS_AND_PROVISIONAL_2026-11-24.md),
+            approved by the owner in chat on 2026-11-24 ("Duyệt A và B"). (A) As recommended in their documents:
+            the V0-V11 card-spec D-slots (all A, D-V9-4 = B; D-V0-2 already answered by QD-BIO-D2); D-H10-1..3 and
+            D-H11-1, -2, -4 (D-H11-4 follows QD-REL09 G4); NR-SPIKE NR-D1..D7 as proposed; LAW1-D1 (a) reference
+            world first, D2 (a) six arms, D3 (b) m = 2 plus the T2b manipulation gate, D4 (b) ln-ratio
+            ±ln(1.25), D5 (a) genesis_fork, D6 (a) N = 48 on Windows 1 (the LAW1 freeze stays a separate owner
+            approval); ADR-0009 accepted; QD-M1 = EXECUTION_PLAN plus the swarm plan for the work and DIRECTION
+            for stage order; QD-M2 = crate split after v1.0; QD-C2 residual = treat the bare Cargo licence field
+            as the grant (risk accepted, not legal advice). (B) Conflicts: ADR-0013 D1 = B (sexual reproduction,
+            via homologous crossover, QD-PLAYRULES) and D3 = B (growth of scale, gated by ADR-0019), D2 = A
+            (deterministic senescence), D4 and D5 as recommended, and ADR-0013 is accepted with these values;
+            D-V6-1's 60 ticks per sim day and QD-ADR0014's 20-minute day are two declared world-law profiles
+            (science slice vs shared island), pinned per manifest; QD-SHAREDISLAND supersedes QD-M7's
+            "Inhabit = each device its own island" (QD-M7's Contribute-as-batches stays; island-to-island
+            migration comes after I10); QD-M6 stays "per platform class"; 0.9 stays unsigned and QD-M8 is
+            decided before v1.0. Still open for the owner's own choice, money or hands-on action: QD-M8, QD-M4,
+            D-H11-3, MP-5.6, QD-2/QD-H tail, paper repository, external reviewer, G-REF, H6/H7, default-on flags.
+QD-BRAINBODY = ADR-0019 (brain-body interface, PR #259) accepted with D1-D5 = A: keep the evolved brain shape
+            15->64->64->8, add shared 2-channel motor modulation and a per-edge heritable JointCpgGene
+            (channel_mix, phase_offset, freq_scale, amp_gain); opt-in only (live.brain_body_interface), with the
+            flag off preserving today's mapping bug-for-bug (root skips slot 0, ids >= 2 fixed at (1.0, 0.5));
+            2 channels, no change to the 8 outputs; drive aggregated over all oscillating descendant segments in
+            a deterministic order; lands on today's crossover first, and later homologous crossover preserves
+            node and edge ids. (Owner in chat, 2026-11-24: "Đồng ý".)
+QD-BIO-D1 = open energy flow: declared sunlight in and declared heat loss out become an opt-in world law with
+            its own ADR, and the experiment contract's closed-EU rule is amended to "closed accounting over
+            declared sources and sinks". Today respiration returns to detritus (world_systems.rs:223), so energy
+            never leaves the system and trophic transfer efficiency has no ceiling; all six research reports
+            asked for this independently. The legacy closed path stays the default and bit-identical; every new
+            charge still goes through total_cost.
+QD-BIO-D2 = once E3b is closed (#252 merged), the frozen E3b manifest test may pin "the 31 live keys and 28
+            observables at freeze time" instead of "all LIVE_KEYS", and new live.* keys and observables are
+            accepted when absent by default; the frozen manifests and artifacts stay untouched (same kind of
+            change as QD-E3B-T).
+QD-BIO-D3 = geological eras (QD-LIFE tier 3) get their own world-record field; era_index keeps its meaning of
+            engine-compatibility era (world_record/types.rs:157-160, ADR-0008).
+QD-BIO-D4 = a brain-body interface ADR (per-segment CPG drive by the brain) comes before any body-growth or
+            segment-cap work: today only the first two segments by id get brain-driven CPG parameters
+            (agent_systems.rs:1893-1909) and every other joint runs a fixed CpgOscillator::new(1.0, 0.5)
+            (genotype.rs:253).
+            (D1-D4: owner in chat, 2026-11-24: "Duyệt D1–D4", on the lead's review of the six Gemini Deep
+            Research reports, hub RESEARCH_REVIEW_2026-11-24_modern_biology.md.)
+QD-ADR0014 = ADR-0014 (shared island, host and guests; PR #256) is accepted with all 24 D-slots as recommended:
+            immediate release on disconnect; exclusive possession; bincode quantized deltas at about 20 Hz with a
+            LAN cap of 16 guests; interest-area culling with a low-rate global summary; guest-input overflow
+            rejected at the socket; LAN discovery by IP:port + PIN and a UDP beacon; adaptive 2-3 tick playout,
+            no client prediction; third-person default camera, sensory first person after milestone 1, free
+            spectator camera; grass cells watch-only; one day = 20 minutes and one year = 90 minutes of real
+            time; World v2 C01 terrain after WV2-7; a headless prehistory before guests; persistent islands;
+            G2 producers-first by a closed-EU viability trigger with at least 3 founder pools; the G3 spike
+            time-boxed to 2 weeks (success: an emergent lineage passes the G2 screen); the listed chronicle
+            triggers, extinct-branch compaction, clade threshold and naming proposed in the ADR and approved
+            by the lead; opt-in OpenRouter :free narration through a provider-agnostic endpoint with the key in
+            an environment variable or keychain. The Internet milestone (ISLAND-D7) stays open. (Owner in chat,
+            2026-11-24: "Duyệt theo khuyến nghị".)
+QD-SHAREDISLAND = the project's main goal is now many machines in one island: one host machine runs the
+            simulation and holds the island's truth; guests on other machines watch (Spectate) or inhabit
+            (Inhabit) over the network; every guest action reaches the host as a declared intervention with
+            a CauseId (ADR-0004) and is recorded in the world record (ADR-0008, WR1/WR2). Only the host
+            simulates, so cross-OS checksum differences do not matter; lockstep co-simulation of one island
+            stays rejected (direction plan 13/11, chặng 7). First milestone: LAN only (no Internet until
+            authentication and TLS exist), guests watch and inhabit one organism, design first (ADR-0014)
+            then implementation cards; the other lanes keep running and S7 is deferred, not cancelled. The
+            design proposals for animation (the pose is the simulation; guests send intents, never poses),
+            camera (third person by default, a "sensory" first person later), island start (pinned terrain,
+            a prehistory run before guests arrive, a persistent island) and an island chronicle (facts from
+            the record and the lineage tracker, "lineage" not "species" without AE-S11, optional AI-written
+            prose on the host with the owner's own API key, never recorded) are D-slots in ADR-0014, not yet
+            decided. AMENDS QD-SCOPE: "Inhabit federation" is no longer paused; it is the main goal. Not to be
+            confused with QD-ISLAND (2026-11-19, the island-rule science question), which is unchanged.
+            (Owner in chat, 2026-11-24: "cái này á", then "Đúng, làm tiếp".)
+QD-LIFE   = to be like the real world, evolution and growing up apply to both animals and plants, and
+            inhabiting applies to both: animals and individual plants (trees, shrubs; a grass cell is a
+            population and is only watched). Animals get physical growth toward their genotype's adult size
+            (amendment to ADR-0013, which today keeps body size fixed from birth); plants become evolving
+            organisms (ADR-0015: individual trees and shrubs, grass as per-cell populations carrying a trait
+            distribution; energy from sunlight under the closed-EU contract; opt-in, legacy path
+            bit-identical). The map changes too (ADR-0016), by timescale: the living surface first, then
+            recorded local disturbances as delta overlays, then slow landscape change and large events
+            (earthquake, eruption, new land) as era transitions re-baked by the World v2 generator; every
+            change is a process law plus a trigger (a seeded natural-event process in the world law, or a
+            CauseId intervention) plus a scale rule. (Owner in chat, 2026-11-24: "tiến hoá và phát triển
+            lớn lên cần phải áp dụng với cả động vật và thực vật", "đóng vai áp dụng cả với thực vật", "sự
+            thay đổi cx cần áp dụng với map".)
+QD-GENESIS = first organisms in three phases: G1 fixed, declared founders for the demo (today's 2-segment
+            animal founder with the assigned predator fraction; one fixed grass, shrub and tree genotype
+            once ADR-0015 lands), labelled "designed founders"; G2 a screened founder pool sampled from a
+            declared distribution on its own seeded stream and kept only if it passes a viability screen
+            (VIAB-1/VIAB-2 style), producers first, then herbivores, then predators, with a robustness check
+            across pools; G3 emergent first organisms from a primordial world law, as a time-boxed research
+            spike with its own ADR and an explicit statement that chemistry-level origin of life is not
+            modelled. Every run declares its phase in the genesis manifest; experiments never mix phases.
+            (Owner in chat, 2026-11-24: "hướng 1 đặt 1 fix cứng để làm được demo đã, tiếp theo sẽ sàng lọc
+            1 số để lấy mẫu nâng cấp, cuối cùng làm thật sự sinh vật khởi đầu".)
 MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
             4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
             (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
@@ -829,6 +988,31 @@ R5-AUTH   =
   [[test]] entry if required-features are needed. Not src-tauri/src/**, not run_sel2p_experiment.rs, not any
   frozen fixture. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and
   no others.
+  AUTHORIZATION (lead under the owner's delegation, 2026-11-24; hub MSG_20261124_110000), to anima-mac: for
+  card WV2-4 only, add exactly three lines to .gitattributes (a comment, artifacts/world-v2/*.json text eol=lf,
+  artifacts/world-v2/*.toml text eol=lf), matching R0's artifacts/maps pin (#123). Nothing else in that file.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_112000 and MSG_20261124_124500 to
+  MSG_20261124_140000), to anima-dell, documents only: for card ISLAND-ADR, one new
+  docs/decisions/ADR-0014-shared-island-host-and-guests.md (proposed) and one
+  docs/ai/planning/2026-11-24-island-cards.md; for card GROWTH-AMEND, a new "Physical growth" section in
+  docs/decisions/ADR-0013-live-creature-lifecycle.md (stays proposed) and nothing else in that file; for card
+  PLANT-EVO-ADR, one new docs/decisions/ADR-0015-evolving-plants.md (proposed) and one
+  docs/ai/planning/2026-11-24-plant-cards.md; for card WORLD-CHANGE-ADR, one new
+  docs/decisions/ADR-0016-changing-world-surface.md (proposed) and one
+  docs/ai/planning/2026-11-24-world-change-cards.md; for each card, one row in docs/decisions/README.md only if
+  npm run check:docs requires it. No other path.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_150000), to anima-dell, documents
+  only: for card SIGNALS-ADR, one new docs/decisions/ADR-0017-evolved-communication.md (proposed) and one
+  docs/ai/planning/2026-11-24-signals-cards.md; no other path. (hub MSG_20261124_144500) for card WIP-BACKUP,
+  in the Dell main checkout only: create and push one branch dell/wip-backup-20261124 holding its uncommitted
+  changes (secrets and build noise excluded and reported), then switch back; no stash, reset, clean, deletion,
+  force or PR.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_153000), to anima-dell, documents
+  only: for card ECOSYSTEM-ADR, one new docs/decisions/ADR-0018-ecosystem-scales-and-cycles.md (proposed) and
+  one docs/ai/planning/2026-11-24-ecosystem-cards.md; no other path.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_112000), to anima-case: card
+  ISLAND-INVENTORY writes one hub file test_runs/anima-case_island_inventory_20261124.md and nothing in the
+  repository.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
