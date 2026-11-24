@@ -2,8 +2,8 @@
 #![deny(clippy::disallowed_methods)]
 
 //! `JOB-W6` External CC0 Asset Pipeline (`QD-ASSETS`):
-//! - `sources.json` validator (`ambientCG` & `Poly Haven` only, `CC0-1.0`, valid `licence_url`, pinned SHA-256, `<= 60 MB` downloaded / `<= 20 MB` committed budgets)
-//! - Deterministic `.obj` mesh parser, vertex-grid LOD simplifier (`lod0..lod3`), greedy vertex-cache triangle orderer (`ANMM` v1 binary)
+//! - `SOURCES.json` validator (`ambientCG` & `Poly Haven` only, `CC0-1.0`, valid `licence_url`, pinned SHA-256, `<= 60 MB` downloaded / `<= 20 MB` committed budgets)
+//! - Deterministic Wavefront `.obj` and binary glTF 2.0 (`.glb`) mesh parser, vertex-grid LOD simplifier (`lod0..lod3`), greedy vertex-cache triangle orderer (`ANMM` v1 binary)
 //! - Software deterministic octahedral hemisphere (`8×8` view) impostor atlas baker (`RGBA8` albedo+alpha + `BC5` normal `.ktx2`)
 
 use crate::anmw_v3::sha256_to_hex;
@@ -29,7 +29,7 @@ pub const QD_ASSETS_MAX_COMMITTED_BYTES: u64 = 20_000_000;
 /// Approved CC0 upstream providers (`QD-ASSETS`).
 pub const QD_APPROVED_SOURCES: [&str; 2] = ["ambientCG", "Poly Haven"];
 
-/// One asset entry inside `artifacts/assets-v2/sources.json` (`QD-ASSETS`).
+/// One asset entry inside `artifacts/assets-v2/SOURCES.json` (`QD-ASSETS`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetSourceEntry {
     pub species_id: String,
@@ -44,7 +44,7 @@ pub struct AssetSourceEntry {
     pub base_rgb: Option<[u8; 3]>,
 }
 
-/// Top-level `sources.json` manifest validated strictly against `QD-ASSETS` before `JOB-W6` runs.
+/// Top-level `SOURCES.json` manifest validated strictly against `QD-ASSETS` before `JOB-W6` runs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetSourcesManifest {
     pub format_version: u32,
@@ -131,16 +131,18 @@ pub fn validate_asset_sources_manifest(
                 entry.species_id, entry.licence_url
             )));
         }
+        let obj_bytes = fs::read(manifest_dir.join(&entry.obj_path))?;
+        let actual_len = obj_bytes.len() as u64;
+        let reported_or_actual = entry.download_bytes.max(actual_len);
         total_dl = total_dl
-            .checked_add(entry.download_bytes)
+            .checked_add(reported_or_actual)
             .ok_or_else(|| BakeError::new("QD-ASSETS download byte total overflow"))?;
         if entry.committed {
             total_commit = total_commit
-                .checked_add(entry.download_bytes)
+                .checked_add(reported_or_actual)
                 .ok_or_else(|| BakeError::new("QD-ASSETS committed byte total overflow"))?;
         }
 
-        let obj_bytes = fs::read(manifest_dir.join(&entry.obj_path))?;
         let actual_sha = sha256_hex(&obj_bytes);
         if actual_sha != entry.sha256 {
             return Err(BakeError::new(format!(
@@ -277,6 +279,605 @@ pub fn parse_obj_mesh(src: &str) -> Result<AssetMesh, BakeError> {
     }
 
     Ok(AssetMesh { vertices, indices })
+}
+
+const GLB_MAGIC: [u8; 4] = *b"glTF";
+const GLB_VERSION_2: u32 = 2;
+const GLB_CHUNK_JSON: u32 = 0x4E4F_534A;
+const GLB_CHUNK_BIN: u32 = 0x004E_4942;
+const GLTF_MODE_TRIANGLES: u64 = 4;
+const GLTF_COMPONENT_UNSIGNED_BYTE: u64 = 5121;
+const GLTF_COMPONENT_UNSIGNED_SHORT: u64 = 5123;
+const GLTF_COMPONENT_UNSIGNED_INT: u64 = 5125;
+const GLTF_COMPONENT_FLOAT: u64 = 5126;
+const MAT4_IDENTITY: [f32; 16] = [
+    1.0, 0.0, 0.0, 0.0, // col 0
+    0.0, 1.0, 0.0, 0.0, // col 1
+    0.0, 0.0, 1.0, 0.0, // col 2
+    0.0, 0.0, 0.0, 1.0, // col 3
+];
+
+#[inline]
+fn read_le_u32(bytes: &[u8], off: usize) -> Result<u32, BakeError> {
+    let slice: [u8; 4] = bytes
+        .get(off..(off + 4))
+        .ok_or_else(|| BakeError::new("unexpected EOF reading GLB u32"))?
+        .try_into()
+        .map_err(|_| BakeError::new("invalid u32 slice in GLB"))?;
+    Ok(u32::from_le_bytes(slice))
+}
+
+#[inline]
+fn read_le_f32(bytes: &[u8], off: usize) -> Result<f32, BakeError> {
+    let slice: [u8; 4] = bytes
+        .get(off..(off + 4))
+        .ok_or_else(|| BakeError::new("unexpected EOF reading GLB f32"))?
+        .try_into()
+        .map_err(|_| BakeError::new("invalid f32 slice in GLB"))?;
+    let val = f32::from_le_bytes(slice);
+    if !val.is_finite() {
+        return Err(BakeError::new("non-finite float inside GLB buffer"));
+    }
+    Ok(val)
+}
+
+fn mat4_mul(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
+    let mut out = [0.0_f32; 16];
+    for c in 0..4 {
+        for r in 0..4 {
+            out[c * 4 + r] = a[r] * b[c * 4]
+                + a[4 + r] * b[c * 4 + 1]
+                + a[8 + r] * b[c * 4 + 2]
+                + a[12 + r] * b[c * 4 + 3];
+        }
+    }
+    out
+}
+
+fn json_f32_array(val: Option<&serde_json::Value>, default: &[f32], out: &mut [f32]) {
+    out.copy_from_slice(default);
+    if let Some(arr) = val.and_then(|v| v.as_array()) {
+        for (dst, src) in out.iter_mut().zip(arr.iter()) {
+            if let Some(x) = src.as_f64() {
+                *dst = x as f32;
+            }
+        }
+    }
+}
+
+fn gltf_node_local_mat4(node: &serde_json::Value) -> Result<[f32; 16], BakeError> {
+    if let Some(mat_val) = node.get("matrix") {
+        let arr = mat_val
+            .as_array()
+            .ok_or_else(|| BakeError::new("glTF node.matrix must be an array"))?;
+        if arr.len() != 16 {
+            return Err(BakeError::new("glTF node.matrix must have 16 elements"));
+        }
+        let mut out = [0.0_f32; 16];
+        for (i, item) in arr.iter().enumerate() {
+            let v = item
+                .as_f64()
+                .ok_or_else(|| BakeError::new("glTF node.matrix contains non-number"))?
+                as f32;
+            if !v.is_finite() {
+                return Err(BakeError::new("glTF node.matrix contains non-finite value"));
+            }
+            out[i] = v;
+        }
+        return Ok(out);
+    }
+
+    let mut t = [0.0_f32; 3];
+    let mut r = [0.0_f32; 4];
+    let mut s = [0.0_f32; 3];
+    json_f32_array(node.get("translation"), &[0.0, 0.0, 0.0], &mut t);
+    json_f32_array(node.get("rotation"), &[0.0, 0.0, 0.0, 1.0], &mut r);
+    json_f32_array(node.get("scale"), &[1.0, 1.0, 1.0], &mut s);
+
+    let qlen = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2] + r[3] * r[3])
+        .sqrt()
+        .max(1e-6);
+    let [qx, qy, qz, qw] = [r[0] / qlen, r[1] / qlen, r[2] / qlen, r[3] / qlen];
+    let (xx, yy, zz) = (qx * qx, qy * qy, qz * qz);
+    let (xy, xz, yz) = (qx * qy, qx * qz, qy * qz);
+    let (xw, yw, zw) = (qx * qw, qy * qw, qz * qw);
+
+    Ok([
+        (1.0 - 2.0 * (yy + zz)) * s[0],
+        (2.0 * (xy + zw)) * s[0],
+        (2.0 * (xz - yw)) * s[0],
+        0.0,
+        (2.0 * (xy - zw)) * s[1],
+        (1.0 - 2.0 * (xx + zz)) * s[1],
+        (2.0 * (yz + xw)) * s[1],
+        0.0,
+        (2.0 * (xz + yw)) * s[2],
+        (2.0 * (yz - xw)) * s[2],
+        (1.0 - 2.0 * (xx + yy)) * s[2],
+        0.0,
+        t[0],
+        t[1],
+        t[2],
+        1.0,
+    ])
+}
+
+#[inline]
+fn transform_point_mat4(m: &[f32; 16], p: [f32; 3]) -> [f32; 3] {
+    [
+        m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12],
+        m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13],
+        m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14],
+    ]
+}
+
+fn transform_normal_mat4(m: &[f32; 16], n: [f32; 3]) -> [f32; 3] {
+    let c0 = [m[0], m[1], m[2]];
+    let c1 = [m[4], m[5], m[6]];
+    let c2 = [m[8], m[9], m[10]];
+    let mut adj0 = cross3(c1, c2);
+    let mut adj1 = cross3(c2, c0);
+    let mut adj2 = cross3(c0, c1);
+    let det = dot3(c0, adj0);
+    if det.abs() < 1e-12 {
+        return norm3([
+            c0[0] * n[0] + c1[0] * n[1] + c2[0] * n[2],
+            c0[1] * n[0] + c1[1] * n[1] + c2[1] * n[2],
+            c0[2] * n[0] + c1[2] * n[1] + c2[2] * n[2],
+        ]);
+    }
+    if det < 0.0 {
+        for a in 0..3 {
+            adj0[a] = -adj0[a];
+            adj1[a] = -adj1[a];
+            adj2[a] = -adj2[a];
+        }
+    }
+    norm3([
+        adj0[0] * n[0] + adj1[0] * n[1] + adj2[0] * n[2],
+        adj0[1] * n[0] + adj1[1] * n[1] + adj2[1] * n[2],
+        adj0[2] * n[0] + adj1[2] * n[1] + adj2[2] * n[2],
+    ])
+}
+
+struct GlbAccessor<'a> {
+    bin: &'a [u8],
+    base_off: usize,
+    stride: usize,
+    count: usize,
+    comp_type: u64,
+}
+
+impl<'a> GlbAccessor<'a> {
+    fn open(
+        gltf: &serde_json::Value,
+        bin: &'a [u8],
+        acc_idx: usize,
+        expected_type: &str,
+        allowed_components: &[u64],
+    ) -> Result<Self, BakeError> {
+        let accessors = gltf
+            .get("accessors")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| BakeError::new("glTF missing accessors array"))?;
+        let acc = accessors
+            .get(acc_idx)
+            .ok_or_else(|| BakeError::new(format!("glTF accessor {acc_idx} out of bounds")))?;
+        let acc_type = acc
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| BakeError::new("glTF accessor missing type"))?;
+        if acc_type != expected_type {
+            return Err(BakeError::new(format!(
+                "glTF accessor {acc_idx} expected type {expected_type}, got {acc_type}"
+            )));
+        }
+        let comp_type = acc
+            .get("componentType")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| BakeError::new("glTF accessor missing componentType"))?;
+        if !allowed_components.contains(&comp_type) {
+            return Err(BakeError::new(format!(
+                "glTF accessor {acc_idx} unsupported componentType {comp_type}"
+            )));
+        }
+        let count =
+            acc.get("count")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| BakeError::new("glTF accessor missing count"))? as usize;
+        let bv_idx = acc
+            .get("bufferView")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| BakeError::new("glTF accessor missing bufferView"))?
+            as usize;
+        let acc_off = acc.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+
+        let buffer_views = gltf
+            .get("bufferViews")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| BakeError::new("glTF missing bufferViews array"))?;
+        let bv = buffer_views
+            .get(bv_idx)
+            .ok_or_else(|| BakeError::new(format!("glTF bufferView {bv_idx} out of bounds")))?;
+        if bv.get("buffer").and_then(|v| v.as_u64()).unwrap_or(0) != 0 {
+            return Err(BakeError::new("GLB primitive references non-zero buffer"));
+        }
+        let bv_off = bv.get("byteOffset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let bv_len = bv
+            .get("byteLength")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| BakeError::new("glTF bufferView missing byteLength"))?
+            as usize;
+        let comp_size = match comp_type {
+            GLTF_COMPONENT_UNSIGNED_BYTE => 1_usize,
+            GLTF_COMPONENT_UNSIGNED_SHORT => 2_usize,
+            GLTF_COMPONENT_UNSIGNED_INT | GLTF_COMPONENT_FLOAT => 4_usize,
+            _ => unreachable!("checked above"),
+        };
+        let lanes = match expected_type {
+            "SCALAR" => 1_usize,
+            "VEC2" => 2_usize,
+            "VEC3" => 3_usize,
+            _ => unreachable!("checked above"),
+        };
+        let elem_bytes = comp_size * lanes;
+        let stride = bv
+            .get("byteStride")
+            .and_then(|v| v.as_u64())
+            .map(|s| s as usize)
+            .unwrap_or(elem_bytes);
+        if stride < elem_bytes {
+            return Err(BakeError::new(
+                "glTF bufferView byteStride smaller than element",
+            ));
+        }
+
+        let base_off = bv_off
+            .checked_add(acc_off)
+            .ok_or_else(|| BakeError::new("glTF accessor offset overflow"))?;
+        let bv_end = bv_off
+            .checked_add(bv_len)
+            .ok_or_else(|| BakeError::new("glTF bufferView end overflow"))?;
+        if bv_end > bin.len() {
+            return Err(BakeError::new(
+                "glTF bufferView exceeds GLB BIN chunk length",
+            ));
+        }
+        if count > 0 {
+            let need_end = base_off
+                .checked_add((count - 1) * stride)
+                .and_then(|s| s.checked_add(elem_bytes))
+                .ok_or_else(|| BakeError::new("glTF accessor range overflow"))?;
+            if need_end > bv_end {
+                return Err(BakeError::new(
+                    "glTF accessor extends past bufferView bounds",
+                ));
+            }
+        }
+
+        Ok(Self {
+            bin,
+            base_off,
+            stride,
+            count,
+            comp_type,
+        })
+    }
+
+    #[inline]
+    fn read_vec3(&self, i: usize) -> Result<[f32; 3], BakeError> {
+        let off = self.base_off + i * self.stride;
+        Ok([
+            read_le_f32(self.bin, off)?,
+            read_le_f32(self.bin, off + 4)?,
+            read_le_f32(self.bin, off + 8)?,
+        ])
+    }
+
+    #[inline]
+    fn read_vec2(&self, i: usize) -> Result<[f32; 2], BakeError> {
+        let off = self.base_off + i * self.stride;
+        Ok([read_le_f32(self.bin, off)?, read_le_f32(self.bin, off + 4)?])
+    }
+
+    #[inline]
+    fn read_scalar_u32(&self, i: usize) -> Result<u32, BakeError> {
+        let off = self.base_off + i * self.stride;
+        match self.comp_type {
+            GLTF_COMPONENT_UNSIGNED_BYTE => Ok(u32::from(self.bin[off])),
+            GLTF_COMPONENT_UNSIGNED_SHORT => Ok(u32::from(u16::from_le_bytes([
+                self.bin[off],
+                self.bin[off + 1],
+            ]))),
+            GLTF_COMPONENT_UNSIGNED_INT => read_le_u32(self.bin, off),
+            other => Err(BakeError::new(format!(
+                "unsupported glTF scalar index componentType {other}"
+            ))),
+        }
+    }
+}
+
+fn collect_scene_mesh_instances(
+    gltf: &serde_json::Value,
+    mesh_count: usize,
+) -> Result<Vec<(usize, [f32; 16])>, BakeError> {
+    let nodes = gltf.get("nodes").and_then(|v| v.as_array());
+    let scenes = gltf.get("scenes").and_then(|v| v.as_array());
+    let default_scene = gltf.get("scene").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let roots: Option<Vec<usize>> = scenes
+        .and_then(|sc| sc.get(default_scene))
+        .and_then(|s| s.get("nodes"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_u64().map(|n| n as usize))
+                .collect()
+        });
+
+    let (Some(nodes), Some(roots)) = (nodes, roots) else {
+        return Ok((0..mesh_count).map(|mi| (mi, MAT4_IDENTITY)).collect());
+    };
+
+    fn walk(
+        nodes: &[serde_json::Value],
+        node_idx: usize,
+        parent_mat: [f32; 16],
+        depth: usize,
+        out: &mut Vec<(usize, [f32; 16])>,
+    ) -> Result<(), BakeError> {
+        if depth > 64 {
+            return Err(BakeError::new("glTF node hierarchy depth limit exceeded"));
+        }
+        let node = nodes
+            .get(node_idx)
+            .ok_or_else(|| BakeError::new(format!("glTF node index {node_idx} out of bounds")))?;
+        let local = gltf_node_local_mat4(node)?;
+        let world = mat4_mul(&parent_mat, &local);
+        if let Some(mi) = node.get("mesh").and_then(|v| v.as_u64()) {
+            out.push((mi as usize, world));
+        }
+        if let Some(children) = node.get("children").and_then(|v| v.as_array()) {
+            for ch in children {
+                let ci = ch
+                    .as_u64()
+                    .ok_or_else(|| BakeError::new("invalid child index in glTF node"))?
+                    as usize;
+                walk(nodes, ci, world, depth + 1, out)?;
+            }
+        }
+        Ok(())
+    }
+
+    let mut out = Vec::new();
+    for root_idx in roots {
+        walk(nodes, root_idx, MAT4_IDENTITY, 0, &mut out)?;
+    }
+    Ok(out)
+}
+
+/// Parses a binary glTF 2.0 (`.glb`) mesh hierarchy into flattened world-space indexed triangles.
+pub fn parse_glb_mesh(bytes: &[u8]) -> Result<AssetMesh, BakeError> {
+    if bytes.len() < 20 || bytes[0..4] != GLB_MAGIC {
+        return Err(BakeError::new("invalid GLB header magic"));
+    }
+    let version = read_le_u32(bytes, 4)?;
+    if version != GLB_VERSION_2 {
+        return Err(BakeError::new(format!(
+            "unsupported GLB version {version} (expected 2)"
+        )));
+    }
+    let total_len = read_le_u32(bytes, 8)? as usize;
+    if total_len < 20 || total_len > bytes.len() {
+        return Err(BakeError::new(format!(
+            "invalid GLB total byte length {total_len} (buffer {})",
+            bytes.len()
+        )));
+    }
+
+    let mut json_chunk: Option<&[u8]> = None;
+    let mut bin_chunk: Option<&[u8]> = None;
+    let mut off = 12_usize;
+    while off < total_len {
+        let clen = read_le_u32(bytes, off)? as usize;
+        let ctype = read_le_u32(bytes, off + 4)?;
+        let data_start = off + 8;
+        let data_end = data_start
+            .checked_add(clen)
+            .ok_or_else(|| BakeError::new("GLB chunk length overflow"))?;
+        if data_end > total_len {
+            return Err(BakeError::new("GLB chunk exceeds header total length"));
+        }
+        match ctype {
+            GLB_CHUNK_JSON if json_chunk.is_none() => {
+                json_chunk = Some(&bytes[data_start..data_end])
+            }
+            GLB_CHUNK_BIN if bin_chunk.is_none() => bin_chunk = Some(&bytes[data_start..data_end]),
+            _ => {}
+        }
+        off = data_end;
+    }
+
+    let json_bytes = json_chunk.ok_or_else(|| BakeError::new("GLB missing JSON chunk"))?;
+    let bin = bin_chunk.ok_or_else(|| BakeError::new("GLB missing BIN chunk"))?;
+    let gltf: serde_json::Value = serde_json::from_slice(json_bytes)?;
+    if let Some(reqs) = gltf.get("extensionsRequired").and_then(|v| v.as_array()) {
+        if !reqs.is_empty() {
+            return Err(BakeError::new(format!(
+                "GLB requires unsupported glTF extensions: {reqs:?}"
+            )));
+        }
+    }
+
+    let meshes = gltf
+        .get("meshes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| BakeError::new("GLB missing meshes array"))?;
+    let instances = collect_scene_mesh_instances(&gltf, meshes.len())?;
+
+    let mut vertices: Vec<MeshVertex> = Vec::new();
+    let mut indices: Vec<[u32; 3]> = Vec::new();
+
+    for (mesh_idx, world_mat) in instances {
+        let mesh_obj = meshes
+            .get(mesh_idx)
+            .ok_or_else(|| BakeError::new(format!("glTF mesh index {mesh_idx} out of bounds")))?;
+        let prims = mesh_obj
+            .get("primitives")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| BakeError::new("glTF mesh missing primitives"))?;
+
+        for prim in prims {
+            let mode = prim
+                .get("mode")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(GLTF_MODE_TRIANGLES);
+            if mode != GLTF_MODE_TRIANGLES {
+                return Err(BakeError::new(format!(
+                    "unsupported glTF primitive mode {mode} (expected TRIANGLES=4)"
+                )));
+            }
+            let attrs = prim
+                .get("attributes")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| BakeError::new("glTF primitive missing attributes"))?;
+            let pos_idx = attrs
+                .get("POSITION")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| BakeError::new("glTF primitive missing POSITION"))?
+                as usize;
+            let pos_acc = GlbAccessor::open(&gltf, bin, pos_idx, "VEC3", &[GLTF_COMPONENT_FLOAT])?;
+            let nrm_acc = match attrs.get("NORMAL").and_then(|v| v.as_u64()) {
+                Some(ni) => {
+                    let acc = GlbAccessor::open(
+                        &gltf,
+                        bin,
+                        ni as usize,
+                        "VEC3",
+                        &[GLTF_COMPONENT_FLOAT],
+                    )?;
+                    if acc.count != pos_acc.count {
+                        return Err(BakeError::new("glTF NORMAL count differs from POSITION"));
+                    }
+                    Some(acc)
+                }
+                None => None,
+            };
+            let uv_acc = match attrs.get("TEXCOORD_0").and_then(|v| v.as_u64()) {
+                Some(ui) => {
+                    let acc = GlbAccessor::open(
+                        &gltf,
+                        bin,
+                        ui as usize,
+                        "VEC2",
+                        &[GLTF_COMPONENT_FLOAT],
+                    )?;
+                    if acc.count != pos_acc.count {
+                        return Err(BakeError::new(
+                            "glTF TEXCOORD_0 count differs from POSITION",
+                        ));
+                    }
+                    Some(acc)
+                }
+                None => None,
+            };
+
+            let base_vert = vertices.len() as u32;
+            let mut local_verts = Vec::with_capacity(pos_acc.count);
+            for i in 0..pos_acc.count {
+                let pos = transform_point_mat4(&world_mat, pos_acc.read_vec3(i)?);
+                let normal = match &nrm_acc {
+                    Some(na) => transform_normal_mat4(&world_mat, na.read_vec3(i)?),
+                    None => [0.0, 0.0, 0.0],
+                };
+                let uv = match &uv_acc {
+                    Some(ua) => ua.read_vec2(i)?,
+                    None => [0.0, 0.0],
+                };
+                local_verts.push(MeshVertex { pos, normal, uv });
+            }
+
+            let mut local_tris = Vec::new();
+            if let Some(idx_acc_i) = prim.get("indices").and_then(|v| v.as_u64()) {
+                let idx_acc = GlbAccessor::open(
+                    &gltf,
+                    bin,
+                    idx_acc_i as usize,
+                    "SCALAR",
+                    &[
+                        GLTF_COMPONENT_UNSIGNED_BYTE,
+                        GLTF_COMPONENT_UNSIGNED_SHORT,
+                        GLTF_COMPONENT_UNSIGNED_INT,
+                    ],
+                )?;
+                for t in 0..(idx_acc.count / 3) {
+                    let a = idx_acc.read_scalar_u32(t * 3)? as usize;
+                    let b = idx_acc.read_scalar_u32(t * 3 + 1)? as usize;
+                    let c = idx_acc.read_scalar_u32(t * 3 + 2)? as usize;
+                    if a >= pos_acc.count || b >= pos_acc.count || c >= pos_acc.count {
+                        return Err(BakeError::new("glTF primitive index out of vertex bounds"));
+                    }
+                    local_tris.push([a as u32, b as u32, c as u32]);
+                }
+            } else {
+                for t in 0..(pos_acc.count / 3) {
+                    let a = (t * 3) as u32;
+                    local_tris.push([a, a + 1, a + 2]);
+                }
+            }
+
+            if nrm_acc.is_none() {
+                for &[a, b, c] in &local_tris {
+                    let pa = local_verts[a as usize].pos;
+                    let pb = local_verts[b as usize].pos;
+                    let pc = local_verts[c as usize].pos;
+                    let e1 = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+                    let e2 = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+                    let fnrm = cross3(e1, e2);
+                    for vi in [a, b, c] {
+                        let dst = &mut local_verts[vi as usize].normal;
+                        dst[0] += fnrm[0];
+                        dst[1] += fnrm[1];
+                        dst[2] += fnrm[2];
+                    }
+                }
+                for v in &mut local_verts {
+                    let len = (v.normal[0] * v.normal[0]
+                        + v.normal[1] * v.normal[1]
+                        + v.normal[2] * v.normal[2])
+                        .sqrt();
+                    v.normal = if len > 1e-6 {
+                        [v.normal[0] / len, v.normal[1] / len, v.normal[2] / len]
+                    } else {
+                        [0.0, 1.0, 0.0]
+                    };
+                }
+            }
+
+            vertices.extend(local_verts);
+            for [a, b, c] in local_tris {
+                indices.push([base_vert + a, base_vert + b, base_vert + c]);
+            }
+        }
+    }
+
+    if vertices.is_empty() || indices.is_empty() {
+        return Err(BakeError::new("GLB contains no vertices or triangles"));
+    }
+    Ok(AssetMesh { vertices, indices })
+}
+
+/// Dispatches asset mesh loading from raw file bytes based on GLB magic / extension (`.glb` or `.obj`).
+pub fn parse_asset_mesh_bytes(bytes: &[u8], path_hint: &str) -> Result<AssetMesh, BakeError> {
+    let is_glb_ext = Path::new(path_hint)
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("glb"));
+    if bytes.starts_with(&GLB_MAGIC) || is_glb_ext {
+        parse_glb_mesh(bytes)
+    } else {
+        let text = std::str::from_utf8(bytes)
+            .map_err(|_| BakeError::new(format!("OBJ mesh '{path_hint}' is not valid UTF-8")))?;
+        parse_obj_mesh(text)
+    }
 }
 
 /// Simplifies `mesh` deterministically via quantized spatial vertex clustering until triangle
@@ -724,7 +1325,7 @@ pub fn bake_octahedral_impostor_cpu(
     Ok((albedo_ktx2, normal_ktx2))
 }
 
-/// Executes `JOB-W6` from a validated `QD-ASSETS` `sources.json` manifest into `out_dir`.
+/// Executes `JOB-W6` from a validated `QD-ASSETS` `SOURCES.json` manifest into `out_dir`.
 pub fn bake_assets_from_manifest(
     manifest_path: &Path,
     out_dir: &Path,
@@ -737,8 +1338,8 @@ pub fn bake_assets_from_manifest(
 
     let mut outputs = Vec::with_capacity(manifest.entries.len());
     for entry in &manifest.entries {
-        let obj_text = fs::read_to_string(manifest_dir.join(&entry.obj_path))?;
-        let base_mesh = parse_obj_mesh(&obj_text)?;
+        let raw_bytes = fs::read(manifest_dir.join(&entry.obj_path))?;
+        let base_mesh = parse_asset_mesh_bytes(&raw_bytes, &entry.obj_path)?;
         let ratios = [1.0_f32, 0.50, 0.25, 0.10];
         let mut tri_counts = [0_usize; 4];
         let mut lod_shas = [String::new(), String::new(), String::new(), String::new()];

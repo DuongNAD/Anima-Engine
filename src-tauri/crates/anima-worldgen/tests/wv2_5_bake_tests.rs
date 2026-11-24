@@ -4,8 +4,9 @@
 
 use anima_worldgen::anmw_v3::project_raw_dir_to_sim_256;
 use anima_worldgen::bake::assets::{
-    bake_assets_from_manifest, parse_obj_mesh, validate_asset_sources_manifest, AssetMesh,
-    AssetSourceEntry, AssetSourcesManifest,
+    bake_assets_from_manifest, bake_octahedral_impostor_cpu, parse_glb_mesh, parse_obj_mesh,
+    simplify_mesh_lod, validate_asset_sources_manifest, AssetMesh, AssetSourceEntry,
+    AssetSourcesManifest,
 };
 use anima_worldgen::bake::fields::{
     bake_fields_from_raw_dir, compute_shore_sdf_and_exposure, meijster_edt_sq, merge_field_strips,
@@ -776,7 +777,65 @@ fn assets_lod_impostor_pipeline_and_qd_assets_manifest_validation() {
     bad_budget.entries[0].download_bytes = 25_000_000;
     assert!(validate_asset_sources_manifest(&bad_budget, &src_dir).is_err());
 
+    assert!(parse_glb_mesh(b"glTF\x02\x00\x00\x00").is_err());
+    assert!(parse_glb_mesh(b"BAD!00000000000000000000").is_err());
+
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn committed_assets_v2_sources_manifest_passes_qd_assets_and_glb_decode() {
+    let assets_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../artifacts/assets-v2");
+    let manifest_path = assets_dir.join("SOURCES.json");
+    let raw_json = fs::read_to_string(&manifest_path)
+        .expect("read committed artifacts/assets-v2/SOURCES.json");
+    let manifest: AssetSourcesManifest =
+        serde_json::from_str(&raw_json).expect("parse artifacts/assets-v2/SOURCES.json");
+    validate_asset_sources_manifest(&manifest, &assets_dir)
+        .expect("committed SOURCES.json must satisfy QD-ASSETS");
+    assert_eq!(manifest.entries.len(), 6);
+
+    let mut decoded_moss = None;
+    for entry in &manifest.entries {
+        let bytes = fs::read(assets_dir.join(&entry.obj_path))
+            .unwrap_or_else(|e| panic!("read {}: {e}", entry.obj_path));
+        let mesh =
+            parse_glb_mesh(&bytes).unwrap_or_else(|e| panic!("parse GLB {}: {e}", entry.obj_path));
+        assert!(
+            !mesh.vertices.is_empty() && !mesh.indices.is_empty(),
+            "asset {} must have non-empty geometry",
+            entry.species_id
+        );
+        assert!(
+            mesh.vertices.iter().all(|v| {
+                v.pos.iter().all(|x| x.is_finite()) && v.normal.iter().all(|x| x.is_finite())
+            }),
+            "asset {} must have finite vertices and normals",
+            entry.species_id
+        );
+        if entry.species_id == "cloud_forest_moss" {
+            decoded_moss = Some((mesh, entry.base_rgb.unwrap_or([64, 110, 56])));
+        }
+    }
+
+    let (moss_mesh, moss_rgb) = decoded_moss.expect("cloud_forest_moss present");
+    let mut prev_tris = usize::MAX;
+    for ratio in [1.0_f32, 0.50, 0.25, 0.10] {
+        let lod = simplify_mesh_lod(&moss_mesh, ratio);
+        assert!(lod.indices.len() <= prev_tris);
+        assert!(lod.indices.len() >= 4);
+        let roundtrip = AssetMesh::from_anmm_bytes(&lod.to_anmm_bytes())
+            .expect("ANMM roundtrip for committed Poly Haven moss GLB");
+        assert_eq!(roundtrip.indices.len(), lod.indices.len());
+        prev_tris = lod.indices.len();
+    }
+    let (alb_ktx2, nrm_ktx2) =
+        bake_octahedral_impostor_cpu(&moss_mesh, 64, moss_rgb).expect("impostor bake");
+    let (alb_hdr, alb_raw) = decode_ktx2_level(&alb_ktx2, 0).expect("decode impostor albedo");
+    assert_eq!(alb_hdr.level_count, 7);
+    assert!(alb_raw.as_chunks::<4>().0.iter().any(|px| px[3] == 255));
+    let nrm_hdr = parse_ktx2(&nrm_ktx2).expect("parse impostor normal");
+    assert_eq!(nrm_hdr.vk_format, VK_FORMAT_BC5_UNORM_BLOCK);
 }
 
 #[test]

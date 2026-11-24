@@ -26,7 +26,8 @@ HUB_DIR="${ANIMA_HUB_DIR:-$HOME/Library/CloudStorage/GoogleDrive-duonganhdn2000@
 WORKER="${GRID_WORKER:-desktop-3epv830}"
 WORKSPACE="${GRID_WORKSPACE:-anima-t1}"
 PRESET_REL="${WORLD_V2_PRESET:-artifacts/world-v2/preset_v2.toml}"
-RELEASE_TAG="${WORLD_V2_RELEASE_TAG:-world-v2-c01-provisional}"
+# QD-WV25 (b): tile packs stay internal artifacts until the public v0.9.0 release (`QD-REL09 G3`).
+RELEASE_TAG="${WORLD_V2_RELEASE_TAG:-v0.9.0-internal}"
 OUT_DIR="${GRID_OUT_REL:-target/grid_world_v2}"
 STRIPS="${GRID_FIELD_STRIPS:-4}"
 
@@ -174,14 +175,14 @@ run_w5_pack() {
 }
 
 run_w6_assets() {
-  # Note (`QD-ASSETS`): artifacts/assets-v2/sources.json is ONLY staged after explicit owner approval (GATE a).
-  if [[ "$DRY_RUN" -eq 0 && ! -f "$REPO_ROOT/artifacts/assets-v2/sources.json" ]]; then
-    echo "BLOCKED GATE (a): artifacts/assets-v2/sources.json not staged; owner CC0 asset approval required first" >&2
+  # Enforces `QD-ASSETS` / `QD-WV25 (a)` manifest presence (`artifacts/assets-v2/SOURCES.json`).
+  if [[ "$DRY_RUN" -eq 0 && ! -f "$REPO_ROOT/artifacts/assets-v2/SOURCES.json" ]]; then
+    echo "BLOCKED GATE (a): artifacts/assets-v2/SOURCES.json not staged; owner CC0 asset approval required first" >&2
     exit 4
   fi
   run_w0_probe || true
   submit_cmd "JOB-W6" \
-    "cargo run --release -p anima-worldgen --features bake --bin anima-bake -- assets --manifest ../artifacts/assets-v2/sources.json --out $OUT_DIR/assets_baked 2>&1"
+    "cargo run --release -p anima-worldgen --features bake --bin anima-bake -- assets --manifest ../artifacts/assets-v2/SOURCES.json --out $OUT_DIR/assets_baked 2>&1"
 }
 
 preflight_checks
