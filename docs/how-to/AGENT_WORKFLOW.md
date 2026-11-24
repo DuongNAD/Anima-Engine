@@ -403,6 +403,18 @@ QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (
             and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
             QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
             recommended option for each of G1-G4.)
+QD-OPENC  = group C of the lead's open-question sweep, decided as the lead suggested (owner in chat, 2026-11-24:
+            "đồng ý hết theo ý bạn"): QD-M8 signing and auto-update are decided before v1.0 (no purchase now);
+            QD-M4 second platform = macOS unsigned, if NM-2 shows its checksums match the Windows class;
+            D-H11-3 = v1.0 requires World v2 in the app; MP-5.6 = a bundled sample world in 0.9, creature
+            export/import in 1.0; QD-2/QD-H tail = Map 2 is shown only once its decoration is labelled (card C14)
+            and the Research Dashboard ships read-only; paper = figures count as data and may live in this public
+            repository, prose drafts go to a private repository the owner creates (name to follow); the island-rule
+            external reviewer is chosen by the owner, the lead drafts the letter; brain_metabolic_cost and
+            locomotion stay off by default in the app until the island slice (shared islands turn them on
+            through the real-time ecology profile). Left open on purpose: G-REF (owner's visual approval per
+            biome), H6/H7 (owner runs the release app at 1,000 agents), EB-S09 threshold, AE-006 MU tolerance,
+            island size by area, ISLAND-D7 and the QD-M3 remainder (Internet transport).
 QD-OPENQ  = groups A and B of the lead's open-question sweep (hub OPEN_QUESTIONS_AND_PROVISIONAL_2026-11-24.md),
             approved by the owner in chat on 2026-11-24 ("Duyệt A và B"). (A) As recommended in their documents:
             the V0-V11 card-spec D-slots (all A, D-V9-4 = B; D-V0-2 already answered by QD-BIO-D2); D-H10-1..3 and
