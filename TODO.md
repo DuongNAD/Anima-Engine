@@ -14,6 +14,14 @@
 
 ---
 
+# 2026-11-24 (Update 2) — E3B-SMOKE (`#240`), WR1 (`#236`), Release 0.9 CI/Docs (`#233`/`#237`/`#238`) & V-ADR/V-SPECS (`#235`/`#239`)
+
+- **Science & World Record (`#240`, `9eeb3130`; `#236`, `ee4fc287`):** `C2. E3B-SMOKE` passed all blind `WP-2` gates on Windows 1 (`seed = 999953`, `b1 = -0.4862814293602915`, `b2 = -0.005175446571556897`, `max_abs_eu_drift <= 4.5547494664788246e-8`, `0` `trait_mass` substrings, [smoke results](docs/ai/planning/2026-11-24-e3b-smoke-results.md)), unblocking `C3. E3B-RUN` (`192` confirmation runs); `C8. WR1` landed `ADR-0008` H1 segmented SHA-256 World Record v1 & zero-feedback end-of-tick recorder ([WR1 spec](docs/ai/planning/2026-11-24-wr1-world-record-format.md), `LIVE_KEYS` `31`).
+- **Release 0.9 CI, Docs & Translations (`#233`, `f1766846`; `#238`, `ba344eaa`; `#237`, `8d523415`):** Merged [`.github/workflows/release-build.yml`](.github/workflows/release-build.yml) (proven green on unsigned Windows `.msi`/`.exe` & macOS `.dmg`/`.app` in run `45268921473`, [CI note](docs/ai/planning/2026-11-24-rel09-ci.md)), [`INSTALL.md`](docs/how-to/INSTALL.md), [`RELEASE_CHECKLIST.md`](docs/how-to/RELEASE_CHECKLIST.md), [`0.9.0.md`](docs/release/0.9.0.md) (`status: proposed`, open Release Gates `1–4`), and `QD-DOCLANG` English translations + `.vi.md` siblings indexed in [`docs/how-to/README.md`](docs/how-to/README.md) & [`docs/explanation/README.md`](docs/explanation/README.md).
+- **v1.0 Design Drafts & State Sync (`#235`, `87d10aa4`; `#239`, `b9d29ce3`; `#241`, `6ce22273`):** Merged `status: proposed` [`ADR-0013`](docs/decisions/ADR-0013-live-creature-lifecycle.md) and v1.0 specs [`V0`](docs/ai/planning/2026-11-24-v0-develop-at-birth-spec.md)–[`V6`](docs/ai/planning/2026-11-24-v6-interventions-causeid-spec.md) (awaiting owner gates before coding cards) plus `STATE-SYNC` r2 (`#241`); as of `2026-11-24` (`8d523415`), `WV2-3` (`#242`) remains open. See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17) (Rule 8).
+
+---
+
 # 2026-11-24 — MAP-D3, E3b Runner (`#234`), Map v2 `WV2-2` (`#199`) & Wave `STATE-SYNC` (`#232`)
 
 - **Owner decisions & governance (`#230`, `56cc6ca9`):** Merged `MAP-D3` ([design §MAP-D3](docs/ai/design/2026-11-20-world-v2-design.md#map-d3-2026-11-24-card-3-gates-not-met-after-the-physics-rework), leaving unmet Card 3 gates unedited and tracked via `scripts/test_target_policy.mjs`), `QD-E3B-D1a` (two-trophic E3b with `live.predator_fraction = 0.3`), and `QD-WAVE1124` ([`AGENT_WORKFLOW.md` §4](docs/how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0)).
