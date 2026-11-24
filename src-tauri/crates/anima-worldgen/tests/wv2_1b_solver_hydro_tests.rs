@@ -1851,6 +1851,75 @@ fn sweep_budget_halts_loudly_without_mutating_h() {
 }
 
 #[test]
+fn phase_a_sweep_budget_halts_loudly_without_mutating_h() {
+    let n = 64usize;
+    let (rec, df, order, fixed) = make_1d_stream_dag(n);
+    let up = vec![5e-4_f64; n];
+    let kk = vec![2e-5_f64; n];
+    let p = vec![1.0_f64; n];
+    let e = vec![0.0_f64; n];
+    let dag = FluvialDagView {
+        width: n,
+        height: 1,
+        d8_receiver: &rec,
+        receiver_dist_factor: &df,
+        order_downstream_to_upstream: &order,
+        fixed_outlet: &fixed,
+        uplift_m_yr: &up,
+        k_erodibility: &kk,
+        precip_m_yr: &p,
+        pet_m_yr: &e,
+    };
+
+    let h0: Vec<f64> = (0..n).map(|i| i as f64 * 0.5).collect();
+    let mut h = h0.clone();
+    let budget = 5usize;
+    let err = step_fastscape_sd_dag(
+        &mut h,
+        &dag,
+        &FluvialParams {
+            dx_m: 10.0,
+            dt_yr: 10_000.0,
+            gs_tol_m: 1e-6,
+            max_gs_iters: 32,
+            max_total_sweeps: budget,
+            ..FluvialParams::default()
+        },
+    )
+    .expect_err("Phase A sweep budget of 5 must halt humid 64-node chain loudly");
+    assert_eq!(
+        h, h0,
+        "exhausted Phase A sweep budget must leave input h unmodified"
+    );
+    match err {
+        FluvialError::NonConvergence {
+            total_sweeps,
+            budget_exhausted,
+            substeps_attempted,
+            ..
+        } => {
+            assert!(budget_exhausted, "expected budget_exhausted=true");
+            assert!(
+                total_sweeps > 0 && total_sweeps <= budget,
+                "expected 1..={budget} total_sweeps, got {total_sweeps}"
+            );
+            assert_eq!(
+                substeps_attempted, 1,
+                "expected exhaustion during Phase A (substeps_attempted == 1), got {substeps_attempted}"
+            );
+            let msg = err.to_string();
+            assert!(
+                msg.contains("budget_exhausted=true")
+                    && msg.contains("cell ")
+                    && msg.contains("last_delta_m=")
+                    && msg.contains("sub_dt_yr=")
+            );
+        }
+        other => panic!("unexpected error variant: {other:?}"),
+    }
+}
+
+#[test]
 fn s1_caprock_tableland_coverage_and_eastern_inland_sea_allowance() {
     // Carried WV2-1a -> WV2-1b DoD: 15-20 km leeward sandstone caprock plateau targets ~14% of
     // domain (asserted [9%, 21%]), and east-third structure allows an eastern inland sea (<= 30%).

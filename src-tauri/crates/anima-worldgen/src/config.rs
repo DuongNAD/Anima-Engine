@@ -88,8 +88,8 @@ impl WorldV2Config {
         let err = |msg: &str| ConfigError {
             message: msg.to_owned(),
         };
-        if self.grid_size < 64 || !self.grid_size.is_multiple_of(2) {
-            return Err(err("grid_size must be an even integer >= 64"));
+        if self.grid_size < 64 || !self.grid_size.is_power_of_two() {
+            return Err(err("grid_size must be a power of two >= 64"));
         }
         if !self.extent_m.is_finite() || self.extent_m <= 0.0 {
             return Err(err("extent_m must be finite and > 0"));
