@@ -64,7 +64,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
 - **START WHEN:** `S1` merged (`D-SIG-1`, `D-SIG-2`).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/ai/pheromone.rs` (`PheromoneGrid`, `OlfactorySensors`, `PheromoneReleaser`, `agent_release_pheromone_system`, `agent_read_pheromone_system` at `:5-235`; modulated by `SignalOutputState` + `ActionGates::of(gates).pheromone_scale()` `:176`)
-  - `src-tauri/src/core/world_systems.rs` (`metabolic_decay_system` `:85-225`: add signal emission metabolic surcharge inside `total_cost` at `:157` -> `respired` -> `pool.detritus` `:174-177, 222-224`)
+  - `src-tauri/src/core/world_systems.rs` (`metabolic_decay_system` `:85-225`: add signal emission metabolic surcharge inside `total_cost` at `:157` -> `respired` -> `pool.detritus` `:174-177, 222-224`; migration `AgentMigrationData` assembly `:728, 905` and `SpawnMigrationCommand` `:980-1121`)
   - `src-tauri/src/core/spawn.rs` (`:139-143`), `src-tauri/src/core/simulation_loop.rs` (`:1680-1706`), `src-tauri/src/core/live_experiment.rs` (`:3108-3133`), `src-tauri/src/core/agent_systems.rs` (`SpawnOffspringCommand` `:494-652`) (opt-in attachment of `PheromoneReleaser` & `OlfactorySensors` at genesis and birth)
   - `src-tauri/src/core/simulation_state.rs` (`SerializedAgent` `:105-145`, `spawn_serialized_agent` `:922-1039`), `src-tauri/src/core/components.rs` (`AgentMigrationData` `:166-185`), `src-tauri/src/core/aggregate_population.rs` (`ArchivedIndividual` `:224-236`), `src-tauri/src/core/snapshot.rs` (`world_checksum` `:789-886`, agent tuple loop `:798-822` conditional hashing)
   - `src-tauri/tests/signals_s2_pheromone_eu_tests.rs` (new)

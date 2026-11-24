@@ -34,8 +34,8 @@ yet six structural gaps make creatures functionally mute and perceptually omnisc
      `MAX_CONCENTRATION = 10.0`, bilinear sampling `sample_bilinear` at `:75-125`, diffusion/decay
      `update_pheromone_grid_system` at `:185-220`, and telemetry `PheromoneGridState` at `:240-244`
      served read-only by `get_pheromone_grid` at `src-tauri/src/commands/environment.rs:81-91` and
-     saved in `SerializedPheromoneGrid` at `src-tauri/src/core/simulation_state.rs:318-322` /
-     `simulation_loop.rs:1101-1110`) is live in the tick schedule via `agent_release_pheromone_system`
+     saved in `SerializedPheromoneGrid` (`src-tauri/src/core/simulation_state.rs:318-322`,
+     `serialize_world_state` `:1247-1260`, restored in `simulation_loop.rs:1101-1110`)) is live in the tick schedule via `agent_release_pheromone_system`
      (`pheromone.rs:161-182`), `update_pheromone_grid_system`, and `agent_read_pheromone_system`
      (`pheromone.rs:223-235`) in `build_tick_schedule` (`src-tauri/src/core/simulation_schedule.rs:167-169`).
    - However, **zero** production spawn/birth/restore/migration call sites attach
@@ -195,8 +195,9 @@ yet six structural gaps make creatures functionally mute and perceptually omnisc
      metabolic costs outside `total_cost`; and unverified `"language"` labels in UI/docs.
    - **Deferred:** `rtNEAT` and Hebbian synaptic plasticity (`ADR-0003` rewrite out of scope);
      ground-contact CPG feedback (awaits locomotion/physics work); full acoustics (`S7`) & visual/plant
-     volatiles (`S8`) staged behind `S1`–`S4`; and shared-island guest rules (`2%` cap, random juvenile
-     assignment, `60s` lock — product rules anchored with [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md), `accepted`, `#256`).
+     volatiles (`S8`) staged behind `S1`–`S4`; and shared-island guest rules (Topic-5 draft parameters
+     such as `2%` cap / random juvenile / `60s` lock triaged out of `ADR-0017` into the product domain
+     of [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md), `accepted`, `#256`, which uses `QD-PLAYRULES` #3/#5 and `ISLAND-D2(a)` exclusive lock).
 
 ---
 
