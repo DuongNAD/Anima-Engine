@@ -244,7 +244,7 @@ impl WorldArtifact {
         let version = read_u32_le(bytes, 4)?;
         if version == anima_worldgen::anmw_v3::ANMW_V3_VERSION {
             return Err(format!(
-                "unsupported ANMW v3 artifact version {} (expected {}): pre-switchover desktop reader refuses ANMW v3 before WV2-7; regenerate or wait for WV2-7",
+                "unsupported artifact version {} (ANMW v3, expected {}): pre-switchover desktop reader refuses ANMW v3 before WV2-7; regenerate or wait for WV2-7",
                 version, WORLD_ARTIFACT_VERSION
             ));
         }
@@ -269,7 +269,7 @@ impl WorldArtifact {
         let version = read_u32_le(bytes, 4)?;
         if version == anima_worldgen::anmw_v3::ANMW_V3_VERSION {
             return Err(format!(
-                "unsupported ANMW v3 artifact version {} (expected {}): pre-switchover desktop reader refuses ANMW v3 before WV2-7; regenerate or wait for WV2-7",
+                "unsupported artifact version {} (ANMW v3, expected {}): pre-switchover desktop reader refuses ANMW v3 before WV2-7; regenerate or wait for WV2-7",
                 version, WORLD_ARTIFACT_VERSION
             ));
         }
