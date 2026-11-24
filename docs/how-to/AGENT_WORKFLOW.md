@@ -403,6 +403,13 @@ QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (
             and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
             QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
             recommended option for each of G1-G4.)
+QD-SCALE-TRIAL = during the trial and demo phase a shared island targets about 100 individual animals, not 1,000.
+            The measured headless cost is about 0.33 ms per tick at 100 agents and 5.64 ms at 1,000 (scaling about
+            N^1.86; docs/paper/data/scaling.md), so 100 leaves ample room for plants, fields, guests and rendering.
+            1,000 stays the long-term design target and benchmark point: new mechanisms must stay scale-aware
+            (no O(N^2) designs, allocation-free ticks), but no card is blocked on reaching 1,000. The owner's
+            H6/H7 hands-on run uses about 100 agents. (Owner in chat, 2026-11-24: "hiện tại thử nghiệm nên con số
+            k lớn đến thế tầm 100".)
 QD-OPENC  = group C of the lead's open-question sweep, decided as the lead suggested (owner in chat, 2026-11-24:
             "đồng ý hết theo ý bạn"): QD-M8 signing and auto-update are decided before v1.0 (no purchase now);
             QD-M4 second platform = macOS unsigned, if NM-2 shows its checksums match the Windows class;
