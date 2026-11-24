@@ -513,10 +513,28 @@ pub fn verify_raw_dir(
     let meta: RawWorldMeta = serde_json::from_slice(&meta_bytes)?;
     let w = meta.width as usize;
     let h = meta.height as usize;
-    let n = w * h;
+    if w < 16
+        || h < 16
+        || !meta.dx_m.is_finite()
+        || meta.dx_m <= 0.0
+        || !meta.sea_level_m.is_finite()
+        || !meta.extent_m.is_finite()
+        || meta.extent_m <= 0.0
+    {
+        return Err(pipeline_err(format!(
+            "invalid raw_meta.json geometry {}x{} dx={} extent={} sea_level={}",
+            meta.width, meta.height, meta.dx_m, meta.extent_m, meta.sea_level_m
+        )));
+    }
+    let n = w
+        .checked_mul(h)
+        .ok_or_else(|| pipeline_err(format!("raw_meta.json grid overflow: {w}x{h}")))?;
 
     // Phase A: Terrain, Climate, Hydrology & Coastal/River Gates (`G-SHAPE`, `C4`, `C5`, `GS-1` summary).
     let total_h_m = read_bin_f32(&raw_dir.join("total_h_m.bin"), n)?;
+    if total_h_m.iter().any(|v| !v.is_finite()) {
+        return Err(pipeline_err("raw total_h_m.bin contains NaN or Inf values"));
+    }
     let water_h_m = read_bin_f32(&raw_dir.join("water_h_m.bin"), n)?;
     let water_kind = read_bin_u8(&raw_dir.join("water_kind.bin"), n)?;
     let discharge_q_m3_s = read_bin_f32(&raw_dir.join("discharge_q_m3_s.bin"), n)?;
@@ -685,12 +703,17 @@ pub fn verify_dem_file(
     dx_m: f32,
     sea_level_m: f32,
 ) -> Result<VerificationReport, PipelineError> {
-    if width < 16 || height < 16 || !dx_m.is_finite() || dx_m <= 0.0 {
+    if width < 16 || height < 16 || !dx_m.is_finite() || dx_m <= 0.0 || !sea_level_m.is_finite() {
         return Err(pipeline_err(format!(
-            "invalid DEM geometry {width}x{height} dx={dx_m}"
+            "invalid DEM geometry {width}x{height} dx={dx_m} sea_level={sea_level_m}"
         )));
     }
-    let expected_bytes = width * height * 4;
+    let cells = width
+        .checked_mul(height)
+        .ok_or_else(|| pipeline_err(format!("DEM cell count overflow: {width}x{height}")))?;
+    let expected_bytes = cells
+        .checked_mul(4)
+        .ok_or_else(|| pipeline_err(format!("DEM byte size overflow: {width}x{height}")))?;
     let mut f = fs::File::open(dem_path)?;
     let meta = f.metadata()?;
     if meta.len() != expected_bytes as u64 {

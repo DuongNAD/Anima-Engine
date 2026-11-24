@@ -1392,7 +1392,7 @@ fn eval_metric_6_endorheic_spillways(
     let passed = unmodeled_micro_pits == 0
         && severed_humid_spillways == 0
         && endorheic_land_fraction <= 0.10
-        && endorheic_humid_fraction <= 1e-6;
+        && endorheic_humid_fraction == 0.0;
 
     EndorheicAuditReport {
         passed,

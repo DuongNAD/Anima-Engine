@@ -9,7 +9,7 @@ use anima_worldgen::lakes_falls::{LakeBasinRecord, LakeClassification, Waterfall
 use anima_worldgen::pipeline::run_worldgen_to_dir;
 use anima_worldgen::verify::g_comp::{evaluate_c4_c5_and_flags, finalize_g_comp_v2};
 use anima_worldgen::verify::g_shape::{evaluate_g_shape, GShapeInput, HackLawReport};
-use anima_worldgen::verify::WorldV2IndexJson;
+use anima_worldgen::verify::{verify_dem_file, verify_raw_dir, WorldV2IndexJson};
 use anima_worldgen::{BiomeId, WaterKind};
 use std::path::PathBuf;
 use std::process::Command;
@@ -37,32 +37,45 @@ fn dist_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 
 
 #[test]
 fn neg_control_a_parallel_comb_dem_fails_junction_angle_and_horton() {
-    let n = 128_usize;
+    let n = 192_usize;
     let dx = 40.0_f32;
     let mut dem = vec![0.0_f32; n * n];
 
-    // Orthogonal parallel-comb drainage: straight N-S trunk at `c = 100` fed by perpendicular E-W
-    // parallel ditches every 12 rows (`r = 16, 28, ..., 100`) at 90 deg joins, plus ocean below `r >= 118`.
+    // Orthogonal parallel-comb drainage: straight N-S trunk at `c = 160` fed by 7 perpendicular
+    // E-W ribs (`r = 24, 48, 72, 96, 120, 144, 168`) at 90 deg joins, plus ocean below `r >= 182`.
+    // Each E-W rib receives a perpendicular N-S feeder trench at `c = 70` draining a wide hillslope
+    // sub-basin so every rib reaches Strahler `omega >= 2` upstream of `c = 160` and actually
+    // registers as an order>=2 + order>=2 confluence in Metric 2 (not a vacuous 0-junction pass).
     for r in 0..n {
         for c in 0..n {
             let idx = r * n + c;
-            if r >= 118 {
+            if r >= 182 {
                 dem[idx] = -25.0;
                 continue;
             }
-            let base = 260.0 - 2.0 * r as f64;
-            let trunk_d = (c as f64 - 100.0).abs();
-            let mut inc = (12.0 * (trunk_d / 6.0).min(1.0)).min(25.0);
-            if c <= 100 && (14..=106).contains(&r) {
-                let nearest_rib =
-                    (((r as f64 - 16.0) / 12.0).round() * 12.0 + 16.0).clamp(16.0, 100.0);
-                let rib_d = (r as f64 - nearest_rib).abs();
-                let rib_slope = 0.25 * (100.0 - c as f64);
-                let rib_wall = (4.5 * rib_d).min(24.0);
-                let comb_h = base + rib_slope + rib_wall;
-                inc = inc.min(comb_h - base);
+            let h_trunk = 360.0 - 1.6 * r as f64;
+            let trunk_d = (c as f64 - 160.0).abs();
+            let mut h = h_trunk + 18.0 * trunk_d;
+
+            if c <= 160 && (13..=179).contains(&r) {
+                let rib_k = ((((r as f64 - 24.0) / 24.0).round() * 24.0) + 24.0).clamp(24.0, 168.0);
+                let rib_trunk = 360.0 - 1.6 * rib_k;
+                let rib_bed = rib_trunk + 2.4 * (160.0 - c as f64);
+                let z_rib = rib_bed + 8.0 * (r as f64 - rib_k).abs();
+                h = h.min(z_rib);
+
+                // Orthogonal N-S feeder trench on the north side of each rib at `c = 70` (`r in [rib_k-11, rib_k]`)
+                if r as f64 <= rib_k
+                    && (rib_k - r as f64) <= 11.5
+                    && (c as f64 - 70.0).abs() <= 24.0
+                {
+                    let feeder_bed_at_70 = rib_trunk + 2.4 * (160.0 - 70.0);
+                    let z_feeder =
+                        feeder_bed_at_70 + 3.2 * (rib_k - r as f64) + 1.6 * (c as f64 - 70.0).abs();
+                    h = h.min(z_feeder);
+                }
             }
-            dem[idx] = (base + inc).max(1.0) as f32;
+            dem[idx] = h.max(1.0) as f32;
         }
     }
 
@@ -73,6 +86,16 @@ fn neg_control_a_parallel_comb_dem_fails_junction_angle_and_horton() {
         "orthogonal 90 deg parallel-comb joins must fail Metric 2 (got median={:.1} deg, n={})",
         out.report.metric_2_junction_angles.median_deg,
         out.report.metric_2_junction_angles.junction_count
+    );
+    assert!(
+        out.report.metric_2_junction_angles.junction_count >= 5,
+        "parallel-comb DEM must register >= 5 order>=2 confluences so Metric 2 fails on 90 deg geometry rather than 0 junctions (got {})",
+        out.report.metric_2_junction_angles.junction_count
+    );
+    assert!(
+        out.report.metric_2_junction_angles.median_deg > 78.0,
+        "orthogonal parallel-comb joins must fail Metric 2 via high median angle > 78 deg (got {:.2})",
+        out.report.metric_2_junction_angles.median_deg
     );
     assert!(
         !out.report.metric_1_strahler_horton.passed,
@@ -646,4 +669,91 @@ fn hillslope_rills_below_q_min_excluded_from_channel_mask() {
                 .metric_3_drainage_density
                 .global_km_per_km2
     );
+}
+
+#[test]
+fn metric_6_rejects_nonzero_humid_endorheic_fraction() {
+    let n = 64_usize;
+    let dx = 40.0_f32;
+    let mut dem = vec![0.0_f32; n * n];
+    for r in 0..n {
+        for c in 0..n {
+            let idx = r * n + c;
+            dem[idx] = if r >= 58 {
+                -20.0
+            } else {
+                10.0 + (58 - r) as f32 * 4.0 + (c as f32 - 32.0).abs() * 1.5
+            };
+        }
+    }
+    let mut g_in = GShapeInput::from_dem_only(&dem, n, n, dx, 0.0);
+    g_in.reported_unmodeled_micro_pits = Some(0);
+    g_in.reported_severed_humid_spillways = Some(0);
+    g_in.reported_endorheic_land_fraction = Some(1e-7);
+    g_in.reported_endorheic_humid_fraction = Some(1e-7);
+    let out = evaluate_g_shape(&g_in);
+    assert!(
+        !out.report.metric_6_endorheic_spillways.passed,
+        "Metric 6 requires 0% endorheic humid fraction; 1e-7 must fail"
+    );
+}
+
+#[test]
+fn verify_raw_dir_rejects_malformed_meta_and_nan_elevation() {
+    let root = temp_test_dir("raw_malformed_nan");
+    let valid_dir = root.join("valid_256");
+    let mut cfg = WorldV2Config::for_size(0x5756_3201, 256);
+    cfg.target_ocean_fraction = 0.45;
+    run_worldgen_to_dir(&cfg, &valid_dir).expect("generate 256x256 baseline raw dir");
+
+    // 1. Copy and tamper `raw_meta.json` width/height to 8x8 -> must return Err cleanly (no panic).
+    let bad_meta_dir = root.join("bad_meta");
+    std::fs::create_dir_all(&bad_meta_dir).expect("create bad_meta dir");
+    let meta_txt = std::fs::read_to_string(valid_dir.join("raw_meta.json")).unwrap();
+    let mut meta_val: serde_json::Value = serde_json::from_str(&meta_txt).unwrap();
+    meta_val["width"] = serde_json::json!(8);
+    meta_val["height"] = serde_json::json!(8);
+    std::fs::write(
+        bad_meta_dir.join("raw_meta.json"),
+        serde_json::to_vec(&meta_val).unwrap(),
+    )
+    .unwrap();
+    let err_meta = verify_raw_dir(&bad_meta_dir, 3, None, None)
+        .expect_err("malformed 8x8 raw_meta.json must fail cleanly with Err");
+    assert!(
+        err_meta.message.contains("invalid raw_meta.json geometry"),
+        "unexpected error for malformed geometry: {}",
+        err_meta.message
+    );
+
+    // 2. Corrupt `total_h_m.bin` element 0 with NaN in-place -> must return Err cleanly.
+    let nan_dir = root.join("nan_h");
+    std::fs::create_dir_all(&nan_dir).expect("create nan_h dir");
+    for entry in std::fs::read_dir(&valid_dir).unwrap() {
+        let entry = entry.unwrap();
+        let dst = nan_dir.join(entry.file_name());
+        std::fs::copy(entry.path(), &dst).unwrap();
+    }
+    let h_path = nan_dir.join("total_h_m.bin");
+    let mut h_bytes = std::fs::read(&h_path).unwrap();
+    h_bytes[..4].copy_from_slice(&f32::NAN.to_le_bytes());
+    std::fs::write(&h_path, &h_bytes).unwrap();
+    let err_nan = verify_raw_dir(&nan_dir, 3, None, None)
+        .expect_err("NaN in raw total_h_m.bin must fail cleanly with Err");
+    assert!(
+        err_nan.message.contains("NaN or Inf"),
+        "unexpected error for NaN elevation: {}",
+        err_nan.message
+    );
+
+    // 3. Reject non-finite sea_level_m in verify_dem_file cleanly with Err.
+    let err_dem_sl = verify_dem_file(&valid_dir.join("total_h_m.bin"), 256, 256, 40.0, f32::NAN)
+        .expect_err("NaN sea_level_m in verify_dem_file must return Err");
+    assert!(
+        err_dem_sl.message.contains("invalid DEM geometry"),
+        "unexpected error for NaN sea_level_m: {}",
+        err_dem_sl.message
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
 }

@@ -181,6 +181,7 @@ fn parse_verify_args<I: Iterator<Item = String>>(mut it: I) -> Result<CliAction,
     let mut out_gates: Option<PathBuf> = None;
     let mut out_sim: Option<PathBuf> = None;
     let mut out_index: Option<PathBuf> = None;
+    let mut strict_gates = false;
     let mut report_only = false;
 
     while let Some(flag) = it.next() {
@@ -249,12 +250,16 @@ fn parse_verify_args<I: Iterator<Item = String>>(mut it: I) -> Result<CliAction,
                 }
                 out_index = Some(PathBuf::from(next_flag_val(&mut it, "--out-index", true)?));
             }
-            "--strict-gates" => {}
+            "--strict-gates" => strict_gates = true,
             "--report-only" => report_only = true,
             other => {
                 return Err(format!("unknown flag '{other}'\n{}", usage_text()));
             }
         }
+    }
+
+    if strict_gates && report_only {
+        return Err("cannot combine --strict-gates with --report-only".to_owned());
     }
 
     match (&raw, &dem_input) {
@@ -642,6 +647,15 @@ mod tests {
             "10",
             "--out-sim",
             "/tmp/s"
+        ])
+        .is_err());
+        assert!(parse_cli_args([
+            "anima-worldgen",
+            "verify",
+            "--raw",
+            "/tmp/a",
+            "--strict-gates",
+            "--report-only",
         ])
         .is_err());
 
