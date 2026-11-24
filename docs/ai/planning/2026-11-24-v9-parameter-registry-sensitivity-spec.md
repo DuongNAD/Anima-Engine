@@ -56,11 +56,11 @@ Eliminate un-documented arbitrary magic constants (`"Khoa học giả do hằng 
    - Add an optional `SweepTarget::RegistryParameter(String)` variant (`to be created by V9`, keeping JSON backwards compatibility in `sweeps.rs:46`) or route vertical-slice parameters through validated `InitialConditionSet` keys so `V9` sweeps perturb real parameters without editing code constants.
 2. **Multi-seed sensitivity engine (`src-tauri/src/core/sensitivity.rs` + `run_v9_sensitivity.rs` / `anima-lab sensitivity`, `to be created by V9`):**
    - Wraps deterministic `SamplingStrategy` (`sweeps.rs:303`) + multi-seed `ExperimentManifest.seeds` (`S64`: every design point runs across the same ordered seed set `S` rather than a single seed).
-   - Computes elementary-effect / standardized regression / variance-based dominance indices (per `D-V9-1`) across target KPIs (`WORLD_SIMULATION_PLAN.md §10.1`: grass biomass, herbivore/predator persistence, peak cascade magnitude, eutrophication level, water/EU residual) and outputs a ranked `SensitivityReport` (with same-OS deterministic tie-breaking).
+   - Computes elementary-effect / standardized regression / variance-based dominance indices (per `D-V9-1`) across target KPIs (`WORLD_SIMULATION_PLAN.md §10.1`: grass biomass, herbivore/predator persistence, peak cascade magnitude, eutrophication level, water/EU residual) and outputs a ranked `SensitivityReport` (`to be created by V9`, with same-OS deterministic tie-breaking).
 
 ## 3. Applicable [`CLAUDE.md`](../../../CLAUDE.md) Traps & Invariants
 
-- **`WorldLawSet` immutability (`CLAUDE.md:145-147`):** Never mutate constants or world laws mid-run during sensitivity loops; each parameter sample creates a fresh manifest/seed run whose `manifest_fingerprint` & `law_fingerprint` are recorded (`sweeps.rs`, `laws.rs:79`). `exotic_energy = None` stays the baseline compatibility path (`CLAUDE.md:153`).
+- **`WorldLawSet` immutability (`CLAUDE.md:145-147`):** Never mutate constants or world laws mid-run during sensitivity loops; each parameter sample creates a fresh manifest/seed run whose per-sample `manifest_fingerprint` & `law_fingerprint` (`laws.rs:79`) are recorded by `sensitivity.rs` (`to be created by V9`; trunk `SweepResult` at `sweeps.rs:759-774` records `base_manifest_fingerprint` only). `exotic_energy = None` stays the baseline compatibility path (`CLAUDE.md:153`).
 - **`total_cost` & EU/water/soil conservation (`CLAUDE.md:105-107`, `energy.rs:123`):** Any swept metabolic/feeding/reproduction parameter **must** preserve exact EU accounting through `total_cost` in `metabolic_decay_system` and never break `RESIDUAL_ABS_TOLERANCE_EU` or `dynamic_fields` conservation bounds.
 - **Zero-heap-allocation hot loop (`CLAUDE.md:50`):** `ParameterRegistry` is constructed/validated at preflight/boot time and read via plain copy (`f32`/`f64`) fields inside `LiveWorldConfig` / resources — zero `HashMap` lookups or `String` allocations inside simulation tick loops.
 - **No Lamarck (`CLAUDE.md:97-98`):** Parameter overrides never alter `AgentBrain.learned` -> `.genotype` separation.
@@ -93,7 +93,7 @@ Eliminate un-documented arbitrary magic constants (`"Khoa học giả do hằng 
 
 ### `DONE WHEN`
 1. **`S62` (`M11.1`):** `ParameterRegistry::default()` covers all governing vertical-slice constants resolved under `D-V9-2` with valid non-empty units, finite `[min, max]` bounds, and cited physical/ecological rationale; all default values match trunk runtime behavior when overrides are unset.
-2. **`S63` / `S64` (`M11.2`–`M11.3`):** Reproducible multi-seed sensitivity report identifies dominant governing parameters (`effect_index` & rank) deterministically across same-OS replays while preserving conservation residuals (`<= 1e-3` EU, `< 1e-4` H2O/N) across valid parameter samples.
+2. **`S63` / `S64` (`M11.2`–`M11.3`):** Reproducible multi-seed `SensitivityReport` (`to be created by V9`) identifies dominant governing parameters (`effect_index` & rank, `to be created by V9`) deterministically across same-OS replays while preserving conservation residuals (`<= 1e-3` EU, `< 1e-4` H2O/N) across valid parameter samples.
 3. **Concrete Verification Commands (all must exit `0` after final edit; Cargo runs only on host meeting `>= 5.00 GiB` RAM / CI):**
    - `cargo fmt --check`
    - `cargo clippy --all-targets --features desktop -- -D warnings`

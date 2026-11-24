@@ -13,7 +13,7 @@ last_reviewed: 2026-11-24
 > **Design spec only (`status: proposed`).** No Rust, TypeScript, or docs-index edits are made in D8 (`V-SPECS-2`).
 > All trunk `file:line` anchors below were checked against `origin/feat/ecological-selection` at
 > `8d52341549007a50ce033a6d272c5dd22a71b1b1`. Anything not on trunk yet is labeled **`to be created by V8`**
-> (or **`to be created by V6`**).
+> (or **`to be created by V5`** / **`V6`**).
 
 ## 1. Goal, Dependencies, `START WHEN` & Scope
 
@@ -21,21 +21,21 @@ Execute multi-seed paired control-vs-treatment acceptance scenarios covering all
 
 | # | §9 Required Item (`WORLD_SIMULATION_PLAN.md:1048-1063`) | Type | Primary Verification Source |
 |---|---|---|---|
-| **I1** | 30 simulated days of drought (`RainfallDelta`, `:1050`) | Intervention | `V6` `drought_30d`, `CausalLedger` chain `precip -> soil_moisture -> grass_npp -> starvation` |
-| **I2** | Remove 80% of wolves (`RemovePredators`, `:1051`) | Intervention | `V6` `cull_wolves_80pct`, single-shot deterministic cull + trophic cascade |
-| **I3** | Clear 40% of headwaters forest (`Deforest`, `:1052`) | Intervention | `V6` `clear_headwaters_forest_40pct`, `canopy_cover` / `root_cover` -> runoff / erosion / turbidity |
-| **I4** | Fertilize around lakes (`AddNutrient`, `:1053`) | Intervention | `V6` `fertilize_lake_ring`, `soil_nitrogen` -> NPP + `algal_bloom` / `dissolved_oxygen` |
+| **I1** | 30 simulated days of drought (`RainfallDelta`, `:1050`) | Intervention | `V6` `drought_30d`, `CausalLedger` chain `precip -> soil_moisture -> grass_npp -> starvation` (`to be created by V6`) |
+| **I2** | Remove 80% of wolves (`RemovePredators`, `:1051`) | Intervention | `V6` `cull_wolves_80pct`, single-shot deterministic cull + trophic cascade (`to be created by V6`) |
+| **I3** | Clear 40% of headwaters forest (`Deforest`, `:1052`) | Intervention | `V6` `clear_headwaters_forest_40pct`, `canopy_cover` (`to be created by V5`) / `root_cover` -> runoff / erosion / turbidity (`to be created by V6`) |
+| **I4** | Fertilize around lakes (`AddNutrient`, `:1053`) | Intervention | `V6` `fertilize_lake_ring`, `soil_nitrogen` -> NPP + `algal_bloom` / `dissolved_oxygen` (`to be created by V6`) |
 | **O1** | Predator–prey cycles (`:1057`) | Observation | Paired/baseline time-series oscillation sign-changes & non-extinction telemetry |
 | **O2** | Trophic cascade (`:1058`) | Observation | Wolf removal `treatment - control` paired deltas (`PairedEnsembleReport`: rabbit up, grass down) |
 | **O3** | Water/soil/plant feedback (`:1059`) | Observation | Drought & forest-clear paired deltas (`soil_moisture`, `runoff`, `erosion`, `plants`) |
-| **O4** | Simple eutrophication (`:1060`) | Observation | Lake fertilization paired deltas (`soil_nitrogen`, `algal_bloom`, `dissolved_oxygen`) |
+| **O4** | Simple eutrophication (`:1060`) | Observation | Lake fertilization paired deltas (`soil_nitrogen`, `algal_bloom`, `dissolved_oxygen`, `to be created by V6`) |
 | **O5** | Causal timeline (`:1061`) | Observation | Non-empty `CausalLedger` per intervention with `trace_to_root` depth `>= 3` |
 | **O6** | Control vs treatment (`:1062`) | Observation | Identical-seed `run_paired_ensemble_with_control` (`ensemble.rs:218`) with strict `FactorDiff` |
 | **O7** | Save/replay deterministic (`:1063`) | Observation | Same-OS `run(N) == run(K) -> save -> load -> run(N - K)` + `world_record` / replay parity |
 
 ### Exact Dependency Order & `START WHEN`
 
-- **Depends directly on:** **[Card `V6`](2026-11-24-v6-interventions-causeid-spec.md)** (and transitively `V0`–`V5` and accepted [`ADR-0013`](../../decisions/ADR-0013-live-creature-lifecycle.md)).
+- **Depends directly on:** **[Card `V6`](2026-11-24-v6-interventions-causeid-spec.md)** (and transitively `V0`–`V5` and accepted [`ADR-0013`](../../decisions/ADR-0013-live-creature-lifecycle.md) `(:3, 13)`, currently `status: proposed` on trunk pending owner acceptance).
 - **`START WHEN`:** `V6` is merged on trunk, and owner decisions `D-V8-1`–`D-V8-4` are resolved.
 - **Unblocks:** `V9` (parameter registry & sensitivity), `V10` (soak test), `V11` (example scenarios), and `H10` / `H11`.
 
@@ -111,7 +111,7 @@ Execute multi-seed paired control-vs-treatment acceptance scenarios covering all
 ### Negative Controls (Must Fail Red Under Fault Injection, `A3 #2`)
 1. **Truncate seed parity:** Mutate `control.seeds` order vs `treatment.seeds` -> `run_paired_ensemble_with_control` (`ensemble.rs:230`) rejects with structured error before running a tick.
 2. **Break `O7` replay persistence:** Omit one state field from `SavedSimulationState` -> checkpoint `run(N) == run(K) -> save -> load -> run(N - K)` assertion in `v8_slice_acceptance_tests.rs` fails red.
-3. **Bypass `O5` causal chain:** Unlink `parent` in `CausalChainTracker` -> `O5` depth-`>= 3` acceptance gate fails red.
+3. **Bypass `O5` causal chain:** Unlink `parent` in `CausalChainTracker` (`to be created by V6`) -> `O5` depth-`>= 3` acceptance gate fails red.
 4. **Add `#[ignore]` to failing acceptance test:** `node scripts/check_test_targets.mjs` fails red against `test_target_policy.mjs`.
 
 ### Determinism Checks

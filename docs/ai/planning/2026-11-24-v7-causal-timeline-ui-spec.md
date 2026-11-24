@@ -59,7 +59,7 @@ Build the real-data causal-timeline (`M9.2` / `S51`) and control-vs-treatment co
    - Per `D-V7-2`, wire an IPC command `load_comparison_report` (`to be created by V7` in `src-tauri/src/commands/`) that reads and validates a real serialized `BranchTreeReport` (`branch_tree.rs:363`) or `PairedEnsembleReport` (`ensemble.rs:160`) JSON artifact produced by `anima-lab` / `V8` — or, only if `D-V7-2 = B` is approved, a real paired simulation comparison — never `Math.sin` or hardcoded series.
    - Render aligned tick axes in `TimeSeriesChart` (`TimeSeriesChart.tsx:22-50`) for baseline vs treatment trajectories (`S53`) and `BranchTreeCanvas` (`BranchTreeCanvas.tsx:14`) when a real `BranchTreeReport` is loaded, clearly tagging `seed`, `control_manifest_fingerprint`, `treatment_manifest_fingerprint`, and incomplete pairs (`ensemble.rs:171, 183-188`).
 3. **IPC bindings, contract, & camelCase parity:**
-   - Register every new command in `tauri::generate_handler![...]` (`src-tauri/src/lib.rs:63`), add matching rows to [`IPC_CONTRACT.md`](../../reference/IPC_CONTRACT.md), export TypeScript payload types via `ts-rs` into `src/types/generated/` (`to be created by V7`), and satisfy `npm run check:ipc` (`scripts/check_ipc_arg_case.mjs:1-25`) so JS `invoke` keys match Rust parameter names in `lowerCamelCase`.
+   - Register every new command in `tauri::generate_handler![...]` (`src-tauri/src/lib.rs:63`), add matching rows to [`IPC_CONTRACT.md`](../../reference/IPC_CONTRACT.md), export TypeScript payload `.ts` types via `ts-rs` into existing `src/types/generated/` (new `V7` payload bindings `to be created by V7`), and satisfy `npm run check:ipc` (`scripts/check_ipc_arg_case.mjs:1-25`) so JS `invoke` keys match Rust parameter names in `lowerCamelCase`.
 
 ## 3. Applicable [`CLAUDE.md`](../../../CLAUDE.md) Traps & Invariants
 
@@ -77,7 +77,7 @@ Build the real-data causal-timeline (`M9.2` / `S51`) and control-vs-treatment co
 | **`D-V7-1`** | Should `V7` enable live desktop intervention dispatch (`dispatch_causal_intervention`) or keep `CausalInterventionPanel` dispatch-disabled until viewer/live divergence policy is settled? | **(A)** Read-only causal timeline + report comparison in `V7`; keep live dispatch disabled unless explicitly enabled by owner.<br>**(B)** Wire `dispatch_causal_intervention` into the desktop `SimulationEngine` queue using `validate_intervention`. | **(A)** Read-only causal UI first, avoiding unverified multi-threaded desktop engine divergence notes (`IPC_CONTRACT.md:45`, `CLAUDE.md:179`). |
 | **`D-V7-2`** | Source of control-vs-treatment trajectories for `M9.4` / `S53`: | **(A)** Import validated `BranchTreeReport` / `PairedEnsembleReport` JSON files produced by `anima-lab` / `V8`.<br>**(B)** Launch paired control + treatment headless runs inside the desktop Tauri process. | **(A)** Artifact JSON import first; running two Bevy simulations concurrently inside Tauri risks heavy dev-host crashes (`CLAUDE.md:52`). |
 | **`D-V7-3`** | Timeline query pagination / row cap (`get_causal_timeline`): | **(A)** Bounded cursor/window query (`offset`, `limit <= 500`, optional `cause_id`/`target` filter).<br>**(B)** Return full `CausalLedger::all()` unconditionally. | **(A)** Bounded window (`limit <= 500`) matching `WORLD_SIMULATION_PLAN.md:1126`. |
-| **`D-V7-4`** | Include `M9.3` ("Why did this change?" top contributors via `CausalLedger::top_contributors`) inside `V7`? | **(A)** Include a compact top-contributors drawer alongside timeline navigation (`causal.rs:159`).<br>**(B)** Defer `M9.3` to a follow-up card. | **(A)** Include top-contributors drawer — `CausalLedger::top_contributors` already exists at `causal.rs:159`. |
+| **`D-V7-4`** | Include `M9.3` ("Why did this change?" top contributors via `CausalLedger::top_contributors`) inside `V7`? | **(A)** Include a compact top-contributors drawer alongside timeline navigation (`src-tauri/crates/anima-domain/src/causal.rs:159`).<br>**(B)** Defer `M9.3` to a follow-up card. | **(A)** Include top-contributors drawer — `CausalLedger::top_contributors` already exists at `src-tauri/crates/anima-domain/src/causal.rs:159`. |
 
 ## 5. Future `V7` Card Boundaries (**Proposed** `ALLOWED PATHS`)
 
@@ -85,7 +85,7 @@ Build the real-data causal-timeline (`M9.2` / `S51`) and control-vs-treatment co
 
 - `src/components/ResearchDashboard/` (new causal timeline & control-vs-treatment components; updates to `ResearchDashboard.tsx`, `CausalInterventionPanel.tsx`, `CheckpointStudioPanel.tsx`, `types.ts`)
 - `src/types/generated/` (regenerated `ts-rs` bindings only)
-- `src-tauri/src/commands/` (`environment.rs` or new `causal.rs` command module + `commands/mod.rs` — `to be created by V7`)
+- `src-tauri/src/commands/` (`environment.rs` and `mod.rs` already on trunk, plus new `causal.rs` command module `to be created by V7`)
 - `src-tauri/src/lib.rs:63-100` (register `V7` IPC commands in `generate_handler!`)
 - `src-tauri/src/core/simulation_loop.rs:1-60` & `src-tauri/src/core/live_experiment.rs:1-20` (only if `D-V7-1 = B`, exposing read-only causal ledger state safely)
 - `src-tauri/tests/` & `tests/frontend/` (`tests/frontend/causalTimelineUi.test.tsx`, `to be created by V7`, plus updating `tests/frontend/research_dashboard_suite.test.tsx:11-35` if tabs/assertions expand)
@@ -101,7 +101,7 @@ Build the real-data causal-timeline (`M9.2` / `S51`) and control-vs-treatment co
    - `npm run lint` and `node scripts/eslint_ratchet.mjs` (zero errors, zero warning regressions)
    - `npm run test` and `npm run test:frontend` (with Vitest causal timeline + control-vs-treatment alignment suites)
    - `npm run build` and `npm run check:csp`
-   - `cargo test --lib export_bindings` + `git diff --exit-code -- src/types/generated`
+   - From `src-tauri/`: `cargo test --lib export_bindings` + `git diff --exit-code -- ../src/types/generated` (`docs/how-to/RELEASE_CHECKLIST.md:90`)
    - `cargo fmt --check`, `cargo clippy --all-targets --features desktop -- -D warnings`, and `cmd /c "cargo test --features desktop > ..\cargo-test-output.txt 2>&1"` + `node scripts/check_test_targets.mjs cargo-test-output.txt --profile desktop`
 
 ### Negative Controls (Must Fail Red Under Fault Injection, `A3 #2`)
