@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "experiment_id": "e3b-productivity-gradient-body-mass::control",
+  "name": "E3b control - zero-intensity regional interventions (founder_genotype = 1, predator_fraction = 0.3)",
+  "world_identity": {
+    "seed": 0,
+    "generator_version": 0,
+    "width": 0,
+    "height": 0,
+    "checksum": 0
+  },
+  "laws": {
+    "schema_version": 1,
+    "baseline_energy": {
+      "eu_unit": "EU"
+    },
+    "exotic_energy": null
+  },
+  "initial_conditions": {
+    "schema_version": 1,
+    "values": [
+      [
+        "live.ecological_fitness",
+        1.0
+      ],
+      [
+        "live.mortality",
+        1.0
+      ],
+      [
+        "live.reproduction",
+        1.0
+      ],
+      [
+        "live.locomotion",
+        1.0
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1.0
+      ],
+      [
+        "live.evolved_brains",
+        0.0
+      ],
+      [
+        "live.founders",
+        160.0
+      ],
+      [
+        "live.founder_layout",
+        1.0
+      ],
+      [
+        "live.founder_genotype",
+        1.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        16.0
+      ],
+      [
+        "live.lake_layout",
+        1.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.prey_cap",
+        160.0
+      ],
+      [
+        "live.strict_prey_cap",
+        1.0
+      ],
+      [
+        "live.dehydration_ticks",
+        960.0
+      ],
+      [
+        "live.mutation_rate",
+        0.05
+      ],
+      [
+        "live.resource_capacity_scale",
+        1.0
+      ]
+    ]
+  },
+  "interventions": [
+    {
+      "id": 1,
+      "cause_id": 1,
+      "kind": "Deforest",
+      "region": {
+        "Rect": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 127,
+          "max_y": 255
+        }
+      },
+      "start_tick": 1,
+      "duration_ticks": 18000,
+      "intensity": 0.0,
+      "signed_negative": false,
+      "curve": "Step",
+      "reversible": false
+    },
+    {
+      "id": 2,
+      "cause_id": 2,
+      "kind": "AddNutrient",
+      "region": {
+        "Rect": {
+          "min_x": 128,
+          "min_y": 0,
+          "max_x": 255,
+          "max_y": 255
+        }
+      },
+      "start_tick": 1,
+      "duration_ticks": 18000,
+      "intensity": 0.0,
+      "signed_negative": false,
+      "curve": "Step",
+      "reversible": false
+    }
+  ],
+  "seeds": [
+    810001,
+    811001,
+    812001,
+    813001,
+    814001,
+    815001,
+    816001,
+    817001,
+    818001,
+    819001,
+    820001,
+    821001,
+    822001,
+    823001,
+    824001,
+    825001,
+    826001,
+    827001,
+    828001,
+    829001,
+    830001,
+    831001,
+    832001,
+    833001,
+    834001,
+    835001,
+    836001,
+    837001,
+    838001,
+    839001,
+    840001,
+    841001,
+    842001,
+    843001,
+    844001,
+    845001,
+    846001,
+    847001,
+    848001,
+    849001,
+    850001,
+    851001,
+    852001,
+    853001,
+    854001,
+    855001,
+    856001,
+    857001,
+    858001,
+    859001,
+    860001,
+    861001,
+    862001,
+    863001,
+    864001,
+    865001,
+    866001,
+    867001,
+    868001,
+    869001,
+    870001,
+    871001,
+    872001,
+    873001
+  ],
+  "duration_ticks": 18000,
+  "sample_period": 600,
+  "observable_ids": [
+    "plants",
+    "detritus",
+    "live.animals_eu",
+    "live.dormant_eu",
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.herbivore_count",
+    "live.predator_count",
+    "live.food_items",
+    "live.standing_crop",
+    "live.mean_agent_energy",
+    "live.season_phase",
+    "live.trait_mass_mean",
+    "live.trait_mass_var",
+    "live.trait_mass_p10",
+    "live.trait_mass_p90",
+    "live.shannon",
+    "live.simpson",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.archive_coverage",
+    "live.deaths_starvation",
+    "live.deaths_dehydration",
+    "live.mean_energy_integral",
+    "live.trait_mass_mean_west",
+    "live.trait_mass_mean_east",
+    "live.cumulative_mean_lifespan"
+  ],
+  "exotic_interventions": [],
+  "observer": {
+    "mode": "absent"
+  }
+}

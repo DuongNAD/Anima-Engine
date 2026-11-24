@@ -1,0 +1,431 @@
+{
+  "schema_version": 1,
+  "preregistration_id": "e3b-productivity-gradient-body-mass",
+  "status": "FROZEN",
+  "registered_on": "2026-11-24",
+  "registered_at_parent_commit": "b0413f2",
+  "registered_at_parent_commit_full": "b0413f2eeecbab8e5ee045c22c72d5c00c16b87a",
+  "prior_calibration_and_draft_commits": {
+    "viab1_pr215": "d49cf4ff72b4b5b8f7bbd5a918666fcc8a9d5b3f",
+    "founder_2seg_pr224": "98054ba206d275014ecce89e7ab7c2ad603ead1d",
+    "viab1b_pr228": "c2e0b6e0a6e7bb3ac20a3cf5aedb4f02a8b8b953",
+    "e3b_draft_v2_pr229": "b0413f2eeecbab8e5ee045c22c72d5c00c16b87a"
+  },
+  "contains_results": false,
+  "experimental_seeds_run": 0,
+  "smoke_seeds_run": 0,
+  "body_mass_consulted": false,
+  "question": "Under identical ecological fitness and turnover laws, persistent two-trophic predation (live.predator_fraction = 0.3), and adapted 2-segment founder morphology (live.founder_genotype = 1.0, mass 2.5), does a sustained regional productivity gradient (West Deforest 0.30, East AddNutrient 1.00) alter the body-mass log variance ratio L_i = ln[(var_B + eps)/(var_A + eps)] after ~2.1-3.1 realized generations of de novo input relative to a total-matched uniform-scarcity control arm (live.resource_capacity_scale = 0.42 + whole-map AddNutrient 1.00) at matched ~64k EU standing crop?",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "harness": "core::experiment_runner::{run_paired_ensemble_with_control, run_manifest_seed}",
+  "plan_document": "docs/ai/planning/2026-11-24-e3b-preregistration.md",
+  "draft_document": "docs/ai/planning/2026-11-23-e3b-preregistration-draft.md",
+  "manifests": {
+    "control": "e3b-control-uniform.json",
+    "control_uniform_scarcity": "e3b-control-uniform-scarcity.json",
+    "treatment": "e3b-treatment-gradient.json",
+    "smoke_control": "e3b-smoke-control-uniform.json",
+    "smoke_control_scarcity": "e3b-smoke-control-uniform-scarcity.json",
+    "smoke_treatment": "e3b-smoke-treatment-gradient.json"
+  },
+  "owner_decisions_locked": {
+    "E3B-D1": "live.predator_fraction = 0.3 kept; QD-E3B-D1a (2026-11-23) locks two-trophic experiment with persistent predators (12/11/12 in VIAB-1b), live.predator_count reported as covariate, live.shannon S4 no longer structurally forced to 0 (still decision_effect: none)",
+    "E3B-D2": "Option 2A + (a): confirmatory m = 3 Holm-Bonferroni FWER alpha = 0.05 (0.016667, 0.025, 0.05), H1 directional (T > S) mapped via closed 4-label R10 {supports, opposite, equivalent_to_zero, insufficient_evidence}",
+    "E3B-D3": "H1 (T/S) complete-pair primary (pi_LL >= 0.85, n_LL >= 7); H2 (T/U) & H3 (S/U) complete-pair primary + Lee (2009) monotone trimming bounds sensitivity + separate survival RMST(tau = 18000) across all N = 64 seeds (no Lachin worst-rank)",
+    "E3B-D4": "L_i = ln[(var_B + eps)/(var_A + eps)] with eps = 5e-4 (sensitivity eps_sens = 5e-5), SESOI = +-ln(1.5), TOST on L (90% CI inside (-ln(1.5), +ln(1.5))), N = 64, achieved MDE benchmark 0.5 * sigma_hat_L, Kerby r_c bounds 0.5205/0.7421, mandatory ln(births_B/births_A) mediator regression, T = 18,000 unchanged",
+    "E3B-D5": "Option (b): live.founder_genotype = 1.0 (2-segment founder nodes [0,1] masses [1.5,1.0] total 2.5, SHA-256 dfeb276205f818acf3f34f5d716cbf163598a03a23ffc6964ff85753e280c719), mutation.rs:211 operator-4 wall disclosed, PR #216 provenance disclosed"
+  },
+  "founder_genotype_spec": {
+    "live_key": "live.founder_genotype",
+    "value": 1.0,
+    "nodes_count": 2,
+    "node_masses": [1.5, 1.0],
+    "total_mass": 2.5,
+    "canonical_serde_json_sha256": "dfeb276205f818acf3f34f5d716cbf163598a03a23ffc6964ff85753e280c719",
+    "operator_4_wall": "mutate_genotype requires nodes.len() > 2 for structural node removal (src-tauri/src/evolution/mutation.rs:210-230); structural mutations can only add segments (>= 3), never prune to 1 segment",
+    "initial_trait_mass_var": 0.0
+  },
+  "trophic_disclosure_d1a": {
+    "predator_fraction": 0.3,
+    "initial_predators": 48,
+    "initial_herbivores": 112,
+    "viab1b_predator_persistence_out_of_12": {
+      "control_uniform": 12,
+      "control_uniform_scarcity": 11,
+      "treatment_gradient": 12
+    },
+    "viab1b_generations_mean": {
+      "control_uniform": 3.0906,
+      "control_uniform_scarcity": 2.1111,
+      "treatment_gradient": 3.0410
+    },
+    "viab1b_ln_births_ts_mean": 0.4396,
+    "viab1b_ln_births_ts_sd": 0.1557,
+    "mandatory_wording": "body-mass variance ratio after ~k generations (~3.1 / 2.1 / 3.0 in U / S / T) of de novo input from an adapted clonal founder (live.founder_genotype = 1, with persistent predators)"
+  },
+  "declared_factor": {
+    "primary_gradient_contrast_paths": [
+      "initial_conditions",
+      "interventions"
+    ],
+    "abundant_intervention_contrast_paths": [
+      "interventions"
+    ],
+    "arm_parameterization": {
+      "control_uniform": {
+        "live.resource_capacity_scale": 1.0,
+        "west_deforest_intensity": 0.0,
+        "add_nutrient_region": {
+          "Rect": {
+            "min_x": 128,
+            "min_y": 0,
+            "max_x": 255,
+            "max_y": 255
+          }
+        },
+        "add_nutrient_intensity": 0.0
+      },
+      "control_uniform_scarcity": {
+        "live.resource_capacity_scale": 0.42,
+        "west_deforest_intensity": 0.0,
+        "add_nutrient_region": {
+          "Rect": {
+            "min_x": 0,
+            "min_y": 0,
+            "max_x": 255,
+            "max_y": 255
+          }
+        },
+        "add_nutrient_intensity": 1.0
+      },
+      "treatment_gradient": {
+        "live.resource_capacity_scale": 1.0,
+        "west_deforest_intensity": 0.3,
+        "add_nutrient_region": {
+          "Rect": {
+            "min_x": 128,
+            "min_y": 0,
+            "max_x": 255,
+            "max_y": 255
+          }
+        },
+        "add_nutrient_intensity": 1.0
+      }
+    },
+    "every_other_field_must_match": true
+  },
+  "common_initial_conditions": {
+    "shared_across_all_arms": {
+      "live.ecological_fitness": 1.0,
+      "live.mortality": 1.0,
+      "live.reproduction": 1.0,
+      "live.locomotion": 1.0,
+      "live.drive_floor": 0.5,
+      "live.thirst_steering": 1.0,
+      "live.evolved_brains": 0.0,
+      "live.founders": 160.0,
+      "live.founder_layout": 1.0,
+      "live.founder_genotype": 1.0,
+      "live.predator_fraction": 0.3,
+      "live.trees": 8.0,
+      "live.lakes": 16.0,
+      "live.lake_layout": 1.0,
+      "live.food_cap": 50.0,
+      "live.prey_cap": 160.0,
+      "live.strict_prey_cap": 1.0,
+      "live.dehydration_ticks": 960.0,
+      "live.mutation_rate": 0.05
+    },
+    "per_arm_explicit_key": "live.resource_capacity_scale",
+    "per_arm_values": {
+      "control_uniform": 1.0,
+      "control_uniform_scarcity": 0.42,
+      "treatment_gradient": 1.0
+    },
+    "explicit_key_count_per_manifest": 20
+  },
+  "default_keys_left_absent": {
+    "live.w_surplus": 1.0,
+    "live.starve_ticks": 120,
+    "live.plant_reserve": 0.0,
+    "live.kill_hydration": 0.0,
+    "live.kill_efficiency": 0.4,
+    "live.target_min_energy": 0.0,
+    "live.drift_control": 0.0,
+    "live.drift_reset_ticks": 0,
+    "live.land_mask": 0,
+    "live.grass_steering": 0,
+    "live.lineage_tracking": 0
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "role": "confirmatory",
+      "family": "confirmatory_holm_m3",
+      "contrast": "treatment_gradient / control_uniform_scarcity",
+      "numerator_arm": "treatment_gradient",
+      "denominator_arm": "control_uniform_scarcity",
+      "observable": "live.trait_mass_var",
+      "primary_metric": "log_variance_ratio_L",
+      "direction": "directional_positive_T_gt_S",
+      "attrition_rule": "complete_pair_primary",
+      "evaluated_at": "final_observables_at_T"
+    },
+    {
+      "id": "H2",
+      "role": "confirmatory",
+      "family": "confirmatory_holm_m3",
+      "contrast": "treatment_gradient / control_uniform",
+      "numerator_arm": "treatment_gradient",
+      "denominator_arm": "control_uniform",
+      "observable": "live.trait_mass_var",
+      "primary_metric": "log_variance_ratio_L",
+      "direction": "two_sided",
+      "attrition_rule": "complete_pair_plus_lee_bounds_and_separate_rmst",
+      "evaluated_at": "final_observables_at_T"
+    },
+    {
+      "id": "H3",
+      "role": "confirmatory",
+      "family": "confirmatory_holm_m3",
+      "contrast": "control_uniform_scarcity / control_uniform",
+      "numerator_arm": "control_uniform_scarcity",
+      "denominator_arm": "control_uniform",
+      "observable": "live.trait_mass_var",
+      "primary_metric": "log_variance_ratio_L",
+      "direction": "two_sided",
+      "attrition_rule": "complete_pair_plus_lee_bounds_and_separate_rmst",
+      "evaluated_at": "final_observables_at_T"
+    },
+    {
+      "id": "MED1",
+      "role": "exploratory_mandatory_mediator",
+      "family": "exploratory_bh_fdr",
+      "predictor": "ln(births_B / births_A)",
+      "outcome": "L_i(B/A)",
+      "contrasts": ["H1", "H2", "H3"],
+      "evaluated_at": "sum_of_30_windows_for_births__and_final_var"
+    },
+    {
+      "id": "H1_tail_window",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observable": "live.trait_mass_var",
+      "tail_window_ticks": [14400, 18000],
+      "decision_effect": "none"
+    },
+    {
+      "id": "S1",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observables": ["live.trait_mass_p90", "live.trait_mass_p10"],
+      "derived_metric": "live.trait_mass_p90 - live.trait_mass_p10",
+      "evaluated_at": "final_observables_at_T",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S2",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observable": "live.trait_mass_mean",
+      "evaluated_at": "final_observables_at_T",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S3",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observables": ["live.trait_mass_mean_west", "live.trait_mass_mean_east"],
+      "derived_metric": "live.trait_mass_mean_east - live.trait_mass_mean_west",
+      "subject_to_empty_half_exclusion": true,
+      "evaluated_at": "final_observables_at_T",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S4",
+      "role": "exploratory_covar_no_decision",
+      "observable": "live.shannon",
+      "structural_status": "two_trophic_predators_persist_12_11_12_in_viab1b",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S5",
+      "role": "reported_not_interpreted_structural_zero",
+      "observable": "live.archive_coverage",
+      "structural_status": "structurally_zero_in_headless_adapter",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S6",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observables": ["live.mean_lifespan", "live.births", "live.deaths", "live.cumulative_mean_lifespan"],
+      "evaluated_at": "series_csv_only_for_mean_lifespan_never_final_observables__sum_of_30_windows_for_births_deaths__final_for_cumulative_mean_lifespan",
+      "decision_effect": "none"
+    },
+    {
+      "id": "COV_PRED",
+      "role": "exploratory_ecological_covariate",
+      "observable": "live.predator_count",
+      "evaluated_at": "final_and_post_warmup_mean",
+      "decision_effect": "none"
+    },
+    {
+      "id": "RMST",
+      "role": "exploratory_separate_survival",
+      "tau_ticks": 18000,
+      "applies_to": ["H1", "H2", "H3"],
+      "decision_effect": "none"
+    },
+    {
+      "id": "I1",
+      "role": "harness_integrity",
+      "observable": "live.closed_eu_total",
+      "max_abs_eu_drift": 1e-6,
+      "decision_effect": "none"
+    },
+    {
+      "id": "M1",
+      "role": "manipulation_check",
+      "observable": "live.standing_crop",
+      "decision_effect": "none"
+    }
+  ],
+  "seeds": {
+    "n_requested": 64,
+    "max_n_cap": 70,
+    "seed_base": 810001,
+    "seed_step": 1000,
+    "execution_order": [
+      810001, 811001, 812001, 813001, 814001, 815001, 816001, 817001,
+      818001, 819001, 820001, 821001, 822001, 823001, 824001, 825001,
+      826001, 827001, 828001, 829001, 830001, 831001, 832001, 833001,
+      834001, 835001, 836001, 837001, 838001, 839001, 840001, 841001,
+      842001, 843001, 844001, 845001, 846001, 847001, 848001, 849001,
+      850001, 851001, 852001, 853001, 854001, 855001, 856001, 857001,
+      858001, 859001, 860001, 861001, 862001, 863001, 864001, 865001,
+      866001, 867001, 868001, 869001, 870001, 871001, 872001, 873001
+    ],
+    "rule": "seed_k = 810001 + 1000*k for k in 0..=63 (capped at N <= 70 / k <= 69 so max_seed <= 879001 < 880001 calibration range); disjoint from E2 (700001..711001, 999983), E3 (730001..741001, 999979), E2R (750001..761001), E-SEL1 (760001..771001, 999971), SEL2-P (780001..799506, 999961, 999801..999822), VIAB-1/VIAB-1b (880001..=880012), PR #216 probes (880001..=880006), AE (1..=3), and smoke (999953)",
+    "smoke_seed": 999953,
+    "smoke_seed_is_excluded_from_analysis": true,
+    "calibration_range_excluded": {
+      "viab1_and_viab1b": [880001, 880012],
+      "k_70_collision_seed": 880001
+    }
+  },
+  "duration": {
+    "duration_ticks": 18000,
+    "duration_ticks_ladder": [18000],
+    "sample_period": 600,
+    "samples_per_run": 30,
+    "warmup_ticks": 3000,
+    "warmup_samples_excluded_from_time_averages": 5,
+    "tail_window_ticks": [14400, 18000]
+  },
+  "smoke_blinding": {
+    "smoke_manifests_strip_trait_mass": true,
+    "forbidden_substring_in_smoke": "trait_mass",
+    "smoke_observable_count": 22,
+    "confirmation_observable_count": 28,
+    "stripped_trait_mass_ids": [
+      "live.trait_mass_mean",
+      "live.trait_mass_var",
+      "live.trait_mass_p10",
+      "live.trait_mass_p90",
+      "live.trait_mass_mean_west",
+      "live.trait_mass_mean_east"
+    ]
+  },
+  "extinction_rule": {
+    "exclusion_scope": "per_contrast",
+    "definition": "live.agent_count == 0 at any sampled tick (600..=18000) or in final_observables at T = 18000",
+    "checked_ticks": "all 30 sampled ticks (600..=18000) plus final_observables"
+  },
+  "min_agent_count_rule": {
+    "exclusion_scope": "per_contrast",
+    "definition": "live.agent_count < 2 in final_observables at T = 18000 (or in 14400..=18000 for H1_tail_window)",
+    "min_agents": 2
+  },
+  "empty_half_rule": {
+    "exclusion_scope": "per_contrast",
+    "applicable_endpoint": "S3",
+    "definition": "At T = 18000 (final_observables), live.trait_mass_mean_west == 0.0 || live.trait_mass_mean_east == 0.0 on either evaluated arm"
+  },
+  "attrition_and_validity": {
+    "min_pi_ll": 0.85,
+    "min_complete_pairs_for_decision": 55,
+    "min_non_zero_pairs_r7": 7,
+    "zero_failed_runs_required": true,
+    "h1_primary_method": "complete_pair_L_i",
+    "h2_h3_methods": ["complete_pair_L_i", "lee_2009_trimming_bounds", "separate_rmst_tau_18000"]
+  },
+  "thresholds": {
+    "primary_metric": "log_variance_ratio_L",
+    "formula": "ln((var_B + eps) / (var_A + eps))",
+    "eps_primary": 0.0005,
+    "eps_sensitivity": 0.00005,
+    "sesoi_log_var_ratio": 0.4054651081081644,
+    "sesoi_label": "ln(1.5)",
+    "fwer_alpha": 0.05,
+    "confirmatory_family_size": 3,
+    "holm_alpha_steps": [0.016666666666666666, 0.025, 0.05],
+    "tost_alpha": 0.05,
+    "tost_ci_level": 0.90,
+    "ci_level": 0.95,
+    "exploratory_bh_fdr_q": 0.05,
+    "achieved_mde_sd_multiplier": 0.5,
+    "exact_80pct_holm1_mde_sd_multiplier": 0.4139,
+    "kerby_rc_benchmarks": {
+      "dz_0_50": 0.5205,
+      "dz_0_80": 0.7421
+    },
+    "bca_bootstrap_resamples": 10000,
+    "rmst_tau_ticks": 18000,
+    "max_abs_eu_drift": 1e-6,
+    "min_pi_ll": 0.85,
+    "min_valid_pairs_for_decision": 55,
+    "min_non_zero_pairs_r7": 7,
+    "decision_enum": [
+      "supports",
+      "opposite",
+      "equivalent_to_zero",
+      "insufficient_evidence"
+    ],
+    "direction_rules": {
+      "H1": "directional_positive_T_gt_S",
+      "H2": "two_sided",
+      "H3": "two_sided"
+    }
+  },
+  "cost": {
+    "runs": 192,
+    "arms": 3,
+    "seeds_per_arm": 64,
+    "total_ticks": 3456000,
+    "max_wall_clock_minutes": 90,
+    "build_profile_required": "release"
+  },
+  "artifacts": {
+    "root": "artifacts/experiments/e3b-productivity-gradient-body-mass/",
+    "smoke_dir": "artifacts/experiments/e3b-productivity-gradient-body-mass/smoke/",
+    "confirmation_dir": "artifacts/experiments/e3b-productivity-gradient-body-mass/confirmation/"
+  },
+  "wp2_smoke_gates": {
+    "a": "ResourceField (256x256) present with identical 153,587.25 EU closed EU across all 3 arms",
+    "b1": "|(mean_post_warmup(T) - mean_post_warmup(U)) / mean_post_warmup(U)| >= 0.10",
+    "b2": "|(mean_post_warmup(T) - mean_post_warmup(S)) / mean_post_warmup(T)| <= 0.10 with zero Deforest events in S",
+    "c": "detritus > 0 before tick 3000 and at tick 3000 in all 3 arms",
+    "blinding_rule": "Zero trait_mass observables in smoke manifests and zero trait_mass substrings anywhere under smoke/"
+  },
+  "execution_host_rule": {
+    "single_host_required": true,
+    "world_artifact_isolation_required": true,
+    "world_identity_consistency_required": true,
+    "required_host": "windows/x86_64",
+    "expected_terrain_source": "generated"
+  }
+}
