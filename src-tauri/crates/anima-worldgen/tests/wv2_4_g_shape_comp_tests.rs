@@ -1,0 +1,605 @@
+#![cfg(feature = "generate")]
+#![forbid(unsafe_code)]
+#![deny(clippy::disallowed_methods)]
+
+use anima_worldgen::anmw_v3::{compute_sim_world_identity, sha256_to_hex, AnmwV3Sim};
+use anima_worldgen::caves::CaveNetwork;
+use anima_worldgen::config::WorldV2Config;
+use anima_worldgen::lakes_falls::{LakeBasinRecord, LakeClassification, WaterfallRecord};
+use anima_worldgen::pipeline::run_worldgen_to_dir;
+use anima_worldgen::verify::g_comp::{evaluate_c4_c5_and_flags, finalize_g_comp_v2};
+use anima_worldgen::verify::g_shape::{evaluate_g_shape, GShapeInput, HackLawReport};
+use anima_worldgen::verify::WorldV2IndexJson;
+use anima_worldgen::{BiomeId, WaterKind};
+use std::path::PathBuf;
+use std::process::Command;
+
+fn temp_test_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("anima_wv2_4_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp test dir");
+    dir
+}
+
+/// Point-to-segment distance in grid cell units.
+fn dist_to_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> f64 {
+    let abx = bx - ax;
+    let aby = by - ay;
+    let len2 = abx * abx + aby * aby;
+    if len2 <= 1e-12 {
+        return libm::hypot(px - ax, py - ay);
+    }
+    let t = (((px - ax) * abx + (py - ay) * aby) / len2).clamp(0.0, 1.0);
+    let qx = ax + t * abx;
+    let qy = ay + t * aby;
+    libm::hypot(px - qx, py - qy)
+}
+
+#[test]
+fn neg_control_a_parallel_comb_dem_fails_junction_angle_and_horton() {
+    let n = 128_usize;
+    let dx = 40.0_f32;
+    let mut dem = vec![0.0_f32; n * n];
+
+    // Orthogonal parallel-comb drainage: straight N-S trunk at `c = 100` fed by perpendicular E-W
+    // parallel ditches every 12 rows (`r = 16, 28, ..., 100`) at 90 deg joins, plus ocean below `r >= 118`.
+    for r in 0..n {
+        for c in 0..n {
+            let idx = r * n + c;
+            if r >= 118 {
+                dem[idx] = -25.0;
+                continue;
+            }
+            let base = 260.0 - 2.0 * r as f64;
+            let trunk_d = (c as f64 - 100.0).abs();
+            let mut inc = (12.0 * (trunk_d / 6.0).min(1.0)).min(25.0);
+            if c <= 100 && (14..=106).contains(&r) {
+                let nearest_rib =
+                    (((r as f64 - 16.0) / 12.0).round() * 12.0 + 16.0).clamp(16.0, 100.0);
+                let rib_d = (r as f64 - nearest_rib).abs();
+                let rib_slope = 0.25 * (100.0 - c as f64);
+                let rib_wall = (4.5 * rib_d).min(24.0);
+                let comb_h = base + rib_slope + rib_wall;
+                inc = inc.min(comb_h - base);
+            }
+            dem[idx] = (base + inc).max(1.0) as f32;
+        }
+    }
+
+    let out = evaluate_g_shape(&GShapeInput::from_dem_only(&dem, n, n, dx, 0.0));
+    assert!(!out.report.passed, "parallel-comb DEM must fail G-SHAPE");
+    assert!(
+        !out.report.metric_2_junction_angles.passed,
+        "orthogonal 90 deg parallel-comb joins must fail Metric 2 (got median={:.1} deg, n={})",
+        out.report.metric_2_junction_angles.median_deg,
+        out.report.metric_2_junction_angles.junction_count
+    );
+    assert!(
+        !out.report.metric_1_strahler_horton.passed,
+        "parallel-comb network must fail Metric 1 Strahler/Horton (omega_max={}, r_b={:.2}, r_l={:.2})",
+        out.report.metric_1_strahler_horton.omega_max,
+        out.report.metric_1_strahler_horton.r_b,
+        out.report.metric_1_strahler_horton.r_l
+    );
+}
+
+#[test]
+fn neg_control_b_cratered_noise_dem_fails_micro_pits_and_hypsometry() {
+    let n = 128_usize;
+    let dx = 40.0_f32;
+    let mut dem = vec![0.0_f32; n * n];
+
+    // Smooth coastal dome corrupted by unmodeled micro-craters and >75 deg needle spikes.
+    for r in 0..n {
+        for c in 0..n {
+            let idx = r * n + c;
+            if r >= 112 {
+                dem[idx] = -30.0;
+                continue;
+            }
+            let norm_y = (112 - r) as f32 / 112.0;
+            let base = 40.0 + 450.0 * norm_y;
+            let pit = if r > 8 && r < 105 && c > 8 && c < 120 && (r % 13 == 4) && (c % 13 == 5) {
+                -60.0
+            } else {
+                0.0
+            };
+            let spike = if r > 10 && r < 102 && c > 10 && c < 118 && (r % 19 == 7) && (c % 19 == 9)
+            {
+                260.0 // > 260/40 = 6.5 >> tan(75 deg) = 3.732 opposing slope reversal!
+            } else {
+                0.0
+            };
+            dem[idx] = base + pit + spike;
+        }
+    }
+
+    let out = evaluate_g_shape(&GShapeInput::from_dem_only(&dem, n, n, dx, 0.0));
+    assert!(!out.report.passed, "cratered/spiky DEM must fail G-SHAPE");
+    assert!(
+        !out.report.metric_6_endorheic_spillways.passed,
+        "cratered noise DEM must fail Metric 6"
+    );
+    assert!(
+        out.report
+            .metric_6_endorheic_spillways
+            .raw_non_water_land_pits
+            > 0
+            && out.report.metric_6_endorheic_spillways.unmodeled_micro_pits > 0,
+        "expected unmodeled crater pits > 0, got {:?}",
+        out.report.metric_6_endorheic_spillways
+    );
+    assert!(
+        !out.report.metric_7_hypsometry_spikes.passed
+            && out
+                .report
+                .metric_7_hypsometry_spikes
+                .non_cliff_needle_spikes
+                > 0,
+        "spiky DEM must detect >75 deg needle spikes in Metric 7, got {:?}",
+        out.report.metric_7_hypsometry_spikes
+    );
+}
+
+#[test]
+fn neg_control_c_inverted_valley_fails_vf_ratio() {
+    let n = 160_usize;
+    let dx = 40.0_f32;
+    let mut dem = vec![0.0_f32; n * n];
+
+    // Symmetric binary branching river tree producing Strahler orders 1 -> 2 -> 3 -> 4 at r=95..148:
+    // Order 4 trunk: (80, 95) -> (80, 148)
+    // Order 3: (60, 75)->(80, 95) and (100, 75)->(80, 95)
+    // Order 2: (46, 55)->(60, 75), (72, 55)->(60, 75), (88, 55)->(100, 75), (114, 55)->(100, 75)
+    // Order 1 tips feeding each order-2 node from r = 24..55.
+    let segs: [(f64, f64, f64, f64, f64, f64); 15] = [
+        // (ax, ay, bx, by, elev_a, elev_b)
+        (80.0, 95.0, 80.0, 149.0, 140.0, 4.0), // trunk (order 4)
+        (60.0, 75.0, 80.0, 95.0, 230.0, 140.0), // W order 3
+        (100.0, 75.0, 80.0, 95.0, 230.0, 140.0), // E order 3
+        (46.0, 55.0, 60.0, 75.0, 320.0, 230.0), // order 2
+        (72.0, 55.0, 60.0, 75.0, 320.0, 230.0),
+        (88.0, 55.0, 100.0, 75.0, 320.0, 230.0),
+        (114.0, 55.0, 100.0, 75.0, 320.0, 230.0),
+        // 8 order-1 headwaters
+        (36.0, 24.0, 46.0, 55.0, 480.0, 320.0),
+        (54.0, 24.0, 46.0, 55.0, 480.0, 320.0),
+        (65.0, 24.0, 72.0, 55.0, 480.0, 320.0),
+        (78.0, 24.0, 72.0, 55.0, 480.0, 320.0),
+        (82.0, 24.0, 88.0, 55.0, 480.0, 320.0),
+        (95.0, 24.0, 88.0, 55.0, 480.0, 320.0),
+        (106.0, 24.0, 114.0, 55.0, 480.0, 320.0),
+        (124.0, 24.0, 114.0, 55.0, 480.0, 320.0),
+    ];
+
+    for r in 0..n {
+        for c in 0..n {
+            let idx = r * n + c;
+            if r >= 150 {
+                dem[idx] = -20.0;
+                continue;
+            }
+            let x = c as f64;
+            let y = r as f64;
+            let mut best_d = f64::INFINITY;
+            let mut best_axis_z = 500.0_f64;
+            for &(ax, ay, bx, by, za, zb) in &segs {
+                let d = dist_to_segment(x, y, ax, ay, bx, by);
+                if d < best_d {
+                    best_d = d;
+                    let abx = bx - ax;
+                    let aby = by - ay;
+                    let len2 = (abx * abx + aby * aby).max(1e-9);
+                    let t = (((x - ax) * abx + (y - ay) * aby) / len2).clamp(0.0, 1.0);
+                    best_axis_z = za + t * (zb - za);
+                }
+            }
+            let dist_m = best_d * f64::from(dx);
+            // Inverted geometry (`Card 5 (c)`): wide flat U-troughs upper (`r < 93`), sharp V-notch down (`r >= 93`).
+            let wall = if r < 93 {
+                // Broad flat valley floor up to ~200 m half-width, gentle power >= 2.2 walls.
+                if dist_m <= 160.0 {
+                    0.002 * dist_m
+                } else {
+                    0.32 + 0.0005 * libm::pow(dist_m - 160.0, 2.1)
+                }
+            } else {
+                // Deep narrow downstream V-notch (`b ~ 1.0`, steep wall rising immediately).
+                0.30 * dist_m
+            };
+            dem[idx] = (best_axis_z + wall.min(180.0)).max(0.5) as f32;
+        }
+    }
+
+    let out = evaluate_g_shape(&GShapeInput::from_dem_only(&dem, n, n, dx, 0.0));
+    let m5 = &out.report.metric_5_valleys_flint;
+    assert!(
+        m5.upper_samples > 0 && m5.downstream_samples > 0,
+        "expected both upper (order 2/3) and downstream (order 4) samples, got {:?}",
+        m5
+    );
+    assert!(
+        !m5.passed,
+        "inverted valley DEM must fail Metric 5: {:?}",
+        m5
+    );
+    assert!(
+        m5.vf_ratio_down_over_up < 2.5,
+        "inverted valley must yield Vf_down / Vf_up < 2.5 (got {:.3}, vf_up={:.3}, vf_dn={:.3})",
+        m5.vf_ratio_down_over_up,
+        m5.vf_up_median,
+        m5.vf_down_median
+    );
+}
+
+#[test]
+fn neg_control_d_uniform_or_steppe_biome_fails_g_comp_v2() {
+    let size = 64_usize;
+    let n = size * size;
+    let dx = 160.0_f32;
+    let extent = size as f32 * dx;
+
+    let mut total_h = vec![200.0_f32; n];
+    let mut water_h = vec![200.0_f32; n];
+    let mut water_kind = vec![WaterKind::None as u8; n];
+    let glacier_h = vec![0.0_f32; n];
+    let mut river_w = vec![0.0_f32; n];
+    let is_channel = vec![false; n];
+
+    // First 29 rows (~45% area) ocean, gentle/cliff coastal slopes, and ~2% freshwater lake basin.
+    for r in 0..size {
+        for c in 0..size {
+            let i = r * size + c;
+            if r < 29 {
+                total_h[i] = -100.0;
+                water_h[i] = 0.0;
+                water_kind[i] = WaterKind::Ocean as u8;
+            } else if r == 29 {
+                total_h[i] = if c < 32 { 15.0 } else { 90.0 };
+                water_h[i] = total_h[i];
+            } else {
+                total_h[i] = 200.0 + (r - 29) as f32 * 100.0;
+                water_h[i] = total_h[i];
+            }
+        }
+    }
+    // Inject a 90-cell lake (`~2.2%`) and minor channel widths.
+    for r in 34..43 {
+        for c in 20..30 {
+            let i = r * size + c;
+            water_kind[i] = WaterKind::FreshwaterLake as u8;
+            water_h[i] = total_h[i] + 15.0;
+        }
+    }
+    river_w[32 * size + 10] = 2.0;
+
+    let summary_base = || {
+        evaluate_c4_c5_and_flags(
+            size,
+            size,
+            dx,
+            0.0,
+            &total_h,
+            &water_h,
+            &water_kind,
+            &glacier_h,
+            &river_w,
+            &is_channel,
+            &[(2, 5, 2.0), (3, 5, 5.0), (4, 5, 10.0)],
+            &HackLawReport {
+                passed: true,
+                sample_count: 500,
+                exponent_h: 0.57,
+                prefactor_c_km: 1.4,
+                r_squared: 0.95,
+                max_path_km: 25.0,
+                median_mainstem_sinuosity: 1.3,
+            },
+            3,
+            2,
+        )
+    };
+
+    // Valid waterfall/lake/cave scaffolding so ONLY biome partition differs between controls.
+    let wfs: Vec<WaterfallRecord> = (0..25)
+        .map(|k| WaterfallRecord {
+            lip_cell: (32 * size + k) as u32,
+            base_cell: (33 * size + k) as u32,
+            x_m: k as f32 * dx,
+            z_m: 32.0 * dx,
+            lip_elev_m: 300.0,
+            drop_m: 20.0,
+            yaw_rad: 0.0,
+            discharge_q_m3_s: 5.0,
+            plunge_depth_m: 3.0,
+        })
+        .collect();
+    let basins: Vec<LakeBasinRecord> = (0..6)
+        .map(|k| LakeBasinRecord {
+            id: (k + 1) as u32,
+            water_kind: WaterKind::FreshwaterLake as u8,
+            classification: if k == 0 {
+                LakeClassification::HighParamoGlacial
+            } else if k == 1 {
+                LakeClassification::CalderaOrTrough
+            } else {
+                LakeClassification::FreshwaterSpilling
+            },
+            water_level_m: if k == 0 { 3500.0 } else { 800.0 },
+            spill_elev_m: 801.0,
+            pit_elev_m: 780.0,
+            area_m2: 150_000.0,
+            max_depth_m: 20.0,
+            mean_elev_m: 790.0,
+            max_wall_slope_deg: if k == 1 { 32.0 } else { 15.0 },
+            elongation: 2.0,
+            outlet_cell: 0,
+            q_in_m3_s: 2.0,
+            q_out_m3_s: 2.0,
+            spillway_reaches_outlet: true,
+        })
+        .collect();
+    let mut cave_nodes = Vec::new();
+    let mut cave_entrances = Vec::new();
+    for k in 0..32_usize {
+        let gx = ((k * 5 + 3) % size) as f32 * dx;
+        let gz = (45 + (k / 12) * 5) as f32 * dx;
+        cave_nodes.push(anima_worldgen::caves::CaveNode {
+            x_m: gx,
+            y_m: 200.0,
+            z_m: gz,
+            radius_m: 4.0,
+            light_decay: 0.1,
+        });
+        cave_entrances.push(anima_worldgen::caves::CaveEntrance {
+            node_idx: k as u32,
+            mouth_kind: 0,
+            realm_status: 1,
+            yaw_rad: 0.0,
+            elevation_m: 200.0,
+            clearance_m: 3.0,
+        });
+    }
+    let caves = CaveNetwork {
+        flags: 0,
+        nodes: cave_nodes,
+        edges: Vec::new(),
+        entrances: cave_entrances,
+    };
+
+    // Variant D1: uniform single terrestrial biome (`Forest` everywhere) + zero ecotone blending.
+    let mut dom_uniform = vec![BiomeId::Forest as u8; n];
+    for r in 0..29 {
+        for c in 0..size {
+            dom_uniform[r * size + c] = BiomeId::Ocean as u8;
+        }
+    }
+    let ids_uniform = vec![[BiomeId::Forest as u8, 0, 0, 0]; n];
+    let wts_uniform = vec![[255_u8, 0, 0, 0]; n];
+
+    let rep_uniform = finalize_g_comp_v2(
+        size,
+        size,
+        dx,
+        extent,
+        &water_kind,
+        &dom_uniform,
+        &ids_uniform,
+        &wts_uniform,
+        &wfs,
+        &basins,
+        12,
+        &caves,
+        summary_base(),
+    );
+    assert!(
+        !rep_uniform.c1_partition.passed,
+        "uniform biome must fail G-COMP v2 C1"
+    );
+    assert_eq!(rep_uniform.c1_partition.zoned_16_biomes_passing, 1);
+    assert!(
+        !rep_uniform.c2_ecotone.passed,
+        "zero-ecotone world must fail G-COMP v2 C2"
+    );
+
+    // Variant D2: all 16 zoned biomes have >= min_patch contiguous blocks, EXCEPT 1 Steppe cell is
+    // planted (`Card 5 (d)`): C1 fails ONLY while Steppe > 0, and flips to PASS once replaced!
+    let min_req = rep_uniform.c1_partition.min_patch_cells_required;
+    let block_w = ((libm::sqrt(min_req as f64)).ceil() as usize).max(4);
+    let mut dom_16 = dom_uniform;
+    for (bi_idx, &b) in BiomeId::ZONED_TERRESTRIAL_16.iter().enumerate() {
+        let br = 30 + (bi_idx / 4) * block_w;
+        let bc = 2 + (bi_idx % 4) * block_w;
+        for dr in 0..block_w {
+            for dc in 0..block_w {
+                let r = (br + dr).min(size - 1);
+                let c = (bc + dc).min(size - 1);
+                dom_16[r * size + c] = b as u8;
+            }
+        }
+    }
+    // Place Steppe contaminant on an unused border cell (30, 0).
+    dom_16[30 * size] = BiomeId::Steppe as u8;
+    let mut ids_blend = vec![[BiomeId::Forest as u8, BiomeId::Grassland as u8, 0, 0]; n];
+    let mut wts_blend = vec![[180_u8, 75, 0, 0]; n];
+    for i in 0..n {
+        ids_blend[i][0] = dom_16[i];
+        wts_blend[i] = [180, 75, 0, 0];
+    }
+
+    let rep_steppe = finalize_g_comp_v2(
+        size,
+        size,
+        dx,
+        extent,
+        &water_kind,
+        &dom_16,
+        &ids_blend,
+        &wts_blend,
+        &wfs,
+        &basins,
+        12,
+        &caves,
+        summary_base(),
+    );
+    assert!(
+        !rep_steppe.c1_partition.passed && rep_steppe.c1_partition.steppe_cells > 0,
+        "Steppe presence must fail G-COMP v2 C1"
+    );
+    assert_eq!(rep_steppe.c1_partition.zoned_16_biomes_passing, 16);
+
+    // Clear Steppe -> C1 passes!
+    dom_16[30 * size] = BiomeId::Forest as u8;
+    let rep_clean = finalize_g_comp_v2(
+        size,
+        size,
+        dx,
+        extent,
+        &water_kind,
+        &dom_16,
+        &ids_blend,
+        &wts_blend,
+        &wfs,
+        &basins,
+        12,
+        &caves,
+        summary_base(),
+    );
+    assert!(
+        rep_clean.c1_partition.passed,
+        "expected C1 to pass once Steppe removed: {:?}",
+        rep_clean.c1_partition
+    );
+}
+
+#[test]
+fn cli_generate_preset_defaults_verify_gates_and_sorted_index_identity() {
+    let root = temp_test_dir("cli_e2e");
+    let raw_dir = root.join("raw");
+    let preset_path = root.join("preset.toml");
+    let gates_path = root.join("gates.json");
+    let sim_path = root.join("sim_256.anmw3");
+    let idx_path = root.join("index.json");
+
+    // Generate using `--preset` ONLY (verifying seed & grid_size default cleanly from TOML).
+    std::fs::write(
+        &preset_path,
+        "seed = 0x57563201\ngrid_size = 256\nschema_tag = \"wv2_test_preset\"\ntarget_ocean_fraction = 0.45\n",
+    )
+    .expect("write preset");
+
+    let bin = env!("CARGO_BIN_EXE_anima-worldgen");
+    let gen_out = Command::new(bin)
+        .args([
+            "generate",
+            "--preset",
+            preset_path.to_str().unwrap(),
+            "--out",
+            raw_dir.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run anima-worldgen generate");
+    assert!(
+        gen_out.status.success(),
+        "generate with preset failed: stderr={}",
+        String::from_utf8_lossy(&gen_out.stderr)
+    );
+
+    // Run `verify --raw ... --report-only` to produce `gates.json`, `sim_256.anmw3`, `index.json`.
+    let ver_out = Command::new(bin)
+        .args([
+            "verify",
+            "--raw",
+            raw_dir.to_str().unwrap(),
+            "--out-gates",
+            gates_path.to_str().unwrap(),
+            "--out-sim",
+            sim_path.to_str().unwrap(),
+            "--out-index",
+            idx_path.to_str().unwrap(),
+            "--report-only",
+        ])
+        .output()
+        .expect("run anima-worldgen verify");
+    assert!(
+        ver_out.status.success(),
+        "verify --report-only failed: stderr={}",
+        String::from_utf8_lossy(&ver_out.stderr)
+    );
+
+    let gates_bytes = std::fs::read(&gates_path).expect("read gates.json");
+    let gates_val: serde_json::Value =
+        serde_json::from_slice(&gates_bytes).expect("parse gates.json");
+    assert_eq!(gates_val["width"], 256);
+    assert_eq!(gates_val["seed"], 0x5756_3201_u64);
+
+    let sim_bytes = std::fs::read(&sim_path).expect("read sim_256.anmw3");
+    let sim = AnmwV3Sim::from_bytes(&sim_bytes).expect("decode sim_256.anmw3");
+    assert_eq!(sim.width, 256);
+    assert_eq!(sim.seed_u64, 0x5756_3201);
+
+    let idx_bytes = std::fs::read(&idx_path).expect("read index.json");
+    let idx: WorldV2IndexJson = serde_json::from_slice(&idx_bytes).expect("parse index.json");
+    let expected_sim_id = sha256_to_hex(&compute_sim_world_identity(&sim_bytes));
+    assert_eq!(idx.sim_world_identity, expected_sim_id);
+    assert_eq!(idx_bytes, idx.to_canonical_json_bytes().unwrap());
+
+    // Negative control: 1-byte tamper alters sim_world_identity immediately.
+    let mut tampered = sim_bytes.clone();
+    tampered[60] ^= 0x01;
+    assert_ne!(
+        sha256_to_hex(&compute_sim_world_identity(&tampered)),
+        idx.sim_world_identity
+    );
+
+    // Test `--dem-input` mode on a small cratered DEM: strict fail exits 1 and writes gates.json.
+    let dem_path = root.join("crater.f32");
+    let dem_gates = root.join("dem_gates.json");
+    let mut dem_bytes = Vec::with_capacity(64 * 64 * 4);
+    for r in 0..64 {
+        for c in 0..64 {
+            let v = if r >= 56 {
+                -10.0_f32
+            } else if r == 20 && c == 20 {
+                -5.0_f32
+            } else {
+                20.0 + (56 - r) as f32 * 2.0
+            };
+            dem_bytes.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    std::fs::write(&dem_path, dem_bytes).expect("write crater.f32");
+    let dem_strict = Command::new(bin)
+        .args([
+            "verify",
+            "--dem-input",
+            dem_path.to_str().unwrap(),
+            "--size",
+            "64",
+            "--dx",
+            "40",
+            "--strict-gates",
+            "--report",
+            dem_gates.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run --dem-input strict");
+    assert_eq!(
+        dem_strict.status.code(),
+        Some(1),
+        "strict cratered --dem-input verify must exit 1"
+    );
+    assert!(
+        dem_gates.exists(),
+        "gates.json must still be written on exit 1"
+    );
+
+    // Also confirm `WorldV2Config::for_size` round-trips bit-identically with CLI `--preset`.
+    let mut lib_cfg = WorldV2Config::for_size(0x5756_3201, 256);
+    lib_cfg.schema_tag = "wv2_test_preset".to_owned();
+    lib_cfg.target_ocean_fraction = 0.45;
+    let lib_meta = run_worldgen_to_dir(&lib_cfg, &root.join("raw_lib"))
+        .expect("run 256x256 library parity worldgen");
+    assert_eq!(gates_val["world_sha256"], lib_meta.world_sha256);
+    let _ = std::fs::remove_dir_all(&root);
+}
