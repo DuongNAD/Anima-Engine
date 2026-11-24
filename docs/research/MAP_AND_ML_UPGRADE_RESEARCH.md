@@ -2,7 +2,7 @@
 title: Nghiên cứu nâng cấp — Map và mô hình machine cho Anima Engine
 status: proposed
 owner: architecture
-last_reviewed: 2026-07-25
+last_reviewed: 2026-11-24
 review_cycle: quarterly
 ---
 
@@ -28,49 +28,42 @@ Reject now**.
 | 4 | **Nợ phiên bản lớn**: `burn 0.13.2` (hiện tại 0.21.0), `bevy_ecs 0.13.0` (hiện tại 0.19.0). Bevy 0.19 biến `Resource` thành subtrait của `Component` → `impl Resource for BrainModel` thủ công + `unsafe impl Send/Sync` **sẽ vỡ**. | `Cargo.toml`, `ai/model.rs:67-70`, crates.io, migration guide Bevy 0.18→0.19 | Nâng cấp **theo bậc, mỗi bậc một ADR** (C1). Không gộp với thay đổi luật mô phỏng. |
 | 5 | **Determinism nứt ở tầng live.** 8 điểm gọi `thread_rng()` trong đường sim sống, trong khi `exotic_energy.rs` / `experiment_runner.rs` đã ghi rõ "never `thread_rng()`". | `agent_systems.rs:187`, `environmental_systems.rs:134`, `simulation_loop.rs:877`, `world_systems.rs:155,526`, `crossover.rs:45`, `mutation.rs:52`, `map_elites.rs:57` | Đưa RNG thành **resource có seed** (C2). Chặn đường replay và mọi thí nghiệm nghiêm túc nếu không sửa. |
 
-> **Rà lại 2026-11-17 — tài liệu này là một bản ghi có ngày; thân của nó giữ hiện trạng tháng 7.**
-> Mọi khẳng định về repo trong trang đã được đối chiếu với mã và sổ quyết định trên thân cây; không chạy
-> test hay benchmark nào. Phần đề xuất và phần bằng chứng bên ngoài không bị sửa. Số dòng `file:NNN` trong
-> thân là của tháng 7 và nay đã lệch: tìm theo tên symbol.
+> **Rà lại 2026-11-24 (thân cây `f976e66d`; kế tiếp lượt rà 2026-11-17) — tài liệu này là một bản ghi có ngày; thân từ mục 1 trở đi giữ bản ghi baseline 2026-07-25.**
+> Mọi đường dẫn, symbol, phiên bản crate trong repo và số đếm tĩnh đã được đối chiếu bằng đọc mã và `git grep` trên thân cây `f976e66d`; **không** chạy `cargo` test hay benchmark nào trên máy yếu này — mọi số đo thời gian/bộ nhớ/test và số liệu từ bài báo hoặc registry bên ngoài đều giữ nguyên không đổi và đánh dấu `(not re-measured 2026-11-24)`. Số dòng `file:NNN` trong phần baseline tháng 7 đã lệch: tìm theo tên symbol.
 >
-> **Năm phát hiện ở bảng trên, hôm nay:**
+> **Năm phát hiện ở bảng trên, hôm nay (`f976e66d`):**
 >
 > | # | Hôm nay |
 > |---|---|
-> | 1, 2 | **Đã có đường thay thế, tắt mặc định.** Não di truyền theo từng cá thể (`BrainGenotype`) và học trong đời đã triển khai theo [ADR-0003](../decisions/ADR-0003-evolved-per-agent-brains.md). Thí nghiệm E2 so hai đường cho kết quả null vì hiệu ứng sàn, nên mặc định giữ là não dùng chung; xem `STATE_OF_THE_PROJECT.md` §3.1 |
-> | 3 | Không đổi trong thế giới mô phỏng: chưa có tầng kiến tạo. Riêng showcase Map 2 có các mảng Voronoi viết tay, không nối vào mô phỏng |
-> | 4 | Phiên bản chưa đổi, **quyết định đã đổi**. `burn` vẫn 0.13.2; `bevy_ecs` khai `0.13.0` trong `Cargo.toml` và lockfile giải ra 0.13.2. Ngày 2026-11-17 chủ dự án chọn nâng `burn` lên dòng 0.22 (QĐ-C = C, thẻ R1c, chưa làm; lý do là giấy phép của `hexf-parse` và chỗ rò bộ nhớ của đường GPU, xem [roadmap 31/10 §4.3](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được)). `bevy_ecs` hoãn tới sau 1.0. `unsafe impl Send for BrainModel` đã gỡ; còn `unsafe impl Sync`, nay kèm chứng minh và gate; `impl Resource` thủ công vẫn còn, nên rủi ro Bevy 0.19 nêu ở C1 vẫn đúng |
-> | 5 | **Đã đóng.** Không còn lời gọi `thread_rng()` nào dưới `src-tauri/src`; đường sống dùng `SimRng` có seed, và một test quét mã nguồn chặn nó quay lại. Thứ tự lịch tick cũng đã thành một chuỗi khai báo (F-041) |
+> | 1, 2 | **Đã có đường thay thế, tắt mặc định.** Não di truyền theo từng cá thể (`BrainGenotype`, `src-tauri/src/evolution/brain_genotype.rs:165`) và học trong đời đã triển khai theo [ADR-0003](../decisions/ADR-0003-evolved-per-agent-brains.md). Thí nghiệm E2 (`#59`, `9c57184`, `(not re-measured 2026-11-24)`) cho kết quả null (delta = 0 trên 12/12 cặp do hiệu ứng sàn), nên mặc định giữ não dùng chung; xem `docs/planning/STATE_OF_THE_PROJECT.md` §2 & §3.00 |
+> | 3 | **World v2 đã có nền kiến tạo/địa mạo tiền chuyển đổi trong `src-tauri/crates/anima-worldgen/` (`WV2-1`–`WV2-3`, PR `#192`–`#195`, `#199`, `#242`), nhưng đường sống desktop/frontend chưa chuyển sang.** `anima-worldgen` đã cài `tectonic.rs`, ba cơ chế erosion, hydrology/lakes, climate, biomes, caves và `anmw_v3.rs`, cùng `terrain_map_from_v3_sim` (`world_artifact.rs:530`) và `WorldIdentity.sim_world_sha256` (`:136`). Ngược lại, frontend/app hiện hành (`worldGen.ts:17` `WORLD_GEN_VERSION = 22`, `worldArtifact.ts:28` v2) chưa dùng tầng kiến tạo, và reader tiền chuyển đổi chủ động từ chối `ANMW v3` tới `WV2-7` (`world_artifact.rs:245-250,270-275`). Showcase Map 2 vẫn dùng các mảng tách rời |
+> | 4 | **Nâng `burn` đã hoàn thành (`R1c`, PR `#127` ngày 2026-11-18); rủi ro `bevy_ecs` 0.19 vẫn giữ.** `src-tauri/Cargo.toml:55` và `Cargo.lock` đã nâng `burn` lên **`0.22.1`** (`default-features = false`, `flex` + `simd` + `rayon`, GPU tuỳ chọn qua `ml-wgpu = ["burn/wgpu"]` ở `:245` thuộc `desktop` ở `:248`). Cả hai khối `unsafe impl Send` và `unsafe impl Sync` cho `BrainModel` đã bị xoá (`src-tauri/src/ai/model.rs:436-438`, kèm test biên dịch `brain_model_is_send_without_an_unsafe_impl`). `bevy_ecs` giữ `"0.13.0"` trong `Cargo.toml:48` (`0.13.2` trong `Cargo.lock`, hoãn sau 1.0) và `impl bevy_ecs::system::Resource for BrainModel {}` thủ công vẫn còn ở `ai/model.rs:440`, nên rủi ro Bevy 0.19 nêu ở C1 vẫn đúng |
+> | 5 | **Đã đóng.** Không còn lời gọi `thread_rng()` nào ngoài comment/test dưới `src-tauri/src/` (`src-tauri/src/core/rng.rs:3`); đường sống dùng `SimRng` có seed, thứ tự lịch tick là chuỗi khai báo đơn (F-041), và gate `src-tauri/tests/sim_determinism_tests.rs` hiện có `30` hàm `#[test]` (`(not re-measured 2026-11-24)`) |
 >
-> **Các chỗ khác trong thân đã lệch so với mã:**
+> **Các chỗ khác trong thân đã lệch so với mã (`f976e66d`):**
 >
 > | Chỗ trong thân | Hôm nay |
 > |---|---|
-> | §1 baseline: "20.624 dòng, 47 file, single crate" | 93 file `.rs` dưới `src-tauri/src`, cộng crate `anima-domain` trong một workspace |
-> | §1 và bảng ba bậc: backend 128², `to_terrain_map(128, 128)`, `WORLD_GEN_VERSION = 20` | Backend mặc định 256² (mục "Đã làm" bên dưới); `WORLD_GEN_VERSION = 21` |
-> | §1: A2C "trong `simulation_loop.rs`" | Ở `core/training.rs` (`a2c_loss`, `run_training_loop`) |
-> | §1: QD archive là `HashMap`, 80 dòng | `BTreeMap`; trục mô tả nay là `body-mass+trophic-ratio/v2`, vẫn 2D |
-> | §1: ML deps "`burn-wgpu`, GPU qua `ANIMA_USE_GPU`"; C3: "Anima **đã** kéo `wgpu` vào" | `burn-wgpu` là tuỳ chọn sau feature `ml-wgpu` (nằm trong `desktop`), và GPU **tắt mặc định** vì rò bộ nhớ |
-> | "Giá phải trả, đo thật: ~4,2 ms so với ~0,68 ms, ~25% ngân sách khung hình" | Con số đó suy từ một test chạy bản **debug** và không tái lập ở bản release; doc comment của `ResourceField::REGROWTH_STRIDE` ghi lại phép đối chứng. Đừng dùng 25% làm ngân sách |
-> | "Cách giảm, chưa làm: cập nhật trường theo lượt so le" | Đã làm: `ResourceField::REGROWTH_STRIDE = 4` |
-> | A6: "không có chết đói" | Vẫn đúng trên đường mặc định và trong mô hình cohort. Cái chết vì đói và khát nay có ở dạng opt-in (`ANIMA_MORTALITY`, `live.mortality`) |
-> | A0: "`WORLD_DESIGN.md` §2 đã liệt kê 10 khoảng trống" | Bảng đó có 11 hàng |
-> | A3 | `worldGen.ts` đã dùng ma trận Whittaker và đai gió theo vĩ độ; cái còn thiếu là trục gió Bắc–Nam |
-> | B5: "`ExoticEnergy` (AE2)" | Không có kiểu tên đó; module là `core::exotic_energy` (`ExoticEnergyField`) |
-> | Tham chiếu `CREATURE_MORPHOGENESIS.md` | File ở thư mục gốc chỉ còn là trang trỏ; nội dung ở [`docs/explanation/`](../explanation/CREATURE_MORPHOGENESIS.md) |
-> | C2: "`derived_rng(stream)`", "bốn system", "11 test" | `derived_rng(run_seed, stream)`; số system và số test đã tăng, đếm lại trong mã khi cần |
-> | C2: "Còn nợ: save/load chưa mang seed lẫn vị trí draw" | Đã đóng: `SavedSimulationState` mang `sim_rng_seed` và `sim_rng_pos`, và restore tua lại đúng vị trí |
-> | C3: "chưa có benchmark chứng minh nó là nút thắt" | Đã có số Criterion cho `rebuild_spatial_grid_system` ở 10.000 agent (`benchmark_report.json`): dưới một mili giây, không phải nút thắt. Vẫn Defer |
-> | §5: "bậc 1–6 đã hoàn thành qua ADR-0003" | Trong bảng §5 chỉ bậc 1 (C2), 2 (B1), 8 (B4), 0a và 0b đã xong. Bậc 5 (nâng `burn`) đã quyết, chưa làm. Các bậc 3, 4, 6, 7, 9, 10 chưa bắt đầu |
+> | §1 baseline: "20.624 dòng, 47 file, single crate" | **`101` file `.rs` (`61.407` dòng) dưới `src-tauri/src/`** (`342` file `.rs` toàn `src-tauri/`); workspace (`Cargo.toml:85`) hiện gồm crate gốc cộng `crates/anima-domain` và `crates/anima-worldgen` |
+> | §1 và bảng ba bậc: `worldGen.ts` "1.626 dòng", backend 128², `WORLD_GEN_VERSION = 20` | `worldGen.ts` dài `2.075` dòng, `WORLD_GEN_VERSION = 22` (`:17`), `BIOME_COUNT = 22` (`:45`), `SIM_ARTIFACT_SIZE = 256` (`worldCache.ts:7`), backend mặc định `256×256` với `erosion_steps = 80000` / `MAX_EROSION_ITERATIONS = 100_000` (`terrain.rs:72,97-98,107`) |
+> | §1: A2C "trong `simulation_loop.rs`" | Ở `core/training.rs` (`a2c_loss` `:321`, `run_training_loop` `:404`) |
+> | §1: QD archive là `HashMap`, `80` dòng; `ai/cpg.rs` `60` dòng | `map_elites.rs` dài `204` dòng, dùng `BTreeMap` (`:46`) và `DESCRIPTOR_SET_ID = "body-mass+trophic-ratio/v2"` (`:29`); `ai/cpg.rs` dài `58` dòng |
+> | §1: ML deps "`burn 0.13.2` + `burn-wgpu`, GPU qua `ANIMA_USE_GPU`"; C3: "Anima **đã** kéo `wgpu` vào" | `burn 0.22.1`; `burn-wgpu` là tuỳ chọn sau feature `ml-wgpu` (`Cargo.toml:245`, nằm trong `desktop` ở `:248`, loại khỏi bản build mặc định ở G2) và GPU tắt mặc định vì rò bộ nhớ |
+> | §A0-bis / §5: các số đo thời gian & bộ nhớ (`120.000` tick: `509s`/`82s`/`64,8s`/`~4,2 ms`/`~0,68 ms`; EB-S12 `~46.500 agent`) | Các phép đo trước đây dựa trên debug vs release và đối chứng `ResourceField::REGROWTH_STRIDE = 4` (`ecology.rs:348,422`); `(not re-measured 2026-11-24)` — đừng dùng con số 25% debug làm ngân sách release |
+> | "Cách giảm, chưa làm: cập nhật trường theo lượt so le" | Đã làm: `ResourceField::REGROWTH_STRIDE = 4` (`ecology.rs:422`) |
+> | A6: "không có chết đói" | Vẫn đúng trong `AggregatePopulation` / đường mặc định; cái chết vì đói và khát ở agent sống có ở dạng opt-in (`ANIMA_MORTALITY`, `live.mortality` tại `live_experiment.rs:146`, `resources.rs:448`) |
+> | A0: "`WORLD_DESIGN.md` §2 đã liệt kê 10 khoảng trống" | Bảng ở `WORLD_DESIGN.md:107-119` có `11` hàng dữ liệu (`:109-119`) |
+> | A3 | `worldGen.ts:279,370,983,1531` đã dùng ma trận Whittaker và dải khô cận nhiệt đới Hadley; cái còn thiếu ở bản frontend là trục gió Bắc–Nam (bản World v2 ở `anima-worldgen` đang phát triển riêng) |
+> | B5: "`ExoticEnergy` (AE2)" | Không có kiểu tên `ExoticEnergy`; module là `core::exotic_energy` (`ExoticEnergyField`, `ExoticEnergyLaw`) |
+> | Tham chiếu `CREATURE_MORPHOGENESIS.md` | File ở thư mục gốc nay là trang trỏ tới [`docs/explanation/CREATURE_MORPHOGENESIS.md`](../explanation/CREATURE_MORPHOGENESIS.md) (có bản dịch [`CREATURE_MORPHOGENESIS.vi.md`](../explanation/CREATURE_MORPHOGENESIS.vi.md) theo QĐ-DOCLANG) |
+> | C2: "`derived_rng(stream)`", "bốn system", "11 test" | `derived_rng(run_seed, stream)` (`resources.rs:960`); `sim_determinism_tests.rs` hiện có `30` `#[test]` (`(not re-measured 2026-11-24)`) |
+> | C2: "Còn nợ: save/load chưa mang seed lẫn vị trí draw" | Đã đóng: `SavedSimulationState` mang `sim_rng_seed` và `sim_rng_pos` (`simulation_state.rs:520,526`), và restore tua lại đúng vị trí |
+> | C3: "chưa có benchmark chứng minh nó là nút thắt" | `benchmark_report.json:67-74` ghi nhận median Criterion `rebuild_spatial_grid_system/10000` là `0.734456 ms` (`734456.399 ns`, `(not re-measured 2026-11-24)`): dưới một mili giây, không phải nút thắt. Vẫn Defer |
+> | §5: "bậc 1–6 đã hoàn thành qua ADR-0003" | Trong bảng §5: bậc `1` (`C2`), `2` (`B1`), `5` (`C1a`: `burn` `0.22.1`, `#127`), `8` (`B4`), `0a` và `0b` (`A6`) đã triển khai. `A1`, `A2`, `A3`, `A5` đã có cài đặt World v2 tiền chuyển đổi trong `crates/anima-worldgen` (`WV2-1`–`WV2-3`), còn `C1b`, `C3`, `A4`, `B2`, `B3`, `B5`, `B6` vẫn hoãn/chưa bắt đầu |
 >
-> **Số phận các đề xuất:** C2, B1, B4, 0a và 0b/A6 đã triển khai. C1a (nâng `burn`) đã quyết, chưa làm.
-> C1b (nâng `bevy_ecs`) hoãn tới sau 1.0. C3 vẫn hoãn. A1, A2, A4, A5, B2, B5 và B6 chưa có mã, ADR hay
-> thẻ nào. Mười thẻ "thế giới đọc được" merge ngày 2026-11-16 là việc hiển thị và hiệu năng; chúng không
-> thực hiện A1–A5.
+> **Số phận các đề xuất:** `C2`, `B1`, `B4`, `0a`, `0b/A6` và **`C1a` (`burn` `0.22.1`)** đã triển khai. **`A1`, `A2`, `A3`, `A5`** đang triển khai dần trong crate `anima-worldgen` (đã tới `WV2-3`, chờ hiệu chuẩn/chuyển đổi `WV2-4`–`WV2-7`). `C1b` (nâng `bevy_ecs`) hoãn tới sau 1.0; `C3`, `A4`, `B2`, `B3`, `B5`, `B6` chưa có mã hay ADR triển khai. Mười thẻ "thế giới đọc được" merge ngày 2026-11-16 là việc hiển thị và hiệu năng, tách biệt với chuỗi World v2.
 >
-> **Chưa kiểm lại:** các con số trong bài báo, phiên bản "hiện tại" của crate bên ngoài (bảng C1 ghi
-> `burn` 0.21.0 ngày 2026-07-25; sổ quyết định ghi 0.22.1 ngày 2026-11-17) và các link ngoài. Vì thế
-> `last_reviewed` của trang chưa đổi.
+> **Phạm vi đối chiếu 2026-11-24:** Đã kiểm mọi symbol, đường dẫn, cấu hình crate và con số tĩnh trên thân cây `f976e66d`. Không chạy `cargo` test/benchmark trên máy Dell, không mở lại số liệu bài báo, link ngoài hay phiên bản crates.io mới nhất kể từ lần thu thập `2026-07-25` (mọi số thuộc nhóm này mang nhãn `(not re-measured 2026-11-24)`). `last_reviewed` cập nhật lên `2026-11-24`.
 
 **Một kết quả khoa học đáng chú ý cho định hướng "triệu agent":** nghiên cứu 2025 trên
 môi trường sinh thái quy mô lớn (60.000+ agent, tiến hoá thuần, không reward) cho thấy một số
@@ -129,7 +122,7 @@ tức **~1,56 unit/ô**.
 Nâng `MapSettings::default()` lên 256² tốn thêm ~1 MiB và **gấp đôi độ phân giải tuyến tính miễn phí**.
 
 **Phát hiện 2 — độ phân giải map chạm trần TRƯỚC bộ nhớ.** Ghép với EB-S12 (~46.500 agent thường
-trú mỗi GiB trọng số):
+trú mỗi GiB trọng số, `(not re-measured 2026-11-24)`):
 
 | Độ phân giải sim | Số ô | Agent/ô ở 46.500 agent | unit/ô |
 |---|---|---|---|
@@ -161,7 +154,7 @@ bốn số ô là yếu đi bốn lần trên mỗi đơn vị diện tích**. N
 **làm phẳng** địa hình chứ không làm sắc nét hơn — một hồi quy im lặng đúng kiểu tài liệu này liên
 tục gặp. `MAX_EROSION_ITERATIONS` (100.000) vẫn chặn trên.
 
-**Giá phải trả, đo thật:** test 120.000 tick `live_world_conserves_energy_...` chạy **509 giây**,
+**Giá phải trả, đo thật** `(not re-measured 2026-11-24)`: test 120.000 tick `live_world_conserves_energy_...` chạy **509 giây**,
 so với **82 giây** ghi trước đó. Quy ra mỗi tick: **~4,2 ms** so với **~0,68 ms** — tức **~25% ngân
 sách khung hình 60 FPS** cho riêng trường sinh thái, thay vì ~4%.
 
@@ -642,7 +635,7 @@ Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify đ�
 > xong bộ nhớ; chúng đứng **trước** mọi hàng khác. Xem §A0-bis. Các bậc 1–10 dưới đây giữ nguyên thứ
 > tự tương đối của đợt nghiên cứu đầu, và bậc 1–6 đã hoàn thành qua ADR-0003.
 >
-> **0a xong** (256² + so-le trường sinh thái đưa chi phí tick từ 509s về 64,8s, thấp hơn cả 82s ở 128²).
+> **0a xong** (256² + so-le trường sinh thái đưa chi phí tick từ 509s về 64,8s, thấp hơn cả 82s ở 128², `(not re-measured 2026-11-24)`).
 > **0b xong cả hai tầng**: phân tầng nhịp suy nghĩ (`simulation_lod.rs`) và quần thể tổng hợp
 > (`aggregate_population.rs`), kể cả sinh thái cho cohort ngủ. Nhưng phần nâng trần bộ nhớ **chỉ có
 > hiệu lực khi một chunk vượt 8 cá thể**, và ở đó nó **mất đa dạng di truyền có kiểm đếm**. Chi tiết ở §A6.
