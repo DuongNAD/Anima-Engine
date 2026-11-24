@@ -52,6 +52,7 @@ const EVOLUTION_CHECKPOINT_TIMEOUT: Duration = Duration::from_secs(30);
 struct EvolutionCheckpointRequest {
     reply: crossbeam_channel::Sender<SavedEvolutionWorkerState>,
     resume: crossbeam_channel::Receiver<()>,
+    min_node_id_counter: u32,
 }
 
 struct InferenceCheckpointRequest {
@@ -667,6 +668,7 @@ impl SimulationEngine {
 
             'evolution_loop: while running_clone_evo.load(Ordering::SeqCst) {
                 if let Ok(request) = evolution_checkpoint_rx.try_recv() {
+                    node_id_counter = node_id_counter.max(request.min_node_id_counter);
                     let checkpoint = SavedEvolutionWorkerState {
                         rng_seed: evo_rng.seed(),
                         rng_pos: evo_rng.stream_pos(),
@@ -811,6 +813,9 @@ impl SimulationEngine {
                     }
 
                     for stats in &stats_batch {
+                        for node in &stats.genotype.nodes {
+                            node_id_counter = node_id_counter.max(node.id.saturating_add(1));
+                        }
                         // MAP-Elites niche axes = ecological descriptors (body mass × measured
                         // trophic level), normalized so the QD archive illuminates ecological
                         // diversity along an axis fitness cannot rank (branch Q).
@@ -2029,10 +2034,15 @@ impl SimulationEngine {
                         let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
                         let (evolution_resume_tx, evolution_resume_rx) =
                             crossbeam_channel::bounded(1);
+                        let min_node_id_counter = world
+                            .get_resource::<crate::core::agent_systems::NextNodeId>()
+                            .map(|next| next.0)
+                            .unwrap_or(3);
                         evolution_checkpoint_tx
                             .try_send(EvolutionCheckpointRequest {
                                 reply: reply_tx,
                                 resume: evolution_resume_rx,
+                                min_node_id_counter,
                             })
                             .map_err(|error| {
                                 format!(
@@ -2043,7 +2053,7 @@ impl SimulationEngine {
 
                         let deadline = Instant::now() + EVOLUTION_CHECKPOINT_TIMEOUT;
                         let mut observed_inflight_output = false;
-                        let worker_checkpoint = loop {
+                        let mut worker_checkpoint = loop {
                             observed_inflight_output |=
                                 drain_evolution_outputs_for_checkpoint(&mut world);
                             match reply_rx.recv_timeout(Duration::from_millis(10)) {
@@ -2142,6 +2152,22 @@ impl SimulationEngine {
                                     &evolution_settings_clone_save,
                                     &map_elites_grid_clone_save,
                                 );
+                                let required_next_node_id =
+                                    crate::core::simulation_state::restored_next_node_id(&state);
+                                worker_checkpoint.node_id_counter =
+                                    worker_checkpoint.node_id_counter.max(required_next_node_id);
+                                let unified_next_node_id = state
+                                    .next_node_id
+                                    .unwrap_or(3)
+                                    .max(worker_checkpoint.node_id_counter);
+                                state.next_node_id = Some(unified_next_node_id);
+                                if let Some(mut next_node_id) =
+                                    world
+                                        .get_resource_mut::<crate::core::agent_systems::NextNodeId>(
+                                        )
+                                {
+                                    next_node_id.0 = next_node_id.0.max(unified_next_node_id);
+                                }
                                 state.evolution_worker = Some(worker_checkpoint);
                                 state.shared_learning = Some(SavedSharedLearningState {
                                     learner: learner_checkpoint,
