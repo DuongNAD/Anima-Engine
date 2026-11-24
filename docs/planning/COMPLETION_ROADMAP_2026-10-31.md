@@ -283,6 +283,8 @@ mảnh nó cần — một fitness mà sinh thái chạm được, và một cá
 | ~~**QĐ-E2M**~~ | ✅ **ĐÃ QUYẾT 2026-11-16: B — đính chính có ngày và chạy lại thật.** `970d963` (2026-08-25, living-world F1) đã thêm `"live.dormant_eu"` vào bốn manifest E2 **sau** khi E2 chạy (2026-07-27), để giữ xanh `prereg_e2_manifest_tests::the_requested_metrics_are_exactly_what_the_live_adapter_emits`. Từ đó repo không còn giữ các manifest mà run đã dùng, và `check:e2` đỏ ([STATE §1.g](STATE_OF_THE_PROJECT.md#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main)). Người ủy quyền của chủ dự án ở lead session đã chọn B và thực hiện trong PR #59: khối `amendment_1_live_dormant_eu`, chạy lại toàn bộ ensemble, đưa artifact tháng 7 vào `superseded/`. Cùng ngày, ở một phiên khác, chủ dự án lúc đầu chọn A (hoàn nguyên fixture và dời id sang `LIVE_EXTENDED_OBSERVABLE_IDS`) vì chưa biết PR #59 đã merge. Khi được báo, chủ dự án **xác nhận giữ B**. Phiên đó chỉ thêm `src-tauri/tests/e2_frozen_manifest_tests.rs` để `cargo test` cũng bắt được lần sửa fixture sau | Đây là quyết định về tính toàn vẹn của một bản đăng ký trước. Máy chỉ đo được hệ quả của từng phương án, không chọn thay được |
 | ~~**QĐ-C**~~ | ✅ **ĐÃ QUYẾT 2026-11-17 bởi chủ dự án: lối C, nâng `burn`** (xem §4.3). Hàng này vẫn chặn phát hành cho tới khi thẻ nâng `burn` merge và hồ sơ giấy phép được sinh lại. Văn bản gốc: **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
 
+> **Ghi chú (2026-11-24):** `QĐ-C` đã được triển khai ở `R1c` (`#127`, nâng `burn 0.22.1`, tăng `LIVE_MODEL_VERSION` lên `"live-bevy-world/2"`) và phần tồn đọng `utf8-chars@3.0.7` được chốt bởi `QD-C2` (`#175`) cùng `QD-OPENQ` (`2026-11-24`, `PR #255`); xem [ADR-0009](../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md), [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md), và [`AGENT_WORKFLOW.md` §4](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
+
 ### 4.1 Quyết định sau 2026-11-14 (ghi thêm 2026-11-17)
 
 Kế hoạch 13/11 (MP-0.1) đặt sổ quyết định ở mục này, nhưng các quyết định từ 2026-11-16 mới chỉ được ghi ở
@@ -384,6 +386,14 @@ hai dòng cuối):
 | Chặng 4 | ~~Bước kế tiếp của QĐ-SEL1b~~ **Đã quyết 2026-11-18 (QĐ-SEL2a–d, bảng ngay trên).** Lượt đo của thẻ S6 (#110) không tìm ra cấu hình nào vừa đưa standing crop vào dải cần vừa giữ được quần thể. Giữ phương án A với thiết kế khác, hay chuyển sang khan hiếm nước | [Lượt đo thăm dò của S6](../ai/planning/2026-11-17-s6-sel2-exploration.md), mục "Gợi ý cho bước kế tiếp" |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
 | Trước thẻ V0 (CM-102) | Kiểu lưu `EnvironmentSnapshot` có cùng các trường với `EnvSample` hay chỉ một tập con | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
+
+> **Ghi chú (2026-11-24 — tổng hợp quyết định `QD-OPENQ` / `QD-OPENC` / `QD-SHAREDISLAND` / `QD-REL09`, ghi trong `PR #255` tại [`AGENT_WORKFLOW.md` §4](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0)):**
+> - **`QĐ-M1`** (`QD-OPENQ`): đã quyết — `EXECUTION_PLAN` + kế hoạch swarm cho việc, `DIRECTION` cho thứ tự chặng.
+> - **`QĐ-M2`** (`QD-OPENQ`): đã quyết — tách crate sau `v1.0.0`.
+> - **`QĐ-M6`** (`QD-OPENQ`): giữ mức "theo lớp nền tảng"; thực tế ít vướng vì chỉ host mô phỏng (`QD-SHAREDISLAND`) và thí nghiệm chạy trên một họ OS (`QD-OXS`).
+> - **`QĐ-M4` & `QĐ-M8`** (`QD-OPENQ` + `QD-OPENC` + `QD-REL09`): `0.9` phát hành không ký, ký bản cài & tự cập nhật quyết trước `v1.0.0`; nền tảng thứ hai là macOS không ký nếu `NM-2` khớp checksum lớp Windows.
+> - **`QĐ-M5` & `QĐ-M7`** (`QD-SHAREDISLAND` + `QD-OPENQ` + `QD-ADR0014`, [ADR-0014](../decisions/ADR-0014-shared-island-host-and-guests.md), `#256`): đảo chung do host mô phỏng kèm khách LAN là mục tiêu chính (thay phần `Inhabit` cũ của `QĐ-M7`); `Contribute` theo lô giữ nguyên; di cư giữa nhiều host chuyển sang mốc sau (`I10+`). `QĐ-M3` (vận chuyển qua Internet) để mở tới khi mốc LAN 1 chạy xong.
+> - **`LIVE_MODEL_VERSION` & vận động mặc định:** `LIVE_MODEL_VERSION` đã tăng lên `"live-bevy-world/2"` ở `R1c` (`#127`, [ADR-0009](../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md)); vận động mặc định (và `brain_metabolic_cost`) giữ tắt trong app desktop cho tới lát đảo chung (hồ sơ sinh thái thời gian thực bật riêng trên đảo) theo `QD-OPENC`.
 
 ### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
 

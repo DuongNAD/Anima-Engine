@@ -58,6 +58,7 @@ fn reference_base_manifest(duration_ticks: u64, seed: u64) -> ExperimentManifest
             height: 64,
             checksum: 0xBEEF_CAFE,
             sim_world_sha256: None,
+            genesis_phase: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![
@@ -79,6 +80,7 @@ fn reference_base_manifest(duration_ticks: u64, seed: u64) -> ExperimentManifest
             "detritus".into(),
         ],
         exotic_interventions: Vec::new(),
+        island: None,
     }
 }
 
@@ -103,6 +105,7 @@ fn live_base_manifest(duration_ticks: u64, seed: u64) -> ExperimentManifest {
         observable_ids: LIVE_OBSERVABLE_IDS.iter().map(|s| s.to_string()).collect(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

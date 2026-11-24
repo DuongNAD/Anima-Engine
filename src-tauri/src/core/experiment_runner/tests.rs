@@ -25,6 +25,7 @@ fn baseline_manifest(seeds: Vec<u64>) -> ExperimentManifest {
         experiment_id: "ref-baseline".into(),
         name: "ref-baseline".into(),
         observer: crate::core::observer::ObserverPolicy::default(),
+        island: None,
         world_identity: WorldIdentity::default(),
         laws: WorldLawSet::baseline(),
         initial_conditions: ref_init(),

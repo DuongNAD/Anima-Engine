@@ -127,10 +127,10 @@ When `LifecyclePolicy` is enabled:
 **Gating prerequisite:** Owner accepts `ADR-0013` via `QD-LIFECYCLE`, resolving **`D1`** (asexual single-parent vs bi-parental mating), **`D2`** (deterministic age ceiling vs stochastic Gompertz hazard), **`D3`** (fixed birth body vs multi-stage collider growth), **`D4`** (`litter_size = 1` vs multi-offspring), and **`D5`** (opt-in vs desktop default).
 
 Additional `V3`-specific implementation decisions:
-- **`D-V3-1` (Opt-in `V3` observables excluded from `all_live_observable_ids()`):**
+- **`D-V3-1` (Opt-in `V3` observables excluded from `all_live_observable_ids()`):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (opt-in `LIVE_LIFECYCLE_OBSERVABLE_IDS` excluded from `all_live_observable_ids()`).
   - **Option A (Recommended):** Expose `LIVE_LIFECYCLE_OBSERVABLE_IDS` (`live.juvenile_count`, `live.adult_count`, `live.senescent_count`, `live.mean_age_ticks`, `live.deaths_senescence`) in an opt-in constant **excluded** from `LIVE_OBSERVABLE_IDS` (`12`) and `LIVE_EXTENDED_OBSERVABLE_IDS` (`16`) at `live_experiment.rs:1589, 1632` (matching AE3 / `V1` `D-V1-2` so frozen manifests stay intact), enforcing `ensure_observables_supported` (`:849`) when `live.lifecycle = 0`.
   - **Option B:** Expose lifecycle telemetry exclusively via existing `VitalStatistics` / `DemographicCensusState` without adding experiment observable IDs yet.
-- **`D-V3-2` (Aging while dormant in `DormantAgents` / `DormantCohorts`):**
+- **`D-V3-2` (Aging while dormant in `DormantAgents` / `DormantCohorts`):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (freeze chronological aging while dormant in `DormantAgents`/`DormantCohorts`).
   - **Option A (Recommended):** Freeze chronological aging inside `DormantAgents` hibernation (cryptobiosis) **and** inside `DormantCohorts` (`aggregate_population.rs:1334`), carrying exact saved `LifecycleState` across `HibernateAgentCommand`/`WakeAgentCommand` and `DehydrateAgentCommand`/`RehydrateCommand`.
   - **Option B:** Advance `ArchivedIndividual.lifecycle.age_ticks` per tick inside `dormant_cohort_ecology_system` (`:1334`), triggering senescence culling inside dormant chunks.
 

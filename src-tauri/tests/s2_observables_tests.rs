@@ -531,6 +531,7 @@ fn paired_drift_run_emits_s2_observables_in_both_selected_and_drift_arms() {
         observable_ids: observable_ids.clone(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     };
     let mut drf_vals = sel_manifest.initial_conditions.values.clone();
     drf_vals.push((LIVE_KEY_DRIFT_CONTROL.to_string(), 1.0));
