@@ -1,10 +1,13 @@
 //! Preregistration lock and preflight validation for E3b (`2026-11-24-e3b-preregistration.md`).
 //!
 //! Static verification only: validates all 7 fixtures in `tests/fixtures/experiments_e3b/`,
-//! checks the 31-key partition (`20` explicit + `11` default-absent), confirms 64 R1 seeds
-//! (`810001..=873001`, capped at `N <= 70`), enforces disjointness from `880001..=880012` and
-//! all prior experiments, enforces zero `trait_mass` observables in smoke/pre-run paths, verifies
-//! engine preflight failure on missing required keys, and includes negative-control failure tests.
+//! checks the pinned freeze-time 31-key partition (`20` explicit + `11` default-absent) and
+//! 28 live observables on trunk `b0413f2`, enforces that any post-freeze keys added to
+//! `LIVE_KEYS` carry an absent-means-legacy (`0.0 == Default`) default (`QD-BIO-D2` / `C12`),
+//! confirms 64 R1 seeds (`810001..=873001`, capped at `N <= 70`), enforces disjointness from
+//! `880001..=880012` and all prior experiments, enforces zero `trait_mass` observables in
+//! smoke/pre-run paths, verifies engine preflight failure on missing required keys, and includes
+//! negative-control failure tests.
 //! Never executes any simulation seed and never reads any empirical `trait_mass` output.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -73,6 +76,76 @@ const REQUIRED_SHARED_KEYS: [(&str, f64); 19] = [
     (LIVE_KEY_STRICT_PREY_CAP, 1.0),
     (LIVE_KEY_DEHYDRATION_TICKS, 960.0),
     (LIVE_KEY_MUTATION_RATE, 0.05),
+];
+
+/// Exact 31 `LIVE_KEYS` present at E3b freeze (`b0413f2`). Future opt-in keys may extend
+/// `LIVE_KEYS` without breaking E3b's frozen manifest partition provided every post-freeze key
+/// preserves absent-means-legacy semantics (`0.0` leaves `LiveWorldConfig::default()` unchanged).
+const E3B_FREEZE_LIVE_KEYS: [&str; 31] = [
+    "live.founders",
+    "live.founder_layout",
+    "live.founder_genotype",
+    "live.predator_fraction",
+    "live.trees",
+    "live.lakes",
+    "live.lake_layout",
+    "live.food_cap",
+    "live.evolved_brains",
+    "live.mortality",
+    "live.reproduction",
+    "live.locomotion",
+    "live.drive_floor",
+    "live.thirst_steering",
+    "live.grass_steering",
+    "live.mutation_rate",
+    "live.starve_ticks",
+    "live.dehydration_ticks",
+    "live.ecological_fitness",
+    "live.w_surplus",
+    "live.kill_hydration",
+    "live.kill_efficiency",
+    "live.target_min_energy",
+    "live.prey_cap",
+    "live.resource_capacity_scale",
+    "live.plant_reserve",
+    "live.drift_control",
+    "live.drift_reset_ticks",
+    "live.land_mask",
+    "live.strict_prey_cap",
+    "live.lineage_tracking",
+];
+
+/// Exact 28 live observables (in emission order) present at E3b freeze (`b0413f2`). Additive
+/// post-freeze observables may be appended after these 28 without invalidating E3b manifests.
+const E3B_FREEZE_OBSERVABLE_IDS: [&str; 28] = [
+    "plants",
+    "detritus",
+    "live.animals_eu",
+    "live.dormant_eu",
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.herbivore_count",
+    "live.predator_count",
+    "live.food_items",
+    "live.standing_crop",
+    "live.mean_agent_energy",
+    "live.season_phase",
+    "live.trait_mass_mean",
+    "live.trait_mass_var",
+    "live.trait_mass_p10",
+    "live.trait_mass_p90",
+    "live.shannon",
+    "live.simpson",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.archive_coverage",
+    "live.deaths_starvation",
+    "live.deaths_dehydration",
+    "live.mean_energy_integral",
+    "live.trait_mass_mean_west",
+    "live.trait_mass_mean_east",
+    "live.cumulative_mean_lifespan",
 ];
 
 fn crate_root() -> PathBuf {
@@ -166,15 +239,42 @@ fn validate_smoke_blindness(m: &ExperimentManifest, name: &str) -> Result<(), St
             ));
         }
     }
-    let expected_smoke: Vec<String> = all_live_observable_ids()
-        .into_iter()
+    let expected_smoke: Vec<String> = E3B_FREEZE_OBSERVABLE_IDS
+        .iter()
+        .copied()
         .filter(|id| !id.contains("trait_mass"))
         .map(str::to_string)
         .collect();
+    if expected_smoke.len() != 22 {
+        return Err(format!(
+            "E3B_FREEZE_OBSERVABLE_IDS yielded {} non-mass observables, expected 22",
+            expected_smoke.len()
+        ));
+    }
     if m.observable_ids != expected_smoke {
         return Err(format!(
-            "{name}: smoke observable_ids drifted from the 22 non-mass live observables"
+            "{name}: smoke observable_ids drifted from the 22 non-mass E3b freeze observables"
         ));
+    }
+    Ok(())
+}
+
+fn validate_freeze_observables(freeze_obs: &[&str], emitted: &[&str]) -> Result<(), String> {
+    let unique: BTreeSet<&str> = freeze_obs.iter().copied().collect();
+    if unique.len() != freeze_obs.len() {
+        return Err("freeze observable list contains duplicates".to_string());
+    }
+    if emitted.len() < freeze_obs.len() {
+        return Err(format!(
+            "emitted observable count {} is less than pinned {} E3b freeze observables",
+            emitted.len(),
+            freeze_obs.len()
+        ));
+    }
+    if &emitted[..freeze_obs.len()] != freeze_obs {
+        return Err(
+            "first 28 emitted live observables drifted from the E3b freeze order".to_string(),
+        );
     }
     Ok(())
 }
@@ -182,8 +282,25 @@ fn validate_smoke_blindness(m: &ExperimentManifest, name: &str) -> Result<(), St
 fn validate_key_partition(
     manifests: &[(&str, &ExperimentManifest)],
     defaults_obj: &serde_json::Map<String, serde_json::Value>,
+    freeze_keys: &[&str],
+    current_live_keys: &[&str],
 ) -> Result<(), String> {
-    let live_keys: BTreeSet<String> = LIVE_KEYS.iter().map(|s| (*s).to_string()).collect();
+    let freeze_set: BTreeSet<String> = freeze_keys.iter().map(|s| (*s).to_string()).collect();
+    if freeze_set.len() != freeze_keys.len() {
+        return Err("freeze key list contains duplicates".to_string());
+    }
+    let current_set: BTreeSet<String> =
+        current_live_keys.iter().map(|s| (*s).to_string()).collect();
+    if current_set.len() != current_live_keys.len() {
+        return Err("current LIVE_KEYS contains duplicates".to_string());
+    }
+    if !freeze_set.is_subset(&current_set) {
+        let removed: Vec<String> = freeze_set.difference(&current_set).cloned().collect();
+        return Err(format!(
+            "current LIVE_KEYS dropped E3b freeze-time keys: {removed:?}"
+        ));
+    }
+
     let mut defaults = BTreeMap::new();
     for (k, v) in defaults_obj {
         let val = v
@@ -210,9 +327,12 @@ fn validate_key_partition(
             ));
         }
         let combined: BTreeSet<String> = explicit.union(&default_keys).cloned().collect();
-        if combined != live_keys {
+        if combined != freeze_set {
+            let missing: Vec<String> = freeze_set.difference(&combined).cloned().collect();
+            let extra: Vec<String> = combined.difference(&freeze_set).cloned().collect();
             return Err(format!(
-                "{name}: explicit U default_keys_left_absent != LIVE_KEYS"
+                "{name}: explicit U default_keys_left_absent != freeze keys \
+                 (missing={missing:?}, extra={extra:?})"
             ));
         }
     }
@@ -227,6 +347,48 @@ fn validate_key_partition(
         if parsed != engine_default {
             return Err(format!(
                 "default_keys_left_absent '{k}' = {v} differs from LiveWorldConfig::default()"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_post_freeze_keys_default_to_legacy(
+    freeze_keys: &[&str],
+    current_live_keys: &[&str],
+    e3b_base_ic: &InitialConditionSet,
+) -> Result<(), String> {
+    let freeze_set: BTreeSet<&str> = freeze_keys.iter().copied().collect();
+    let engine_default = LiveWorldConfig::default();
+    let base_cfg = LiveWorldConfig::from_initial_conditions(e3b_base_ic)
+        .map_err(|e| format!("failed to parse E3b baseline initial conditions: {e}"))?;
+
+    for &key in current_live_keys {
+        if freeze_set.contains(key) {
+            continue;
+        }
+        let parsed = LiveWorldConfig::from_initial_conditions(&InitialConditionSet::new(vec![(
+            key.to_string(),
+            0.0,
+        )]))
+        .map_err(|e| {
+            format!("post-freeze key '{key}' does not accept absent-means-legacy value 0.0: {e}")
+        })?;
+        if parsed != engine_default {
+            return Err(format!(
+                "post-freeze key '{key}' = 0.0 differs from LiveWorldConfig::default() \
+                 (missing absent-means-legacy default)"
+            ));
+        }
+
+        let mut with_key = e3b_base_ic.clone();
+        with_key.values.push((key.to_string(), 0.0));
+        let parsed_with_key = LiveWorldConfig::from_initial_conditions(&with_key).map_err(|e| {
+            format!("post-freeze key '{key}' = 0.0 rejected alongside E3b baseline: {e}")
+        })?;
+        if parsed_with_key != base_cfg {
+            return Err(format!(
+                "post-freeze key '{key}' = 0.0 perturbs E3b baseline LiveWorldConfig"
             ));
         }
     }
@@ -415,14 +577,18 @@ fn explicit_and_default_keys_partition_all_31_live_keys_and_match_engine_default
         .as_object()
         .expect("default_keys_left_absent must be an object");
     assert_eq!(
-        LIVE_KEYS.len(),
+        E3B_FREEZE_LIVE_KEYS.len(),
         31,
-        "expected 31 LIVE_KEYS on trunk b0413f2"
+        "E3b freeze pins the 31 LIVE_KEYS on trunk b0413f2"
+    );
+    assert!(
+        LIVE_KEYS.len() >= E3B_FREEZE_LIVE_KEYS.len(),
+        "LIVE_KEYS must contain at least the 31 E3b freeze-time keys"
     );
     assert_eq!(
         defaults_obj.len(),
         11,
-        "E3b declares 20 explicit keys + 11 default-absent keys = 31 LIVE_KEYS"
+        "E3b declares 20 explicit keys + 11 default-absent keys = 31 E3b freeze-time keys"
     );
 
     let loaded: Vec<(&str, ExperimentManifest)> = ALL_MANIFESTS
@@ -430,8 +596,14 @@ fn explicit_and_default_keys_partition_all_31_live_keys_and_match_engine_default
         .map(|&n| (n, load_manifest(n)))
         .collect();
     let refs: Vec<(&str, &ExperimentManifest)> = loaded.iter().map(|(n, m)| (*n, m)).collect();
-    validate_key_partition(&refs, defaults_obj)
+    validate_key_partition(&refs, defaults_obj, &E3B_FREEZE_LIVE_KEYS, &LIVE_KEYS)
         .unwrap_or_else(|e| panic!("key partition check failed: {e}"));
+    validate_post_freeze_keys_default_to_legacy(
+        &E3B_FREEZE_LIVE_KEYS,
+        &LIVE_KEYS,
+        &loaded[0].1.initial_conditions,
+    )
+    .unwrap_or_else(|e| panic!("post-freeze legacy-default check failed: {e}"));
 
     // Spot-check all section 1.1 overrides explicitly demanded by E3B-FREEZE.
     for (name, m) in &refs {
@@ -577,19 +749,23 @@ fn sixty_four_seeds_match_r1_formula_cap_and_are_disjoint_from_all_calibration_a
 #[test]
 fn no_trait_mass_observable_in_smoke_manifests_or_pre_run_artifact_paths() {
     let reg = ObservableRegistry::live_default();
-    let all_emitted: Vec<String> = all_live_observable_ids()
-        .into_iter()
+    let all_emitted: Vec<&str> = all_live_observable_ids();
+    assert_eq!(
+        E3B_FREEZE_OBSERVABLE_IDS.len(),
+        28,
+        "E3b freeze pins the 28 live observables on trunk b0413f2"
+    );
+    validate_freeze_observables(&E3B_FREEZE_OBSERVABLE_IDS, &all_emitted)
+        .unwrap_or_else(|e| panic!("freeze observable pin failed: {e}"));
+
+    let expected_conf: Vec<String> = E3B_FREEZE_OBSERVABLE_IDS
+        .iter()
+        .copied()
         .map(str::to_string)
         .collect();
-    assert_eq!(
-        all_emitted.len(),
-        28,
-        "expected 28 live observables on b0413f2"
-    );
-
     for name in [CONTROL, CONTROL_SCARCITY, TREATMENT] {
         let m = load_manifest(name);
-        assert_eq!(m.observable_ids, all_emitted, "{name}");
+        assert_eq!(m.observable_ids, expected_conf, "{name}");
         for id in &m.observable_ids {
             assert!(reg.get(id).is_some(), "{name} missing '{id}' in registry");
         }
@@ -777,14 +953,125 @@ fn negative_controls_fail_when_a_manifest_or_rule_is_wrong() {
 
     // Control 5: Missing a key from default_keys_left_absent breaks the 31-key partition.
     let p = prereg();
-    let mut broken_defaults = p["default_keys_left_absent"]
+    let defaults_obj = p["default_keys_left_absent"]
         .as_object()
-        .expect("defaults object")
-        .clone();
+        .expect("defaults object");
+    let mut broken_defaults = defaults_obj.clone();
     broken_defaults.remove("live.lineage_tracking");
     assert!(
-        validate_key_partition(&[(CONTROL, &cu)], &broken_defaults).is_err(),
+        validate_key_partition(
+            &[(CONTROL, &cu)],
+            &broken_defaults,
+            &E3B_FREEZE_LIVE_KEYS,
+            &LIVE_KEYS,
+        )
+        .is_err(),
         "broken 31-key partition must fail"
+    );
+
+    // Control 6 (QD-BIO-D2 negative control 1): Removing any freeze-time key (explicit or
+    // default-absent) from E3B_FREEZE_LIVE_KEYS must fail partition validation.
+    let without_founders: Vec<&str> = E3B_FREEZE_LIVE_KEYS
+        .iter()
+        .copied()
+        .filter(|&k| k != LIVE_KEY_FOUNDERS)
+        .collect();
+    assert!(
+        validate_key_partition(
+            &[(CONTROL, &cu)],
+            defaults_obj,
+            &without_founders,
+            &LIVE_KEYS,
+        )
+        .is_err(),
+        "removing explicit freeze-time key live.founders must fail"
+    );
+    let without_lineage: Vec<&str> = E3B_FREEZE_LIVE_KEYS
+        .iter()
+        .copied()
+        .filter(|&k| k != "live.lineage_tracking")
+        .collect();
+    assert!(
+        validate_key_partition(
+            &[(CONTROL, &cu)],
+            defaults_obj,
+            &without_lineage,
+            &LIVE_KEYS,
+        )
+        .is_err(),
+        "removing default-absent freeze-time key live.lineage_tracking must fail"
+    );
+
+    // Control 7 (QD-BIO-D2 negative control 2): Post-freeze key without an absent-means-legacy
+    // (0.0 == LiveWorldConfig::default()) default must fail, whereas a genuine 0.0 == default()
+    // opt-in key passes.
+    let without_w_surplus: Vec<&str> = E3B_FREEZE_LIVE_KEYS
+        .iter()
+        .copied()
+        .filter(|&k| k != "live.w_surplus")
+        .collect();
+    let err_w_surplus = validate_post_freeze_keys_default_to_legacy(
+        &without_w_surplus,
+        &LIVE_KEYS,
+        &cu.initial_conditions,
+    )
+    .expect_err("post-freeze key whose Default != 0.0 (live.w_surplus) must fail");
+    assert!(
+        err_w_surplus.contains("live.w_surplus"),
+        "expected error naming live.w_surplus, got: {err_w_surplus}"
+    );
+
+    let without_kill_eff: Vec<&str> = E3B_FREEZE_LIVE_KEYS
+        .iter()
+        .copied()
+        .filter(|&k| k != "live.kill_efficiency")
+        .collect();
+    let err_kill_eff = validate_post_freeze_keys_default_to_legacy(
+        &without_kill_eff,
+        &LIVE_KEYS,
+        &cu.initial_conditions,
+    )
+    .expect_err("post-freeze key rejecting 0.0 (live.kill_efficiency) must fail");
+    assert!(
+        err_kill_eff.contains("live.kill_efficiency"),
+        "expected error naming live.kill_efficiency, got: {err_kill_eff}"
+    );
+
+    let mut extended_unknown = LIVE_KEYS.to_vec();
+    extended_unknown.push("live.post_freeze_no_default");
+    assert!(
+        validate_post_freeze_keys_default_to_legacy(
+            &E3B_FREEZE_LIVE_KEYS,
+            &extended_unknown,
+            &cu.initial_conditions,
+        )
+        .is_err(),
+        "unknown post-freeze key without absent-means-legacy default must fail"
+    );
+
+    // Positive control: a true opt-in key (0.0 == LiveWorldConfig::default()) passes.
+    validate_post_freeze_keys_default_to_legacy(
+        &without_lineage,
+        &LIVE_KEYS,
+        &cu.initial_conditions,
+    )
+    .expect("opt-in 0.0 == default() key must pass post-freeze legacy-default check");
+
+    // Control 8: Observable pin allows appended post-freeze observables and rejects prefix drift.
+    let mut extended_obs = E3B_FREEZE_OBSERVABLE_IDS.to_vec();
+    extended_obs.push("live.future_observable");
+    validate_freeze_observables(&E3B_FREEZE_OBSERVABLE_IDS, &extended_obs)
+        .expect("appending a post-freeze observable must keep E3b observable pin green");
+    assert!(
+        validate_freeze_observables(&E3B_FREEZE_OBSERVABLE_IDS, &E3B_FREEZE_OBSERVABLE_IDS[..27],)
+            .is_err(),
+        "dropping a pinned freeze-time observable must fail"
+    );
+    let mut swapped_obs = E3B_FREEZE_OBSERVABLE_IDS;
+    swapped_obs.swap(0, 1);
+    assert!(
+        validate_freeze_observables(&E3B_FREEZE_OBSERVABLE_IDS, &swapped_obs).is_err(),
+        "reordering pinned freeze-time observables must fail"
     );
 }
 
