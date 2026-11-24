@@ -1,0 +1,149 @@
+{
+  "build": {
+    "binary_sha256": "645564b730c43bbb1e51a247e8530f5cd93b15231e1ca16824fb00e81e603413",
+    "git_commit": "8d52341549007a50ce033a6d272c5dd22a71b1b1",
+    "git_describe": "8d52341",
+    "git_dirty_paths": [
+      "artifacts/experiments/e3b-productivity-gradient-body-mass/confirmation/"
+    ],
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "kind": "e3b-confirmation-provenance",
+  "manifests": {
+    "manifest_fingerprints_as_run": {
+      "control_uniform": 14299543473600062115,
+      "control_uniform_scarcity": 16332406196886288721,
+      "treatment_gradient": 6859793258695844398
+    },
+    "sha256_as_committed": {
+      "e3b-control-uniform-scarcity.json": "958fc7cfbb2e987420369daff014e94dc5af129747884bbec2216697c51ddba1",
+      "e3b-control-uniform.json": "520ce6c635e2edc773cc14a9305bb89c168f5be0d9bad8108393094962f85906",
+      "e3b-preregistration.json": "55fd16b9ca1bb1c5f1ad54da4ac8c9ad00bae9cec0fa29626237f3786b7aa5d6",
+      "e3b-treatment-gradient.json": "b3ae17a01543802ae26e36c9e94876fc211abb15fd2418e07b6311c82446a4f9"
+    }
+  },
+  "mode": "ensemble",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "preregistration_id": "e3b-productivity-gradient-body-mass",
+  "preregistration_status": "FROZEN",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "registry_fingerprint": 1935740381389641332,
+  "seeds": {
+    "execution_order": [
+      810001,
+      811001,
+      812001,
+      813001,
+      814001,
+      815001,
+      816001,
+      817001,
+      818001,
+      819001,
+      820001,
+      821001,
+      822001,
+      823001,
+      824001,
+      825001,
+      826001,
+      827001,
+      828001,
+      829001,
+      830001,
+      831001,
+      832001,
+      833001,
+      834001,
+      835001,
+      836001,
+      837001,
+      838001,
+      839001,
+      840001,
+      841001,
+      842001,
+      843001,
+      844001,
+      845001,
+      846001,
+      847001,
+      848001,
+      849001,
+      850001,
+      851001,
+      852001,
+      853001,
+      854001,
+      855001,
+      856001,
+      857001,
+      858001,
+      859001,
+      860001,
+      861001,
+      862001,
+      863001,
+      864001,
+      865001,
+      866001,
+      867001,
+      868001,
+      869001,
+      870001,
+      871001,
+      872001,
+      873001
+    ],
+    "n_requested": 64,
+    "smoke_seed": 999953,
+    "total_runs_executed": 192
+  },
+  "smoke_reference": {
+    "git_commit": "ed634d8c0e646d6a78ca9e079f7bb5346d2d8b93",
+    "host_arch": "x86_64",
+    "host_os": "windows",
+    "profile": "release",
+    "provenance_sha256": "346210c095e632136d1fbf37832584a45a01babcdf725c956f2912d3cf563516",
+    "smoke_dir": "artifacts/experiments/e3b-productivity-gradient-body-mass/smoke",
+    "smoke_report_sha256": "003685a5b53d4b6278ea15e6c5de0ade4323fbb7447d68ac22a7c3b98d0840d6",
+    "world_identity_observed": {
+      "checksum": 3152323152,
+      "generator_version": 1,
+      "height": 256,
+      "seed": 1337,
+      "width": 256
+    },
+    "wp2_passed": true
+  },
+  "stop_reason": null,
+  "stopped_early": false,
+  "terrain_source": "generated",
+  "timing": {
+    "ended_utc": "2026-11-24T05:33:32Z",
+    "started_utc": "2026-11-24T05:28:11Z",
+    "wall_clock_seconds": 321.0087407
+  },
+  "world_artifact_prerun_check": {
+    "anima_world_artifact_unset": true,
+    "temp_artifact_absent": true,
+    "temp_artifact_filename": "anima_world_artifact.anmw",
+    "temp_artifact_path": "C:/Users/Admin/AppData/Local/Temp/anima_world_artifact.anmw"
+  },
+  "world_identity": {
+    "checksum": 3152323152,
+    "generator_version": 1,
+    "height": 256,
+    "seed": 1337,
+    "width": 256
+  },
+  "world_identity_all_runs_identical": true
+}
