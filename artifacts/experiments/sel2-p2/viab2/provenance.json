@@ -1,0 +1,67 @@
+{
+  "experiment": "sel2-p2-viab2",
+  "card": "C5b. SEL2P2-VIAB2",
+  "mass_observables_excluded": true,
+  "blind_mode": "survival_and_gate_metrics_only",
+  "allowed_non_drift_observables": [
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.standing_crop",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.deaths_starvation",
+    "live.deaths_dehydration"
+  ],
+  "allowed_drift_observables": [
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.standing_crop",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan"
+  ],
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "generated_utc": "2026-11-24T09:03:59Z",
+  "command_line": [
+    "--layout",
+    "0",
+    "--seeds",
+    "880001..=880012",
+    "--duration-ticks",
+    "200000",
+    "--sample-period",
+    "50",
+    "--drift-reset-ticks",
+    "2000",
+    "--min-surviving-baseline",
+    "6",
+    "--jobs",
+    "8",
+    "--checkpoint-dir",
+    "C:\\Users\\Admin\\AppData\\Local\\Temp\\viab2_ckpt",
+    "--out",
+    "artifacts\\experiments\\sel2-p2\\viab2"
+  ],
+  "git_commit": "ad8045803b285d6d9ec3037c057b2c6059fe1344",
+  "git_tree_dirty": false,
+  "rustc_version": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "binary_path": "E:\\.smart_drive_caches\\cargo-target\\release\\examples\\run_viab2_probe.exe",
+  "binary_sha256": "2f6f3b1d7d57c70f23792aa207507d59de5a0cdd7441302214606564d70503ff",
+  "host_os": "windows",
+  "host_arch": "x86_64",
+  "preflight_world_artifact_unset": true,
+  "preflight_gpu_disabled": true,
+  "preflight_temp_artifact_absent": true,
+  "cells": [
+    {
+      "cell_id": "viab2_fg1_s075_k2k_fl0",
+      "file": "viab2_fg1_s075_k2k_fl0.json",
+      "sha256": "aed68b80ea60757d58abf5e83e36dc0c9aa84e24ed9b5f63d561939517be0958",
+      "layout": 0,
+      "d1a_survival_pass": true,
+      "d2b_escalation_recommended": false
+    }
+  ]
+}

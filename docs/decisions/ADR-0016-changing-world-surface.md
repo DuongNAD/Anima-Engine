@@ -12,21 +12,22 @@ superseded_by: none
 
 > **Status: `proposed` — awaiting owner acceptance and decisions `D-WCHG-1`–`D-WCHG-6`.**
 > Do **not** begin Rust or frontend implementation of world-surface change until the owner accepts
-> this ADR and resolves `D-WCHG-1`–`D-WCHG-6` (and note `QD-BIO-D2`: any new `live.*` key or
-> observable waits for `C12 E3B-PIN` merge).
+> this ADR and resolves `D-WCHG-1`–`D-WCHG-6` (and note `QD-BIO-D2`: any new post-freeze `live.*` key or
+> observable must obey the merged `C12 E3B-PIN` `#260` default-to-legacy partition in
+> `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`).
 > Initiated per `QD-LIFE` extension (`MSG_20261124_130000`, `133000`) and owner decision
 > **`QD-BIO-D3`** (`MSG_20261124_133000_from_owner_research_decisions_dell.md`, `PR #255`).
 > Code anchors below are verified on `origin/feat/ecological-selection` at trunk commit
-> `902e505d58dbe034a1771bcea352742c296985d9`.
+> `e7b99745c59d7da35e884dd9414122b1d24fc648`.
 
 ---
 
-## 1. Context & Verified Baseline (`902e505`)
+## 1. Context & Verified Baseline (`e7b99745`)
 
 Under the owner's `QD-LIFE` extension (*"change must also apply to the map"*), the physical landscape
 cannot remain permanently static from genesis to infinity. Changing the world while preserving
 scientific reproducibility and 60 Hz performance must respect five trunk invariants verified at
-`902e505d58dbe034a1771bcea352742c296985d9`:
+`e7b99745c59d7da35e884dd9414122b1d24fc648`:
 
 1. **Pinned Immutable Base Artifact (`ADR-0010`, `world_artifact.rs`):**
    - [`ADR-0010`](ADR-0010-pinned-world-artifact.md) defines `WorldArtifact` (`ANMW v2` at
@@ -58,8 +59,9 @@ scientific reproducibility and 60 Hz performance must respect five trunk invaria
      (`deposition.rs:51-76`), lakes/waterfalls, climate, biomes, and caves, emitting `AnmwV3Sim`
      (`anmw_v3.rs:106-124`) and baked `4096²` textures consumed by `WorldTerrainLod`
      (`src/components/Landscape/WorldTerrainLod.tsx:26-42`).
-   - Solver physics work established in `WV2-2-PHYS` ([`2026-11-23-wv2-2.md`](../ai/planning/2026-11-23-wv2-2.md) `:132-160, 1117-1340`)
-     and follow-up `WV2-PHYS2` under `MAP-D4` provide the physical erosion/uplift engine and quantitative
+   - Solver physics work established in `WV2-2-PHYS` ([`2026-11-23-wv2-2.md`](../ai/planning/2026-11-23-wv2-2.md) `:132-160, 1117-1340`),
+     the offline bake engine in `WV2-5` (`#265`, [`2026-11-24-wv2-5.md`](../ai/planning/2026-11-24-wv2-5.md)), and follow-up
+     `WV2-PHYS2` under `MAP-D4` provide the physical erosion/uplift/bake engine and quantitative
      verification suite (`G-SHAPE`, `G-COMP v2`, `G-SIM` at
      `src-tauri/tests/world_v2_sim_gate_tests.rs:1-16`,
      [`2026-11-20-world-v2-design.md`](../ai/design/2026-11-20-world-v2-design.md)).
@@ -113,7 +115,7 @@ Landscape dynamics decompose by physical timescale and implementation order:
    - **Wildfire & ash biomass accounting (`EnergyLedger`):** Under default closed EU (`open_energy_flow = None`,
      `src-tauri/crates/anima-domain/src/energy.rs:49-83, 123`), wildfire-burned plant biomass
      transfers `Compartment::Plants -> Compartment::Detritus` (`|closed_total_eu - baseline| <= 1e-3`).
-     Only when planned `ADR-0018` `OpenEnergyFlowLaw` is active does radiative combustion heat exit via
+     Only when [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263` merged) `OpenEnergyFlowLaw` is active does radiative combustion heat exit via
      declared boundary sink `EnergyEvent::RespiredHeatLoss` while ash/char enters `Detritus` & soil `N`/`organic` (`|R_open| <= 1e-3`).
    - **Organism disturbance costs strictly through `total_cost` (`CLAUDE.md` hard rule):** Every
      continuous organism stressor caused by surface change (tsunami saltwater stress under `D-WCHG-3`,
@@ -201,12 +203,12 @@ Landscape dynamics decompose by physical timescale and implementation order:
 - **Explicit `AE-S12` causal mechanism chain (`CausalLedger`):**
   Every Tier-2 disturbance and Tier-3 era transition records verifiable multi-hop edges:
   `geophysical_or_climate_event (CauseId) -> terrain_or_overlay_delta -> habitat_or_barrier_shift -> altered_selection_or_dispersal -> lineage_divergence`
-  so the chronicle (`ADR-0014` `I8` track) reports empirically verified history (*"Eruption E-04 created
+  so the chronicle ([`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) `I8` track in [`2026-11-24-island-cards.md`](../ai/planning/2026-11-24-island-cards.md)) reports empirically verified history (*"Eruption E-04 created
   Basalt Island B in Geological Era 2; descendants of lineage L-02 colonized it at tick T"*).
 - **Scientific target — Allopatric Speciation (`ER09`, `AE-S11`, `AE-S14`):**
   Emergent islands, uplifted mountain barriers, river avulsions, and rising sea straits split panmictic
-  populations geographically, testing reproductive isolation via genetic compatibility decay (`ADR-0013`
-  sexual amendment / `ADR-0015` backticked flora). We name allopatric divergence strictly as an **empirical
+  populations geographically, testing reproductive isolation via genetic compatibility decay ([`ADR-0013`](ADR-0013-live-creature-lifecycle.md)
+  `accepted` `#262` sexual amendment / `ADR-0015` backticked flora). We name allopatric divergence strictly as an **empirical
   target to measure, not a guarantee**: any `"species"` claim remains gated by [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md)
   `ER09` (`AE-S11` multi-generation cluster & gap + `AE-S14` multi-seed paired ensembles), never automatic
   badges on morphs or islands.
@@ -245,6 +247,6 @@ Implementation proceeds strictly through sequenced cards **`W1`–`W7`** in
 
 ## 8. Related Documents
 
-- Pinned artifact, world history & contracts: [`ADR-0008`](ADR-0008-world-past-and-time.md), [`ADR-0010`](ADR-0010-pinned-world-artifact.md), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), [`2026-11-20-world-v2-design.md`](../ai/design/2026-11-20-world-v2-design.md), [`2026-11-23-wv2-2.md`](../ai/planning/2026-11-23-wv2-2.md)
-- Predecessor mechanisms & cards: [`2026-11-24-v1-dynamic-fields-schedule-spec.md`](../ai/planning/2026-11-24-v1-dynamic-fields-schedule-spec.md), [`2026-11-24-v5-fields-plants-feedback-spec.md`](../ai/planning/2026-11-24-v5-fields-plants-feedback-spec.md), [`2026-11-24-v6-interventions-causeid-spec.md`](../ai/planning/2026-11-24-v6-interventions-causeid-spec.md), [`2026-11-24-world-change-cards.md`](../ai/planning/2026-11-24-world-change-cards.md)
-- Parallel wave ADR references (cited in backticks until merged to trunk): `ADR-0014` (`PR #256`, shared islands & chronicles), `ADR-0015` (evolving plants Tier-1 vegetation), `ADR-0017` (evolved signals), `ADR-0018` (`OpenEnergyFlowLaw` & ecosystem scales), `ADR-0019` (`PR #259`, brain–body interface), `WV2-PHYS2` (`MAP-D4` provisional `C01` rework track).
+- Pinned artifact, world history & contracts: [`ADR-0008`](ADR-0008-world-past-and-time.md), [`ADR-0010`](ADR-0010-pinned-world-artifact.md), [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) (`accepted`, `#262`), [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) (`accepted`, `#256`), [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263`), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), [`2026-11-20-world-v2-design.md`](../ai/design/2026-11-20-world-v2-design.md), [`2026-11-23-wv2-2.md`](../ai/planning/2026-11-23-wv2-2.md), [`2026-11-24-wv2-5.md`](../ai/planning/2026-11-24-wv2-5.md)
+- Predecessor mechanisms & cards: [`2026-11-24-v1-dynamic-fields-schedule-spec.md`](../ai/planning/2026-11-24-v1-dynamic-fields-schedule-spec.md), [`2026-11-24-v5-fields-plants-feedback-spec.md`](../ai/planning/2026-11-24-v5-fields-plants-feedback-spec.md), [`2026-11-24-v6-interventions-causeid-spec.md`](../ai/planning/2026-11-24-v6-interventions-causeid-spec.md), [`2026-11-24-ecosystem-cards.md`](../ai/planning/2026-11-24-ecosystem-cards.md), [`2026-11-24-world-change-cards.md`](../ai/planning/2026-11-24-world-change-cards.md)
+- Unmerged parallel references (cited strictly in backticks until merged to trunk): `ADR-0015` (draft `#268`, evolving plants Tier-1 vegetation), `ADR-0017` (local `D18`, evolved signals), `ADR-0019` (draft `#259`, brain-body interface), `WV2-PHYS2` (`MAP-D4` provisional `C01` rework track).

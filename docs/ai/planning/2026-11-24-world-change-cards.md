@@ -13,10 +13,12 @@ last_reviewed: 2026-11-24
 > **Planning document only (`status: proposed`, card `D15 WORLD-CHANGE-ADR`).**
 > No Rust, TypeScript, or contract edits are performed here. All cards below wait for owner
 > acceptance of [`ADR-0016`](../../decisions/ADR-0016-changing-world-surface.md) (`D-WCHG-1`–`D-WCHG-6`),
-> respect `WV2-2-PHYS` ([`2026-11-23-wv2-2.md`](2026-11-23-wv2-2.md)) / follow-up `WV2-PHYS2`
-> (`MAP-D4`), and any card adding new `live.*` manifest keys or observables waits for `C12 E3B-PIN`
-> (`QD-BIO-D2`). Code anchors verified on `origin/feat/ecological-selection` at
-> `902e505d58dbe034a1771bcea352742c296985d9`.
+> respect `WV2-2-PHYS` ([`2026-11-23-wv2-2.md`](2026-11-23-wv2-2.md)), offline baking in `WV2-5`
+> ([`2026-11-24-wv2-5.md`](2026-11-24-wv2-5.md), `#265`), and follow-up `WV2-PHYS2` (`MAP-D4`), and any card
+> adding new post-freeze `live.*` manifest keys or observables must obey the merged `C12 E3B-PIN`
+> (`#260`, `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`, `QD-BIO-D2`)
+> default-to-legacy partition. Code anchors verified on `origin/feat/ecological-selection` at
+> `e7b99745c59d7da35e884dd9414122b1d24fc648`.
 
 ---
 
@@ -36,7 +38,7 @@ W1 (Tier 1 Living Surface: V5 DynamicFields + seasonal lake stage & snow cover)
 
 ## Card `W1` — Tier 1 Living Surface: Seasonal Lake Stage, Runoff & Snow Cover (`WCHG-S02`)
 
-- **START WHEN:** `ADR-0016` accepted (`D-WCHG-1`), `V5` ([`2026-11-24-v5-fields-plants-feedback-spec.md`](2026-11-24-v5-fields-plants-feedback-spec.md)) merged, and `C12 E3B-PIN` merged.
+- **START WHEN:** `ADR-0016` accepted (`D-WCHG-1`) and `V5` ([`2026-11-24-v5-fields-plants-feedback-spec.md`](2026-11-24-v5-fields-plants-feedback-spec.md)) merged (`C12 E3B-PIN` `#260` merged — post-freeze `live.*` keys/observables obey `prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/dynamic_fields.rs` (`snow_depth` / `river_stage_delta` SoA buffers, conserved phase-change water bookkeeping)
   - `src-tauri/src/core/environmental_systems.rs`, `src-tauri/src/core/terrain_navigation.rs`
@@ -97,13 +99,13 @@ W1 (Tier 1 Living Surface: V5 DynamicFields + seasonal lake stage & snow cover)
   `sim_stream::WORLD_DISTURBANCE` or host `CauseId` interventions, with scale router flagging threshold
   exceedances for Tier 3 and dirty-tile delta updates in `WorldTerrainLod` (`WorldTerrainLod.tsx:26-42`).
   Under default closed EU (`open_energy_flow = None`), burned biomass settles cleanly `Plants -> Detritus`
-  (`|closed_total_eu - baseline| <= 1e-3`); when planned `ADR-0018` `OpenEnergyFlowLaw` is active,
+  (`|closed_total_eu - baseline| <= 1e-3`); when [`ADR-0018`](../../decisions/ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263` merged) `OpenEnergyFlowLaw` is active,
   combustion heat exits via `EnergyEvent::RespiredHeatLoss` while ash enters `Detritus`/soil `N`/`organic`;
   any continuous animal/plant disturbance or tsunami saltwater stress routes strictly inside `total_cost`
   in `metabolic_decay_system` (`world_systems.rs:157, 174-177`).
 - **`DONE WHEN`:**
   - Deforested steep cells fail at lower landslide trigger thresholds than vegetated `root_cover` controls;
-    wildfires preserve closed-EU (`<= 1e-3`) and (when `ADR-0018` active) open-flow residuals (`<= 1e-3`),
+    wildfires preserve closed-EU (`<= 1e-3`) and (when [`ADR-0018`](../../decisions/ADR-0018-ecosystem-scales-and-cycles.md) active) open-flow residuals (`<= 1e-3`),
     with organism disturbance loads verified inside `total_cost`; hazard sampling causes `0` drift on animal
     `SimRng`; `schedule_ambiguity_tests`, `npm run check:docs`, `npm run lint`, and `npm run build` pass.
   - **Negative controls:** (1) Draw natural hazard trigger from `SimRng` instead of `WORLD_DISTURBANCE` ->
@@ -179,7 +181,7 @@ W1 (Tier 1 Living Surface: V5 DynamicFields + seasonal lake stage & snow cover)
 
 ## Card `W7` — `AE-S12` Causal Chronicle & Multi-Seed Allopatric Speciation Suite (`WCHG-S07`)
 
-- **START WHEN:** `W6` merged alongside `ADR-0013` sexual compatibility amendment (and `ADR-0015` flora if plant vicariance is included).
+- **START WHEN:** `W6` merged alongside [`ADR-0013`](../../decisions/ADR-0013-live-creature-lifecycle.md) (`accepted`, `#262`) sexual compatibility implementation (`V3` amendment, plus `ADR-0015` flora if plant vicariance is included).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/experiment_runner/`, `src-tauri/src/core/live_lineage.rs`
   - `src-tauri/tests/allopatric_speciation_tests.rs` (new)
