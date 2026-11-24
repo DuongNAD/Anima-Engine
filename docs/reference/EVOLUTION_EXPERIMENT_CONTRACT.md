@@ -66,7 +66,7 @@ chiếu; contract này vẫn `proposed` cho phần còn lại.)*
 | Can thiệp | `InterventionKind`, `InterventionCommand` (`crates/anima-domain/src/intervention.rs`, re-export ở `core/intervention.rs`) | *Sửa 2026-11-17:* tám kind, không phải năm. Chưa có parameter map/version |
 | Giải thích nhân–quả | `CausalLedger`, `EffectRecord` | Một parent; multi-cause attribution còn thiếu |
 | Luật/đơn vị | `core::sim_rules::STATE_VARIABLES`; `WorldLawSet` (`core/experiment/laws.rs`); `ExoticEnergyLaw` (`core/exotic_energy.rs`), `ExoticEnergyField` (`core/exotic_energy/field.rs`); `ObservableRegistry` (`core/experiment/observables.rs`) | *Sửa 2026-11-17:* luật năng lượng ngoại lai và registry observable đã có ở lát headless. `STATE_VARIABLES` vẫn chỉ khai closed EU |
-| World identity | `WorldIdentity`; `WorldLawSet::fingerprint`, `ExperimentManifest::fingerprint` (`core/experiment/`) | *Sửa 2026-11-17:* luật và manifest đã có fingerprint |
+| World identity | `WorldIdentity`; `WorldLawSet::fingerprint`, `ExperimentManifest::fingerprint` (`core/experiment/`) | *Sửa 2026-11-17:* luật và manifest đã có fingerprint. *Sửa 2026-11-24 (`WV2-3` / `LD-2`):* `WorldIdentity` thêm `sim_world_sha256: Option<[u8; 32]>` (`Copy`, omitted trong JSON và không đổi `ExperimentManifest::fingerprint` khi `None`, trộn vào fingerprint khi `Some`); `LiveExperimentAdapter` giữ `TerrainSource::Generated` (`F051`/`F051b`), cô lập với `ANMW v3` trên đĩa |
 | Tiến hóa | genotype, mutation/crossover, MAP-Elites; `EnergyPathwayGenotype` (`core/evolution_pathway.rs`) | *Sửa 2026-11-17:* energy pathway đã có, chỉ ở quần thể tham chiếu AE3 (opt-in). Species clustering chưa có |
 | Dashboard | `EcosystemPanel` | Biomass/niche/archive; chưa có experiment comparison |
 
@@ -147,7 +147,7 @@ trait qua nhiều thế hệ là evolution. Restore/migration không develop l�
 
 Control và treatment phải dùng cùng:
 
-- `WorldArtifact` checksum;
+- `WorldArtifact` checksum (kèm `WorldIdentity::sim_world_sha256: Option<[u8; 32]>` theo `LD-2` khi ghim `sim_256.anmw3`; giữ `None` và `TerrainSource::Generated` cho mọi thí nghiệm headless E2/E-SEL1/E3/SEL2/E3b trừ khi khai báo khác);
 - snapshot hoặc initial-condition manifest;
 - seed/seed set;
 - thời lượng và sampling schedule;

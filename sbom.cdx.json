@@ -17336,6 +17336,7 @@
         "pkg:cargo/rayon@1.12.0",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/serde_json@1.0.151",
+        "pkg:cargo/sha2@0.10.9",
         "pkg:cargo/smallvec@1.15.2",
         "pkg:cargo/socket2@0.5.10",
         "pkg:cargo/tauri-plugin-shell@2.3.5",
@@ -21712,5 +21713,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:d064b0bb-56aa-54cb-b5e4-99845bf57393"
+  "serialNumber": "urn:uuid:61ffd41f-01b1-5e1f-b74e-c3296691e11d"
 }

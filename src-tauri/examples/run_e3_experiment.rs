@@ -867,6 +867,18 @@ fn validate_smoke_dir(
 
     let wid_obj = &prov["world_identity_observed"];
     let smoke_world_identity = if wid_obj.is_object() {
+        let sim_world_sha256 =
+            match wid_obj.get("sim_world_sha256") {
+                Some(v) if !v.is_null() => {
+                    let hex = v
+                        .as_str()
+                        .ok_or("smoke world_identity.sim_world_sha256 must be a hex string")?;
+                    Some(anima_worldgen::anmw_v3::sha256_from_hex(hex).map_err(|e| {
+                        format!("smoke world_identity.sim_world_sha256 invalid: {e}")
+                    })?)
+                }
+                _ => None,
+            };
         Some(WorldIdentity {
             seed: wid_obj["seed"]
                 .as_u64()
@@ -884,6 +896,7 @@ fn validate_smoke_dir(
             checksum: wid_obj["checksum"]
                 .as_u64()
                 .ok_or("smoke world_identity.checksum missing")? as u32,
+            sim_world_sha256,
         })
     } else {
         None

@@ -1,10 +1,11 @@
 diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
 --- a/src-tauri/Cargo.toml
 +++ b/src-tauri/Cargo.toml
-@@ -77,5 +77,6 @@ tokio-tungstenite = { version = "0.21", optional = true }
+@@ -77,6 +77,6 @@
  futures-util = "0.3"
  noise = "0.8.2"
  image = "0.24.7"
-+anima-worldgen = { path = "crates/anima-worldgen" }
+-anima-worldgen = { path = "crates/anima-worldgen", default-features = false, features = ["reader"] }
++anima-worldgen = { path = "crates/anima-worldgen", default-features = false, features = ["reader", "generate"] }
  
- 
+ [workspace]

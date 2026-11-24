@@ -157,6 +157,7 @@ name = "anima-engine"
 version = "0.1.0"
 dependencies = [
  "anima-domain",
+ "anima-worldgen",
  "bevy_ecs",
  "bincode",
  "burn",

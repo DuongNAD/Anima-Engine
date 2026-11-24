@@ -26,6 +26,7 @@ fn base_reference_manifest() -> ExperimentManifest {
             width: 128,
             height: 128,
             checksum: 0xCAFE_BABE,
+            sim_world_sha256: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![

@@ -57,6 +57,7 @@ fn reference_base_manifest(duration_ticks: u64, seed: u64) -> ExperimentManifest
             width: 64,
             height: 64,
             checksum: 0xBEEF_CAFE,
+            sim_world_sha256: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![
