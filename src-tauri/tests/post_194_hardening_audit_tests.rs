@@ -163,6 +163,7 @@ fn f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_dura
         observable_ids: observable_ids.clone(),
         exotic_interventions: vec![],
         observer: ObserverPolicy::default(),
+        island: None,
     };
     let aligned = run_manifest_seed::<LiveExperimentAdapter>(
         &aligned_manifest,
@@ -756,6 +757,7 @@ fn w2_lite_preflight_vs_try_apply_live_genesis_and_strict_cap_above_ceiling() {
         observable_ids,
         exotic_interventions: vec![],
         observer: ObserverPolicy::default(),
+        island: None,
     };
     let manifest_json = serde_json::to_string(&manifest).expect("serialize manifest");
     let pending =
@@ -873,6 +875,7 @@ fn build_scarce_land_manifest(founders: usize, layout: usize) -> ExperimentManif
         observable_ids,
         exotic_interventions: vec![],
         observer: ObserverPolicy::default(),
+        island: None,
     }
 }
 

@@ -27,6 +27,7 @@ fn base_manifest() -> ExperimentManifest {
             height: 128,
             checksum: 0xDEAD_BEEF,
             sim_world_sha256: None,
+            genesis_phase: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![
@@ -43,6 +44,7 @@ fn base_manifest() -> ExperimentManifest {
         sample_period: ECOLOGY_PERIOD,
         observable_ids: vec!["plants".into(), "herbivores".into(), "predators".into()],
         exotic_interventions: Vec::new(),
+        island: None,
     }
 }
 

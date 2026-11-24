@@ -90,13 +90,13 @@ Create `src-tauri/crates/anima-domain/src/species.rs` (`pub mod species;` in `sr
 
 ## 3. Open Owner Decisions (`D-V2-1`–`D-V2-3`)
 
-- **`D-V2-1` (Source of `SpeciesProfile` values):**
+- **`D-V2-1` (Source of `SpeciesProfile` values):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (compiled-in defaults + optional validated JSON override).
   - **Option A (Recommended):** Ship deterministic compiled-in `SpeciesRegistry::default_vertical_slice()` (`rabbit` & `wolf` presets matching existing calibration baseline) **plus** optional validated JSON override passed via experiment manifest / scenario config and saved in `SavedSimulationState::species_registry`.
   - **Option B:** Require an external config file at startup (blocks standalone unit tests and risks config-path drift).
-- **`D-V2-2` (Transition strategy from `Prey`/`Predator` marker components):**
+- **`D-V2-2` (Transition strategy from `Prey`/`Predator` marker components):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (keep deriving `Prey`/`Predator` markers alongside `AgentSpecies` through `V2–V8`).
   - **Option A (Recommended):** Keep deriving `Prey` / `Predator` ECS markers from `SpeciesProfile::legacy_class` alongside `AgentSpecies(SpeciesId)` throughout `V2–V8` so existing sensors, `combat_system`, `prey_cap` checks, and `AgentType` IPC serialization remain interoperable while food-web edges become data-driven. Cleanly deprecate hardcoded marker branching after `V8`.
   - **Option B:** Remove `Prey` and `Predator` components immediately and rewrite all `30+` system/test queries (`With<Prey>`, `With<Predator>`). Higher churn; unnecessary before multi-predator food webs (`M6.2`).
-- **`D-V2-3` (Habitat suitability enforcement mode):**
+- **`D-V2-3` (Habitat suitability enforcement mode):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (habitat suitability filter + `unsuitable_stress_cost` in `total_cost`).
   - **Option A (Recommended):** Filter candidate genesis/seed habitat placement by `HabitatSuitability::is_suitable(biome, elevation, temp)` (`V2` S27 spawn suitability check) **and** apply an additive `unsuitable_stress_cost` inside `metabolic_decay_system`'s `total_cost` when a creature wanders outside its biome/temperature bounds (flowing to `respired -> pool.detritus` so EU stays conserved).
   - **Option B:** Spawn/habitat suitability filter + diagnostic mismatch metric only; no metabolic penalty when stepping into unsuitable biomes.
 

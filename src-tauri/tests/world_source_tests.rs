@@ -94,6 +94,7 @@ fn live_manifest(duration_ticks: u64) -> ExperimentManifest {
             .collect(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

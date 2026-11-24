@@ -18,21 +18,21 @@ superseded_by: none
 > Initiated per `QD-LIFE` extension (`MSG_20261124_130000`, `133000`) and owner decision
 > **`QD-BIO-D3`** (`MSG_20261124_133000_from_owner_research_decisions_dell.md`, `PR #255`).
 > Code anchors below are verified on `origin/feat/ecological-selection` at trunk commit
-> `e7b99745c59d7da35e884dd9414122b1d24fc648`.
+> `40776625e0217b4617977ba72cbe5bfc57a0a162`.
 
 ---
 
-## 1. Context & Verified Baseline (`e7b99745`)
+## 1. Context & Verified Baseline (`40776625`)
 
 Under the owner's `QD-LIFE` extension (*"change must also apply to the map"*), the physical landscape
 cannot remain permanently static from genesis to infinity. Changing the world while preserving
 scientific reproducibility and 60 Hz performance must respect five trunk invariants verified at
-`e7b99745c59d7da35e884dd9414122b1d24fc648`:
+`40776625e0217b4617977ba72cbe5bfc57a0a162`:
 
 1. **Pinned Immutable Base Artifact (`ADR-0010`, `world_artifact.rs`):**
    - [`ADR-0010`](ADR-0010-pinned-world-artifact.md) defines `WorldArtifact` (`ANMW v2` at
      `src-tauri/src/core/world_artifact.rs:41-43, 67-82`) and `WorldIdentity` (`:122-137`, including
-     `sim_world_sha256: Option<[u8; 32]>` at `:136` added in `WV2-3` for `ANMW v3`). Two runs only
+     `sim_world_sha256: Option<[u8; 32]>` at `:132` added in `WV2-3` for `ANMW v3`). Two runs only
      share an environment when their pinned artifact digests match; regenerating a terrain produces
      a distinct artifact and hash rather than mutating bytes in place.
 2. **Engine Compatibility Era vs Geological Eras (`world_record/types.rs:156-160`):**
@@ -67,7 +67,7 @@ scientific reproducibility and 60 Hz performance must respect five trunk invaria
      [`2026-11-20-world-v2-design.md`](../ai/design/2026-11-20-world-v2-design.md)).
 5. **Reproducibility & Experiment Contract (`EVOLUTION_EXPERIMENT_CONTRACT.md`):**
    - `WorldLawSet` (`src-tauri/src/core/experiment/laws.rs:28-32, 79`), `WorldIdentity`
-     (`world_artifact.rs:122`), and `ExperimentManifest::fingerprint` (`manifest.rs:448`) lock
+     (`world_artifact.rs:122`), and `ExperimentManifest::fingerprint` (`manifest.rs:464`) lock
      initial laws and world inputs before `t = 0` (`ER01`, `ER07`, `ER08`), while `ER09` (`AE-S11`,
      `AE-S14`) and `AE-S12` govern species claims and causal attribution.
 
@@ -191,10 +191,10 @@ Landscape dynamics decompose by physical timescale and implementation order:
 
 ## 5. Experiment Validity, `AE-S12` Causal Chain & Allopatric Speciation Target
 
-- **Opt-in World Law (`laws.rs:28-32, 79`, `manifest.rs:448`):**
+- **Opt-in World Law (`laws.rs:28-32, 79`, `manifest.rs:464`):**
   - Add `#[serde(default, skip_serializing_if = "Option::is_none")] pub world_change: Option<WorldChangeLaw>`
     on `WorldLawSet`. Following the baseline invariance discipline (`WorldIdentity::sim_world_sha256`
-    at `manifest.rs:459-464`), `world_change: None` emits **zero tag bytes** inside
+    at `manifest.rs:475-480`), `world_change: None` emits **zero tag bytes** inside
     `WorldLawSet::canonicalize()` (`laws.rs:85-118`, unlike `exotic_energy` `tag(0x00)` at `:90`),
     leaving every legacy `WorldLawSet::baseline().fingerprint()` and existing E2/E3/E3b/SEL2-P2 run
     bit-for-bit identical (`0` draws on `SimRng`, `0` overlay allocs).
@@ -247,6 +247,6 @@ Implementation proceeds strictly through sequenced cards **`W1`–`W7`** in
 
 ## 8. Related Documents
 
-- Pinned artifact, world history & contracts: [`ADR-0008`](ADR-0008-world-past-and-time.md), [`ADR-0010`](ADR-0010-pinned-world-artifact.md), [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) (`accepted`, `#262`), [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) (`accepted`, `#256`), [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263`), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), [`2026-11-20-world-v2-design.md`](../ai/design/2026-11-20-world-v2-design.md), [`2026-11-23-wv2-2.md`](../ai/planning/2026-11-23-wv2-2.md), [`2026-11-24-wv2-5.md`](../ai/planning/2026-11-24-wv2-5.md)
+- Pinned artifact, world history & contracts: [`ADR-0008`](ADR-0008-world-past-and-time.md), [`ADR-0010`](ADR-0010-pinned-world-artifact.md), [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) (`accepted`, `#262`), [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) (`accepted`, `#256`), [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263`), [`ADR-0019`](ADR-0019-brain-body-interface.md) (`accepted`, `#259`), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), [`2026-11-20-world-v2-design.md`](../ai/design/2026-11-20-world-v2-design.md), [`2026-11-23-wv2-2.md`](../ai/planning/2026-11-23-wv2-2.md), [`2026-11-24-wv2-5.md`](../ai/planning/2026-11-24-wv2-5.md)
 - Predecessor mechanisms & cards: [`2026-11-24-v1-dynamic-fields-schedule-spec.md`](../ai/planning/2026-11-24-v1-dynamic-fields-schedule-spec.md), [`2026-11-24-v5-fields-plants-feedback-spec.md`](../ai/planning/2026-11-24-v5-fields-plants-feedback-spec.md), [`2026-11-24-v6-interventions-causeid-spec.md`](../ai/planning/2026-11-24-v6-interventions-causeid-spec.md), [`2026-11-24-ecosystem-cards.md`](../ai/planning/2026-11-24-ecosystem-cards.md), [`2026-11-24-world-change-cards.md`](../ai/planning/2026-11-24-world-change-cards.md)
-- Unmerged parallel references (cited strictly in backticks until merged to trunk): `ADR-0015` (draft `#268`, evolving plants Tier-1 vegetation), `ADR-0017` (local `D18`, evolved signals), `ADR-0019` (`QD-BRAINBODY`, unmerged `PR #259`, brain-body interface), `WV2-PHYS2` (`MAP-D4` provisional `C01` rework track).
+- Unmerged parallel references (cited strictly in backticks until merged to trunk): `ADR-0015` (draft `#268`, evolving plants Tier-1 vegetation), `ADR-0017` (local `D18`, evolved signals), `WV2-PHYS2` (`MAP-D4` provisional `C01` rework track).

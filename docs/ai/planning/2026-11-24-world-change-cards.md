@@ -18,7 +18,7 @@ last_reviewed: 2026-11-24
 > adding new post-freeze `live.*` manifest keys or observables must obey the merged `C12 E3B-PIN`
 > (`#260`, `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`, `QD-BIO-D2`)
 > default-to-legacy partition (and coordinate any existing fixed `LIVE_KEYS.len() == 31` assertions).
-> Code anchors verified on `origin/feat/ecological-selection` at `e7b99745c59d7da35e884dd9414122b1d24fc648`.
+> Code anchors verified on `origin/feat/ecological-selection` at `40776625e0217b4617977ba72cbe5bfc57a0a162`.
 
 ---
 
@@ -87,7 +87,7 @@ W1 (Tier 1 Living Surface: V5 DynamicFields + seasonal lake stage & snow cover)
 - **START WHEN:** `W2` merged and `D-WCHG-2` / `D-WCHG-3` / `D-WCHG-5` decided.
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/crates/anima-domain/src/intervention.rs` (`GeologicalDisturbance` / wildfire / flood / fault `InterventionKind` variants if declared)
-  - `src-tauri/src/core/world_record/{chain.rs, ring.rs}`, `src-tauri/src/core/scenario.rs`, `src-tauri/src/core/experiment/{manifest.rs, tests.rs}` (exhaustive `InterventionKind`/`CompactInterventionKind` match arms in `chain.rs:61-118`, `ring.rs:203-248, 265-309`, `scenario.rs:205-283`, canonical tags in `manifest.rs:587-671`, and `intervention_kind_tags_are_distinct` in `experiment/tests.rs:645-679`)
+  - `src-tauri/src/core/world_record/{chain.rs, ring.rs}`, `src-tauri/src/core/scenario.rs`, `src-tauri/src/core/experiment/{manifest.rs, tests.rs}` (exhaustive `InterventionKind`/`CompactInterventionKind` match arms in `chain.rs:61-118`, `ring.rs:203-248, 265-309`, `scenario.rs:205-283`, canonical tags in `manifest.rs:609-693`, and `intervention_kind_tags_are_distinct` in `experiment/tests.rs:647-681`)
   - `src-tauri/src/core/live_experiment.rs`, `src-tauri/src/core/environmental_systems.rs`, `src-tauri/src/core/ecology.rs`, `src-tauri/src/core/world_systems.rs` (`total_cost` organism disturbance load), `src-tauri/src/core/simulation_schedule.rs`
   - `src-tauri/src/core/emit.rs`, `src-tauri/src/commands/`, `src-tauri/src/lib.rs`, `docs/reference/IPC_CONTRACT.md`
   - `src/components/Landscape/WorldTerrainLod.tsx`, `src/components/Landscape/utils/` (dirty tile overlay patch)
