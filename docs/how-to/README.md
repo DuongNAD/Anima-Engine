@@ -22,6 +22,8 @@ review_cycle: per-release
 | Benchmark per-system performance | [BENCHMARKING.md](BENCHMARKING.md) | Run Criterion `tick_systems`, `ANIMA_TICK_CAPTURE`, baseline table, and 1,000-agent checklist |
 | Capture and compare 3D map views | [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md) | `npm run capture:map` (prototype), before/after renders, reading FPS/draw calls |
 | First external user trial run | [OWNER_TRIAL_RUN.md](OWNER_TRIAL_RUN.md) | Package Windows build 1, preflight checklist, and external-machine trial install |
+| Install and run release 0.9 | [INSTALL.md](INSTALL.md) | Download CI installers, handle Windows SmartScreen / macOS Gatekeeper, prerequisites |
+| Cut a release build | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Pre-release gates, compliance artifacts (NOTICE, SBOM, licenses), audit, and MP-5.1 sessions |
 
 ## On macOS and Linux
 
