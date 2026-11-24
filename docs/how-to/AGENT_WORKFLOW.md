@@ -358,6 +358,26 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+QD-PLAYRULES = rules of play on a shared island (QD-SHAREDISLAND): (1) one creature's lifespan is about 1-2 hours
+            of real time, slow enough to watch hunting and growing up, through a declared real-time ecology
+            profile pinned in the manifest (science runs keep their own profiles; faster than real time only
+            with no guest present); (2) animals reproduce sexually (two sexes, mates found by proximity and
+            signals, recombination of homologous parts plus mutation, no offspring from an incompatible pair,
+            compatibility falling with genetic distance so reproductive isolation can emerge, "species" only
+            for isolated clusters passing AE-S11/AE-S14); plants are hermaphrodite with outcrossing, selfing at
+            an inbreeding cost and clonal grass spread; (3) an inhabited organism that dies is not respawned:
+            its carcass decomposes and the guest may inhabit an offspring, a young relative or another allowed
+            organism; (4) if all life dies, the host opens a new era; (5) a guest controls one organism with no
+            powers beyond that organism's own, environment interventions are host-only, and the host may remove
+            a guest; (6) built for a small LAN group now, with foundations for more (stable IDs, interest
+            management, record compaction). Points (2) and (3) were delegated to the lead as "the most
+            biologically correct". (Owner in chat, 2026-11-24.)
+QD-SIGNALS = a language system means creatures communicating: evolved signalling, not scripted meanings, over
+            chemical (the existing pheromone grid), acoustic and visual channels, with an energy cost through
+            total_cost and eavesdropping by predators; "language" is claimed only with evidence (information
+            carried, receivers' response, shuffled-signal controls); a guest speaks only through its organism's
+            channels, and human chat is out of world. ADR-0017 (proposed). (Owner in chat, 2026-11-24: "hệ thống
+            ngôn ngữ", "Sinh vật giao tiếp với nhau".)
 QD-WV25   = the three World v2 WV2-5 gates, answered in advance: (a) staging CC0 source assets for grid bake
             workers is allowed within QD-ASSETS (ambientCG and Poly Haven only, CC0-1.0 only, at most 60 MB
             downloaded and 20 MB committed, SOURCES.json with one licence_url per entry, GRID WORKER jobs under
@@ -898,6 +918,12 @@ R5-AUTH   =
   docs/decisions/ADR-0016-changing-world-surface.md (proposed) and one
   docs/ai/planning/2026-11-24-world-change-cards.md; for each card, one row in docs/decisions/README.md only if
   npm run check:docs requires it. No other path.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_150000), to anima-dell, documents
+  only: for card SIGNALS-ADR, one new docs/decisions/ADR-0017-evolved-communication.md (proposed) and one
+  docs/ai/planning/2026-11-24-signals-cards.md; no other path. (hub MSG_20261124_144500) for card WIP-BACKUP,
+  in the Dell main checkout only: create and push one branch dell/wip-backup-20261124 holding its uncommitted
+  changes (secrets and build noise excluded and reported), then switch back; no stash, reset, clean, deletion,
+  force or PR.
   AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_112000), to anima-case: card
   ISLAND-INVENTORY writes one hub file test_runs/anima-case_island_inventory_20261124.md and nothing in the
   repository.
