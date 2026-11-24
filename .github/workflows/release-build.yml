@@ -1,0 +1,124 @@
+name: Release Build
+
+# Unsigned single-machine release installer build (Card D2 / REL09-CI).
+# Builds desktop bundles on Windows and macOS using `npm run tauri:build` (`--features desktop`)
+# and uploads installers as workflow artifacts only. Never signs, never creates a GitHub Release,
+# and never uses secrets or `pull_request_target`.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/release-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-windows:
+    name: Release Build (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+          node --version
+          npm --version
+
+      # Reuses ci.yml's Rust cache approach (toolchain file key, save on main/trunk only so PRs do
+      # not exhaust the 10 GB repository cache quota).
+      - name: Cache cargo registry and dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          add-rust-environment-hash-key: false
+          key: toolchain-${{ hashFiles('rust-toolchain.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ecological-selection' }}
+
+      - name: Install root npm dependencies
+        run: npm ci
+
+      - name: Build desktop bundle (npm run tauri:build)
+        run: npm run tauri:build
+
+      - name: List produced Windows bundle outputs
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path src-tauri/target/release/bundle -Recurse -File |
+            Select-Object FullName, Length |
+            Format-Table -AutoSize
+
+      - name: Upload Windows installer artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: anima-engine-windows-installers
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 14
+          if-no-files-found: error
+
+  build-macos:
+    name: Release Build (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+          node --version
+          npm --version
+
+      - name: Cache cargo registry and dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          add-rust-environment-hash-key: false
+          key: toolchain-${{ hashFiles('rust-toolchain.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ecological-selection' }}
+
+      - name: Install root npm dependencies
+        run: npm ci
+
+      - name: Build desktop bundle (npm run tauri:build)
+        run: npm run tauri:build
+
+      - name: List produced macOS bundle outputs
+        run: find src-tauri/target/release/bundle -maxdepth 3 -ls
+
+      - name: Upload macOS bundle artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: anima-engine-macos-bundles
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+          retention-days: 14
+          if-no-files-found: error

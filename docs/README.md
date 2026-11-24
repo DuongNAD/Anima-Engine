@@ -60,6 +60,7 @@ flowchart TD
 | Duy trì và tái cấu trúc tài liệu | [Documentation policy](governance/DOCUMENTATION_POLICY.md) |
 | Thêm dependency hoặc sao chép mã/asset | [Open-source policy](governance/OPEN_SOURCE_POLICY.md) |
 | Truy nguyên một tài liệu cũ đã bị thay | [Archive](archive/README.md) — không dùng làm nguồn triển khai |
+| Install and inspect release 0.9 drafts | [Release notes](release/README.md) |
 
 ## Nguồn sự thật
 
