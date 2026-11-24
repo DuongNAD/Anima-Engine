@@ -1,0 +1,328 @@
+{
+  "schema_version": 1,
+  "status": "provisional",
+  "decision": "MAP-D4",
+  "mode": "raw",
+  "seed": 1465266689,
+  "schema_tag": "ANMW3-SNSM-v1",
+  "width": 4096,
+  "height": 4096,
+  "dx_m": 10.0,
+  "extent_m": 40960.0,
+  "world_sha256": "e0db7dc25624bf66364a310659ca1035276c77f893342ad9fd85d817cdb2f7e7",
+  "sim_world_identity": "cbdd3ba9f57725ada233d1b43f2f5804fe8cb0fe0b098ca5ef8ae0aae5784c4d",
+  "overall_pass": false,
+  "failed_gates": [
+    "G-SHAPE.1.StrahlerHorton",
+    "G-SHAPE.2.JunctionAngles",
+    "G-SHAPE.3.DrainageDensity",
+    "G-SHAPE.4.HackLaw",
+    "G-SHAPE.5.ValleysFlint",
+    "G-SHAPE.7.HypsometrySpikes",
+    "G-SHAPE.4_2.ShorelineFractal",
+    "G-COMP-v2.C1.Partition",
+    "G-COMP-v2.C3.Lakes",
+    "G-COMP-v2.C4.RiversFansDeltas",
+    "G-COMP-v2.C5.CoastalSightlines",
+    "G-SIM.GS-1.GridParity",
+    "G-SIM.GS-2.Walkability"
+  ],
+  "g_shape": {
+    "passed": false,
+    "metric_1_strahler_horton": {
+      "passed": false,
+      "omega_max": 3,
+      "cycle_count": 0,
+      "r_b": 4.51063829787234,
+      "r_l": 1.4438776526064554,
+      "stream_counts_by_order": [
+        0,
+        212,
+        47,
+        6
+      ],
+      "mean_length_m_by_order": [
+        0.0,
+        1578.9532379768193,
+        2279.8152948253314,
+        2646.6245780509735
+      ]
+    },
+    "metric_2_junction_angles": {
+      "passed": false,
+      "junction_count": 11,
+      "median_deg": 57.59545651140456,
+      "obtuse_fraction": 0.0,
+      "rain_shadow_mean_deg": null,
+      "windward_humid_mean_deg": 51.872804542790895,
+      "rain_shadow_samples": 2,
+      "windward_humid_samples": 7,
+      "rain_shadow_lt_windward": null
+    },
+    "metric_3_drainage_density": {
+      "passed": false,
+      "global_km_per_km2": 0.5745699067949022,
+      "dry_land_km2": 796.7162000000001,
+      "total_channel_km": 457.76915277598863,
+      "windward_mountain_km_per_km2": 0.9914049138317863,
+      "plains_rain_shadow_km_per_km2": 0.2102726226308085,
+      "dissection_ratio": 4.714854941303845,
+      "caprock_tile_count": 23,
+      "caprock_tile_cv": 1.4982689073115705
+    },
+    "metric_4_hack_law": {
+      "passed": false,
+      "sample_count": 2000,
+      "exponent_h": 0.45253418011038954,
+      "prefactor_c_km": 1.3999590844659027,
+      "r_squared": 0.364954892960625,
+      "max_path_km": 9.88966796875,
+      "median_mainstem_sinuosity": 1.0
+    },
+    "metric_5_valleys_flint": {
+      "passed": false,
+      "upper_samples": 40,
+      "downstream_samples": 0,
+      "b_up_median": 0.6772503929346739,
+      "vf_up_median": 0.2251971935909853,
+      "b_down_median": 0.0,
+      "vf_down_median": 0.0,
+      "vf_ratio_down_over_up": 0.0,
+      "flint_bins": 12,
+      "flint_concavity_theta": -0.2080236015950852,
+      "flint_r_squared": 0.12408493291310653
+    },
+    "metric_6_endorheic_spillways": {
+      "passed": true,
+      "unmodeled_micro_pits": 0,
+      "raw_non_water_land_pits": 0,
+      "severed_humid_spillways": 0,
+      "endorheic_land_fraction": 0.0,
+      "endorheic_humid_fraction": 0.0
+    },
+    "metric_7_hypsometry_spikes": {
+      "passed": false,
+      "hi_global": 0.3970514401340182,
+      "catchment_count": 6,
+      "catchment_hi_median": 0.4275018684098075,
+      "non_cliff_needle_spikes": 4642,
+      "hillslope_p999_deg": 78.4403742017259
+    },
+    "metric_4_2_shoreline_fractal": {
+      "passed": false,
+      "coastline_cells": 4224,
+      "box_sizes": [
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ],
+      "d_shore": 0.9871815691306559,
+      "r_squared": 0.9996316183573386
+    }
+  },
+  "g_comp_v2": {
+    "passed": false,
+    "c1_partition": {
+      "passed": false,
+      "ocean_fraction": 0.4494360089302063,
+      "ocean_cells": 7540285,
+      "waterfall_count": 0,
+      "cave_entrance_count": 40,
+      "min_cave_spacing_m": 410.3656905736638,
+      "min_required_cave_spacing_m": 409.6,
+      "invalid_cave_placements": 0,
+      "min_patch_cells_required": 2500,
+      "zoned_16_biomes_passing": 15,
+      "chaparral_cells": 0,
+      "steppe_cells": 0,
+      "biome_stats": [
+        {
+          "biome_id": 15,
+          "biome_name": "Mangrove",
+          "total_cells": 144791,
+          "max_connected_cells": 144610,
+          "passed": true
+        },
+        {
+          "biome_id": 10,
+          "biome_name": "Swamp",
+          "total_cells": 691162,
+          "max_connected_cells": 503606,
+          "passed": true
+        },
+        {
+          "biome_id": 7,
+          "biome_name": "Jungle",
+          "total_cells": 84899,
+          "max_connected_cells": 6230,
+          "passed": true
+        },
+        {
+          "biome_id": 4,
+          "biome_name": "Grassland",
+          "total_cells": 541108,
+          "max_connected_cells": 171367,
+          "passed": true
+        },
+        {
+          "biome_id": 2,
+          "biome_name": "Desert",
+          "total_cells": 805733,
+          "max_connected_cells": 109832,
+          "passed": true
+        },
+        {
+          "biome_id": 19,
+          "biome_name": "Badlands",
+          "total_cells": 1046637,
+          "max_connected_cells": 765520,
+          "passed": true
+        },
+        {
+          "biome_id": 3,
+          "biome_name": "Savanna",
+          "total_cells": 709344,
+          "max_connected_cells": 594099,
+          "passed": true
+        },
+        {
+          "biome_id": 5,
+          "biome_name": "Shrubland",
+          "total_cells": 252896,
+          "max_connected_cells": 64034,
+          "passed": true
+        },
+        {
+          "biome_id": 6,
+          "biome_name": "Forest",
+          "total_cells": 626946,
+          "max_connected_cells": 333401,
+          "passed": true
+        },
+        {
+          "biome_id": 8,
+          "biome_name": "Taiga",
+          "total_cells": 1996,
+          "max_connected_cells": 131,
+          "passed": false
+        },
+        {
+          "biome_id": 18,
+          "biome_name": "Alpine",
+          "total_cells": 81061,
+          "max_connected_cells": 36801,
+          "passed": true
+        },
+        {
+          "biome_id": 9,
+          "biome_name": "Tundra",
+          "total_cells": 128701,
+          "max_connected_cells": 69865,
+          "passed": true
+        },
+        {
+          "biome_id": 21,
+          "biome_name": "Bog",
+          "total_cells": 223640,
+          "max_connected_cells": 65759,
+          "passed": true
+        },
+        {
+          "biome_id": 11,
+          "biome_name": "Rock",
+          "total_cells": 2585072,
+          "max_connected_cells": 1476112,
+          "passed": true
+        },
+        {
+          "biome_id": 12,
+          "biome_name": "Snow",
+          "total_cells": 167466,
+          "max_connected_cells": 72858,
+          "passed": true
+        },
+        {
+          "biome_id": 20,
+          "biome_name": "Glacier",
+          "total_cells": 1131379,
+          "max_connected_cells": 1130858,
+          "passed": true
+        }
+      ]
+    },
+    "c2_ecotone": {
+      "passed": true,
+      "land_cells": 9222831,
+      "ecotone_cells": 3537479,
+      "ecotone_fraction": 0.38355674087490055,
+      "non_cliff_land_edges": 11755753,
+      "sharp_jump_edges": 81953,
+      "non_cliff_jump_fraction": 0.006971310132154018
+    },
+    "c3_lakes": {
+      "passed": false,
+      "lake_surface_fraction": 0.0002555251121520996,
+      "total_mapped_basins": 252,
+      "large_lake_count": 2,
+      "high_paramo_lake_count": 239,
+      "caldera_or_trough_lake_count": 116,
+      "small_paramo_pond_count": 239
+    },
+    "c4_rivers_fans_deltas": {
+      "passed": false,
+      "counted_river_surface_fraction": 0.00025027821902812164,
+      "active_channel_cells": 41682,
+      "width_by_order": [
+        {
+          "order": 1,
+          "cell_count": 30571,
+          "mean_width_m": 0.8009031854996655
+        },
+        {
+          "order": 2,
+          "cell_count": 9668,
+          "mean_width_m": 1.464635791546015
+        },
+        {
+          "order": 3,
+          "cell_count": 1443,
+          "mean_width_m": 2.3182309657768996
+        }
+      ],
+      "monotonic_w2_w3_w4": false,
+      "hack_consistent": false,
+      "fan_count": 4,
+      "delta_count": 1
+    },
+    "c5_coastal_sightlines": {
+      "passed": false,
+      "coastline_cells": 4224,
+      "gentle_sandy_fraction": 1.0,
+      "steep_cliff_fraction": 0.0,
+      "sightline_checks": 8,
+      "obstructed_sightlines": 0
+    }
+  },
+  "g_sim_raw": {
+    "passed": false,
+    "sim_seed_u32": 1465266689,
+    "sim_world_identity": "cbdd3ba9f57725ada233d1b43f2f5804fe8cb0fe0b098ca5ef8ae0aae5784c4d",
+    "sim_256_byte_len": 1442804,
+    "max_mean_norm_elev_diff": 2.9802322387695312e-08,
+    "all_biomes_in_range": true,
+    "deep_ocean_cells": 27649,
+    "ocean_cells": 1818,
+    "water_mask_mismatches": 0,
+    "strahler_ge4_blocks": 0,
+    "strahler_ge4_block_mismatches": 0,
+    "strahler_ge4_disconnected_stems": 0,
+    "walkable_cells": 36069,
+    "largest_walkable_component": 36069,
+    "largest_walkable_fraction": 1.0,
+    "walkable_shoreline_cells": 275,
+    "round_trip_ok": true
+  }
+}
