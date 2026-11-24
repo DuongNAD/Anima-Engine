@@ -2,19 +2,16 @@
 phase: planning
 feature: shared-island
 title: Shared-Island Implementation Cards (I1–I11, Host Authoritative LAN Island, Phased Genesis, Chronicle & Replay)
-description: Proposed ordered implementation cards I1 through I11 for ADR-0014 shared host-and-guests LAN islands, QD-GENESIS G1/G2 rollout, chronicle, opt-in narration, and deferred Internet milestone.
+description: Ordered implementation cards I1 through I11 for accepted ADR-0014 (QD-ADR0014, 2026-11-24; 23 D-slots decided, ISLAND-D7 deferred to I10), queued pending PR #256 merge and per-card AUTHORIZATION.
 status: proposed
 owner: anima-case
 last_reviewed: 2026-11-24
 ---
 
-# Shared-Island Implementation Cards (`I1`–`I11`, `status: proposed`)
+# Shared-Island Implementation Cards (`I1`–`I11`, `QD-ADR0014` Accepted — Queued)
 
-> **Design note (`status: proposed`, `D12. ISLAND-ADR`):** All **`ALLOWED PATHS`** below are **proposed**
-> only. No Rust, TypeScript, or contract edits may begin until the owner accepts
-> [`ADR-0014`](../../decisions/ADR-0014-shared-island-host-and-guests.md), resolves the blocking owner
-> D-slots (see `Summary of Open Owner Decisions` of `ADR-0014`), and issues per-card `AUTHORIZATION` lines in
-> [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md).
+> **Execution gating (`ADR-0014` `accepted` `2026-11-24` via `QD-ADR0014`, owner: `"Duyệt theo khuyến nghị"`):**
+> [`ADR-0014`](../../decisions/ADR-0014-shared-island-host-and-guests.md) is **`accepted`** with all `23` Milestone 1 / `G2` / `G3` D-slots **`DECIDED`** (see `Summary of Owner Decisions` of `ADR-0014`; **`ISLAND-D7`** remains **`DEFERRED` to `I10`**). All **`ALLOWED PATHS`** below remain **queued pending `PR #256` merge**: no Rust, TypeScript, or contract edits may begin until `PR #256` merges and the lead assigns each card with explicit per-card `AUTHORIZATION` in [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) (`anima-case` Lane W first).
 >
 > **Owner-confirmed Milestone 1 & Genesis basis (`QD-SHAREDISLAND`, `QD-GENESIS`, DECIDED `2026-11-24`):**
 > *(Governing scope note: `QD-SHAREDISLAND` amends `QD-SCOPE` ([`AGENT_WORKFLOW.md:314`](../../how-to/AGENT_WORKFLOW.md#L314), `Inhabit` federation un-paused) and is distinct from `QD-ISLAND` ([`AGENT_WORKFLOW.md:310`](../../how-to/AGENT_WORKFLOW.md#L310), the `2026-11-19` island-rule science question, which remains unchanged).)*
@@ -30,20 +27,20 @@ last_reviewed: 2026-11-24
 ## Execution Order & Lane Assignment (`anima-case` Lane W First)
 
 ```text
-ADR-0014 accepted + D-slots decided
+ADR-0014 accepted (2026-11-24, QD-ADR0014: 23 D-slots decided, ISLAND-D7 deferred to I10) -> merge #256 + per-card AUTHORIZATION
   ├──> I1 (Host policy, CauseId guest band, SharedGuestIntents ingress, genesis-phase guards) [anima-case Lane W]
   │      ├──> I2 (Inhabit actuation under total_cost, disconnect release, WR2 InputGuestIntent, G1 prehistory & replay) [anima-case Lane W]
-  │      └──> I3 (Off-tick interest-area projection, IslandJoinSnapshot, IslandSnapshot/IslandDelta encoder)            [anima-case Lane W]
+  │      └──> I3 (Off-tick interest-area projection <=250 whole-island/cull, bincode ~20 Hz cap 16)                        [anima-case Lane W]
   │             └──> I4 (LAN-only anima-island-v1 WebSocket server, WorldIdentity handshake, beacon/PIN)               [anima-case Lane W]
   │                    ├──> I5 (Guest WebSocket client & read-only Tauri IPC bridge + ts-rs + TickSource)             [anima-case Lane W / desktop]
   │                    │      ├──> I6 (Shared-island UI, 3P/Spectate camera, intent marker, treatment/"designed founders" banner) [Frontend lane]
-  │                    │      │      ├──> I6b (Sensory 1P camera overlay: animals + plants; gated on D-CAM-2)        [Frontend + Lane W]
+  │                    │      │      ├──> I6b (Sensory 1P camera overlay: animals + plants; deferred D-CAM-2(a))    [Frontend + Lane W]
   │                    │      │      └──> I7 (Multi-machine LAN host+guests soak & offline replay parity)             [Win 1 + Mac + Win 2]
   │                    │      └──> I8 (Deterministic off-tick Island Chronicle + 5-layer taxonomy + V7 panel)          [anima-case Lane W + UI]
-  │                    │             └──> I9 (Opt-in host OpenAI-compatible LLM narration; gated on D-LLM-1)          [Rust backend + UI]
-  │                    ├─ (post-M1, gated on ISLAND-D7 + NM-4) ─> I10 (Internet auth, TLS/WSS or QUIC, NAT/relay)
-  │                    └─ (post-M1, gated on D-GENESIS-1 + VIAB-2 + ADR-0015) ─> I11 (G2 screened founder pool, producers-first & multi-pool robustness check)
-  │                    (G3 emergent primordial organisms belongs to its own dedicated research ADR per D-GENESIS-2)
+  │                    │             └──> I9 (Opt-in host OpenRouter :free / localhost LLM narration via ureq/QD-WV25(c)) [Rust backend + UI]
+  │                    ├─ (post-M1, gated on deferred ISLAND-D7 + NM-4) ─> I10 (Internet auth, TLS/WSS or QUIC, NAT/relay)
+  │                    └─ (post-M1, D-GENESIS-1(b) >=3 pools + VIAB-2 + ADR-0015) ─> I11 (G2 screened founder pool & multi-pool check)
+  │                    (G3 emergent primordial organisms belongs to a separate 2-week time-boxed ADR per D-GENESIS-2)
 ```
 
 ---
@@ -51,7 +48,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I1` — Guest Policy, Reserved `CauseId` Band & Zero-Alloc Intent Ingress (`QD-SHAREDISLAND`, `QD-GENESIS`)
 
 - **Lane / Owner:** `anima-case` **Lane W** · `QD-SHAREDISLAND` / `QD-GENESIS` / `QD-PLAYRULES` (Peer reviewer: `anima-dell`)
-- **START WHEN:** [`ADR-0014`](../../decisions/ADR-0014-shared-island-host-and-guests.md) is accepted with `ISLAND-D5` decided and explicit `AUTHORIZATION` is issued.
+- **START WHEN:** `PR #256` is merged and the lead issues explicit `AUTHORIZATION` for `I1` ([`ADR-0014`](../../decisions/ADR-0014-shared-island-host-and-guests.md) is `accepted` with `ISLAND-D5(a)` — pre-tick ingress throttling preserving `replayable: true` — decided).
 - **ALLOWED PATHS (`proposed`):**
   - [`src-tauri/crates/anima-domain/src/causal.rs`](../../../src-tauri/crates/anima-domain/src/causal.rs)
   - [`src-tauri/src/core/observer.rs`](../../../src-tauri/src/core/observer.rs)
@@ -82,7 +79,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I2` — Host `Inhabit` Actuation, Disconnect Release, WR1/WR2 Recording & Replay (`QD-SHAREDISLAND`, `QD-GENESIS`)
 
 - **Lane / Owner:** `anima-case` **Lane W** · `QD-SHAREDISLAND` / `QD-GENESIS` (`G1`) / `QD-PLAYRULES` (Peer reviewer: `anima-dell`)
-- **START WHEN:** `I1` is merged (or stacked on `I1` per wave rule), `ISLAND-D1`, `ISLAND-D2`, `D-TIME-1`, `D-TIME-2`, `D-START-2`, `D-START-3` decided.
+- **START WHEN:** `I1` is merged (or stacked on `I1` per wave rule), `PR #256` merged, and explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `ISLAND-D1(a)` immediate timeout release, `ISLAND-D2(a)` strict exclusive lock, `D-TIME-1 = 20 minutes`/day, `D-TIME-2 = 90 minutes`/year pinned in real-time ecology profile, `D-START-2(b)` headless prehistory, `D-START-3(a)` persistent island).
 - **ALLOWED PATHS (`proposed`):**
   - [`src-tauri/src/core/agent_systems.rs`](../../../src-tauri/src/core/agent_systems.rs)
   - [`src-tauri/src/core/locomotion.rs`](../../../src-tauri/src/core/locomotion.rs)
@@ -114,7 +111,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I3` — Off-Tick Interest-Area Projection & `IslandSnapshot`/`IslandDelta` Encoder (`QD-SHAREDISLAND`)
 
 - **Lane / Owner:** `anima-case` **Lane W** · `QD-SHAREDISLAND` / `QD-PLAYRULES` (Peer reviewer: `anima-dell`)
-- **START WHEN:** `I1` merged, `ISLAND-D3`, `ISLAND-D4`, `D-CAM-1`, `D-CAM-3` decided.
+- **START WHEN:** `I1` merged, `PR #256` merged & explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `ISLAND-D3(a)` `bincode` quantized deltas at `~20 Hz` & cap `16` guests, `ISLAND-D4(b)` whole-island `<= 250` agents then radius cull, `D-CAM-1(a)`, `D-CAM-3(a)`).
 - **ALLOWED PATHS (`proposed`):**
   - [`src-tauri/src/core/emit.rs`](../../../src-tauri/src/core/emit.rs)
   - [`src-tauri/src/core/simulation_state.rs`](../../../src-tauri/src/core/simulation_state.rs)
@@ -136,12 +133,12 @@ ADR-0014 accepted + D-slots decided
 ## Card `I4` — LAN-Only `anima-island-v1` WebSocket Host Server & Discovery (`QD-SHAREDISLAND`)
 
 - **Lane / Owner:** `anima-case` **Lane W** · `QD-SHAREDISLAND` / `QD-PLAYRULES` (Peer reviewer: `anima-dell`)
-- **START WHEN:** `I2` and `I3` merged, `D-START-1` & `ISLAND-D6` decided (`ISLAND-D7` stays deferred).
+- **START WHEN:** `I2` and `I3` merged, `PR #256` merged & explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `D-START-1(a)` `256²` then WV2 `C01` after `WV2-7`, and `ISLAND-D6(a)` `IP:port + PIN` + UDP LAN beacon; `ISLAND-D7` stays deferred to `I10`).
 - **ALLOWED PATHS (`proposed`):**
   - [`src-tauri/src/core/networking_systems.rs`](../../../src-tauri/src/core/networking_systems.rs) *(only shared constants/helpers if needed; migration `anima-migration-v1` untouched)*
   - `src-tauri/src/core/island/host_server.rs` *(to be created by `I4`)*
   - `src-tauri/src/core/island/lan_guard.rs` *(to be created by `I4`)*
-  - [`src-tauri/Cargo.toml`](../../../src-tauri/Cargo.toml) *(only `[[test]] required-features = ["networking"]` entries if adding `networking`-gated integration tests; zero new crates unless `ISLAND-D6(c)` chosen)*
+  - [`src-tauri/Cargo.toml`](../../../src-tauri/Cargo.toml) *(only `[[test]] required-features = ["networking"]` entries if adding `networking`-gated integration tests; zero new crates per `ISLAND-D6(a)`)*
   - `src-tauri/tests/island_transport_tests.rs` *(to be created by `I4`)*
 - **Existing Anchors vs. New Symbols:**
   - Anchor [`Cargo.toml:56-58,73-77,242`](../../../src-tauri/Cargo.toml#L56-L77) (`socket2`, `tokio`, `tokio-tungstenite`, `futures-util`, `crossbeam-channel`, `bincode`, `networking` feature), [`world_artifact.rs:122,136`](../../../src-tauri/src/core/world_artifact.rs#L122-L136) (`WorldIdentity`, `sim_world_sha256`).
@@ -158,7 +155,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I5` — Guest WebSocket Client, Read-Only IPC Bridge & Adaptive Playout Buffer (`QD-SHAREDISLAND`)
 
 - **Lane / Owner:** `anima-case` **Lane W / desktop** · `QD-SHAREDISLAND` (Peer reviewer: `anima-dell`)
-- **START WHEN:** `I4` merged, `D-ANIM-1` decided.
+- **START WHEN:** `I4` merged & explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `D-ANIM-1(a)` adaptive `2–3` server stream ticks playout buffer: `~100–150 ms` at `20 Hz`, `~66–100 ms` at `30 Hz`).
 - **ALLOWED PATHS (`proposed`):**
   - `src-tauri/src/core/island/guest_client.rs` *(to be created by `I5`)*
   - `src-tauri/src/commands/island.rs` *(to be created by `I5`)*
@@ -183,7 +180,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I6` — Shared-Island LAN UI, 3rd-Person/Spectator Camera & Treatment Banner (`QD-SHAREDISLAND`, `QD-GENESIS`)
 
 - **Lane / Owner:** Frontend / UI lane · `QD-SHAREDISLAND` / `QD-GENESIS` (`G1`) (Peer reviewer: cross-machine per `AGENT_WORKFLOW.md`)
-- **START WHEN:** `I5` merged, `D-ANIM-2`, `D-CAM-1`, `D-CAM-3` decided.
+- **START WHEN:** `I5` merged & explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `D-ANIM-2(a)` prediction `OFF`, `D-CAM-1(a)` 3P follow/orbit, `D-CAM-3(a)` free spectator, `D-PLANT-1(a)` individual trees & shrubs only).
 - **ALLOWED PATHS (`proposed`):**
   - `src/components/Island/` *(to be created by `I6`)*
   - [`src/App.tsx`](../../../src/App.tsx) *(routing `TickSource` & Host/Join island bar; note [`LiveAgents.tsx`](../../../src/components/Landscape/LiveAgents.tsx#L57) already consumes `TickSource`)*
@@ -201,7 +198,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I6b` — Sensory First-Person View Mode (`D-CAM-2`, Animals & Plants, `QD-SHAREDISLAND`)
 
 - **Lane / Owner:** `anima-case` Lane W + Frontend lane · `QD-SHAREDISLAND` (Peer reviewer: cross-machine)
-- **START WHEN:** `I6` merged and owner approves `D-CAM-2` (for plant sensory overlays, also after `ADR-0015` (*evolving plants, D14*) plant organism pipeline lands).
+- **START WHEN:** `I6` merged and explicit `AUTHORIZATION` issued (`QD-ADR0014` `D-CAM-2(a)` deferred to optional post-M1 `I6b`; for plant sensory overlays, also after `ADR-0015` (*evolving plants, D14*) plant organism pipeline lands).
 - **ALLOWED PATHS (`proposed`):**
   - `src-tauri/src/core/island/stream.rs` *(focused single-organism sensor stream extension)*
   - `src/components/Island/` & `src/PixiViewport.tsx` *(sensory raycast/olfactory/plant-signal overlay)*
@@ -217,7 +214,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I7` — Multi-Machine LAN Soak & Offline Replay Parity Verification (`QD-SHAREDISLAND`)
 
 - **Lane / Owner:** Multi-machine verification · `QD-SHAREDISLAND` (`Windows 1` host + `macOS` & `Windows 2` guests; Peer reviewer: cross-machine)
-- **START WHEN:** `I6` merged.
+- **START WHEN:** `I6` merged & explicit `AUTHORIZATION` issued.
 - **ALLOWED PATHS (`proposed`):**
   - `scripts/verify_island_lan.mjs` *(or dedicated verification harness + result note under `docs/ai/planning/`, `to be created by I7`)*
 - **DONE WHEN:**
@@ -229,7 +226,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I8` — Off-Tick Island Chronicle & Five-Layer Classification (`QD-SHAREDISLAND`, `QD-GENESIS`)
 
 - **Lane / Owner:** `anima-case` **Lane W** + Frontend V7 timeline reuse · `QD-SHAREDISLAND` / `QD-GENESIS` / `QD-PLAYRULES` (`MSG_20261124_120000` & `121500`; Peer reviewer: cross-machine)
-- **START WHEN:** `I2` + `I6` merged (or after `WR2` + `I2` session metadata for backend chronicle builder), `D-START-2`, `D-CHRON-1`, `D-CHRON-2`, `D-CHRON-3` decided.
+- **START WHEN:** `I2` + `I6` merged (or after `WR2` + `I2` session metadata for backend chronicle builder) & explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `D-START-2(b)` headless prehistory, `D-CHRON-1` `§6` triggers, `D-CHRON-2(a)` `50`-epoch compaction, `D-CHRON-3` concrete clade threshold & naming scheme submitted in `ADR-0014` for lead approval under delegation).
 - **ALLOWED PATHS (`proposed`):**
   - `src-tauri/src/core/island/chronicle.rs` *(to be created by `I8`)*
   - `src-tauri/src/commands/island_chronicle.rs` *(to be created by `I8`)*
@@ -240,7 +237,7 @@ ADR-0014 accepted + D-slots decided
   - `src-tauri/tests/island_chronicle_tests.rs` & `tests/frontend/islandChronicle.test.tsx` *(to be created by `I8`)*
 - **Existing Anchors vs. New Symbols:**
   - Anchor [`evolution/lineage.rs:7,236,305,308,595`](../../../src-tauri/src/evolution/lineage.rs#L236-L308) (`LineageTracker`, `compact`), [`commands/evolution.rs:65-125,159,238`](../../../src-tauri/src/commands/evolution.rs#L65-L125) (`LineageGraphPayload`, `LineageMrcaPayload`, `get_lineage_mrca`), [`live_experiment.rs:116,277`](../../../src-tauri/src/core/live_experiment.rs#L116-L277) (`live.predator_fraction`, `live.lineage_tracking`), [`components.rs:66-69`](../../../src-tauri/src/core/components.rs#L66-L69) (`AgentType { Predator, Prey }`), [`EVOLUTION_EXPERIMENT_CONTRACT.md:308,311`](../../reference/EVOLUTION_EXPERIMENT_CONTRACT.md#L308-L311) (`AE-S11`, `AE-S14`), [`STATE_OF_THE_PROJECT.md §3.15`](../../planning/STATE_OF_THE_PROJECT.md#L1547-L1590).
-  - New symbols (*to be created by `I8`*): `IslandChronicleEntry` (`tick`, `segment_index`, `cause_id`, `chapter_kind`, `genesis_phase`), off-tick deterministic chronicle builder (zero simulation-tick allocation), importance ranker + followed/pinned guest view settings (off simulation state), total-extinction & new-era chapter recorder (`QD-PLAYRULES` Rule 4), extinct-branch summary compactor (`D-CHRON-2`), deterministic clade auto-namer & off-sim nickname store (`D-CHRON-3`), 5-layer classifier (`Lineage`, `Clade`, `"assigned role"`, `Body plan`, `AE-S11`-gated `Species`).
+  - New symbols (*to be created by `I8`*): `IslandChronicleEntry` (`tick`, `segment_index`, `cause_id`, `chapter_kind`, `genesis_phase`), off-tick deterministic chronicle builder (zero simulation-tick allocation), importance ranker + followed/pinned guest view settings (off simulation state), total-extinction & new-era chapter recorder (`QD-PLAYRULES` Rule 4), extinct-branch summary compactor (`D-CHRON-2(a)`: `COMPACT_EVERY_EPOCHS = 50`), deterministic clade auto-namer (`<founder_short_id>-<body_plan_code>-C<monotonic_index>` at `>= 5` living / `>= 5%` if `< 100` min `3` over `>= 3` gens) & off-sim nickname sidecar (`D-CHRON-3`), 5-layer classifier (`Lineage`, `Clade`, `"assigned role"`, `Body plan`, `AE-S11`-gated `Species`).
 - **DONE WHEN:**
   - Every chapter entry carries valid `(tick, segment_index)` jump links to `WorldRecord`, summarizes prehistory on guest arrival, records total island extinction & new-era openings, labels `G1` runs explicitly as `"designed founders"` and stamps active genesis phase provenance, labels `AgentType` strictly as `"assigned role"` (never evolved diet), never emits `"species"` / `"loài"` without `AE-S11`/`AE-S14`, compacts extinct unpinned branches cleanly, and incurs `0` tick-thread allocations.
   - `cargo test --features desktop --test island_chronicle_tests`, `npm run check:docs`, `npm run check:ipc`, `npm run test:frontend`, and `npm run lint` pass.
@@ -252,11 +249,11 @@ ADR-0014 accepted + D-slots decided
 ## Card `I9` — Opt-In Host-Side OpenAI-Compatible LLM Chronicle Narration (`D-LLM-1`, `QD-SHAREDISLAND`)
 
 - **Lane / Owner:** Rust backend + UI lane · `QD-SHAREDISLAND` (Peer reviewer: cross-machine)
-- **START WHEN:** `I8` merged and owner approves `D-LLM-1` (OpenRouter `:free` vs. `localhost` vs. disabled, plus HTTP dep/`cargo audit` gate).
+- **START WHEN:** `I8` merged & explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `D-LLM-1`: **OpenRouter `:free`** opt-in on the host via provider-agnostic OpenAI-compatible endpoint with API key in env var/OS keychain, plus supported **`localhost`** zero-key alternative; reuse existing `ureq` preferred, new crate follows `QD-WV25 (c)` `cargo deny`/`cargo audit` gate).
 - **ALLOWED PATHS (`proposed`):**
   - `src-tauri/src/core/island/llm_narration.rs` *(to be created by `I9`, gated behind explicit opt-in Cargo feature/setting)*
   - `src-tauri/src/commands/island_chronicle.rs` & [`src-tauri/src/lib.rs`](../../../src-tauri/src/lib.rs) & [`docs/reference/IPC_CONTRACT.md`](../../reference/IPC_CONTRACT.md)
-  - [`src-tauri/Cargo.toml`](../../../src-tauri/Cargo.toml) *(only if feature flag added; prefer existing `ureq` at `:74`)*
+  - [`src-tauri/Cargo.toml`](../../../src-tauri/Cargo.toml) *(only if feature flag added; prefer existing `ureq` at `:74`; any new HTTP crate follows `QD-WV25 (c)`)*
   - `src/components/Island/` *(`"AI-written summary"` badged view with model ID, provider, date)*
   - `src-tauri/tests/island_llm_narration_tests.rs` & [`docs/paper/AI_USE_LOG.md`](../../paper/AI_USE_LOG.md) *(only if ever used in published experiments/outputs per `QĐ-P3`)*
 - **DONE WHEN:**
@@ -274,7 +271,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I10` — Deferred Internet Milestone (`ISLAND-D7`, `QD-SHAREDISLAND`, Post-Milestone-1)
 
 - **Lane / Owner:** Deferred post-M1 (`QD-SHAREDISLAND` Internet milestone) until `I1`–`I8` pass cleanly and owner decides `ISLAND-D7` + `NM-4` / `QĐ-M3`
-- **START WHEN:** `I7` green AND owner approves `ISLAND-D7` (auth model, TLS/WSS vs. embedded peer QUIC, NAT/relay topology, shared evolved checkpoint sharing `D-START-2(c)`).
+- **START WHEN:** `I7` green, post-M1 Internet milestone prioritized, and owner resolves deferred `ISLAND-D7` + `NM-4` / `QĐ-M3` (auth model, TLS/WSS vs. embedded peer QUIC, NAT/relay topology, shared evolved checkpoint sharing `D-START-2(c)`).
 - **ALLOWED PATHS (`proposed`):** To be specified in a dedicated post-Milestone-1 card spec once `ISLAND-D7` closes (`docs/ai/planning/` + `src-tauri/src/core/island/`).
 - **DONE WHEN:** Authenticated encrypted transport (`TLS` or `QUIC`), NAT traversal/relay, rate limiting, and `D-START-2(c)` checkpoint verification pass without breaking LAN or Solo regression gates.
 - **Mandatory Negative Control:** Unauthenticated or plaintext remote peer attempting Internet host join is rejected at TLS/auth handshake.
@@ -284,7 +281,7 @@ ADR-0014 accepted + D-slots decided
 ## Card `I11` — `G2` Screened Founder Pool, Producers-First & Multi-Pool Robustness Check (`QD-SHAREDISLAND`, `QD-GENESIS`)
 
 - **Lane / Owner:** `anima-case` **Lane W** / experiment-contract lane · `QD-SHAREDISLAND` / `QD-GENESIS` (`G2` upgrade; Peer reviewer: cross-machine)
-- **START WHEN:** `I1` & `I2` merged (`G1` baseline operational), `ADR-0015` (*evolving plants, `D14`*) plant founders landed, `VIAB-2` calibration complete, and owner resolves `D-GENESIS-1` (producers-first trigger rule, `N`-generation closed-EU horizon, multi-pool robustness count `>= 3`) with explicit `AUTHORIZATION`. *(Note: `G3` emergent primordial organisms requires its own separate research ADR per `D-GENESIS-2` and is outside `I11`.)*
+- **START WHEN:** `I1` & `I2` merged (`G1` baseline operational), `ADR-0015` (*evolving plants, `D14`*) plant founders landed, `VIAB-2` calibration complete, and explicit `AUTHORIZATION` issued (`QD-ADR0014` decided `D-GENESIS-1(b)`: measured closed-EU viability trigger per trophic level, `VIAB-2`-calibrated `N` generations, robustness check across **`>= 3` founder pools**). *(Note: `G3` emergent primordial organisms is time-boxed to **`2 weeks` of agent work** in its own separate opt-in ADR per `D-GENESIS-2`, outside `I11`.)*
 - **ALLOWED PATHS (`proposed`):**
   - [`src-tauri/src/core/live_experiment.rs`](../../../src-tauri/src/core/live_experiment.rs) *(genesis phase flag & screened founder pool dispatch; `G1` / legacy paths unchanged when off)*
   - `src-tauri/src/core/island/genesis_pool.rs` *(to be created by `I11`)*
@@ -293,7 +290,7 @@ ADR-0014 accepted + D-slots decided
   - `docs/ai/planning/` *(multi-pool founder robustness check result note, to be created by `I11`)*
 - **Existing Anchors:** [`live_experiment.rs:88,96,112-116,3022`](../../../src-tauri/src/core/live_experiment.rs#L3022), [`resources.rs:947`](../../../src-tauri/src/core/resources.rs#L947) (`LIVE_GENESIS_FOUNDERS`), [`mutation.rs:70,211`](../../../src-tauri/src/evolution/mutation.rs#L70-L211), [`2026-11-23-viab1-results.md`](2026-11-23-viab1-results.md), [`2026-11-24-sel2-p2-preregistration-draft.md`](2026-11-24-sel2-p2-preregistration-draft.md#L209-L216) (`VIAB-2`).
 - **DONE WHEN:**
-  - Declared genotype distribution samples candidate founders on a dedicated seeded RNG stream (never touching the ecology stream), filters candidates through a closed-EU `N`-generation viability screen, seeds producers (`ADR-0015` plants) first followed by herbivores then predators (`live.predator_fraction` becomes legacy once evolved diets operate), stamps `G2` into the genesis manifest, `WorldIdentity`, and `ExperimentManifest::fingerprint()`, and passes an experiment-contract-style robustness check across multiple distinct founder pools (`>= K`, `D-GENESIS-1`).
+  - Declared genotype distribution samples candidate founders on a dedicated seeded RNG stream (never touching the ecology stream), filters candidates through a closed-EU `N`-generation viability screen, seeds producers (`ADR-0015` plants) first followed by herbivores then predators (`live.predator_fraction` becomes legacy once evolved diets operate), stamps `G2` into the genesis manifest, `WorldIdentity`, and `ExperimentManifest::fingerprint()`, and passes an experiment-contract-style robustness check across multiple distinct founder pools (`>= 3`, `D-GENESIS-1(b)`).
   - `cargo test --features desktop --test island_genesis_pool_tests`, full `cargo test --features desktop`, `node scripts/check_test_targets.mjs --profile desktop`, and `cargo clippy --features desktop --all-targets -- -D warnings` exit `0`.
 - **Mandatory Negative Controls:**
   - `science_boundary_rejects_mixed_genesis_phases`: experiment ensemble mixing `G1` (`"designed founders"`) and `G2` (`screened pool`) runs returns `Err`.
