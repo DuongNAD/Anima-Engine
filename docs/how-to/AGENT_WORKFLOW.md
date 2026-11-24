@@ -403,6 +403,13 @@ QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (
             and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
             QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
             recommended option for each of G1-G4.)
+QD-BRAINBODY = ADR-0019 (brain-body interface, PR #259) accepted with D1-D5 = A: keep the evolved brain shape
+            15->64->64->8, add shared 2-channel motor modulation and a per-edge heritable JointCpgGene
+            (channel_mix, phase_offset, freq_scale, amp_gain); opt-in only (live.brain_body_interface), with the
+            flag off preserving today's mapping bug-for-bug (root skips slot 0, ids >= 2 fixed at (1.0, 0.5));
+            2 channels, no change to the 8 outputs; drive aggregated over all oscillating descendant segments in
+            a deterministic order; lands on today's crossover first, and later homologous crossover preserves
+            node and edge ids. (Owner in chat, 2026-11-24: "Đồng ý".)
 QD-BIO-D1 = open energy flow: declared sunlight in and declared heat loss out become an opt-in world law with
             its own ADR, and the experiment contract's closed-EU rule is amended to "closed accounting over
             declared sources and sinks". Today respiration returns to detritus (world_systems.rs:223), so energy
