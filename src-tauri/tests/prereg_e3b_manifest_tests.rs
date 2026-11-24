@@ -606,16 +606,43 @@ fn no_trait_mass_observable_in_smoke_manifests_or_pre_run_artifact_paths() {
         );
     }
 
-    // Check pre-run artifact paths under artifacts/experiments/e3b-productivity-gradient-body-mass/.
+    // Freeze-time state (no confirmation/) is recorded by the freeze commit `ebe636d` (#231).
+    // Rescoped for E3B-RUN with the owner's authorization of 2026-11-24: keep the recursive
+    // `trait_mass` scan across artifacts/experiments/e3b-productivity-gradient-body-mass/
+    // excluding only `confirmation/` and top-level `RESULT.md`, and require any `confirmation/`
+    // bundle to carry a parsed `confirmation/provenance.json` with `smoke_reference.wp2_passed == true`.
     let art_root = repo_root().join("artifacts/experiments/e3b-productivity-gradient-body-mass");
-    assert!(
-        !art_root.join("confirmation").exists(),
-        "confirmation dir must not exist at preregistration freeze time"
-    );
+    let confirm_dir = art_root.join("confirmation");
+    if confirm_dir.exists() {
+        let prov_path = confirm_dir.join("provenance.json");
+        let prov_raw = std::fs::read_to_string(&prov_path).unwrap_or_else(|e| {
+            panic!("read confirmation provenance {}: {e}", prov_path.display())
+        });
+        let prov: serde_json::Value = serde_json::from_str(&prov_raw).unwrap_or_else(|e| {
+            panic!("parse confirmation provenance {}: {e}", prov_path.display())
+        });
+        assert_eq!(
+            prov.pointer("/smoke_reference/wp2_passed"),
+            Some(&serde_json::Value::Bool(true)),
+            "confirmation bundle {} must carry smoke_reference.wp2_passed == true",
+            prov_path.display()
+        );
+    }
     if art_root.exists() {
         let mut files = Vec::new();
         collect_files_recursive(&art_root, &mut files);
         for f in files {
+            let rel = f
+                .strip_prefix(&art_root)
+                .unwrap_or_else(|e| panic!("strip art_root prefix from {}: {e}", f.display()));
+            let in_confirmation = rel.components().next()
+                == Some(std::path::Component::Normal(std::ffi::OsStr::new(
+                    "confirmation",
+                )));
+            let is_top_level_result = rel == Path::new("RESULT.md");
+            if in_confirmation || is_top_level_result {
+                continue;
+            }
             let content = std::fs::read_to_string(&f)
                 .unwrap_or_else(|e| panic!("read pre-run/smoke artifact {}: {e}", f.display()));
             assert!(
