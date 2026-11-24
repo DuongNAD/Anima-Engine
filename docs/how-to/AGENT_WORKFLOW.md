@@ -358,6 +358,14 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+QD-WV25   = the three World v2 WV2-5 gates, answered in advance: (a) staging CC0 source assets for grid bake
+            workers is allowed within QD-ASSETS (ambientCG and Poly Haven only, CC0-1.0 only, at most 60 MB
+            downloaded and 20 MB committed, SOURCES.json with one licence_url per entry, GRID WORKER jobs under
+            QD-OXS); (b) the baked tile pack is not published now: it stays an internal artifact and is published
+            as a GitHub Release asset with v0.9.0 (QD-REL09 G3); (c) the lead may approve a new crate with a
+            permissive licence (MIT, Apache-2.0, BSD-2/3, ISC, Zlib, or a dual licence containing one), given its
+            licence, transitive dependency list, a clean cargo audit and the reason; any other licence goes to
+            the owner. (Owner in chat, 2026-11-24, choosing the recommended option for each gate.)
 QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (B) a release candidate
             v0.9.0-rc.1 first, for the three MP-5.1 trial sessions, then v0.9.0 after fixes; G2 (A) unsigned
             installers, with the SmartScreen / Gatekeeper steps of docs/how-to/INSTALL.md (QD-M8 signing stays
