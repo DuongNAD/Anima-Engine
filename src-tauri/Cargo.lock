@@ -191,6 +191,9 @@ dependencies = [
 name = "anima-worldgen"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "flate2",
+ "futures-executor",
  "libm",
  "rand 0.8.7",
  "rand_chacha 0.3.1",
@@ -198,7 +201,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tar",
  "toml 0.8.23",
+ "wgpu",
 ]
 
 [[package]]

@@ -124,37 +124,43 @@ impl DemographicTracker {
     }
 }
 
-/// Compute demographic census snapshot given agent metadata.
-pub fn build_demographic_census(
-    agents: &[(
-        u32,
-        Option<crate::core::ecs::AgentType>,
-        Option<crate::core::components::AgentSex>,
-    )],
+/// Update `census` in place from an iterator of `(age, agent_type, sex)` without heap allocations
+/// once the fixed cohort, mortality, and fecundity slots are initialized.
+pub fn update_demographic_census_from_iter<I>(
+    census: &mut DemographicCensusState,
+    agents: I,
     tracker: Option<&DemographicTracker>,
-) -> DemographicCensusState {
-    let mut cohorts = vec![
-        AgeCohort {
-            min_age: 0,
-            max_age: 50,
-            count: 0,
-        },
-        AgeCohort {
-            min_age: 51,
-            max_age: 150,
-            count: 0,
-        },
-        AgeCohort {
-            min_age: 151,
-            max_age: 300,
-            count: 0,
-        },
-        AgeCohort {
-            min_age: 301,
-            max_age: 1000,
-            count: 0,
-        },
-    ];
+) where
+    I: IntoIterator<
+        Item = (
+            u32,
+            Option<crate::core::ecs::AgentType>,
+            Option<crate::core::components::AgentSex>,
+        ),
+    >,
+{
+    const COHORT_BOUNDS: [(u32, u32); 4] = [(0, 50), (51, 150), (151, 300), (301, 1000)];
+    if census.age_cohorts.len() == COHORT_BOUNDS.len()
+        && census
+            .age_cohorts
+            .iter()
+            .zip(COHORT_BOUNDS.iter())
+            .all(|(c, &(min_age, max_age))| c.min_age == min_age && c.max_age == max_age)
+    {
+        for cohort in &mut census.age_cohorts {
+            cohort.count = 0;
+        }
+    } else {
+        census.age_cohorts.clear();
+        census.age_cohorts.reserve(COHORT_BOUNDS.len());
+        for &(min_age, max_age) in &COHORT_BOUNDS {
+            census.age_cohorts.push(AgeCohort {
+                min_age,
+                max_age,
+                count: 0,
+            });
+        }
+    }
 
     let mut prey_count = 0u32;
     let mut predator_count = 0u32;
@@ -162,14 +168,14 @@ pub fn build_demographic_census(
     let mut female_count = 0u32;
 
     for (age, agent_type, sex) in agents {
-        if *age <= 50 {
-            cohorts[0].count += 1;
-        } else if *age <= 150 {
-            cohorts[1].count += 1;
-        } else if *age <= 300 {
-            cohorts[2].count += 1;
+        if age <= 50 {
+            census.age_cohorts[0].count += 1;
+        } else if age <= 150 {
+            census.age_cohorts[1].count += 1;
+        } else if age <= 300 {
+            census.age_cohorts[2].count += 1;
         } else {
-            cohorts[3].count += 1;
+            census.age_cohorts[3].count += 1;
         }
 
         match agent_type {
@@ -204,58 +210,100 @@ pub fn build_demographic_census(
     let default_tracker = DemographicTracker::default();
     let trk = tracker.unwrap_or(&default_tracker);
 
-    let mortality_causes = vec![
-        MortalityCauseCount {
-            cause: "Starvation".to_string(),
-            count: trk.deaths_starvation,
-        },
-        MortalityCauseCount {
-            cause: "Predation".to_string(),
-            count: trk.deaths_predation,
-        },
-        MortalityCauseCount {
-            cause: "Senescence".to_string(),
-            count: trk.deaths_senescence,
-        },
-        MortalityCauseCount {
-            cause: "Toxicity".to_string(),
-            count: trk.deaths_toxicity,
-        },
-        MortalityCauseCount {
-            cause: "Pathogen".to_string(),
-            count: trk.deaths_pathogen,
-        },
+    let cause_counts = [
+        ("Starvation", trk.deaths_starvation),
+        ("Predation", trk.deaths_predation),
+        ("Senescence", trk.deaths_senescence),
+        ("Toxicity", trk.deaths_toxicity),
+        ("Pathogen", trk.deaths_pathogen),
     ];
-
-    let fecundity_by_age = vec![
-        AgeFecundity {
-            age_group: "Young (0-50)".to_string(),
-            births: trk.births_young,
-        },
-        AgeFecundity {
-            age_group: "Mature (51-150)".to_string(),
-            births: trk.births_mature,
-        },
-        AgeFecundity {
-            age_group: "Old (151+)".to_string(),
-            births: trk.births_old,
-        },
-    ];
-
-    DemographicCensusState {
-        age_cohorts: cohorts,
-        mortality_causes,
-        fecundity_by_age,
-        shannon,
-        simpson,
-        prey_count,
-        predator_count,
-        male_count,
-        female_count,
-        sex_ratio,
-        total_births: trk.total_births(),
-        total_deaths: trk.total_deaths(),
+    if census.mortality_causes.len() == cause_counts.len()
+        && census
+            .mortality_causes
+            .iter()
+            .zip(cause_counts.iter())
+            .all(|(entry, &(cause, _))| entry.cause == cause)
+    {
+        for (entry, &(_, count)) in census.mortality_causes.iter_mut().zip(cause_counts.iter()) {
+            entry.count = count;
+        }
+    } else {
+        census.mortality_causes.clear();
+        census.mortality_causes.reserve(cause_counts.len());
+        for &(cause, count) in &cause_counts {
+            census.mortality_causes.push(MortalityCauseCount {
+                cause: cause.to_string(),
+                count,
+            });
+        }
     }
+
+    let fecundity_counts = [
+        ("Young (0-50)", trk.births_young),
+        ("Mature (51-150)", trk.births_mature),
+        ("Old (151+)", trk.births_old),
+    ];
+    if census.fecundity_by_age.len() == fecundity_counts.len()
+        && census
+            .fecundity_by_age
+            .iter()
+            .zip(fecundity_counts.iter())
+            .all(|(entry, &(age_group, _))| entry.age_group == age_group)
+    {
+        for (entry, &(_, births)) in census
+            .fecundity_by_age
+            .iter_mut()
+            .zip(fecundity_counts.iter())
+        {
+            entry.births = births;
+        }
+    } else {
+        census.fecundity_by_age.clear();
+        census.fecundity_by_age.reserve(fecundity_counts.len());
+        for &(age_group, births) in &fecundity_counts {
+            census.fecundity_by_age.push(AgeFecundity {
+                age_group: age_group.to_string(),
+                births,
+            });
+        }
+    }
+
+    census.shannon = shannon;
+    census.simpson = simpson;
+    census.prey_count = prey_count;
+    census.predator_count = predator_count;
+    census.male_count = male_count;
+    census.female_count = female_count;
+    census.sex_ratio = sex_ratio;
+    census.total_births = trk.total_births();
+    census.total_deaths = trk.total_deaths();
+}
+
+/// Update `census` in place from a slice of agent metadata without allocating on subsequent ticks.
+pub fn update_demographic_census(
+    census: &mut DemographicCensusState,
+    agents: &[(
+        u32,
+        Option<crate::core::ecs::AgentType>,
+        Option<crate::core::components::AgentSex>,
+    )],
+    tracker: Option<&DemographicTracker>,
+) {
+    update_demographic_census_from_iter(census, agents.iter().copied(), tracker);
+}
+
+/// Compute demographic census snapshot given agent metadata.
+pub fn build_demographic_census(
+    agents: &[(
+        u32,
+        Option<crate::core::ecs::AgentType>,
+        Option<crate::core::components::AgentSex>,
+    )],
+    tracker: Option<&DemographicTracker>,
+) -> DemographicCensusState {
+    let mut census = DemographicCensusState::default();
+    update_demographic_census(&mut census, agents, tracker);
+    census
 }
 
 // ===============================================================================================

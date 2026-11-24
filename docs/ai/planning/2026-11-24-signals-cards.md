@@ -14,9 +14,9 @@ last_reviewed: 2026-11-24
 > No Rust, TypeScript, or contract edits are performed here. All cards below wait for owner
 > acceptance of [`ADR-0017`](../../decisions/ADR-0017-evolved-communication.md) (`D-SIG-1`–`D-SIG-6`),
 > respect `RESEARCH_REVIEW_2026-11-24_modern_biology.md` Topic 5 (`S1`–`S6`) & §3 rejections, `QD-SIGNALS`,
-> `QD-SCALE-TRIAL` (`N = 100` trial / `N = 1,000` design target), and any card adding new `live.*`
-> manifest keys or observables waits for `C12 E3B-PIN` (`QD-BIO-D2`). Code anchors verified on
-> `origin/feat/ecological-selection` at `902e505d58dbe034a1771bcea352742c296985d9`.
+> `QD-SCALE-TRIAL` (`N = 100` trial / `N = 1,000` design target), and any card adding new post-freeze `live.*`
+> manifest keys or observables must obey merged `C12 E3B-PIN` (`#260`, `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`, `QD-BIO-D2`, and coordinate any fixed `LIVE_KEYS.len() == 31` assertions). Code anchors verified on
+> `origin/feat/ecological-selection` at `e7b99745c59d7da35e884dd9414122b1d24fc648`.
 
 ---
 
@@ -38,7 +38,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
 
 ## Card `S1` — Read `action_index::SIGNAL` into Optional `SignalOutputState` (`SIG-S01`)
 
-- **START WHEN:** `ADR-0017` accepted (`D-SIG-1`) and (if adding a `live.signals` key) `C12 E3B-PIN` merged.
+- **START WHEN:** `ADR-0017` accepted (`D-SIG-1`; `C12 E3B-PIN` `#260` merged — any post-freeze `live.*` key obeys `prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760` absent-means-legacy defaults).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/components.rs` (`SignalOutputState` opt-in component beside `ActionGates` at `:501-548`)
   - `src-tauri/src/core/agent_systems.rs` (`action_resolution_system` at `:1911-1989`, wiring index `action_index::SIGNAL = 7` at `brain_genotype.rs:43` into `Option<&mut SignalOutputState>`)
@@ -50,7 +50,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
   defaults (`CommunicationPolicy` absent/`!enabled` skips attachment and leaves `world_checksum` and
   all existing runs bit-identical, `0` tick allocs).
 - **`DONE WHEN`:**
-  - Legacy runs with policy absent match `902e505` bit-for-bit across `E2`/`E3`/`E3b` fixtures; enabled
+  - Legacy runs with policy absent match `e7b99745` bit-for-bit across `E2`/`E3`/`E3b` fixtures; enabled
     runs record finite `[0, 1]` `SIGNAL` output on evolved brains cleanly across snapshot restore with
     `TrackingAllocator = 0`; `cargo fmt --check`, `cargo clippy --features desktop --all-targets -- -D warnings`,
     and `cargo test --features desktop` exit `0`.
@@ -65,7 +65,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/ai/pheromone.rs` (`PheromoneGrid`, `OlfactorySensors`, `PheromoneReleaser`, `agent_release_pheromone_system`, `agent_read_pheromone_system` at `:5-235`; modulated by `SignalOutputState` + `ActionGates::of(gates).pheromone_scale()` `:176`)
   - `src-tauri/src/core/world_systems.rs` (`metabolic_decay_system` `:85-225`: add signal emission metabolic surcharge inside `total_cost` at `:157` -> `respired` -> `pool.detritus` `:174-177, 222-224`)
-  - `src-tauri/src/core/spawn.rs` (`:139-143`), `src-tauri/src/core/simulation_loop.rs` (`:1674-1701`), `src-tauri/src/core/live_experiment.rs` (`:3108-3133`), `src-tauri/src/core/agent_systems.rs` (`SpawnOffspringCommand` `:494-652`) (opt-in attachment of `PheromoneReleaser` & `OlfactorySensors` at genesis and birth)
+  - `src-tauri/src/core/spawn.rs` (`:139-143`), `src-tauri/src/core/simulation_loop.rs` (`:1680-1706`), `src-tauri/src/core/live_experiment.rs` (`:3108-3133`), `src-tauri/src/core/agent_systems.rs` (`SpawnOffspringCommand` `:494-652`) (opt-in attachment of `PheromoneReleaser` & `OlfactorySensors` at genesis and birth)
   - `src-tauri/src/core/simulation_state.rs` (`SerializedAgent` `:105-145`, `spawn_serialized_agent` `:922-1039`), `src-tauri/src/core/components.rs` (`AgentMigrationData` `:166-185`), `src-tauri/src/core/aggregate_population.rs` (`ArchivedIndividual` `:224-236`), `src-tauri/src/core/snapshot.rs` (`world_checksum` `:789-886`, agent tuple loop `:798-822` conditional hashing)
   - `src-tauri/tests/signals_s2_pheromone_eu_tests.rs` (new)
 - **Scope:** Wire `PheromoneReleaser` and `OlfactorySensors` at genesis and offspring birth strictly under
@@ -77,7 +77,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
   enabling predator eavesdropping).
 - **`DONE WHEN`:**
   - Nonzero chemical emission increases `respired` and preserves `|closed_eu_residual| / initial <= 1e-9`
-    (and `<= 1e-3` under planned `ADR-0018` open flow); `run(N) == run(K) -> save -> load -> run(N-K)`
+    (and `<= 1e-3` under [`ADR-0018`](../../decisions/ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263` merged) open flow); `run(N) == run(K) -> save -> load -> run(N-K)`
     matches `world_checksum` bit-for-bit when enabled; `0` tick heap allocs; `0` change when flag off.
   - **Negative controls:** (1) Deduct emission cost outside `total_cost` -> EU closure fails red (`SIG-S02`);
     (2) drop `OlfactorySensors` across snapshot save -> post-restore `world_checksum` or `SIG-S04` round-trip test fails red.
@@ -102,7 +102,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
   - When enabled, prey/food placed strictly beyond `R_view` produce `local_target_vec == Vec3::ZERO`
     while targets inside `R_view` break ties identically regardless of ECS spawn/restore order;
     `sensory_system` and `hrrl_learning_system` return bit-identical target vectors on matching state;
-    `TrackingAllocator = 0`; legacy flag-off mode stays bit-identical to `902e505`.
+    `TrackingAllocator = 0`; legacy flag-off mode stays bit-identical to `e7b99745`.
   - **Negative control:** Inject an isolated food node at distance `R_view + 20.0` (with local perception
     on) -> asserting `local_target_vec == Vec3::ZERO` passes cleanly and fails red if global scan leaks.
 
@@ -113,7 +113,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
 - **START WHEN:** `S3` merged and `D-SIG-6` threshold defined.
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/experiment_runner/` or `src-tauri/src/ai/signal_audit.rs` (new purely offline analysis module — zero imports into `build_tick_schedule`)
-  - `src-tauri/src/core/live_experiment.rs` (`LIVE_EXTENDED_OBSERVABLE_IDS` `:1632-1649` if summary observability metrics are exposed post-`C12 E3B-PIN`)
+  - `src-tauri/src/core/live_experiment.rs` (`LIVE_EXTENDED_OBSERVABLE_IDS` `:1632-1649` if summary observability metrics are exposed obeying merged `C12 E3B-PIN` `#260`, `prereg_e3b_manifest_tests.rs:120, 753-760`)
   - `src-tauri/tests/signals_s4_causal_auditor_tests.rs` (new)
   - `docs/ai/planning/` (measurement findings note if warranted)
 - **Scope:** Implement an offline (zero-tick-cost) analyzer over snapshot/checkpoint captures computing
@@ -133,7 +133,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
 
 ## Card `S5` — Read-Only Baldwin Plasticity Telemetry (`AgentBrain.genotype` vs `learned`)
 
-- **START WHEN:** Independent (depends only on `ADR-0017` acceptance and `C12 E3B-PIN` if emitting `live.*` metrics).
+- **START WHEN:** Independent (depends only on `ADR-0017` acceptance; any post-freeze `live.*` metrics obey merged `C12 E3B-PIN` `#260`, `prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/telemetry_export.rs`, `src-tauri/src/core/live_experiment.rs` (offline/interval read-only comparison probe over `AgentBrain.genotype` vs `AgentBrain.learned` at `components.rs:561-612`)
   - `src-tauri/tests/signals_s5_baldwin_telemetry_tests.rs` (new)
@@ -200,7 +200,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
   - `src-tauri/src/core/world_systems.rs` (`total_cost` display cost), `src/` (read-only UI panels using strictly `"signals"` labels until `D-SIG-6` empirical threshold is cleared)
   - `src-tauri/tests/signals_s8_visual_plant_tests.rs` (new)
 - **Scope:** Deliver raycast/line-of-sight gated visual display signals, heritable chemical odour cues
-  replacing any oracle kin desire (pending `D13`/`D22` `ADR-0013` `D1 = B` sexual mate choice without oracle kin slots), and grazing-induced
+  replacing any oracle kin desire ([`ADR-0013`](../../decisions/ADR-0013-live-creature-lifecycle.md) `accepted` `#262` `D1 = B` sexual mate choice without oracle kin slots), and grazing-induced
   plant chemical wound volatiles (`ADR-0015` inter-kingdom signaling). Enforce strict UI copy discipline
   (`"signals"` until `SIG-S06` passes `D-SIG-6`).
 - **`DONE WHEN`:**
