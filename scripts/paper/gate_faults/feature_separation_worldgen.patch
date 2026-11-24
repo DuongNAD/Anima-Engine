@@ -1,10 +1,10 @@
 diff --git a/src-tauri/crates/anima-worldgen/Cargo.toml b/src-tauri/crates/anima-worldgen/Cargo.toml
 --- a/src-tauri/crates/anima-worldgen/Cargo.toml
 +++ b/src-tauri/crates/anima-worldgen/Cargo.toml
-@@ -15,5 +15,6 @@ rand_chacha = { version = "0.3", optional = true }
- rayon = { version = "1.10", optional = true }
- serde = { version = "1.0", features = ["derive"], optional = true }
+@@ -17,5 +17,6 @@ serde = { version = "1.0", features = ["derive"], optional = true }
+ serde_json = { version = "1.0", optional = true }
  sha2 = { version = "0.10", optional = true }
+ toml = { version = "0.8", default-features = false, features = ["parse"], optional = true }
 +bevy_ecs = "0.13.0"
  
  [features]

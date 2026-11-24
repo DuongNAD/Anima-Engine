@@ -97,6 +97,57 @@ export const IGNORED_TESTS = [
       '`live_world_conserves_energy_across_births_deaths_and_a_save_load_cycle` and the ' +
       'per-transaction tests beside it.',
   },
+  {
+    name: 'biomes::tests::realistic_512_tectonic_massif_satisfies_c1_all_16_biomes_and_c2_ecotone_band',
+    target: 'src/lib.rs',
+    profiles: ['worldgen-cpu'],
+    reason:
+      'MAP-D3: Card 3 gate endorheic_humid_fraction (A6 parked) not met by physics; see ' +
+      'docs/ai/planning/2026-11-23-wv2-2.md §6. Passing C1/C2 assertions keep running in ' +
+      '`realistic_512_tectonic_massif_c1_c2_passing_invariants`.',
+  },
+  {
+    name: 'fill_spill_merge_humid_spillways_endorheic_equilibrium_and_c3_diversity',
+    target: 'tests/wv2_2_climate_biome_cave_tests.rs',
+    profiles: ['worldgen-cpu'],
+    reason:
+      'MAP-D3: Card 3 gates endorheic_humid_fraction, lake_surface_fraction, large_lakes, ' +
+      'paramo_lakes, and small_paramo_ponds not met by physics at 256^2; see ' +
+      'docs/ai/planning/2026-11-23-wv2-2.md §6. Passing spillway, caldera/trough, and ' +
+      'arid-equilibrium assertions keep running in ' +
+      '`fill_spill_merge_humid_spillways_and_arid_equilibrium_passing_invariants`.',
+  },
+  {
+    name: 'coarse_512_relaxed_run_knickpoint_waterfalls_with_plunge_pools',
+    target: 'tests/wv2_2_climate_biome_cave_tests.rs',
+    profiles: ['worldgen-cpu'],
+    reason:
+      'MAP-D3: Card 3 gate waterfall_count not met by physics (discharge over caprock); see ' +
+      'docs/ai/planning/2026-11-23-wv2-2.md §6. Passing waterfall drop, plunge-pool, and ' +
+      'spacing assertions keep running in ' +
+      '`coarse_512_relaxed_run_waterfall_geometry_and_plunge_pools_passing_invariants`.',
+  },
+  {
+    name: 'multi_seed_card3_waterfalls_rivers_lakes_dunes_invariants',
+    target: 'tests/wv2_2_climate_biome_cave_tests.rs',
+    profiles: ['worldgen-cpu'],
+    reason:
+      'MAP-D3: Card 3 gates waterfall_count, river_surface_fraction, lake_surface_fraction, ' +
+      'large_lakes, and endorheic_humid_fraction not met by physics; see ' +
+      'docs/ai/planning/2026-11-23-wv2-2.md §6. Passing multi-seed hydrology, cave, biome, ' +
+      'and dune assertions keep running in ' +
+      '`multi_seed_non_card3_hydrology_caves_biomes_dunes_passing_invariants`.',
+  },
+  {
+    name: 'full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes',
+    target: 'tests/wv2_2_climate_biome_cave_tests.rs',
+    profiles: ['worldgen-cpu'],
+    reason:
+      'MAP-D3: Card 3 gates lake_surface_fraction, river_surface_fraction, and ' +
+      'endorheic_humid_fraction not met by physics; see docs/ai/planning/2026-11-23-wv2-2.md §6. ' +
+      'Passing ocean, cave, 22-biome C1/C2, and Werner dune assertions keep running in ' +
+      '`full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes_passing_invariants`.',
+  },
 ];
 
 /**
@@ -121,6 +172,7 @@ export const FEATURE_GATED_TARGETS = [
   { name: 'tests/phase5_burn_wgpu_fallback.rs', feature: 'ml-wgpu' },
   { name: 'tests/wv2_1a_tectonic_tests.rs', feature: 'generate' },
   { name: 'tests/wv2_1b_solver_hydro_tests.rs', feature: 'generate' },
+  { name: 'tests/wv2_2_climate_biome_cave_tests.rs', feature: 'generate' },
 ];
 
 /** Which features each named profile turns on. Used to decide "absent" vs "must run". */

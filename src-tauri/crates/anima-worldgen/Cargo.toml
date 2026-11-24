@@ -14,7 +14,9 @@ rand = { version = "0.8", optional = true }
 rand_chacha = { version = "0.3", optional = true }
 rayon = { version = "1.10", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
 sha2 = { version = "0.10", optional = true }
+toml = { version = "0.8", default-features = false, features = ["parse"], optional = true }
 
 [features]
 default = []
@@ -28,9 +30,16 @@ generate = [
     "dep:rand_chacha",
     "dep:rayon",
     "dep:serde",
+    "dep:serde_json",
+    "dep:toml",
 ]
 # Offline tile/lighting bake surface stub (populated in WV2-5; wired early for CI clippy).
 bake = ["generate"]
+
+[[bin]]
+name = "anima-worldgen"
+path = "src/bin/anima-worldgen.rs"
+required-features = ["generate"]
 
 [[test]]
 name = "wv2_1a_tectonic_tests"
@@ -39,3 +48,11 @@ required-features = ["generate"]
 [[test]]
 name = "wv2_1b_solver_hydro_tests"
 required-features = ["generate"]
+
+[[test]]
+name = "wv2_2_climate_biome_cave_tests"
+required-features = ["generate"]
+
+[[example]]
+name = "wv2_2_release_verify"
+required-features = ["reader", "generate", "bake"]

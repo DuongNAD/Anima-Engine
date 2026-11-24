@@ -1,0 +1,40 @@
+{
+  "body_mass_consulted": false,
+  "build": {
+    "binary_sha256": "381d08907ce2945ccbc9a62059b15d3fbf84264263ad529c93aab9b4456435fd",
+    "git_commit": "ed634d8c0e646d6a78ca9e079f7bb5346d2d8b93",
+    "git_describe": "ed634d8",
+    "git_dirty_paths": [
+      "artifacts/experiments/e3b-productivity-gradient-body-mass/"
+    ],
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "duration_ticks": 18000,
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "kind": "e3b-blind-smoke-provenance",
+  "preregistration_id": "e3b-productivity-gradient-body-mass",
+  "preregistration_status": "FROZEN",
+  "sample_period": 600,
+  "smoke_seed": 999953,
+  "terrain_source": "generated",
+  "warmup_ticks": 3000,
+  "world_artifact_prerun_check": {
+    "anima_world_artifact_unset": true,
+    "temp_artifact_absent": true,
+    "temp_artifact_filename": "anima_world_artifact.anmw",
+    "temp_artifact_path": "C:/Users/Admin/AppData/Local/Temp/anima_world_artifact.anmw"
+  },
+  "world_identity_observed": {
+    "checksum": 3152323152,
+    "generator_version": 1,
+    "height": 256,
+    "seed": 1337,
+    "width": 256
+  }
+}

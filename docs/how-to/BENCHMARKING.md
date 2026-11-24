@@ -1,62 +1,50 @@
 ---
-title: Đo hiệu năng bằng Criterion
+title: Performance Benchmarking with Criterion
 status: active
 owner: maintainers
 last_reviewed: 2026-07-27
 review_cycle: per-release
 ---
 
-# Đo hiệu năng từng system bằng Criterion
+# Performance Benchmarking per System with Criterion
 
-Tài liệu này là **cách làm**. Số đo cam kết nằm ở [§ Baseline](#baseline-2026-07-26); cách
-diễn giải một report và metadata bắt buộc vẫn ở
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
+> *Vietnamese version / Bản tiếng Việt: [BENCHMARKING.vi.md](BENCHMARKING.vi.md).*
 
-> **Bạn là chủ dự án và chỉ có năm phút?** Bỏ qua phần Criterion. Việc duy nhất máy không làm được
-> là [§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist) —
-> một lần mở app, thu cả ba thứ còn thiếu.
+This document is the **how-to**. Committed numbers live in [§ Baseline](#baseline-2026-07-26); how to interpret a report and required metadata remain in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
 
-## Vì sao có bộ này
+> **Are you the project owner with only five minutes?** Skip the Criterion section. The only work a machine cannot perform is [§ One-run owner checklist](#one-run-owner-checklist) — launching the app once and collecting the remaining three pieces.
 
-Tuyên bố "60 FPS real-time" ở cấu hình release / 1.000 agent **chưa từng được đo**:
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) mới có số Criterion theo từng system (cận dưới)
-và một lần chạy app desktop bản **debug, 10 agent** ngày 2026-07-27 (xem
-[§ In-app tick capture](#in-app-tick-capture-2026-07-27)), còn chạy full backend bản release để đo
-1.000 agent vẫn chưa thực hiện trên máy dev vì ràng buộc đã ghi ở đó. Ràng buộc đó không mất đi — nên
-bộ bench này **không chạy backend**. Mỗi benchmark lái đúng một system, hoặc một hàm thuần, trên dữ
-liệu nó tự dựng: không Tauri, không cửa sổ, không GPU device, không thread mô phỏng.
+## Why This Suite Exists
 
-Đó cũng là lý do Criterion hợp: một khung hình 60 FPS là **16,67 ms**, và ngân sách khung hình là
-một **tổng theo system** — nên số theo từng system chính là thứ cấu thành tuyên bố kia.
+The claim "60 FPS real-time" at release settings / 1,000 agents **has never been measured**: [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) only holds Criterion per-system timings (a lower bound) and one full desktop app run in **debug mode with 10 agents** on 2026-07-27 (see [§ In-app tick capture](#in-app-tick-capture-2026-07-27)), whereas a full release-mode desktop measurement at 1,000 agents has still not been performed on the dev machine due to the constraint recorded there. That constraint still holds — so this benchmark suite **does not run the full backend**. Each benchmark drives a single system or pure function on self-constructed data: no Tauri, no window, no GPU device, and no simulation thread.
 
-## Chạy
+That is also why Criterion fits: a 60 FPS frame budget is **16.67 ms**, and frame time is a **sum across systems** — so per-system numbers form the components of that budget.
+
+## Running
 
 ```bash
 cargo bench --bench tick_systems
 ```
 
-Chạy nhanh hơn khi chỉ cần một con số thô (mặc định là 3 s warm-up + 5 s đo mỗi mục):
+Run faster when only a rough number is needed (default is 3 s warm-up + 5 s measurement per item):
 
 ```bash
 cargo bench --bench tick_systems -- --warm-up-time 1 --measurement-time 3
 ```
 
-Chỉ một nhóm:
+Run only one group:
 
 ```bash
 cargo bench --bench tick_systems -- tick/dynamic_fields
 ```
 
-*(Các checklist trong trang này viết cho máy Windows; bảng lệnh tương đương cho macOS ở
-[How-to § Trên macOS và Linux](README.md#trên-macos-và-linux). Chưa checklist nào được chạy trên macOS.)*
+*(Checklists on this page are written for Windows; equivalent macOS commands are listed in [How-to § On macOS and Linux](README.md#on-macos-and-linux). None of these checklists has yet been run on macOS.)*
 
-Chạy từ `src-tauri/`; **trên Windows thì bằng PowerShell chứ không phải Git Bash** — cùng lý do với `cargo test`
-(xem `STATE_OF_THE_PROJECT.md` §4).
+Run from `src-tauri/`; **on Windows use PowerShell rather than Git Bash** — for the same reason as `cargo test` (see `STATE_OF_THE_PROJECT.md` §4).
 
-## So sánh với lần trước
+## Comparing Against Previous Runs
 
-Criterion tự lưu kết quả vào `target/criterion/` và in `change: [...]` so với lần chạy trước trên
-cùng máy. Đặt tên một mốc để so về sau:
+Criterion stores results under `target/criterion/` automatically and prints `change: [...]` against the prior run on the same machine. Save a named baseline for later comparison:
 
 ```bash
 cargo bench --bench tick_systems -- --save-baseline before
@@ -66,222 +54,160 @@ cargo bench --bench tick_systems -- --save-baseline before
 cargo bench --bench tick_systems -- --baseline before
 ```
 
-`target/` nằm trong `.gitignore`, nên mốc đó là **cục bộ theo máy**. Mốc dùng chung cho cả dự án là
-bảng ở dưới, và nó chỉ có nghĩa khi đi kèm khối phần cứng.
+`target/` is in `.gitignore`, so saved baselines are **local per machine**. The shared project baseline is the table below, and it is meaningful only alongside its hardware block.
 
-## Tắt / gỡ
+## Disabling / Removing
 
-`criterion` là `dev-dependency`, không vào binary. Gỡ = xoá mục `[dev-dependencies]`, khối
-`[[bench]]` trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) và
-`src-tauri/benches/`. Không có đường code nào của sản phẩm phụ thuộc vào nó.
+`criterion` is a `dev-dependency` and does not enter the shipping binary. Removing it means deleting the `[dev-dependencies]` entry, the `[[bench]]` block in [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml), and `src-tauri/benches/`. Zero production code paths depend on it.
 
-Ràng buộc phải giữ: `cargo tree --no-default-features -e normal` **không được** thấy `criterion`.
-Đó là cách gate tách feature G2 kiểm tra, và một `dev-dependency` vô hình với nó theo đúng thiết
-kế. Đã xác minh 2026-07-26 — 0 kết quả.
+Constraint to preserve: `cargo tree --no-default-features -e normal` **must not** show `criterion`. That is what feature-separation gate G2 verifies, and a `dev-dependency` is invisible to it by design. Verified 2026-07-26 — 0 matches.
 
 ---
 
 ## Baseline 2026-07-26
 
-**Đây là số đo, không phải proxy.** Build `--release`, mỗi mục 100 mẫu.
+**These are measured numbers, not proxies.** Built with `--release`, 100 samples per item.
 
-> **Đọc số nào: trung vị.** Dòng `time: [a b c]` mà `cargo bench` in ra **không phải trung vị** —
-> với lấy mẫu tuyến tính, `b` là **slope estimate**. Hai con số lệch nhau thật: `step_water` cho
-> slope 297,6 µs nhưng trung vị 271,5 µs. Bảng dưới dùng **trung vị**, đọc từ
-> `median.point_estimate` trong `target/criterion/**/new/estimates.json`, vì nó bền hơn với vài
-> mẫu ngoại lai trên một máy desktop có tải nền. Cả trung vị lẫn trung bình đều được ghi vào
-> [`benchmark_report.json`](../../benchmark_report.json).
+> **Which number to read: median.** The `time: [a b c]` line printed by `cargo bench` **is not the median** — under linear sampling, `b` is the **slope estimate**. The two values genuinely diverge: `step_water` reports a slope of 297.6 µs vs a median of 271.5 µs. The table below reports the **median**, read from `median.point_estimate` inside `target/criterion/**/new/estimates.json`, because it is more resilient to occasional outlier samples on a desktop machine with background load. Both median and mean are recorded in [`benchmark_report.json`](../../benchmark_report.json).
 
-### Phần cứng — đây là máy mục tiêu
+### Hardware — This Is the Target Machine
 
 | | |
 |---|---|
-| CPU | Intel Core i5-14600KF · 14 nhân / 20 luồng · 3,5 GHz base |
-| RAM | 47,8 GB |
+| CPU | Intel Core i5-14600KF · 14 cores / 20 threads · 3.5 GHz base |
+| RAM | 47.8 GB |
 | OS | Windows 11 Pro 10.0.26200 |
 | Toolchain | rustc 1.95.0 · cargo 1.95.0 |
-| Lệnh | `cargo bench --bench tick_systems -- --warm-up-time 1 --measurement-time 3` |
+| Command | `cargo bench --bench tick_systems -- --warm-up-time 1 --measurement-time 3` |
 
-Phần cứng mục tiêu của dự án nay **chính là máy này** (cập nhật 2026-07-26, thay cho khai báo
-Dell Vostro 3530 cũ trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md)). Nghĩa là bảng
-dưới **là** số đo trên phần cứng mục tiêu.
+The project's target hardware is now **this machine** (updated 2026-07-26, superseding the older Dell Vostro 3530 declaration in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md)). Thus the tables below **are** measurements on target hardware.
 
-Điều đó vẫn **không** đủ để đóng `STATE_OF_THE_PROJECT.md` §3.2 — xem [§ Cái vẫn còn
-thiếu](#cái-vẫn-còn-thiếu).
+Still, this **does not** suffice to close `STATE_OF_THE_PROJECT.md` §3.2 — see [§ What is still missing](#what-is-still-missing).
 
-### Trường thế giới, 256×256 (kích thước thật, `MapSettings::default()`)
+### World Fields, 256×256 (Real Dimension, `MapSettings::default()`)
 
-| Hàm | Trung vị | Trung bình | Ghi chú |
+| Function | Median | Mean | Notes |
 |---|---:|---:|---|
-| `ResourceField::step_regrowth` | 70,6 µs | 72,2 µs | Không gate, một pass |
-| `ResourceField::step_regrowth_gated` | 218,5 µs | 269,9 µs | Hai pass, có ngân sách detritus |
-| `ResourceField::step_regrowth_gated_strided` | **55,0 µs** | 57,4 µs | `REGROWTH_STRIDE = 4` — **nhanh hơn 3,97×** bản không stride |
-| `DynamicFields::step_water` | **271,5 µs** | 288,7 µs | **Đắt nhất trong mọi system chạy mỗi tick** |
-| `DynamicFields::step_soil` | 47,2 µs | 47,8 µs | |
-| `DynamicFields::step_erosion` | 20,1 µs | 20,6 µs | Công thức cục bộ, không vận chuyển trầm tích |
+| `ResourceField::step_regrowth` | 70.6 µs | 72.2 µs | Ungated, single pass |
+| `ResourceField::step_regrowth_gated` | 218.5 µs | 269.9 µs | Two passes, detritus budget active |
+| `ResourceField::step_regrowth_gated_strided` | **55.0 µs** | 57.4 µs | `REGROWTH_STRIDE = 4` — **3.97× faster** than non-strided path |
+| `DynamicFields::step_water` | **271.5 µs** | 288.7 µs | **Most expensive among all per-tick systems** |
+| `DynamicFields::step_soil` | 47.2 µs | 47.8 µs | |
+| `DynamicFields::step_erosion` | 20.1 µs | 20.6 µs | Local formula, no sediment transport |
 
-### Theo số agent (trung vị)
+### By Agent Count (Median)
 
-| Hàm | 100 | 1.000 | 10.000 | Biên/agent |
+| Function | 100 | 1,000 | 10,000 | Slope / Agent |
 |---|---:|---:|---:|---:|
-| `integrate_physics_system` | 493 ns | 4,9 µs | 49,2 µs | **4,92 ns** |
-| `rebuild_spatial_grid_system` | 13,4 µs | 94,3 µs | **734,5 µs** | **72,8 ns** + ~13 µs cố định |
+| `integrate_physics_system` | 493 ns | 4.9 µs | 49.2 µs | **4.92 ns** |
+| `rebuild_spatial_grid_system` | 13.4 µs | 94.3 µs | **734.5 µs** | **72.8 ns** + ~13 µs fixed |
 
-### Ngoài đường tick (trung vị)
+### Outside the Tick Path (Median)
 
-| Hàm | Trung vị | Ghi chú |
+| Function | Median | Notes |
 |---|---:|---|
-| `a2c_loss` (batch 32, kiến trúc 15→64→64→{4,1}) | **284,7 µs** | Mỗi bước optimiser, trên **thread learner** — không nằm trong ngân sách khung hình |
-| `WorldArtifact::to_bytes` (256²) | 1,46 ms | Artifact ~1,05 MiB |
-| `WorldArtifact::from_bytes` (256²) | 1,13 ms | |
-| `WorldArtifact::checksum` (256²) | 1,37 ms | |
+| `a2c_loss` (batch 32, architecture 15→64→64→{4,1}) | **284.7 µs** | Per optimizer step, on **learner thread** — outside frame budget |
+| `WorldArtifact::to_bytes` (256²) | 1.46 ms | Artifact ~1.05 MiB |
+| `WorldArtifact::from_bytes` (256²) | 1.13 ms | |
+| `WorldArtifact::checksum` (256²) | 1.37 ms | |
 
 ---
 
-## Ba điều những số này nói
+## Three Things These Numbers Say
 
-### 1. Ngân sách khung hình — cận dưới, không phải khung hình
+### 1. Frame Budget — A Lower Bound, Not Full Frame Time
 
-Cộng các system chạy mỗi tick, ở 1.000 agent:
+Summing per-tick systems at 1,000 agents:
 
-| Thành phần | µs |
+| Component | µs |
 |---|---:|
-| `step_regrowth_gated_strided` | 55,0 |
-| `step_water` | 271,5 |
-| `step_soil` | 47,2 |
-| `step_erosion` | 20,1 |
-| `integrate_physics_system` | 4,9 |
-| `rebuild_spatial_grid_system` | 94,3 |
-| **Tổng** | **≈ 493 µs** |
+| `step_regrowth_gated_strided` | 55.0 |
+| `step_water` | 271.5 |
+| `step_soil` | 47.2 |
+| `step_erosion` | 20.1 |
+| `integrate_physics_system` | 4.9 |
+| `rebuild_spatial_grid_system` | 94.3 |
+| **Total** | **≈ 493 µs** |
 
-≈ **3,0 %** của khung hình 16,67 ms. Ở 10.000 agent: ≈ 1,18 ms ≈ **7,1 %**.
+≈ **3.0%** of a 16.67 ms frame. At 10,000 agents: ≈ 1.18 ms ≈ **7.1%**.
 
-**Đây là cận dưới và phải đọc đúng như vậy.** Nó chưa gồm suy luận của não agent, lập lịch ECS,
-change detection, thread emit, va chạm, CPG, trao đổi chất, và mọi thứ không có trong bảng. Một
-tuyên bố "60 FPS" **không** được rút ra từ con số này.
+**This is a lower bound and must be read strictly as such.** It excludes brain inference, ECS scheduling, change detection, thread telemetry emission, collisions, CPG, metabolism, and everything absent from the table. A "60 FPS" claim **cannot** be inferred from this sum alone.
 
-Ngoại suy tới trần quần thể EB-S12 (~46.500 agent), tuyến tính theo biên/agent đo được:
-physics ≈ 229 µs, spatial ≈ 3,40 ms, trường ≈ 394 µs → **≈ 4,02 ms ≈ 24 %** khung hình. Đây là
-**ngoại suy, không phải phép đo** — lưới băm có số ô cố định nên mật độ agent mỗi ô tăng theo N, và
-hành vi ngoài dải đã đo không được bảo đảm.
+Linearly extrapolating by the measured slope/agent up to the EB-S12 population ceiling (~46,500 agents): physics ≈ 229 µs, spatial ≈ 3.40 ms, fields ≈ 394 µs → **≈ 4.02 ms ≈ 24%** of a frame. This is an **extrapolation, not a measurement** — the spatial hash grid uses fixed cell counts so per-cell agent density grows with N, and behavior outside the measured range is not guaranteed.
 
-### 2. Chi phí không nằm ở chỗ người ta hay đoán
+### 2. Cost Is Not Where People Usually Guess
 
-`integrate_physics_system` **rẻ**: 4,92 ns/agent, tuyến tính sạch qua ba bậc. Ở 10.000 agent nó tốn
-49 µs — 0,3 % khung hình.
+`integrate_physics_system` is **cheap**: 4.92 ns/agent, scaling cleanly linearly over three orders of magnitude. At 10,000 agents it takes 49 µs — 0.3% of a frame.
 
-`rebuild_spatial_grid_system` tốn **gấp gần 15 lần** ở cùng số agent (734 µs so với 49 µs). Và hình
-dạng chi phí của nó khác: ở 100 agent là 134 ns/agent, ở 10.000 là 73 ns/agent — tức một phần đáng
-kể chi phí ở quy mô nhỏ là **quét toàn bộ ô lưới đã cấp phát sẵn**, không phải xử lý agent. Đây là
-nơi đáng tối ưu trước, không phải solver vật lý.
+`rebuild_spatial_grid_system` costs **nearly 15× more** at the same agent count (734 µs vs 49 µs). Its scaling shape also differs: 134 ns/agent at 100 agents vs 73 ns/agent at 10,000 agents — indicating a significant fixed portion at small scale comes from **clearing pre-allocated grid buckets**, not agent work. That is the first hotspot worth optimizing, not the physics solver.
 
-`step_water` một mình đắt hơn cả nhóm trường còn lại cộng lại, và đắt hơn physics ở 10.000 agent.
+`step_water` alone costs more than all other field passes combined, and more than physics at 10,000 agents.
 
-### 3. Con số 4,2 ms trong `ecology.rs` không tái lập được ở đây
+### 3. The 4.2 ms Number in `ecology.rs` Did Not Reproduce Here
 
-Doc comment của `ResourceField::REGROWTH_STRIDE` ghi rằng đường regrowth trước khi stride tốn bốn
-pass mỗi tick, **"đo được ~4,2 ms/tick — một phần tư ngân sách khung hình 60 FPS"**.
+The doc comment on `ResourceField::REGROWTH_STRIDE` stated that the pre-stride regrowth path ran four passes per tick, **"measured ~4.2 ms/tick — a quarter of a 60 FPS frame budget"**.
 
-Đo lại trên máy này, build release: `step_regrowth_gated` = **0,219 ms**. Cộng hai pass
-`total_biomass()` mà bản cũ cần (mỗi pass nhiều nhất cỡ `step_regrowth`, ~71 µs) ra **≈ 0,36 ms** —
-thấp hơn con số ghi trong doc khoảng **12 lần**.
+Re-measured on this machine in release mode: `step_regrowth_gated` = **0.219 ms**. Adding the two `total_biomass()` passes needed by the old path (at most `step_regrowth` each, ~71 µs) yields **≈ 0.36 ms** — roughly **12× lower** than the doc comment's claim.
 
-Hai điều cần tách bạch, vì trộn vào nhau sẽ dẫn tới kết luận sai:
+Keep these two points distinct, because conflating them invites wrong conclusions:
 
-- **Việc stride là đúng và có lợi thật.** Đo được **3,97×**. Không có gì phải rút lại.
-- **Con số headline biện minh cho nó thì không tái lập.** Không thể kết luận doc sai từ đây: bản đo
-  cũ có thể ở build debug, trên máy khác, hoặc gồm cả công việc khác trong cùng tick. Đây là một
-  **finding cần đối chứng**, không phải một lỗi đã xác định — theo quy tắc 6 của
-  [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mở finding chứ không tự coi bên nào
-  đúng.
+- **Striding itself is valid and genuinely faster.** Measured **3.97×** speedup. Nothing here calls for reverting it.
+- **Its motivating headline figure did not reproduce.** That alone does not prove the doc wrong: the earlier figure could come from a debug build, a slower machine, or additional work in the same tick. Per Rule 6 of [documentation policy](../governance/DOCUMENTATION_POLICY.md), treat this as an **open finding for verification**, not a settled error.
 
-**Đối chứng 2026-11-17: con số 4,2 ms là của build debug, không phải release.**
-- Bench `tick_systems` nay giữ đúng đường cũ: `pre_stride_gated_with_biomass_sandwich/256x256` gồm
-  bước gated và hai pass `total_biomass()`. Lệnh đo:
-  `cargo bench --bench tick_systems -- "tick/resource_field"`; trung vị đọc từ `estimates.json`.
-- Kết quả trên Apple M5 (10 nhân, macOS), rustc 1.98.1:
+**Counter-check 2026-11-17: 4.2 ms came from a debug build, not release.**
+- Bench `tick_systems` now retains the exact old path: `pre_stride_gated_with_biomass_sandwich/256x256`, running the gated step sandwiched between two `total_biomass()` passes. Command: `cargo bench --bench tick_systems -- "tick/resource_field"`; medians read from `estimates.json`.
+- Results on Apple M5 (10 cores, macOS), rustc 1.98.1:
 
-  | Hàm | Trung vị |
+  | Function | Median |
   |---|---:|
-  | `step_regrowth` | 60,6 µs |
-  | `step_regrowth_gated` | 154,5 µs |
-  | `pre_stride_gated_with_biomass_sandwich` (đường cũ) | **217,7 µs** |
-  | `step_regrowth_gated_strided` | **39,0 µs** |
+  | `step_regrowth` | 60.6 µs |
+  | `step_regrowth_gated` | 154.5 µs |
+  | `pre_stride_gated_with_biomass_sandwich` (old path) | **217.7 µs** |
+  | `step_regrowth_gated_strided` | **39.0 µs** |
 
-  Stride nhanh hơn đường cũ **5,6×**.
-- Cùng đường cũ ở **build debug** tốn **1,9 ms** (trung vị 300 lần, đo bằng `Instant` trong một test
-  tạm, không commit) trên cùng máy, chậm hơn release ~7×.
-- Con số 4,2 ms khớp với một phép đo debug trên máy chậm hơn, và không build release nào cho ra con số
-  đó. Doc comment của `REGROWTH_STRIDE` đã được sửa theo số này. Việc stride vẫn đúng và vẫn có lợi;
-  chỉ lý do bằng con số là được sửa.
+  Striding outperforms the old path by **5.6×**.
+- That same old path in a **debug build** took **1.9 ms** (median over 300 iterations, timed with `Instant` in a temporary uncommitted test) on the same machine — ~7× slower than release.
+- The 4.2 ms figure matches a debug measurement on a slower machine, whereas no release build produces that number. The doc comment on `REGROWTH_STRIDE` was updated accordingly: striding remains beneficial, with only the numerical rationale corrected.
 
 ## In-app tick capture (2026-07-27)
 
-Criterion đo **từng hàm**, trên fixture tự dựng, ngoài mọi engine đang chạy. Cái nó theo thiết kế
-không đo được là **một tick của lịch trình sống**: lập lịch ECS, change detection, suy luận, khối
-publish telemetry. [`src-tauri/src/core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs)
-đo đúng chỗ đó, **không** chạy app desktop.
+Criterion measures **individual functions** on synthetic fixtures outside any running engine. What it structurally cannot measure is **one full tick of the live schedule**: ECS scheduling, change detection, inference, and telemetry publishing. [`src-tauri/src/core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs) measures exactly that, **without** running the desktop app.
 
-Bật bằng biến môi trường khi khởi động engine, hoặc bằng bốn lệnh IPC
-(`start_tick_capture` / `get_tick_capture_status` / `stop_tick_capture` / `export_tick_capture` —
-xem [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md)):
+Enabled via an environment variable at engine startup or via four IPC commands (`start_tick_capture` / `get_tick_capture_status` / `stop_tick_capture` / `export_tick_capture` — see [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md)):
 
 ```bash
 ANIMA_TICK_CAPTURE=warmup=300,capacity=1800,every=2
 ```
 
-Ba pha là **chính xác**, vì vòng lặp mô phỏng kẹp chúng trực tiếp bằng một `Instant`:
-`schedule` (quanh `schedule.run`), `telemetry_publish` (quanh khối trích xuất/publish), và
-`full_tick` (tổng hai cái, **không** gồm giấc ngủ giữ nhịp khung hình).
+Three phases are **exact** because the simulation loop brackets them directly with `Instant`: `schedule` (around `schedule.run`), `telemetry_publish` (around telemetry extraction/publishing), and `full_tick` (sum of both, **excluding** frame-pacing sleep).
 
-Bốn pha còn lại (`sensor_brain`, `physics_movement`, `ecology_resources`, `schedule_tail`) là
-**checkpoint-bounded**, và khác biệt đó nằm trong JSON xuất ra chứ không chỉ trong tài liệu này:
-Bevy không có hook đo từng system, và tách lịch trình để đo sẽ **đổi thứ tự thực thi** — đúng thứ
-một profiler không được phép làm. Mỗi checkpoint chỉ được bảo đảm chạy **sau** một system có tên;
-một pha là "phần việc executor làm giữa hai checkpoint". `PhaseSummary.exact` nói hàng đó thuộc loại
-nào, `CaptureExport.executor` nói executor nào đã tạo ra số.
+Four remaining phases (`sensor_brain`, `physics_movement`, `ecology_resources`, `schedule_tail`) are **checkpoint-bounded**, and that distinction lives inside the exported JSON rather than only in prose: Bevy exposes no per-system timing hook, and splitting the schedule to time systems separately would **alter execution order** — the one thing a profiler must never do. Each checkpoint only guarantees running **after** a named system; such a phase is the executor work between two checkpoints. `PhaseSummary.exact` states which kind a row belongs to, and `CaptureExport.executor` records which executor produced the data.
 
-Quy ước phân vị là **nearest rank** (`ceil(p/100·n) − 1`), nên mọi con số in ra là một mẫu thật, không
-phải nội suy. `plant_soil_weather` xuất hiện trong `unavailable` kèm lý do, vì `core::dynamic_fields`
-**không** nằm trong lịch trình sống — báo 0 cho nó sẽ là bịa.
+Quantile convention is **nearest rank** (`ceil(p/100·n) − 1`), so every reported figure is an actual sample rather than interpolated. `plant_soil_weather` appears under `unavailable` with a reason, because `core::dynamic_fields` is **not** in the live schedule — reporting 0 for it would be fabricated.
 
-**Đã chạy một lần trên app desktop đầy đủ — 2026-07-27.** Chủ dự án chạy checklist dưới đây và thu
-được 1800 mẫu: `full_tick` p50 **1642,2 µs**, bản **debug**, executor multi-threaded, 256², **10
-agent**. Số và toàn bộ bối cảnh ở
-[`BENCHMARK_BASELINE.md` § Đo trong app](../../BENCHMARK_BASELINE.md#đo-trong-app--2026-07-27-bản-debug).
+**Measured once in the full desktop app — 2026-07-27.** The project owner ran the checklist below and collected 1800 samples: `full_tick` p50 **1642.2 µs**, **debug** build, multi-threaded executor, 256², **10 agents**. Full numbers and context live in [`BENCHMARK_BASELINE.md` § In-app measurement](../../BENCHMARK_BASELINE.md#đo-trong-app--2026-07-27-bản-debug).
 
-**Cái vẫn chưa có:** một lần chạy **release**, và một lần chạy ở **1.000 agent**. Lần chạy trên là
-debug với 10 agent, nên nó đóng ba hàng của bảng baseline và **không** đóng hàng
-`Full-brain agents MVP`. Bằng chứng headless vẫn nguyên giá trị của nó — cùng lịch trình
-(`simulation_schedule::build_tick_schedule`, đúng hàm `SimulationEngine::start` gọi), qua
-`tests/tick_capture_tests.rs`.
+**What is still missing:** a **release** run and a run at **1,000 agents**. The run above used debug with 10 agents, so it closes three rows in the baseline table and **does not** close `Full-brain agents MVP`. Headless evidence keeps its full validity — identical schedule (`simulation_schedule::build_tick_schedule`, the exact function `SimulationEngine::start` calls) via `tests/tick_capture_tests.rs`.
 
-Thủ tục đo cần **một con người mở app**, và nó nằm ở
-[§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist) bên dưới.
-CLAUDE.md cấm agent chạy full backend trên máy dev này, nên không phiên tự động nào được thực hiện
-bước đó — checklist tồn tại để chủ dự án chạy nó, không phải để agent chạy hộ.
+The measurement procedure requires **a human opening the app**, documented under [§ One-run owner checklist](#one-run-owner-checklist) below. `CLAUDE.md` forbids agents from running the full desktop backend on this dev machine, so no automated session may execute it — the checklist exists for the owner to run directly.
 
-## Checklist một lần chạy cho chủ dự án (one-run owner checklist)
+## One-run owner checklist
 
-> **MỘT lần khởi động. MỘT phiên. Khoảng 5 phút.** Phiên này thu ba thứ mà không gate nào trong
-> repo lấy được vì cả ba đều cần một con người mở app:
+> **ONE launch. ONE session. About 5 minutes.** This session captures three items no repo gate can obtain because all three require a human opening the app:
 >
-> | # | Thu cái gì | Đóng phần nào |
+> | # | What Is Collected | What It Closes |
 > |---|---|---|
-> | (a) | App có khởi động dưới CSP không, console có vi phạm không | [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) |
-> | (b) | Một file export tick capture | các hàng `chưa đo` trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) |
-> | (c) | Một ảnh chụp màn hình | bằng chứng thị giác cho (a) |
+> | (a) | Does the app boot cleanly under CSP with zero console violations? | [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) |
+> | (b) | One exported tick-capture file | the `unmeasured` rows in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) |
+> | (c) | One screenshot | visual evidence for (a) |
 >
-> Đừng chạy ba lần cho ba việc — chúng nằm trong **cùng một cửa sổ app**.
+> Do not run three separate times for three items — all three happen inside **one app window**.
 >
-> ⚠️ **Phiên này KHÔNG chứng minh sẵn sàng phát hành.** Nó chỉ điền bằng chứng còn thiếu. Xem
-> [§ Phiên này đóng gì và không đóng gì](#phiên-này-đóng-gì-và-không-đóng-gì) trước khi trích bất kỳ
-> con số nào.
+> ⚠️ **This session does NOT prove release readiness.** It only fills missing evidence. Read [§ What this session closes and does not close](#what-this-session-closes-and-does-not-close) before quoting any number.
 
-### Bước 0 — Chuẩn bị, làm TRƯỚC và **không** tính trong 5 phút
+### Step 0 — Prepare BEFOREhand (not counted toward the 5 minutes)
 
-Lần biên dịch đầu của backend (Bevy + Burn) mất hàng chục phút. Nếu chạy thẳng `npm run tauri:dev`
-trên `target/` nguội thì "5 phút" là sai. Hâm nóng trước, từ repo root rồi `src-tauri/`:
+The first backend compilation (Bevy + Burn) takes tens of minutes. Running `npm run tauri:dev` straight on a cold `target/` invalidates the "5 minutes" expectation. Pre-warm from repo root and then `src-tauri/`:
 
 ```powershell
 npm install
@@ -292,287 +218,191 @@ npm run build
 cargo build --features desktop
 ```
 
-`cargo build` ở đây **là biên dịch, không phải chạy app** — nó không vi phạm cảnh báo vận hành ở
-đầu [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Nó hâm nóng toàn bộ cây phụ thuộc; khi
-`tauri dev` chạy, chỉ crate `anima-engine` biên dịch lại (`generate_context!` đổi chế độ giữa
-production và dev), nên phần lớn thời gian đã trả xong.
+`cargo build` here **only compiles, never launches the app** — it does not violate the warning at the top of [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). It warms the dependency tree; when `tauri dev` runs, only the `anima-engine` crate recompiles (`generate_context!` switches dev/production mode), so most compile time is already paid.
 
-Cần thêm: cổng **5173** trống (`strictPort`), vì `beforeDevCommand` tự chạy `npm run dev`.
+Also ensure port **5173** is free (`strictPort`), because `beforeDevCommand` spawns `npm run dev`.
 
-> ⚠️ **Bẫy tốn nhiều thời gian nhất của lần chạy 2026-07-27, nay đã sửa ở tầng cấu hình — nhưng
-> vẫn phải kiểm cổng.** Hôm đó `devUrl` là `http://localhost:5173`, và Node phân giải `localhost`
-> theo thứ tự *verbatim* từ v17 — `::1` trước, trên Windows lẫn Linux. `[::1]:5173` đang bị dev
-> server của **một project Vite khác** giữ (5173 là mặc định của Vite, nên mọi project đều muốn nó),
-> còn server của Anima bind được `127.0.0.1:5173`. Cả hai cùng sống, và webview mở **ứng dụng của
-> project kia bên trong cửa sổ Anima**: một trang trắng, không lỗi ở đâu cả — dev server báo `ready`,
-> trang trả 200, và CSP cho phép `http://localhost:5173` vì cả hai server đều là địa chỉ đó.
+> ⚠️ **Most time-consuming trap from the 2026-07-27 run, now fixed in config — still check the port.** That day `devUrl` used `http://localhost:5173`, and Node resolved `localhost` *verbatim* since v17 — `::1` first on both Windows and Linux. `[::1]:5173` was occupied by **another project's Vite dev server** (5173 is Vite's default so every project wants it), while Anima's server bound `127.0.0.1:5173`. Both servers lived side by side, and the webview loaded **the other project's app inside Anima's window**: blank page, zero errors — dev server reported `ready`, served 200, and CSP permitted `http://localhost:5173` because both servers shared that host.
 >
-> `devUrl` và `vite.config.ts` nay đều ghim `127.0.0.1`, nên không còn bước phân giải nào để một
-> project khác chen vào. Cái **chưa** biến mất là `strictPort`: cổng 5173 bận thì `npm run dev` chết
-> ngay từ `beforeDevCommand`. Kiểm trước, và đọc **cả cột địa chỉ**:
+> `devUrl` and `vite.config.ts` now both pin `127.0.0.1`, removing hostname resolution ambiguity. What has **not** disappeared is `strictPort`: if port 5173 is busy, `npm run dev` exits at `beforeDevCommand`. Check beforehand, reading **both the address and owning process**:
 >
 > ```powershell
 > Get-NetTCPConnection -LocalPort 5173 -State Listen | Select-Object LocalAddress, OwningProcess
 > ```
 >
-> Và ngay khi cửa sổ hiện, vẫn kiểm định danh trước khi tin bất cứ thứ gì nó vẽ ra:
-> `window.__TAURI_INTERNALS__ !== undefined` phải là `true`, và dòng đầu trang (h1) phải là "Anima-Engine
-> Control Center" (tiêu đề cửa sổ thì là "Anima Engine - Evolution Simulator"). Hai giây, và nó là thứ duy nhất phân biệt "app của bạn" với "một app nào đó ở đúng địa
-> chỉ đó". Xem [deployment §2.4](../ai/deployment/2026-07-27-feature-anima-completion.md).
+> Once the window appears, verify identity before trusting anything drawn: `window.__TAURI_INTERNALS__ !== undefined` must be `true`, and the top page heading (h1) must read `"Anima-Engine Control Center"` (the window title is `"Anima Engine - Evolution Simulator"`). Two seconds, and it is the only guarantee this is "your app" rather than "some other app at that address". See [deployment §2.4](../ai/deployment/2026-07-27-feature-anima-completion.md).
 
-### Bước 1 — Đặt biến môi trường, rồi mở app (PowerShell, cùng một cửa sổ)
+### Step 1 — Set the environment variable, then open the app (PowerShell, same window)
 
-Biến này được đọc bởi **tiến trình Rust** ở `SimulationEngine::start`
-([`core/simulation_loop.rs`](../../src-tauri/src/core/simulation_loop.rs)), nên phải đặt **trước
-khi** app khởi động — đặt sau khi cửa sổ đã mở là vô tác dụng.
+This variable is read by the **Rust process** in `SimulationEngine::start` ([`core/simulation_loop.rs`](../../src-tauri/src/core/simulation_loop.rs)), so set it **before** launch — setting it afterward has no effect.
 
 ```powershell
 $env:ANIMA_TICK_CAPTURE = "warmup=300,capacity=1800,max_samples=1800"
 npm run tauri:dev
 ```
 
-Vì sao đúng ba tham số đó: 300 tick warm-up ≈ **5 s** ở 60 Hz (bỏ tick lạnh), rồi 1800 mẫu liên
-tiếp ≈ **30 s**. Khi đủ 1800 mẫu, capture tự chuyển sang trạng thái `Complete` và **ngừng tiêu thụ
-tick** — một điểm dừng rõ ràng, không phải một con số bạn tự đoán là đã đủ. Tổng ≈ 2100 tick ≈ 35 s
-đồng hồ. Cú pháp và mọi khoá khác: `CaptureConfig::parse` trong
-[`core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs).
+Why those exact three parameters: 300 warm-up ticks ≈ **5 s** at 60 Hz (discard cold ticks), then 1800 consecutive samples ≈ **30 s**. At 1800 samples, capture enters `Complete` and **stops consuming ticks** — a sharp stop condition rather than guessing elapsed time. Total ≈ 2100 ticks ≈ 35 s wall clock. Full syntax and keys: `CaptureConfig::parse` in [`core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs).
 
-- ✅ **Đúng:** cửa sổ "Anima Engine - Evolution Simulator" mở ra.
-- ❌ **Sai:** terminal in `ANIMA_TICK_CAPTURE is not a usable configuration (...)` → capture **tắt**,
-  app vẫn chạy bình thường và bạn sẽ thu được một file rỗng. Sửa chuỗi rồi mở lại.
+- ✅ **Good:** `"Anima Engine - Evolution Simulator"` window opens.
+- ❌ **Bad:** terminal prints `ANIMA_TICK_CAPTURE is not a usable configuration (...)` → capture is **disabled**; the app runs normally and yields an empty file. Fix the string and relaunch.
 
-### Bước 2 — Mở DevTools và **reload** để bắt vi phạm CSP lúc tải trang
+### Step 2 — Open DevTools and **reload** to catch load-time CSP violations
 
-`npm run tauri:dev` build ở chế độ debug, nên DevTools của webview luôn có: chuột phải trong cửa sổ
-app → **Inspect**.
+`npm run tauri:dev` builds in debug mode so webview DevTools are enabled: right-click inside the app window → **Inspect**.
 
-DevTools mở *sau* khi trang đã tải sẽ **không** có log của lần tải đó. Vì vậy, trong tab
-**Console**, gõ:
+DevTools opened *after* initial page load **miss** initial load logs. Therefore, run in the **Console** tab:
 
 ```js
 location.reload()
 ```
 
-Reload chỉ tải lại webview; tiến trình Rust và luồng mô phỏng **không** khởi động lại, nên capture
-không bị ảnh hưởng. Bây giờ Console đang mở trong suốt một lần tải trang đầy đủ.
+Reloading refreshes only the webview; the Rust backend and simulation thread **do not** restart, leaving capture undisturbed. Console is now watching a complete page load.
 
-- ✅ **Đúng:** giao diện "Anima-Engine Control Center" hiện ra, Console **không** có dòng nào chứa
-  `Content Security Policy` / `Refused to …`.
-- ❌ **Sai:** bất kỳ `Refused to load/connect/execute …` nào → chép nguyên văn, đó chính là phát
-  hiện phiên này tồn tại để tìm.
-- ❌ **Sai:** `window.__TAURI_INTERNALS__ === undefined` → bạn đang xem `localhost:5173` trong một
-  trình duyệt thường, **không** phải webview Tauri. Mọi `invoke` sẽ reject; đây đúng là lỗi đã ghi
-  ở [implementation §9](../ai/implementation/2026-07-27-feature-anima-completion.md).
+- ✅ **Good:** `"Anima-Engine Control Center"` UI loads with **zero** lines in Console containing `Content Security Policy` / `Refused to …`.
+- ❌ **Bad:** any `Refused to load/connect/execute …` message → copy verbatim; catching that is why this session exists.
+- ❌ **Bad:** `window.__TAURI_INTERNALS__ === undefined` → you are viewing `localhost:5173` in a plain browser, **not** the Tauri webview. Every `invoke` rejects; this matches the issue noted in [implementation §9](../ai/implementation/2026-07-27-feature-anima-completion.md).
 
-### Bước 3 — Chạy mô phỏng (đây là lúc capture bắt đầu tiêu thụ tick)
+### Step 3 — Start the simulation (capture begins recording ticks here)
 
-Nút lớn bên trái, dưới header:
+Large button on the left below the header:
 
-| Nhãn nút | Nghĩa | Làm gì |
+| Button Label | Meaning | Action |
 |---|---|---|
-| `Đang dựng thế giới chung…` (xám, disabled) | thế giới 2048² đang sinh (~7 s lần đầu) | **đợi** |
-| `Bắt đầu mô phỏng` (xanh) | sẵn sàng | **bấm** |
-| `Dừng mô phỏng` (đỏ) | đang chạy | không bấm |
+| `Đang dựng thế giới chung…` ("Building shared world…", gray, disabled) | `2048²` world is generating (~7 s first time) | **wait** |
+| `Bắt đầu mô phỏng` ("Start simulation", green) | ready | **click** |
+| `Dừng mô phỏng` ("Stop simulation", red) | running | leave running |
 
-Bấm rồi để yên **~40 giây**. Theo dõi ô **`Số Ticks:`** trong bảng trạng thái — nó phải tăng đều và
-cần **tăng thêm ~2100** kể từ lúc bấm. (Đếm mức tăng, không đếm giá trị tuyệt đối: nếu app vừa nạp
-một autosave thì bộ đếm chạy tiếp từ số đã lưu.) Điều kiện dừng thật nằm ở bước 4.
+Click and wait **~40 seconds**. Watch the **`Số Ticks:`** ("Tick count:") field in the status panel — it should increment steadily by **~2100** after clicking. (Track the delta, not absolute value: if autosave resumed, the counter continues from the saved tick.) Definitive completion is verified in Step 4.
 
-> Nếu app đã tự chạy ngay khi mở (có autosave ở `saves/autosave.json` thì
-> [`lib.rs`](../../src-tauri/src/lib.rs) khởi động engine ngay lúc setup), capture đã chạy từ đầu và
-> `Số Ticks` đã lớn. Không sao — sang bước 4 và đọc trạng thái.
+> If the app auto-started on launch (an existing `saves/autosave.json` causes [`lib.rs`](../../src-tauri/src/lib.rs) to start the engine at setup), capture has been running since startup and `Số Ticks:` is already high. That is fine — continue to Step 4 and inspect status.
 
-### Bước 4 — Xác nhận capture đã xong, trong Console
+### Step 4 — Verify capture finished in Console
 
-Không có nút bấm nào cho tick capture: bốn lệnh là **IPC thuần**, chưa có UI gọi chúng (kiểm chứng:
-không file nào trong `src/` nhắc tới `tick_capture`). Đường duy nhất là Console. `@tauri-apps/api`
-định tuyến mọi `invoke` qua `window.__TAURI_INTERNALS__.invoke(cmd, args)` — cùng một mặt tiếp xúc
-mà webview thật cài đặt, ghi ở [`tests/e2e/tauri-mock.ts`](../../tests/e2e/tauri-mock.ts).
+There is no UI button for tick capture: all four commands are **pure IPC** with no frontend caller yet (verified: no file under `src/` mentions `tick_capture`). Console is the only interface. `@tauri-apps/api` routes every `invoke` through `window.__TAURI_INTERNALS__.invoke(cmd, args)` — the same boundary implemented by the real webview and mirrored in [`tests/e2e/tauri-mock.ts`](../../tests/e2e/tauri-mock.ts).
 
 ```js
 await window.__TAURI_INTERNALS__.invoke('get_tick_capture_status')
 ```
 
-- ✅ **Đúng:** `status: "Complete"` và `accounting.samples_recorded: 1800`.
-- 🟡 **Chấp nhận được:** `status: "Recording"` với `samples_recorded` vài trăm — đợi thêm rồi gọi
-  lại. Bất kỳ số mẫu nào > 0 cũng xuất được, chỉ là ít mẫu hơn.
-- ❌ **Sai:** `status: "Idle"` → **hai nguyên nhân, phân biệt bằng `accounting.ticks_observed`.** Khối
-  đọc `ANIMA_TICK_CAPTURE` nằm **bên trong** luồng engine
-  ([`core/simulation_loop.rs`](../../src-tauri/src/core/simulation_loop.rs), tại
-  `CaptureConfig::from_env()`), nên nó chỉ chạy khi engine khởi động:
-  - `ticks_observed: 0` → **engine chưa từng chạy**. Bạn chưa bấm `Bắt đầu mô phỏng`, không phải
-    biến môi trường sai. Quay lại bước 3. *(Đo được 2026-07-27: đây là trường hợp thực tế xảy ra, và
-    bản trước của dòng này chỉ ghi nguyên nhân kia nên người chạy tưởng mình gõ sai chuỗi.)*
-  - `ticks_observed` > 0 → engine đã chạy nhưng **biến môi trường không tới được tiến trình**; xem
-    bước 1. Không cần khởi động lại app — dùng đường IPC ở dưới.
-- ❌ **Sai:** `workload.dimensions_measured: false` → chưa tick nào đi qua, cùng nghĩa với
-  `ticks_observed: 0`.
-- ❌ **Đáng ghi lại:** `dropped_out_of_order` > 0 → executor đa luồng đã xáo trộn các checkpoint.
-  Không phải lỗi của bạn; **chép con số đó lại**, nó là dữ liệu về chính executor. *(Đo được
-  2026-07-27: **1** trên 2101 tick.)*
+- ✅ **Good:** `status: "Complete"` and `accounting.samples_recorded: 1800`.
+- 🟡 **Acceptable:** `status: "Recording"` with several hundred `samples_recorded` — wait briefly and re-check. Any sample count > 0 exports cleanly, just fewer samples.
+- ❌ **Bad:** `status: "Idle"` → **two distinct causes, separated by `accounting.ticks_observed`.** The `ANIMA_TICK_CAPTURE` parser runs **inside** the engine thread ([`core/simulation_loop.rs`](../../src-tauri/src/core/simulation_loop.rs), at `CaptureConfig::from_env()`), so it only executes when the engine boots:
+  - `ticks_observed: 0` → **engine never started**. You have not clicked `Bắt đầu mô phỏng` yet, not an env-var typo. Return to Step 3. *(Observed 2026-07-27: this is what actually happened, and an earlier version of this guide only listed the other cause so operators thought they mistyped the string.)*
+  - `ticks_observed` > 0 → engine ran, **env var did not reach the process**; check Step 1. No need to restart — use the IPC path below.
+- ❌ **Bad:** `workload.dimensions_measured: false` → zero ticks traversed the loop, same cause as `ticks_observed: 0`.
+- ❌ **Worth recording:** `dropped_out_of_order` > 0 → multi-threaded executor reordered checkpoints. Not user error; **copy that number down** — it is empirical data on the executor itself. *(Observed 2026-07-27: **1** across 2101 ticks.)*
 
-#### Đường IPC — không cần biến môi trường, không cần khởi động lại
+#### IPC Path — No Env Var, No Restart Needed
 
-Biến môi trường ở bước 1 chỉ tiện khi bạn nhớ đặt nó **trước** khi app mở. Nếu quên, hoặc muốn đo
-lại với tham số khác, `start_tick_capture` làm đúng việc đó **giữa lúc đang chạy** — sink được chèn
-vô điều kiện chính vì lý do này, nên không phải dựng lại thế giới:
+The env var in Step 1 is just convenience when set **before** launch. If forgotten, or to re-run with different parameters, `start_tick_capture` configures it **live mid-run** — the sink is always inserted precisely for this reason, avoiding world reconstruction:
 
 ```js
 await window.__TAURI_INTERNALS__.invoke('start_tick_capture', { config: { warmup_ticks: 300, capacity: 1800, max_samples: 1800, sample_every: 1, groups: 127 } })
 ```
 
-Trả về `null` là thành công (`Result<(), String>`); một chuỗi là thông báo từ chối của
-`CaptureConfig::validate`, không phải giá trị bị làm tròn cho hợp lệ.
+Returning `null` means success (`Result<(), String>`); a string indicates a validation error from `CaptureConfig::validate`, never silent clamping.
 
-Hai chỗ dễ sai trong object đó, cả hai đều **im lặng** nếu gõ sai:
+Two silent footguns in that payload object:
 
-- **Khoá là `snake_case`.** `CaptureConfig` không khai `#[serde(rename_all)]`, nên `warmupTicks`
-  không phải tên nó — khác với `fileName` ở bước 5, vốn là **tham số lệnh** nên bị đổi sang camelCase.
-  Cùng một lệnh gọi có thể có cả hai quy ước, và đó không phải nhầm lẫn.
-- **`groups` là một số, không phải mảng.** `PhaseMask(pub u16)` là newtype nên qua JSON là số trần.
-  `127` = đủ bảy pha (`TickPhase::ALL`, index 0–6). Mask rỗng bị `validate` từ chối; một mask hẹp
-  **không** làm đổi con số của mask rộng, nó chỉ đổi cái được xuất ra.
+- **Fields inside `config` are `snake_case`.** `CaptureConfig` does not carry `#[serde(rename_all)]`, so `warmupTicks` is ignored/invalid — unlike `fileName` in Step 5, which is a **command argument** converted to camelCase. One command invocation can mix both conventions intentionally.
+- **`groups` is an integer, not an array.** `PhaseMask(pub u16)` is a newtype serialized as a raw integer in JSON. `127` = all seven phases (`TickPhase::ALL`, indices 0–6). An empty mask is rejected by `validate`; a narrower mask **never alters** other phases' timings, only what is exported.
 
-Engine chưa chạy thì bật bằng chính console, `toggle_simulation` không nhận tham số nào và trả `true`
-khi vừa khởi động:
+If the engine is paused, start it from Console; `toggle_simulation` takes no arguments and returns `true` when starting:
 
 ```js
 await window.__TAURI_INTERNALS__.invoke('toggle_simulation')
 ```
 
-### Bước 5 — Xuất file (chú ý: tên khoá là `fileName`, KHÔNG phải `file_name`)
+### Step 5 — Export file (note: argument key is `fileName`, NOT `file_name`)
 
 ```js
 await window.__TAURI_INTERNALS__.invoke('export_tick_capture', { fileName: 'tick-capture-2026-07-27' })
 ```
 
-> ⚠️ **Bẫy im lặng, và nó là bẫy duy nhất nguy hiểm ở đây.** `#[tauri::command]` chuyển tên tham số
-> sang **camelCase** (mặc định `ArgumentCase::Camel`, `tauri-macros/src/command/wrapper.rs`), và
-> tham số là `Option<String>` — nên gõ `file_name` **không** báo lỗi: lệnh trả về đúng tài liệu
-> JSON, in đẹp ra Console, và **không ghi file nào cả**. Console xanh, ổ đĩa trống. Phải là
-> `fileName`.
+> ⚠️ **Silent trap — the only hazardous trap here.** `#[tauri::command]` renames arguments to **camelCase** (default `ArgumentCase::Camel`, `tauri-macros/src/command/wrapper.rs`), and the parameter is `Option<String>` — so passing `file_name` raises **zero error**: the command returns the JSON document nicely in Console while **writing nothing to disk**. Green Console, empty folder. It must be `fileName`.
 >
-> Tên file theo hợp đồng tên save trong [`commands/save_paths.rs`](../../src-tauri/src/commands/save_paths.rs):
-> chỉ `[A-Za-z0-9._-]`, không dấu gạch chéo, không đường dẫn; đuôi `.json` được tự thêm.
+> Filenames follow [`commands/save_paths.rs`](../../src-tauri/src/commands/save_paths.rs): `[A-Za-z0-9._-]` only, no slashes, no paths; `.json` is appended automatically.
 
-File nằm ở thư mục app-data, **không** phải trong repo:
+The file lands under app data, **not** inside the repo:
 
 ```powershell
 Get-ChildItem "$env:APPDATA\com.anima.engine\captures"
 ```
 
-- ✅ **Đúng:** thấy `tick-capture-2026-07-27.json`, kích thước vài KB.
-- ❌ **Sai:** thư mục trống hoặc không tồn tại → gần như chắc chắn là đã gõ `file_name`. Gọi lại
-  bước 5 với `fileName`.
+- ✅ **Good:** shows `tick-capture-2026-07-27.json`, a few KB in size.
+- ❌ **Bad:** directory empty or missing → almost certainly typed `file_name`. Re-run Step 5 with `fileName`.
 
-Xem nhanh các con số quan trọng mà không cần mở editor:
+Inspect key columns quickly without opening an editor:
 
 ```powershell
 (Get-Content "$env:APPDATA\com.anima.engine\captures\tick-capture-2026-07-27.json" -Raw | ConvertFrom-Json).phases | Format-Table phase, exact, count, p50_ns, p95_ns
 ```
 
-`p50_ns` là cột điền vào [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md), theo ánh xạ ở
-[§ File này điền được hàng nào](#file-này-điền-được-hàng-nào).
+`p50_ns` fills [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) according to [§ Which baseline row this file fills](#which-baseline-row-this-file-fills).
 
-### Bước 6 — Chụp một ảnh, **trước khi** đóng app
+### Step 6 — Take one screenshot **before** closing the app
 
-`Win`+`Shift`+`S`, chọn cả cửa sổ app **và** panel DevTools trong cùng một khung. Một ảnh phải thấy
-được cả ba: tiêu đề cửa sổ, `Số Ticks` > 2100, và tab Console không có vi phạm CSP.
+`Win`+`Shift`+`S`, capturing both the app window **and** the DevTools panel in one frame showing: window title, `Số Ticks` > 2100, and Console clean of CSP violations.
 
-Lưu vào một đường dẫn bạn tự chọn, ví dụ `%USERPROFILE%\Desktop\anima-csp-boot-2026-07-27.png`.
+Save anywhere outside the repo, e.g. `%USERPROFILE%\Desktop\anima-csp-boot-2026-07-27.png`.
 
-> **Repo chưa có chỗ chuẩn cho ảnh này** và checklist này không tạo ra một chỗ mới. Đừng để nó vào
-> [`map-views/`](../../map-views): tám PNG ở đó là artifact khác hẳn, bị `map_manifest.json` ghim
-> bằng SHA-256 và `tests/frontend/mapManifestEvidence.test.ts` kiểm — thêm file lạ vào đó là làm
-> nhiễu một gate đang xanh.
+> **There is no committed repo location for this screenshot** and this checklist intentionally adds none. Never drop it into [`map-views/`](../../map-views): the eight PNGs there are pinned by SHA-256 in `map_manifest.json` and enforced by `tests/frontend/mapManifestEvidence.test.ts` — adding files there breaks a green CI gate.
 
-### Bước 7 — Đóng app, rồi gửi lại bốn thứ
+### Step 7 — Close the app and send four artifacts back
 
-Đóng cửa sổ bình thường (khi thoát, app tự ghi autosave — đó là hành vi bình thường, không phải lỗi).
+Close the window normally (on exit the app writes an autosave — expected behavior, not an error).
 
-Gửi lại cho agent:
+Send back to the agent:
 
-1. **File** `%APPDATA%\com.anima.engine\captures\tick-capture-2026-07-27.json` — nguyên vẹn, đừng sửa tay.
-2. **Ảnh** ở bước 6.
-3. **Nội dung Console**: chép nguyên văn mọi dòng đỏ/vàng, hoặc câu "Console sạch, không có dòng nào
-   chứa `Content Security Policy`".
-4. **Kết quả `get_tick_capture_status`** ở bước 4 (chỉ cần `status` và khối `accounting`).
+1. **File** `%APPDATA%\com.anima.engine\captures\tick-capture-2026-07-27.json` — unmodified.
+2. **Screenshot** from Step 6.
+3. **Console text**: verbatim any red/yellow lines, or confirmation `"Console clean, zero lines mentioning Content Security Policy"`.
+4. **Output of `get_tick_capture_status`** from Step 4 (`status` and `accounting` suffices).
 
-Với bốn thứ đó, agent điền được bảng trong `BENCHMARK_BASELINE.md` và cập nhật
-[`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)
-kèm lệnh và ngày. Thiếu (1) thì không có số; thiếu (3) thì (a) chưa đóng.
+With all four, an agent updates `BENCHMARK_BASELINE.md` and [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) with command and date. Without (1), no numbers exist; without (3), item (a) remains open.
 
-### File này điền được hàng nào
+### Which baseline row this file fills
 
-| Hàng trong `BENCHMARK_BASELINE.md` | Đọc từ | `exact` |
+| Row in `BENCHMARK_BASELINE.md` | Read From | `exact` |
 |---|---|---|
-| `Physics tick` | `phases[] .phase == "physics_movement"` → `p50_ns` | **false** — chặn bởi checkpoint |
-| `Brain/sensor` | `phases[] .phase == "sensor_brain"` → `p50_ns` | **false** — chặn bởi checkpoint |
+| `Physics tick` | `phases[] .phase == "physics_movement"` → `p50_ns` | **false** — checkpoint-bounded |
+| `Brain/sensor` | `phases[] .phase == "sensor_brain"` → `p50_ns` | **false** — checkpoint-bounded |
 | `UI telemetry` | `phases[] .phase == "telemetry_publish"` → `p50_ns` | **true** |
-| `Full-brain agents MVP` | `phases[] .phase == "full_tick"` → `p50_ns` + `mean_ns_per_agent`, kèm `workload` | **true** |
+| `Full-brain agents MVP` | `phases[] .phase == "full_tick"` → `p50_ns` + `mean_ns_per_agent`, plus `workload` | **true** |
 
-Ba điều phải ghi kèm, nếu không con số sẽ bị đọc sai:
+Three annotations must accompany every citation so numbers are not misread:
 
-- **`exact: false` nghĩa là "phần việc executor làm giữa hai checkpoint"**, không phải chi phí của
-  một system. Chép cả cờ đó sang, đừng chỉ chép `p50_ns`.
-- **`profile` trong file sẽ là `"debug"`**, vì `tauri dev` build debug. Bảng Criterion ở trên là
-  **release**. Hai con số **không** so trực tiếp được với nhau; ghi rõ profile bên cạnh mỗi số.
-- **Não per-agent đang tắt mặc định** (`ANIMA_EVOLVED_BRAINS` không đặt, §3.1). Nên `sensor_brain`
-  đo **đường legacy**, không phải suy luận não. Điền hàng `Brain/sensor` như "đường mặc định, não
-  tắt" chứ không phải "chi phí não".
+- **`exact: false` means "executor work between two checkpoints"**, not isolated single-system runtime. Carry that flag alongside `p50_ns`.
+- **`profile` in this capture is `"debug"`**, because `tauri dev` runs debug builds, whereas Criterion above is **release**. Never compare those figures directly without labeling build profile beside each number.
+- **Per-agent brains default to off** (`ANIMA_EVOLVED_BRAINS` unset, §3.1), so `sensor_brain` measures the **legacy path**, not neural inference. Label `Brain/sensor` as default legacy path rather than brain inference cost.
 
-### Phiên này đóng gì và không đóng gì
+### What this session closes and does not close
 
-**Đóng:** app khởi động thật, IPC thật trả lời, và một tick của lịch trình sống có số đo đầu tiên
-trên phần cứng mục tiêu.
+**Closes:** real desktop app boots, live IPC responds, and the live schedule acquires its first real measurement on target hardware.
 
-**Không đóng — và đây là giới hạn phải giữ nguyên văn:**
+**Does NOT close — keep these caveats verbatim:**
 
-- **CSP: đây là `devCsp`, không phải chính sách xuất xưởng.** `tauri dev` áp `app.security.devCsp`;
-  `npm run check:csp` kiểm `app.security.csp`. Hai khối trong
-  [`tauri.conf.json`](../../src-tauri/tauri.conf.json) khai cùng 13 directive, giống nhau ở **11**
-  và khác đúng **hai**: `script-src` (dev cho phép thêm `'unsafe-inline'` và
-  `http://127.0.0.1:5173`) và `connect-src` (dev thêm `ws://127.0.0.1:5173` +
-  `http://127.0.0.1:5173`). Nên phiên này xác minh 11 directive **đúng như bản ship**, và để lại
-  hai directive kia chỉ được xác minh ở dạng lỏng hơn.
-  **Finding đang mở:** [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md)
-  mô tả "một `npm run tauri:dev` bởi con người" là đủ để đóng gate CSP. Theo đo đạc trên thì chưa
-  đủ đúng như đã viết. Chưa sửa câu đó ở đây — theo quy tắc 6 của
-  [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mở finding thay vì tự coi bên nào
-  đúng.
-- **Vì sao không dùng bản release để lấp hai directive đó:** bản release **không có DevTools**.
-  `tauri` trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) khai `features = ["test"]`,
-  không có `devtools` — mà DevTools là đường duy nhất để **đọc console**. Nên một lần chạy release
-  vẫn mất (a-console), và hai directive kia vẫn chỉ được xác minh ở dạng lỏng hơn.
-  **Cập nhật 2026-07-27:** phần (b) thì **không** mất nữa — `ANIMA_TICK_CAPTURE_OUT` để capture tự
-  ghi file khi xong, không cần console. Xem
-  [§ Checklist lần chạy release](#checklist-lần-chạy-release--1000-agent).
-- **Không phải "60 FPS đã được chứng minh".** Một capture là phân bố của tick, trên một workload,
-  một profile, một máy.
-- **Không phải "live Bevy world experiment-ready".** Tuyên bố duy nhất được phép vẫn là
-  *headless adapter verified* — xem CLAUDE.md.
-- **`plant_soil_weather` sẽ nằm trong `unavailable` kèm lý do.** Đó là đúng, không phải thiếu sót:
-  `core::dynamic_fields` không nằm trong lịch trình sống.
+- **CSP: this validates `devCsp`, not shipping `csp`.** `tauri dev` applies `app.security.devCsp`; `npm run check:csp` validates `app.security.csp`. Both blocks in [`tauri.conf.json`](../../src-tauri/tauri.conf.json) declare the same 13 directives, identical across **11** and differing in **two**: `script-src` (dev permits `'unsafe-inline'` and `http://127.0.0.1:5173`) and `connect-src` (dev adds `ws://127.0.0.1:5173` + `http://127.0.0.1:5173`). So this verifies 11 shipping directives faithfully while testing those two in a relaxed form.
+  **Open finding:** [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) wrote that a human `npm run tauri:dev` session closes the CSP gate completely. Under measurement above, that overclaims slightly. Left unedited here per Rule 6 of [documentation policy](../governance/DOCUMENTATION_POLICY.md).
+- **Why release cannot fill those two directives either:** release builds **have no DevTools**. `tauri` in [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) sets `features = ["test"]` without `devtools` — and DevTools is the only console reader. A release run still drops (a-console), and those two directives remain verified only in their relaxed form.
+  **Update 2026-07-27:** part (b) is **no longer** lost in release — `ANIMA_TICK_CAPTURE_OUT` auto-writes the capture file on completion with no Console needed. See [§ Release run checklist (1000 agents)](#release-run-checklist-1000-agents).
+- **Not "60 FPS proven".** One capture is a tick-time distribution for one workload, profile, and machine.
+- **Not "live Bevy world experiment-ready".** The sole permitted claim stays *headless adapter verified* — see `CLAUDE.md`.
+- **`plant_soil_weather` appears in `unavailable` with reason.** Expected, not a bug: `core::dynamic_fields` is not wired into the live schedule.
 
-## Checklist lần chạy release — 1000 agent
+<a id="checklist-lần-chạy-release--1000-agent"></a>
 
-> **MỘT lần khởi động, khoảng 10 phút cộng thời gian build.** Phiên này thu **một** thứ mà checklist
-> dev ở trên không thu được: chi phí tick của **bản release** ở **1000 agent**, tức hàng
-> `Full-brain agents MVP` trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
+## Release run checklist (1000 agents)
+
+> **ONE launch, ~10 minutes plus compile time.** Captures the **one** metric the dev checklist cannot produce: **release-build** tick cost at **1,000 agents**, i.e. row `Full-brain agents MVP` in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
 >
-> Không cần DevTools, không cần gõ một dòng JavaScript nào. Đó là điểm khác biệt duy nhất về thao
-> tác so với checklist dev, và là lý do phiên này tồn tại được.
+> No DevTools and zero JavaScript Console typing required. That ergonomic gap is the sole difference from the dev checklist and why this section exists.
 
-**Vì sao trước 2026-07-27 checklist này không viết được.** Ba thứ chặn, cả ba là code chứ không phải
-quy trình: bản release không có DevTools nên không gọi được `export_tick_capture`; không có đường
-nào khác để lấy dữ liệu ra; và số agent nền móng là hằng số `10` viết thẳng trong
-`simulation_loop.rs`, với vị trí sinh `x = i * 5.0` khiến founder thứ 21 đã nằm trên biên `+100`.
-Hai biến môi trường dưới đây và một cách rải theo lưới đã gỡ cả ba.
+**Why this checklist could not be written before 2026-07-27.** Three code blockers stood in the way: release has no DevTools to invoke `export_tick_capture`; no disk auto-export existed; and founding population was hardcoded to `10` in `simulation_loop.rs` with linear spawn `x = i * 5.0` that pushed founder #21 past the `+100` world boundary. Two new env vars and grid founder placement removed all three blockers.
 
-### Bước 0 — Build, làm TRƯỚC và không tính vào 10 phút
+### Step 0 — Build BEFOREhand (excluded from the 10 minutes)
 
-**Thứ tự quan trọng.** Bản release nhúng frontend vào binary lúc biên dịch, nên `npm run build` phải
-chạy **trước** `cargo build --release`, nếu không binary mang theo một `dist/` cũ.
+**Order matters.** Release embeds compiled frontend assets into the binary at build time, so `npm run build` must run **before** `cargo build --release`, otherwise the binary embeds a stale `dist/`.
 
 ```powershell
 npm run build
@@ -582,15 +412,13 @@ npm run build
 cargo build --release --features desktop
 ```
 
-`--features desktop` không bỏ được: thiếu nó là binary `default = []`, không Neo4j lineage, không
-cross-shard migration, learner CPU — và bạn sẽ đo một sản phẩm khác.
+Do not omit `--features desktop`: without it you build `default = []` — no Neo4j lineage, no cross-shard migration, CPU learner — measuring a different product.
 
-Lần biên dịch release đầu tiên lâu hơn debug đáng kể. Cần cổng **5173** trống nếu bạn định mở kèm
-dev server; bản release thì không cần, nó tự phục vụ frontend đã nhúng.
+First release compilation takes noticeably longer than debug. Port **5173** only needs to be free if you plan to start a dev server alongside; the release build does not need it and serves its embedded frontend itself.
 
-### Bước 1 — Bốn biến môi trường, rồi chạy binary
+### Step 1 — Four environment variables, then launch the binary
 
-Cùng một cửa sổ PowerShell, đặt **trước** khi chạy — tất cả đều được đọc lúc engine khởi động:
+Set in the same PowerShell window **before** launching — all four are read when the engine starts:
 
 ```powershell
 $env:ANIMA_FRESH_START = "1"
@@ -600,40 +428,32 @@ $env:ANIMA_TICK_CAPTURE_OUT = "tick-capture-release-1000"
 .\src-tauri\target\release\anima-engine.exe
 ```
 
-| Biến | Việc nó làm | Bỏ trống thì sao |
+| Variable | Effect | If Left Empty |
 |---|---|---|
-| `ANIMA_FRESH_START` | Bỏ qua autosave lúc mở và không ghi đè nó lúc thoát | **Thêm 2026-11-17, đối chiếu `lib.rs`.** Nếu đã có autosave (checklist dev ở trên ghi một cái khi thoát) thì engine **nạp lại save đó**, không chạy genesis, và `ANIMA_FOUNDING_POPULATION` vô tác dụng: bạn sẽ đo quần thể cũ mà tưởng là 1.000 |
-| `ANIMA_FOUNDING_POPULATION` | 1000 founder, rải theo lưới trong `MapBounds` ±100, giữ tỷ lệ prey/predator 7/3 | 10 founder trên đường thẳng cũ — **giống hệt bit** với mọi lần chạy trước |
-| `ANIMA_TICK_CAPTURE` | Bật capture ngay lúc engine khởi động | Không capture; vẫn bật tay được qua IPC nếu có DevTools (bản release thì không) |
-| `ANIMA_TICK_CAPTURE_OUT` | **Tự ghi file khi capture xong.** Đường duy nhất lấy dữ liệu ra ở bản release | Không ghi gì; 1800 mẫu nằm trong RAM rồi chết theo tiến trình |
+| `ANIMA_FRESH_START` | Skips loading autosave on startup and skips overwriting it on exit | **Added 2026-11-17, verified in `lib.rs`.** If an autosave exists (left by the dev checklist above), the engine **loads that save**, skips genesis, and ignores `ANIMA_FOUNDING_POPULATION` — leaving you measuring the old population while believing it is 1,000 |
+| `ANIMA_FOUNDING_POPULATION` | Spawns 1,000 founders on a grid within `MapBounds` ±100 keeping 7/3 prey/predator ratio | Spawns the legacy 10 founders on a line — **bit-identical** to all prior runs |
+| `ANIMA_TICK_CAPTURE` | Starts tick capture at engine init | No capture; only toggleable via IPC if DevTools exist (release has none) |
+| `ANIMA_TICK_CAPTURE_OUT` | **Auto-writes capture file upon completion.** Only export path in release | Nothing written to disk; 1800 samples die in RAM on exit |
 
-Giá trị của `ANIMA_TICK_CAPTURE_OUT` là **tên**, không phải đường dẫn — cùng quy tắc với tên bản lưu
-(`[A-Za-z0-9._-]`, không gạch chéo). Một đường dẫn sẽ bị `save_paths` từ chối, và thông báo từ chối
-in ra stderr chứ không im lặng.
+`ANIMA_TICK_CAPTURE_OUT` accepts a **filename stem**, not a path — matching save-name rules (`[A-Za-z0-9._-]`, no slashes). Paths are rejected by `save_paths`, printing an error on stderr rather than failing silently.
 
-### Bước 2 — Bấm `Bắt đầu mô phỏng`, rồi đợi
+### Step 2 — Click `Bắt đầu mô phỏng` ("Start simulation"), then wait
 
-Với `ANIMA_FRESH_START=1` engine bỏ qua autosave và **không** tự chạy. Bấm nút xanh, rồi để yên. (Đặt thêm
-`ANIMA_AUTOSTART=1` nếu muốn nó tự chạy mà không cần bấm.)
+With `ANIMA_FRESH_START=1`, the engine skips autosave and stays paused at boot. Click the green start button and wait. (Set `ANIMA_AUTOSTART=1` as well to auto-start without clicking.)
 
-**Đừng canh 35 giây như checklist dev.** Ở 1000 agent mỗi tick đắt hơn nhiều lần, nên 2100 tick mất
-lâu hơn hẳn — và con số đó chính là thứ bạn đang đo, nên đoán trước nó là vô nghĩa. Tín hiệu dừng
-nằm ở terminal:
+**Do not count 35 seconds as in the dev checklist.** At 1,000 agents each tick costs many times more, so 2100 ticks take much longer — and that figure is precisely what you are measuring, so guessing beforehand is pointless. The stop signal prints to terminal:
 
 ```
 tick capture complete; wrote C:\Users\...\com.anima.engine\captures\tick-capture-release-1000.json (1800 samples)
 ```
 
-Dòng đó in ra **một lần**, đúng tick capture đầy. Thấy nó là xong.
+That line prints **once** when capture fills. Seeing it means recording is finished.
 
-- ❌ **Sai:** `ANIMA_TICK_CAPTURE is not a usable configuration (...)` → capture tắt, sửa chuỗi rồi
-  chạy lại.
-- ❌ **Sai:** `ANIMA_FOUNDING_POPULATION is not usable (...)` → **genesis đã chạy với 10 founder**.
-  Đóng app, sửa, chạy lại; đừng đo tiếp, số sẽ là số của 10 agent.
-- ❌ **Sai:** `tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be written (...)` → capture
-  vẫn đủ 1800 mẫu nhưng không ra được file. Ở bản release không có đường cứu; sửa tên rồi chạy lại.
+- ❌ **Bad:** `ANIMA_TICK_CAPTURE is not a usable configuration (...)` → capture off; fix string and rerun.
+- ❌ **Bad:** `ANIMA_FOUNDING_POPULATION is not usable (...)` → **genesis ran with 10 founders**. Close app, fix, rerun; do not keep measuring, as the numbers will be for 10 agents.
+- ❌ **Bad:** `tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be written (...)` → 1800 samples completed but could not flush to disk. Release has no Console recovery; fix name and rerun.
 
-### Bước 3 — Kiểm file nói đúng thứ bạn định đo
+### Step 3 — Verify the file measured the intended workload
 
 ```powershell
 $j = Get-Content "$env:APPDATA\com.anima.engine\captures\tick-capture-release-1000.json" -Raw | ConvertFrom-Json
@@ -645,70 +465,52 @@ $ft = $j.phases | Where-Object { $_.phase -eq 'full_tick' }
 $j.phases | Format-Table phase, exact, count, p50_ns, p95_ns
 ```
 
-Bốn thứ phải đúng, và **cả bốn** mới tính:
+All four checks must pass together:
 
-- `profile` là **`release`**. Nếu là `debug` thì bạn vừa chạy nhầm binary — số sẽ không so được với
-  bảng Criterion.
-- `agents` ra **≈ 1000**. Đây là kiểm ngược quan trọng nhất: nó suy từ chính dữ liệu
-  (`mean_ns / mean_ns_per_agent`), nên nó bắt được trường hợp biến môi trường không tới được tiến
-  trình mà mọi thứ khác vẫn xanh.
-- `dimensions_measured` là `true`, world `256 × 256`.
-- `count` của mỗi pha là **1800**.
+- `profile` is **`release`**. `"debug"` means the wrong binary ran — incomparable to Criterion.
+- `agents` reads **≈ 1000**. This crucial back-check derives from recorded data (`mean_ns / mean_ns_per_agent`), catching cases where an env var failed to reach the process while everything else looked green.
+- `dimensions_measured` is `true`, world `256 × 256`.
+- `count` of every phase equals **1800**.
 
-> ⚠️ **Nếu `agents` tụt dần dưới 1000:** quần thể đang chết trong lúc đo. Lần chạy 2026-07-27 cho
-> thấy toàn bộ agent ở `Năng lượng: 0.0` — hiệu ứng sàn mà thí nghiệm E2 đã ghi. Nếu số agent không
-> ổn định thì `mean_ns_per_agent` là trung bình trên một quần thể đang đổi, và phải nói rõ điều đó
-> khi trích số. Kiểm thêm `samples_without_agents` — khác 0 nghĩa là có mẫu không có agent nào.
+> ⚠️ **If `agents` drops well below 1000:** the population died during capture. On 2026-07-27 all agents hit `Năng lượng: 0.0` ("Energy: 0.0") — the floor effect recorded in experiment E2. If population varies over capture, `mean_ns_per_agent` averages across a shrinking cohort and must carry that disclosure. Also inspect `samples_without_agents` — non-zero means some ticks had zero agents.
 
-### Bước 4 — Gửi lại
+### Step 4 — Return Artifacts
 
-File JSON nguyên vẹn, cộng dòng stderr ở bước 2. Không cần ảnh chụp: phiên này không đo CSP, phần
-đó đã đóng ở checklist dev.
+Return the unmodified JSON file plus stderr output from Step 2. No screenshot needed: release skips CSP verification covered by the dev checklist.
 
-Số điền vào đâu: cùng ánh xạ ở [§ File này điền được hàng nào](#file-này-điền-được-hàng-nào), nhưng
-lần này hàng `Full-brain agents MVP` **mới thực sự đóng được**, vì nó được định nghĩa ở 1000 agent.
+Row mapping matches [§ Which baseline row this file fills](#which-baseline-row-this-file-fills), and this capture legitimately closes `Full-brain agents MVP` because it runs at 1,000 agents.
 
-## Checklist đo sau nhánh H — PF-S03 + PF-S04 (soạn 2026-08-26, **chưa chạy**)
+## Post-Branch-H Measurement Checklist — PF-S03 + PF-S04 (Drafted 2026-08-26, **Not Yet Run**)
 
-Nhánh H (`0b29312`) viết lại bảy hệ thống từ O(agent × segment) thành **một** lượt duyệt segment.
-PF-S01 đã đóng bằng chứng cứ mạnh nhất có thể lấy tự động: checksum sau 1500 tick ở seed `0x5EED`
-bằng **4013327208** trên cả cây trước và sau H — trùng từng bit, nên H không đổi hành vi. Nhưng
-**chưa có phép đo nào nói tick đã rẻ đi**, và hai gate còn lại đều cần một con người ngồi trước máy:
+Branch H (`0b29312`) rewrote seven systems from `O(agent × segment)` into **one** segment pass each. PF-S01 closed with the strongest automated check possible: checksum after 1500 ticks at seed `0x5EED` stayed **`4013327208`** before and after H — bit-identical. However, **no runtime speedup measurement exists yet**, leaving two human-operated gates open:
 
-| Gate | Hỏi gì | Một lần chạy có trả lời được không |
+| Gate | Question | Answered in a Single Run? |
 |---|---|---|
-| **PF-S03** | `full_tick` p50 ở 1000 agent, bản release | Có |
-| **PF-S04** | Thời gian mỗi tick tăng **tuyến tính** theo số agent, không bậc hai | **Không** — cần ít nhất ba điểm |
+| **PF-S03** | `full_tick` p50 at 1,000 agents, release build | Yes |
+| **PF-S04** | Per-tick cost scales **linearly** with agent count, not quadratically | **No** — needs at least three points |
 
-PF-S04 là gate đáng giá hơn: PF-S01 chỉ bắt được chỗ bạn đã sửa mà sửa sai, còn PF-S04 bắt được
-**chỗ bị bỏ sót** — một hệ thống per-agent còn lại sẽ hiện ra thành độ cong, dù mọi checksum vẫn khớp.
+PF-S04 is the sharper gate: PF-S01 catches bugs in what you modified, whereas PF-S04 catches **what you missed** — a single remaining O(N²) loop bends the scaling curve even while every checksum agrees.
 
-Vì vậy: **ba lần chạy trong cùng một phiên, cùng một máy, chỉ đổi đúng một biến.**
+Therefore: **run three times in one session, on one machine, varying only `N`.**
 
-> 🖥️ **Ghi phần cứng cho đúng.** `BENCHMARK_BASELINE.md` khai phần cứng mục tiêu là
-> **i5-14600KF / Windows 11 Pro**. Nếu bạn đo trên máy dev macOS thì con số vẫn hợp lệ, nhưng nó là
-> **một hàng phần cứng khác** — đừng ghi đè các hàng của máy mục tiêu. File JSON tự ghi khối
-> `hardware`, nên bản thân file đã nói nó đến từ máy nào; việc còn lại chỉ là đừng trộn hai máy vào
-> một hàng khi trích số.
+> 🖥️ **Record hardware accurately.** `BENCHMARK_BASELINE.md` defines target hardware as **i5-14600KF / Windows 11 Pro**. Measurements on a macOS dev machine remain valid, as a **distinct hardware row** — never overwrite target-hardware rows with them. JSON exports embed `hardware` automatically; simply avoid merging two hosts into one row.
 
-### Bước 0 — Build release
+### Step 0 — Build release
 
 ```powershell
 cargo build --release --features desktop
 ```
 
-`--features desktop` không bỏ được (lý do ở [§ Checklist lần chạy release](#checklist-lần-chạy-release--1000-agent)).
+Never drop `--features desktop` (see [§ Release run checklist (1000 agents)](#release-run-checklist-1000-agents)).
 
-### Bước 1 — Ba lần chạy, N = 250 / 500 / 1000
+### Step 1 — Three runs, N = 250 / 500 / 1000
 
-Với **mỗi** N, đặt biến rồi chạy binary, bấm `Bắt đầu mô phỏng`, đợi dòng `tick capture complete`,
-đóng app, rồi sang N kế tiếp. Đừng chạy song song hai instance — chúng sẽ tranh CPU và bạn sẽ đo
-tiếng ồn chứ không đo độ dốc.
+For **each** N, set variables, run binary, click `Bắt đầu mô phỏng` ("Start simulation"), wait for `tick capture complete`, close app, then move to the next N. Never run two instances concurrently — CPU contention turns scaling slopes into noise.
 
 ```powershell
-# lặp lại khối này ba lần với N = 250, 500, 1000
+# repeat this block three times for N = 250, 500, 1000
 $N = 250
-$env:ANIMA_FRESH_START = "1"   # nếu không, autosave của lượt trước được nạp lại và N vô tác dụng
+$env:ANIMA_FRESH_START = "1"   # otherwise, the previous run's autosave is loaded and N has no effect
 $env:ANIMA_FOUNDING_POPULATION = "$N"
 $env:ANIMA_TICK_CAPTURE     = "warmup=300,capacity=1800,max_samples=1800"
 $env:ANIMA_TICK_CAPTURE_OUT = "h5-release-$N"
@@ -716,8 +518,8 @@ $env:ANIMA_TICK_CAPTURE_OUT = "h5-release-$N"
 ```
 
 ```bash
-# macOS/zsh — cùng các biến, khác đường dẫn binary
-for N in 250 500 1000; do echo "chay N=$N roi bam nut, doi 'tick capture complete', dong app"; done
+# macOS/zsh — same variables, different binary path
+for N in 250 500 1000; do echo "run N=$N then click the button, wait for 'tick capture complete', close app"; done
 N=250
 ANIMA_FRESH_START=1 \
 ANIMA_FOUNDING_POPULATION=$N \
@@ -726,18 +528,13 @@ ANIMA_TICK_CAPTURE_OUT="h5-release-$N" \
   ./src-tauri/target/release/anima-engine
 ```
 
-**Đừng đặt `ANIMA_MORTALITY` và `ANIMA_FITNESS`.** Cả hai mặc định tắt/`locomotion`, và đây là phép
-đo hiệu năng của một refactor thuần — bật thêm tử vong hoặc đổi luật fitness giữa chừng là đo hai
-thứ cùng lúc. File JSON ghi lại `fitness_rule`; bước 2 sẽ kiểm cả ba lần chạy khai **giống nhau**.
+**Do NOT set `ANIMA_MORTALITY` or `ANIMA_FITNESS`.** Both default to off/`locomotion`, and this measures a pure refactor — enabling mortality or switching fitness mid-series confounds two changes. JSON files record `fitness_rule`; Step 2 checks all three runs match.
 
-Ba dấu hiệu sai, giống hệt checklist 1000 agent: chuỗi `ANIMA_TICK_CAPTURE is not a usable
-configuration`, `ANIMA_FOUNDING_POPULATION is not usable` (genesis đã chạy với 10 founder — đóng app,
-đừng đo tiếp), và `tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be written`.
+Three error signals identical to the 1000-agent checklist: `ANIMA_TICK_CAPTURE is not a usable configuration`, `ANIMA_FOUNDING_POPULATION is not usable` (genesis ran with 10 founders — close app, discard), and `tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be written`.
 
-### Bước 2 — Đọc ba file, kiểm trước khi tin
+### Step 2 — Inspect all three files before trusting numbers
 
-Thư mục capture: `%APPDATA%\com.anima.engine\captures\` (Windows) hoặc
-`~/Library/Application Support/com.anima.engine/captures/` (macOS).
+Capture directory: `%APPDATA%\com.anima.engine\captures\` (Windows) or `~/Library/Application Support/com.anima.engine/captures/` (macOS).
 
 ```bash
 python3 - <<'PY'
@@ -747,7 +544,7 @@ rows = []
 for n in (250, 500, 1000):
     p = os.path.join(d, f"h5-release-{n}.json")
     if not os.path.exists(p):
-        print(f"THIEU: {p}"); continue
+        print(f"MISSING: {p}"); continue
     j = json.load(open(p, encoding="utf-8"))
     ft = next(x for x in j["phases"] if x["phase"] == "full_tick")
     w  = j["workload"]
@@ -760,89 +557,58 @@ for r in rows: print("\t".join(str(x) for x in r))
 PY
 ```
 
-**Sáu điều kiện, thiếu một là phép đo không dùng được:**
+**Six validity criteria — failing any one invalidates the run:**
 
-1. `profile` == `release` ở cả ba. `debug` nghĩa là chạy nhầm binary.
-2. `fitness_rule` **giống nhau** ở cả ba lần chạy.
-3. `agents_min` ≈ `agents_max` ≈ N ở mỗi lần chạy. Đây là kiểm ngược quan trọng nhất: nó bắt được
-   trường hợp biến môi trường không tới được tiến trình, và bắt cả trường hợp quần thể chết dần
-   trong lúc đo (mortality vốn tắt, nhưng đói/khát vẫn có hiệu ứng sàn mà E2 đã ghi).
-4. `count` == 1800 ở cả ba.
+1. `profile` == `release` across all three. `debug` means wrong binary.
+2. `fitness_rule` **identical** across all three runs.
+3. `agents_min` ≈ `agents_max` ≈ N in every run. Checks env-var propagation and catches mid-run die-offs (mortality is off, though starvation/dehydration floor effects from E2 still trigger).
+4. `count` == 1800 across all three.
 5. `no_agent_samples` == 0.
 6. `workload` world **256 × 256**, `dimensions_measured` == `true`.
 
-### Bước 3 — Kết luận, theo tiêu chí đã đăng ký TRƯỚC khi thấy số
+### Step 3 — Verdict Using Pre-Registered Thresholds
 
-Gọi `t(N)` là `p50_ns` của `full_tick`.
+Let `t(N)` be `full_tick` `p50_ns`.
 
-**PF-S03 đóng** khi có `t(1000)` từ một lần chạy thoả cả sáu điều kiện trên. Nó là một con số được
-ghi lại, không phải một ngưỡng phải vượt qua — hàng `Full-brain agents MVP` trong
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) hỏi đúng con số đó.
+**PF-S03 passes** when `t(1000)` is recorded from a run passing all six criteria above — it is a recorded baseline figure rather than a fixed target, answering `Full-brain agents MVP` in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
 
-**PF-S04** đọc theo hai phép, cả hai phải cùng nói "tuyến tính":
+**PF-S04** requires two checks agreeing on linearity:
 
-- **Tỷ số đầu–cuối** `R = t(1000) / t(250)`. Tuyến tính thuần cho `R = 4`; có phần chi phí hằng
-  (trường tài nguyên 256², bước nước, lập lịch — không phụ thuộc số agent) thì `R < 4`. Bậc hai
-  thuần cho `R = 16`.
-- **Độ cong tại điểm giữa.** Nội suy tuyến tính giữa hai đầu tại N=500 là
-  `t_i = (t(250) + t(1000)) / 2`. Với một hàm tuyến tính, nội suy là **chính xác**, nên `t(500)`
-  phải trùng `t_i`. Với hàm bậc hai thuần, `t(500)` nằm **thấp hơn dây cung 33 %**.
+- **End-to-end ratio** `R = t(1000) / t(250)`. Pure linear gives `R = 4`; fixed per-tick overhead (256² fields, scheduling — N-independent) yields `R < 4`. Pure quadratic yields `R = 16`.
+- **Midpoint convexity.** Linear interpolation at N=500 is `t_i = (t(250) + t(1000)) / 2`. Linear functions match `t_i` directly; a pure quadratic sits **33% below the chord** at `t(500)`.
 
-| Kết quả | Phán |
+| Result | Verdict |
 |---|---|
-| `R ≤ 6` **và** `\|t_i − t(500)\| / t(500) ≤ 15 %` | **PF-S04 ĐẠT** — tuyến tính |
-| `R ≥ 10` **hoặc** `t(500)` thấp hơn `t_i` quá 25 % | **PF-S04 TRƯỢT** — còn chỗ per-agent bị bỏ sót |
-| còn lại | **CHƯA KẾT LUẬN** — báo cáo nguyên số, đừng tuyên bố gate; nghi can đầu tiên là một hệ thống vẫn quét tuyến tính theo agent |
+| `R ≤ 6` **and** `\|t_i − t(500)\| / t(500) ≤ 15%` | **PF-S04 PASS** — linear |
+| `R ≥ 10` **or** `t(500)` sits >25% below `t_i` | **PF-S04 FAIL** — remaining per-agent hotspot |
+| anything else | **INCONCLUSIVE** — report raw values without claiming the gate; first suspect is a system still scanning linearly per agent |
 
-Ngưỡng ở trên là **tiêu chí, không phải phép đo** — chúng được viết ra ở đây trước khi có bất kỳ con
-số nào, đúng để lần đọc kết quả sau này không trượt thành đọc theo ý muốn.
+These thresholds are **pre-registered criteria, not measurements** — written here before running to prevent post-hoc threshold moving.
 
-### Bước 4 — Số đi về đâu
+### Step 4 — Where the Numbers Go
 
-1. Ba file JSON: giữ nguyên vẹn, đính kèm.
-2. `BENCHMARK_BASELINE.md`: điền hàng `Full-brain agents MVP` bằng `t(1000)` (và ghi rõ máy đo).
-3. `FINDINGS.md` mục **F-022**: đổi phần "Còn lại H-5" thành kết quả thật, kèm `R` và độ cong.
-4. `docs/ai/testing/2026-08-25-feature-ecological-selection.md`: đánh dấu PF-S03/PF-S04.
-5. Nếu PF-S04 trượt: mở một finding mới với tên hệ thống nghi can, đừng sửa ngay trong cùng lượt —
-   một bản vá hiệu năng không có phép đo trước/sau thì không kiểm chứng được.
+1. Keep and attach all three raw JSON files unmodified.
+2. `BENCHMARK_BASELINE.md`: populate `Full-brain agents MVP` with `t(1000)` (naming host hardware).
+3. `FINDINGS.md` entry **F-022**: update "Remaining H-5" with measured `R` and midpoint deviation.
+4. `docs/ai/testing/2026-08-25-feature-ecological-selection.md`: mark PF-S03/PF-S04.
+5. If PF-S04 fails: open a new finding naming the suspect system rather than patching in the same commit — unmeasured optimization patches cannot prove before/after improvement.
 
-## Cái vẫn còn thiếu
+## What is still missing
 
-Phần cứng mục tiêu nay đã khớp, nhưng §3.2 của
-[`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) vẫn **chưa đóng**, và lý do không
-phải phần cứng:
+Target hardware now matches, yet §3.2 of [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) remains **open**, not because of hardware:
 
-- **Đây là cận dưới của tick, không phải khung hình.** Các hàng "Physics tick 60 Hz",
-  "Brain/sensor 10–20 Hz" trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) hỏi một
-  **nhịp thực tế của app đang chạy**. Dụng cụ đo nay đã có (mục trên) và đã được kiểm bằng test;
-  cái còn thiếu là **một lần chạy app thật** để lấy số — ràng buộc "không chạy full backend" trên
-  máy này vẫn còn hiệu lực với agent. Thủ tục để một con người chạy nó một lần:
-  [§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist).
-- **Chưa có số cho phần đắt nhất còn lại:** suy luận não per-agent. Nó đang tắt mặc định (§3.1), nên
-  chưa có gì để đo trên đường mặc định.
-- *(Sửa 2026-11-17: `config.gridDim` trong report nay là **256**; đoạn dưới mô tả tình trạng trước đó.)*
-  `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) từng ghi **128**,
-  trong khi thế giới thật chạy **256²** (`MapSettings::default()`) và `DEFAULT_GRID_DIM` trong
-  `sim_rules.rs` **đã là 256** kể từ 2026-07-27 (test `s03_default_grid_dim_tracks_map_settings_default`
-  ghim nó). Bộ bench này dùng 256², và tick capture đọc kích thước **từ `ResourceField` của thế giới
-  đang chạy** rồi ghi vào `CaptureExport.workload` kèm cờ `dimensions_measured` — nên số 128 còn lại
-  chỉ nằm trong file report cũ, không nằm trong đường đo nào.
+- **Per-system sums are lower bounds, not live frame times.** Rows `"Physics tick 60 Hz"` and `"Brain/sensor 10–20 Hz"` in [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) ask for **real running-app cadence**. The measurement harness exists (above) and passes unit tests; what remains is **one real app run** for empirical numbers — the agent ban on launching the full backend remains in force, so see [§ One-run owner checklist](#one-run-owner-checklist).
+- **Still unmeasured for the most expensive remaining system:** per-agent brain inference. It defaults to off (§3.1), leaving no default-path baseline yet.
+- *(Edited 2026-11-17: `config.gridDim` in the report is now **256**; the paragraph below records the prior state.)*
+  `config.gridDim` in [`benchmark_report.json`](../../benchmark_report.json) used to read **128**, whereas the real world runs **256²** (`MapSettings::default()`) and `DEFAULT_GRID_DIM` in `sim_rules.rs` **has been 256** since 2026-07-27 (`s03_default_grid_dim_tracks_map_settings_default`). This benchmark suite runs 256², and tick capture reads dimensions directly **from the live `ResourceField`** into `CaptureExport.workload` with `dimensions_measured` — so `128` lived only in the older report JSON, never in active measurement code.
 
-## Cách thêm một benchmark
+## How to Add a Benchmark
 
-Sửa [`src-tauri/benches/tick_systems.rs`](../../src-tauri/benches/tick_systems.rs). Bốn quy tắc mà
-file đó đang giữ, và một bench mới nên giữ tiếp:
+Edit [`src-tauri/benches/tick_systems.rs`](../../src-tauri/benches/tick_systems.rs), keeping the four existing conventions:
 
-1. **Dùng kích thước thật.** Trường được dựng ở 256² vì đó là kích thước engine chạy. Đo ở 32² sẽ
-   cho một con số dễ chịu cho một workload không tồn tại.
-2. **Dùng hằng số của engine, đừng chép.** Bench learner import `STATE_DIM`/`HIDDEN_DIM`/
-   `ACTION_DIM`/`BATCH_SIZE` từ `core::training`. Chép giá trị vào bench nghĩa là lần đầu kiến trúc
-   đổi, bench vẫn chạy, vẫn in ra một con số — cho một mạng engine không còn dùng.
-3. **Dựng fixture ở trạng thái làm việc thật.** `from_biomes` khởi tạo mọi ô **ở** sức chứa, mà tăng
-   trưởng logistic tại `r == r_max` bằng đúng 0 — một trường mới tinh sẽ đo nhánh thoát sớm chứ
-   không đo regrowth. Fixture ở đây hạ xuống nửa sức chứa.
-4. **Đừng hoist thứ engine không hoist.** Bench `a2c_loss` dựng lại tensor mỗi vòng, vì learner
-   dựng chúng mới từ buffer transition ở mỗi bước.
+1. **Use real world dimensions.** Fields run at 256²; measuring at 32² yields artificially comfortable numbers for a nonexistent workload.
+2. **Import engine constants, never copy.** Learner benches import `STATE_DIM`/`HIDDEN_DIM`/`ACTION_DIM`/`BATCH_SIZE` from `core::training`. Hardcoding lets benchmarks keep printing numbers for an obsolete network after architecture changes.
+3. **Construct fixtures at realistic operating states.** `from_biomes` initializes every cell **at** carrying capacity where logistic regrowth at `r == r_max` equals zero — measuring an early-return branch instead of regrowth. Lower initial biomass to half capacity here.
+4. **Never hoist allocations the engine itself does not hoist.** `a2c_loss` constructs tensors every iteration because the learner allocates new ones from transition buffers on every step.
 
-Benchmark bị `cargo clippy --all-targets` biên dịch và lint trong CI ở **cả hai** cấu hình feature,
-nên code bench phải sạch clippy và phải biên dịch được với `--no-default-features`.
+Benchmarks are compiled and linted under `cargo clippy --all-targets` across **both** feature configurations in CI, so benchmark code must pass clippy cleanly and compile under `--no-default-features`.
