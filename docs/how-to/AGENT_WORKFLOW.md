@@ -316,7 +316,8 @@ QD-SCOPE  = scope freeze for about 3 months from 2026-11-19: continue SEL2-P, E3
             artifact (W1-W3 full), Inhabit federation; after the trial, graphics = bug fixes only. Public
             docs and papers in English; an external reviewer before the island preregistration (owner in
             chat, 2026-11-19: "Đồng ý", "Cả hai"). AMENDED 2026-11-20 by QD-MAPV2: the native renderer, the full
-            tiled world artifact and graphics work are no longer paused; they follow the Map v2 phases
+            tiled world artifact and graphics work are no longer paused; they follow the Map v2 phases.
+            AMENDED 2026-11-24 by QD-SHAREDISLAND: Inhabit federation is no longer paused; it is the main goal
 QD-REALMS = real ecosystems in water, sky and underground are added one at a time after the SEL2-P
             result, each with its own ADR: water first, then sky, then underground (walk-in caves);
             until then fish, birds, wildlife and caves stay labelled decoration (owner in chat,
@@ -357,7 +358,15 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
-QD-ISLAND = the project's main goal is now many machines in one island: one host machine runs the
+QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (B) a release candidate
+            v0.9.0-rc.1 first, for the three MP-5.1 trial sessions, then v0.9.0 after fixes; G2 (A) unsigned
+            installers, with the SmartScreen / Gatekeeper steps of docs/how-to/INSTALL.md (QD-M8 signing stays
+            a later decision); G3 (C) the rc goes to trial users as release-build workflow artifacts only, and
+            v0.9.0 is then published as a GitHub Release; G4 (A) main is fast-forwarded to the release commit
+            and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
+            QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
+            recommended option for each of G1-G4.)
+QD-SHAREDISLAND = the project's main goal is now many machines in one island: one host machine runs the
             simulation and holds the island's truth; guests on other machines watch (Spectate) or inhabit
             (Inhabit) over the network; every guest action reaches the host as a declared intervention with
             a CauseId (ADR-0004) and is recorded in the world record (ADR-0008, WR1/WR2). Only the host
@@ -370,7 +379,9 @@ QD-ISLAND = the project's main goal is now many machines in one island: one host
             a prehistory run before guests arrive, a persistent island) and an island chronicle (facts from
             the record and the lineage tracker, "lineage" not "species" without AE-S11, optional AI-written
             prose on the host with the owner's own API key, never recorded) are D-slots in ADR-0014, not yet
-            decided. (Owner in chat, 2026-11-24: "cái này á", then "Đúng, làm tiếp".)
+            decided. AMENDS QD-SCOPE: "Inhabit federation" is no longer paused; it is the main goal. Not to be
+            confused with QD-ISLAND (2026-11-19, the island-rule science question), which is unchanged.
+            (Owner in chat, 2026-11-24: "cái này á", then "Đúng, làm tiếp".)
 QD-LIFE   = to be like the real world, evolution and growing up apply to both animals and plants, and
             inhabiting applies to both: animals and individual plants (trees, shrubs; a grass cell is a
             population and is only watched). Animals get physical growth toward their genotype's adult size
