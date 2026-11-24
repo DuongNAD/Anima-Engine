@@ -403,6 +403,23 @@ QD-REL09  = release 0.9 gates, all as anima-dell recommended in REL09-DOCS: G1 (
             and the tag is set on main (the owner pushes main and the tag; agents never do). Timing follows
             QD-TRIAL-V2: the rc is cut after WV2-7 lands. (Owner in chat, 2026-11-24, choosing the
             recommended option for each of G1-G4.)
+QD-OPENQ  = groups A and B of the lead's open-question sweep (hub OPEN_QUESTIONS_AND_PROVISIONAL_2026-11-24.md),
+            approved by the owner in chat on 2026-11-24 ("Duyệt A và B"). (A) As recommended in their documents:
+            the V0-V11 card-spec D-slots (all A, D-V9-4 = B; D-V0-2 already answered by QD-BIO-D2); D-H10-1..3 and
+            D-H11-1, -2, -4 (D-H11-4 follows QD-REL09 G4); NR-SPIKE NR-D1..D7 as proposed; LAW1-D1 (a) reference
+            world first, D2 (a) six arms, D3 (b) m = 2 plus the T2b manipulation gate, D4 (b) ln-ratio
+            ±ln(1.25), D5 (a) genesis_fork, D6 (a) N = 48 on Windows 1 (the LAW1 freeze stays a separate owner
+            approval); ADR-0009 accepted; QD-M1 = EXECUTION_PLAN plus the swarm plan for the work and DIRECTION
+            for stage order; QD-M2 = crate split after v1.0; QD-C2 residual = treat the bare Cargo licence field
+            as the grant (risk accepted, not legal advice). (B) Conflicts: ADR-0013 D1 = B (sexual reproduction,
+            via homologous crossover, QD-PLAYRULES) and D3 = B (growth of scale, gated by ADR-0019), D2 = A
+            (deterministic senescence), D4 and D5 as recommended, and ADR-0013 is accepted with these values;
+            D-V6-1's 60 ticks per sim day and QD-ADR0014's 20-minute day are two declared world-law profiles
+            (science slice vs shared island), pinned per manifest; QD-SHAREDISLAND supersedes QD-M7's
+            "Inhabit = each device its own island" (QD-M7's Contribute-as-batches stays; island-to-island
+            migration comes after I10); QD-M6 stays "per platform class"; 0.9 stays unsigned and QD-M8 is
+            decided before v1.0. Still open for the owner's own choice, money or hands-on action: QD-M8, QD-M4,
+            D-H11-3, MP-5.6, QD-2/QD-H tail, paper repository, external reviewer, G-REF, H6/H7, default-on flags.
 QD-BRAINBODY = ADR-0019 (brain-body interface, PR #259) accepted with D1-D5 = A: keep the evolved brain shape
             15->64->64->8, add shared 2-channel motor modulation and a per-edge heritable JointCpgGene
             (channel_mix, phase_offset, freq_scale, amp_gain); opt-in only (live.brain_body_interface), with the
