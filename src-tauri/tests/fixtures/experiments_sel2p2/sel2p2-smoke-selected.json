@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "experiment_id": "sel2-p2-food-scarcity-body-mass::smoke-selected",
+  "name": "SEL2-P2 smoke selected - blind to body mass, EXCLUDED from confirmation",
+  "world_identity": {
+    "seed": 0,
+    "generator_version": 0,
+    "width": 0,
+    "height": 0,
+    "checksum": 0
+  },
+  "laws": {
+    "schema_version": 1,
+    "baseline_energy": {
+      "eu_unit": "EU"
+    },
+    "exotic_energy": null
+  },
+  "initial_conditions": {
+    "schema_version": 1,
+    "values": [
+      [
+        "live.ecological_fitness",
+        1.0
+      ],
+      [
+        "live.mortality",
+        1.0
+      ],
+      [
+        "live.reproduction",
+        1.0
+      ],
+      [
+        "live.locomotion",
+        1.0
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1.0
+      ],
+      [
+        "live.evolved_brains",
+        0.0
+      ],
+      [
+        "live.founders",
+        100.0
+      ],
+      [
+        "live.predator_fraction",
+        0.0
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        16.0
+      ],
+      [
+        "live.lake_layout",
+        1.0
+      ],
+      [
+        "live.plant_reserve",
+        0.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.dehydration_ticks",
+        960.0
+      ],
+      [
+        "live.prey_cap",
+        320.0
+      ],
+      [
+        "live.strict_prey_cap",
+        1.0
+      ],
+      [
+        "live.founder_genotype",
+        1.0
+      ],
+      [
+        "live.founder_layout",
+        0.0
+      ],
+      [
+        "live.resource_capacity_scale",
+        0.75
+      ],
+      [
+        "live.mutation_rate",
+        0.05
+      ],
+      [
+        "live.drift_control",
+        0.0
+      ],
+      [
+        "live.drift_reset_ticks",
+        0.0
+      ]
+    ]
+  },
+  "interventions": [],
+  "seeds": [
+    999931
+  ],
+  "duration_ticks": 200000,
+  "sample_period": 50,
+  "observable_ids": [
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.standing_crop",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.deaths_starvation",
+    "live.deaths_dehydration",
+    "live.cumulative_mean_lifespan"
+  ],
+  "exotic_interventions": [],
+  "observer": {
+    "mode": "absent"
+  }
+}
