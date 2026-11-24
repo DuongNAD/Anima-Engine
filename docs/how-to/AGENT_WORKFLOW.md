@@ -357,6 +357,43 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+QD-ISLAND = the project's main goal is now many machines in one island: one host machine runs the
+            simulation and holds the island's truth; guests on other machines watch (Spectate) or inhabit
+            (Inhabit) over the network; every guest action reaches the host as a declared intervention with
+            a CauseId (ADR-0004) and is recorded in the world record (ADR-0008, WR1/WR2). Only the host
+            simulates, so cross-OS checksum differences do not matter; lockstep co-simulation of one island
+            stays rejected (direction plan 13/11, chặng 7). First milestone: LAN only (no Internet until
+            authentication and TLS exist), guests watch and inhabit one organism, design first (ADR-0014)
+            then implementation cards; the other lanes keep running and S7 is deferred, not cancelled. The
+            design proposals for animation (the pose is the simulation; guests send intents, never poses),
+            camera (third person by default, a "sensory" first person later), island start (pinned terrain,
+            a prehistory run before guests arrive, a persistent island) and an island chronicle (facts from
+            the record and the lineage tracker, "lineage" not "species" without AE-S11, optional AI-written
+            prose on the host with the owner's own API key, never recorded) are D-slots in ADR-0014, not yet
+            decided. (Owner in chat, 2026-11-24: "cái này á", then "Đúng, làm tiếp".)
+QD-LIFE   = to be like the real world, evolution and growing up apply to both animals and plants, and
+            inhabiting applies to both: animals and individual plants (trees, shrubs; a grass cell is a
+            population and is only watched). Animals get physical growth toward their genotype's adult size
+            (amendment to ADR-0013, which today keeps body size fixed from birth); plants become evolving
+            organisms (ADR-0015: individual trees and shrubs, grass as per-cell populations carrying a trait
+            distribution; energy from sunlight under the closed-EU contract; opt-in, legacy path
+            bit-identical). The map changes too (ADR-0016), by timescale: the living surface first, then
+            recorded local disturbances as delta overlays, then slow landscape change and large events
+            (earthquake, eruption, new land) as era transitions re-baked by the World v2 generator; every
+            change is a process law plus a trigger (a seeded natural-event process in the world law, or a
+            CauseId intervention) plus a scale rule. (Owner in chat, 2026-11-24: "tiến hoá và phát triển
+            lớn lên cần phải áp dụng với cả động vật và thực vật", "đóng vai áp dụng cả với thực vật", "sự
+            thay đổi cx cần áp dụng với map".)
+QD-GENESIS = first organisms in three phases: G1 fixed, declared founders for the demo (today's 2-segment
+            animal founder with the assigned predator fraction; one fixed grass, shrub and tree genotype
+            once ADR-0015 lands), labelled "designed founders"; G2 a screened founder pool sampled from a
+            declared distribution on its own seeded stream and kept only if it passes a viability screen
+            (VIAB-1/VIAB-2 style), producers first, then herbivores, then predators, with a robustness check
+            across pools; G3 emergent first organisms from a primordial world law, as a time-boxed research
+            spike with its own ADR and an explicit statement that chemistry-level origin of life is not
+            modelled. Every run declares its phase in the genesis manifest; experiments never mix phases.
+            (Owner in chat, 2026-11-24: "hướng 1 đặt 1 fix cứng để làm được demo đã, tiếp theo sẽ sàng lọc
+            1 số để lấy mẫu nâng cấp, cuối cùng làm thật sự sinh vật khởi đầu".)
 MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
             4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
             (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
@@ -829,6 +866,22 @@ R5-AUTH   =
   [[test]] entry if required-features are needed. Not src-tauri/src/**, not run_sel2p_experiment.rs, not any
   frozen fixture. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and
   no others.
+  AUTHORIZATION (lead under the owner's delegation, 2026-11-24; hub MSG_20261124_110000), to anima-mac: for
+  card WV2-4 only, add exactly three lines to .gitattributes (a comment, artifacts/world-v2/*.json text eol=lf,
+  artifacts/world-v2/*.toml text eol=lf), matching R0's artifacts/maps pin (#123). Nothing else in that file.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_112000 and MSG_20261124_124500 to
+  MSG_20261124_140000), to anima-dell, documents only: for card ISLAND-ADR, one new
+  docs/decisions/ADR-0014-shared-island-host-and-guests.md (proposed) and one
+  docs/ai/planning/2026-11-24-island-cards.md; for card GROWTH-AMEND, a new "Physical growth" section in
+  docs/decisions/ADR-0013-live-creature-lifecycle.md (stays proposed) and nothing else in that file; for card
+  PLANT-EVO-ADR, one new docs/decisions/ADR-0015-evolving-plants.md (proposed) and one
+  docs/ai/planning/2026-11-24-plant-cards.md; for card WORLD-CHANGE-ADR, one new
+  docs/decisions/ADR-0016-changing-world-surface.md (proposed) and one
+  docs/ai/planning/2026-11-24-world-change-cards.md; for each card, one row in docs/decisions/README.md only if
+  npm run check:docs requires it. No other path.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_112000), to anima-case: card
+  ISLAND-INVENTORY writes one hub file test_runs/anima-case_island_inventory_20261124.md and nothing in the
+  repository.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
