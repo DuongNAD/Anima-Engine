@@ -897,6 +897,7 @@ fn validate_smoke_dir(
                 .as_u64()
                 .ok_or("smoke world_identity.checksum missing")? as u32,
             sim_world_sha256,
+            genesis_phase: None,
         })
     } else {
         None
@@ -2674,6 +2675,7 @@ fn run_self_test(base_env: &RuntimeEnv) -> Result<(), String> {
             observable_ids: all_obs.clone(),
             exotic_interventions: Vec::new(),
             observer: Default::default(),
+            island: None,
         };
     let m_ctrl = mk_manifest("e3::selftest_ctrl", 1.0, 0.0, 0.0, 128);
     let m_scarcity = mk_manifest("e3::selftest_scarcity", 0.42, 0.0, 1.0, 0);

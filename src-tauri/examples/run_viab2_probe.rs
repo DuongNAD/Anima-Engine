@@ -574,6 +574,7 @@ pub fn build_viab2_manifests(
             sample_period,
             observable_ids: obs.to_vec(),
             exotic_interventions: Vec::new(),
+            island: None,
         };
         m.validate(&registry)
             .map_err(|e| format!("manifest {arm_suffix} invalid: {e}"))?;

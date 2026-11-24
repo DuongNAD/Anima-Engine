@@ -60,6 +60,7 @@ fn manifest(id: &str, food: f64, mutation: Option<f64>) -> ExperimentManifest {
             .collect(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

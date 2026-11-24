@@ -104,6 +104,7 @@ fn sel2p_selected_manifest() -> ExperimentManifest {
         observable_ids,
         exotic_interventions: Vec::new(),
         observer: ObserverPolicy::default(),
+        island: None,
     }
 }
 

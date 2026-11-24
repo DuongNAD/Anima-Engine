@@ -29,13 +29,42 @@ pub const CAUSE_BACKGROUND: CauseId = 0;
 /// that claims it anyway rather than trusting that.
 pub const CAUSE_OBSERVER: CauseId = CauseId::MAX;
 
+/// First cause id in the reserved contiguous band assigned by a shared-island host to LAN
+/// guests (`ISLAND_GUEST_CAUSE_BASE..CAUSE_OBSERVER`, ADR-0014 / Card I1).
+///
+/// Kept at the top of the `u32` range directly below [`CAUSE_OBSERVER`] so scenario manifests
+/// counting up from `1` cannot collide with host-assigned per-guest provenance ids.
+pub const ISLAND_GUEST_CAUSE_BASE: CauseId = 0xFFFF_0000;
+
+/// Number of distinct per-guest cause slots in `ISLAND_GUEST_CAUSE_BASE..CAUSE_OBSERVER`.
+pub const ISLAND_GUEST_CAUSE_SLOTS: u32 = CAUSE_OBSERVER - ISLAND_GUEST_CAUSE_BASE;
+
+/// Whether `id` lies inside the reserved shared-island guest band
+/// (`ISLAND_GUEST_CAUSE_BASE..CAUSE_OBSERVER`).
+pub const fn is_island_guest_cause(id: CauseId) -> bool {
+    id >= ISLAND_GUEST_CAUSE_BASE && id < CAUSE_OBSERVER
+}
+
+/// Resolve a zero-based guest slot index into its reserved host-assigned [`CauseId`], or `None` if
+/// `slot` exceeds the guest band below [`CAUSE_OBSERVER`].
+pub const fn island_guest_cause_id(slot: u16) -> Option<CauseId> {
+    let raw = ISLAND_GUEST_CAUSE_BASE.saturating_add(slot as u32);
+    if raw < CAUSE_OBSERVER {
+        Some(raw)
+    } else {
+        None
+    }
+}
+
 /// Whether `id` belongs to the engine rather than to a scenario author.
 ///
-/// Reserved ids carry meaning the ledger relies on: [`CAUSE_BACKGROUND`] means "no explicit cause"
-/// and [`CAUSE_OBSERVER`] means "a human did this". A scenario reusing either would make
-/// [`CausalLedger::root_cause`] answer a different question than the one asked.
+/// Reserved ids carry meaning the ledger relies on: [`CAUSE_BACKGROUND`] means "no explicit cause",
+/// [`CAUSE_OBSERVER`] means "a local human observer did this", and
+/// `ISLAND_GUEST_CAUSE_BASE..CAUSE_OBSERVER` is reserved for shared-island LAN guests. A scenario
+/// reusing any of them would make [`CausalLedger::root_cause`] answer a different question than the
+/// one asked.
 pub fn is_reserved_cause(id: CauseId) -> bool {
-    id == CAUSE_BACKGROUND || id == CAUSE_OBSERVER
+    id == CAUSE_BACKGROUND || id == CAUSE_OBSERVER || is_island_guest_cause(id)
 }
 
 /// Index of an [`EffectRecord`] in a [`CausalLedger`]. Equal to the record's position, so lookups
@@ -247,5 +276,28 @@ mod tests {
         let e = led.record(42, None, 0, "x", 1.0, 1.0, "m");
         assert_eq!(led.root_cause(e), Some(42));
         assert_eq!(led.trace_to_root(e), vec![e]);
+    }
+
+    #[test]
+    fn island_guest_cause_band_is_reserved_below_cause_observer() {
+        assert_eq!(ISLAND_GUEST_CAUSE_SLOTS, 65_535);
+        assert!(is_reserved_cause(CAUSE_BACKGROUND));
+        assert!(is_reserved_cause(CAUSE_OBSERVER));
+        assert!(is_island_guest_cause(ISLAND_GUEST_CAUSE_BASE));
+        assert!(is_island_guest_cause(CAUSE_OBSERVER - 1));
+        assert!(!is_island_guest_cause(CAUSE_OBSERVER));
+        assert!(!is_island_guest_cause(ISLAND_GUEST_CAUSE_BASE - 1));
+        assert!(is_reserved_cause(ISLAND_GUEST_CAUSE_BASE));
+        assert!(is_reserved_cause(CAUSE_OBSERVER - 1));
+        assert!(!is_reserved_cause(1));
+        assert!(!is_reserved_cause(4096));
+        assert!(!is_reserved_cause(ISLAND_GUEST_CAUSE_BASE - 1));
+        assert_eq!(island_guest_cause_id(0), Some(ISLAND_GUEST_CAUSE_BASE));
+        assert_eq!(island_guest_cause_id(1), Some(ISLAND_GUEST_CAUSE_BASE + 1));
+        assert_eq!(
+            island_guest_cause_id(u16::MAX - 1),
+            Some(CAUSE_OBSERVER - 1)
+        );
+        assert_eq!(island_guest_cause_id(u16::MAX), None);
     }
 }
