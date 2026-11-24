@@ -402,6 +402,8 @@ DONE WHEN
 
 ### B2 — The allocation the gate did not catch, and the gate that measures itself
 
+> **Note (2026-11-24):** `QĐ-A′` referenced inside the text block below was decided `2026-11-14` (keep trunk's `core/mortality.rs::mortality_system`, drop `main`'s `agent_mortality_system`); see [`COMPLETION_ROADMAP_2026-10-31.md` §4](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) and [`AGENT_WORKFLOW.md` §4](../../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
+
 ```text
 GOAL
 Two halves, both required. (1) Repair the allocation instrument: it is red on macOS because
@@ -438,6 +440,7 @@ The owner has decided the merge direction (the PR stack merges INTO
 feat/ecological-selection, which becomes the trunk) but NOT
 whether `feat`'s `core/mortality.rs::mortality_system` REPLACES
 `agent_systems.rs::agent_mortality_system` or sits beside it. That is QĐ-A′, still open. So:
+  [Note 2026-11-24: QĐ-A′ decided 2026-11-14 — keep core/mortality.rs::mortality_system, drop agent_mortality_system; see ../../planning/COMPLETION_ROADMAP_2026-10-31.md §4 & ../../how-to/AGENT_WORKFLOW.md §4.]
   - `agent_mortality_system`'s own Vec/clone/sort (site 1 below) MIGHT be deleted by that
     decision. Note that `feat`'s mortality.rs already does the same job with no Vec, no clone
     and no sort, so if "replace" wins, site 1 resolves itself.
@@ -1390,6 +1393,8 @@ Chiều gộp đã được chủ dự án quyết: **chồng PR #38→#39→#40
 [2026-11-01-merge-surface-measurement.md](2026-11-01-merge-surface-measurement.md) — đọc nó
 trước, đừng đo lại.
 
+> **Note (2026-11-24):** `QĐ-A′` referenced inside the text block below was decided `2026-11-14` (keep trunk's `core/mortality.rs::mortality_system`, drop `main`'s `agent_mortality_system`); see [`COMPLETION_ROADMAP_2026-10-31.md` §4](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) and [`AGENT_WORKFLOW.md` §4](../../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
+
 ```text
 GOAL
 Merge the PR stack (#38 -> #39 -> #40, tip of `fix/ci-gates-green`) INTO
@@ -1508,6 +1513,7 @@ MEASURE, do not assume, and report the raw numbers:
   3. QĐ-A′ is still open: the owner has NOT decided whether these two systems replace
      each other or sit side by side. Do not pick for them. Deliver the measurement and
      say which outcome your test shows.
+     [Note 2026-11-24: QĐ-A′ decided 2026-11-14 — keep core/mortality.rs::mortality_system, drop agent_mortality_system; see ../../planning/COMPLETION_ROADMAP_2026-10-31.md §4 & ../../how-to/AGENT_WORKFLOW.md §4.]
 
 ===============================================================================
 THE CHECKSUM, AND WHY ONE RUN PROVES NOTHING
