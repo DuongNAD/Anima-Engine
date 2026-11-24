@@ -11,6 +11,10 @@ use std::fmt;
 
 use crate::core::causal::CauseId;
 use crate::core::intervention::InterventionCommand;
+use crate::core::island::{
+    CreatureControlIntent, GenesisPhase, GuestId, GuestRole, IslandId, OrganismTargetKind,
+    PlantControlIntent,
+};
 use crate::core::observer::ObserverAction;
 use crate::core::snapshot::BuildProvenance;
 use crate::core::world_artifact::WorldIdentity;
@@ -127,6 +131,44 @@ impl PlatformClass {
     }
 }
 
+/// Persisted session provenance row for a guest who connected to a shared island (`ADR-0014`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GuestSessionRecord {
+    pub guest_id: GuestId,
+    pub cause_id: CauseId,
+    pub role: GuestRole,
+    pub join_tick: u64,
+    pub leave_tick: Option<u64>,
+}
+
+/// Shared-island provenance attached to [`WorldRecordHeader::island`] (`ADR-0014`, Card I2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IslandRecordHeader {
+    pub island_id: IslandId,
+    pub genesis_phase: GenesisPhase,
+    pub genesis_label: String,
+    pub prehistory_ticks: u64,
+    pub guest_sessions: Vec<GuestSessionRecord>,
+}
+
+impl IslandRecordHeader {
+    /// Construct a verified island header carrying the honest genesis label (`"designed founders"`
+    /// for `G1`).
+    pub fn for_phase(
+        island_id: IslandId,
+        genesis_phase: GenesisPhase,
+        prehistory_ticks: u64,
+    ) -> Self {
+        Self {
+            island_id,
+            genesis_phase,
+            genesis_label: genesis_phase.display_label().to_string(),
+            prehistory_ticks,
+            guest_sessions: Vec::new(),
+        }
+    }
+}
+
 /// Sealed provenance header written once at genesis and anchored into segment `0`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldRecordHeader {
@@ -160,6 +202,38 @@ pub struct WorldRecordHeader {
     pub prev_era_tail_hash: Option<SegmentHash>,
     /// Explicit list of out-of-band state excluded from this recording (e.g. GPU microstate).
     pub omissions: Vec<String>,
+    /// Optional shared-island metadata; omitted from JSON when `None` so solo headers stay byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub island: Option<IslandRecordHeader>,
+}
+
+/// Copyable lease-lifecycle or embodied-control payload recorded in `WorldRecord` (`ADR-0014`).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "guest_event", rename_all = "snake_case")]
+pub enum GuestIntentBoundary {
+    Claim {
+        organism_id: u64,
+        kind: OrganismTargetKind,
+    },
+    Control(CreatureControlIntent),
+    PlantControl(PlantControlIntent),
+    Release,
+    DisconnectRelease,
+    Kick,
+    Death {
+        organism_id: u64,
+        death_x: f32,
+        death_y: f32,
+        death_z: f32,
+    },
+}
+
+/// One stamped guest input or lease boundary recorded inside [`InputKind::GuestIntent`].
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RecordedGuestIntent {
+    pub guest_id: GuestId,
+    pub seq: u64,
+    pub boundary: GuestIntentBoundary,
 }
 
 /// External input recorded at the tick it acted on the world.
@@ -181,6 +255,7 @@ pub enum InputKind {
         title: String,
         description: String,
     },
+    GuestIntent(RecordedGuestIntent),
 }
 
 /// Normalized v1 death causes required by ADR-0008 (`starvation|dehydration|predation|reclaim|epoch_replacement`).
@@ -370,6 +445,7 @@ pub enum WorldRecordError {
         actual_len: usize,
     },
     InvalidHexCharacter(char),
+    InvalidIslandHeader(String),
     Serialization(String),
     Io(String),
 }
@@ -492,6 +568,9 @@ impl fmt::Display for WorldRecordError {
             ),
             Self::InvalidHexCharacter(ch) => {
                 write!(f, "invalid hexadecimal character '{ch}' in digest")
+            }
+            Self::InvalidIslandHeader(reason) => {
+                write!(f, "invalid shared-island header metadata: {reason}")
             }
             Self::Serialization(msg) => write!(f, "world record serialization error: {msg}"),
             Self::Io(msg) => write!(f, "world record I/O error: {msg}"),

@@ -67,6 +67,20 @@ impl Default for WorldRecordWriterConfig {
     }
 }
 
+impl WorldRecordWriterConfig {
+    /// Larger declarative ring and per-segment input/event bounds sized for shared-island WR2
+    /// streams (`ADR-0014` §4).
+    pub fn island_default(output_dir: Option<PathBuf>) -> Self {
+        Self {
+            ring_capacity: 16_384,
+            output_dir,
+            max_inputs_per_segment: 4_096,
+            max_events_per_segment: 8_192,
+            paused: None,
+        }
+    }
+}
+
 struct WriterLoopParams {
     header: WorldRecordHeader,
     consumer: RingConsumer<RingEntry>,
