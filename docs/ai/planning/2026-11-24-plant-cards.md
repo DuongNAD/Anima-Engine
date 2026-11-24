@@ -13,10 +13,11 @@ last_reviewed: 2026-11-24
 > **Planning document only (`status: proposed`, card `D14 PLANT-EVO-ADR`).**
 > No Rust, TypeScript, or contract edits are made under `D14`. Every card below waits for owner
 > acceptance of [`ADR-0015`](../../decisions/ADR-0015-evolving-plants.md) (`D-PLANT-EVO-1`–`D-PLANT-EVO-6`),
-> and cards introducing new `live.*` keys or observables wait explicitly for `C12 E3B-PIN`
-> (`QD-BIO-D2`, unpinning `src-tauri/tests/prereg_e3b_manifest_tests.rs:418-425, 584-587`).
-> All code anchors are verified on `origin/feat/ecological-selection` at trunk commit
-> `902e505d58dbe034a1771bcea352742c296985d9`.
+> and cards introducing new `live.*` keys or observables follow merged `C12 E3B-PIN` (`#260` @ `7e383b8b`,
+> `QD-BIO-D2`, `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 754-761` permitting
+> absent-means-legacy `0.0 == Default` post-freeze keys).
+> Code anchors were verified on `902e505d` and refreshed/re-verified on `origin/feat/ecological-selection` at trunk commit
+> `aef12cb641d8d1e02dc35c97f2e74ee2fbb87b93`.
 
 ---
 
@@ -33,8 +34,8 @@ P1 (BENCH-ENTITIES: 500 & 2,000 sessile flora + swarm bench extension, read-only
              └──► P8 (Inhabiting an individual Tree/Shrub + temporal rings + viewer data contract)
 ```
 
-*(Note: `P1` shares benchmark coverage with `RESEARCH_REVIEW` Tier A `A2` / planned `ADR-0018`
-card `E1`; implement once so plant and ecosystem teams measure on one canonical Criterion bench.)*
+*(Note: `P1` shares benchmark coverage with `RESEARCH_REVIEW` Tier A `A2` / merged [`ADR-0018`](../../decisions/ADR-0018-ecosystem-scales-and-cycles.md) (`#263`, `proposed`)
+[ecosystem card `E1`](2026-11-24-ecosystem-cards.md); implement once so plant and ecosystem teams measure on one canonical Criterion bench.)*
 
 ---
 
@@ -62,8 +63,7 @@ card `E1`; implement once so plant and ecosystem teams measure on one canonical 
 
 ## Card `P2` — Individual `PlantGenotype`, Germination Development & Lifecycle (`B6`, `PLT-S04`)
 
-- **START WHEN:** `ADR-0015` accepted (`D-PLANT-EVO-1`, `D-PLANT-EVO-2`) AND `P1` measured AND
-  `C12 E3B-PIN` merged (if adding `live.plant_evolution`).
+- **START WHEN:** `ADR-0015` accepted (`D-PLANT-EVO-1`, `D-PLANT-EVO-2`) AND `P1` measured (`C12 E3B-PIN` `#260` @ `7e383b8b` absent-means-legacy gate honored if adding `live.plant_evolution`).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/components.rs` (`Tree` opt-in genetic/stage extensions or `IndividualPlant`)
   - `src-tauri/src/core/resources.rs` (`sim_stream::PLANT_EVOLUTION = 6`, `sim_stream::PLANT_GENESIS = 7`)
@@ -90,7 +90,7 @@ card `E1`; implement once so plant and ecosystem teams measure on one canonical 
 ## Card `P3` — Plant Metabolic `total_cost`, Living `PlantBiomass` & `V5` Soil Coupling (`PLT-S03`)
 
 - **START WHEN:** `P2` merged, `V4` & `V5` merged (if using `DynamicFields` / carcass litter), and
-  planned `ADR-0018` `OpenEnergyFlowLaw` ready (or explicitly tested under both open-flow and
+  merged [`ADR-0018`](../../decisions/ADR-0018-ecosystem-scales-and-cycles.md) (`#263`, `proposed`) `OpenEnergyFlowLaw` ready (or explicitly tested under both open-flow and
   closed-EU detritus modes).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/crates/anima-domain/src/energy.rs`, `src-tauri/src/core/energy_ledger.rs`
@@ -181,7 +181,7 @@ card `E1`; implement once so plant and ecosystem teams measure on one canonical 
 
 ## Card `P7` — Plant Genesis Phases (`G1` Fixed Founders & `G2` Producers-First Pools, `PLT-S07`)
 
-- **START WHEN:** `P2` + `P4` + `C12 E3B-PIN` merged (and aligns with `ADR-0014` `I11` & `VIAB-2`).
+- **START WHEN:** `P2` + `P4` merged (honoring merged `C12 E3B-PIN` `#260` absent-means-legacy gate and aligning with [`ADR-0014`](../../decisions/ADR-0014-shared-island-host-and-guests.md) [`I11`](2026-11-24-island-cards.md) & `VIAB-2`).
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/live_experiment.rs` (`G1` / `G2` plant founders, `live.plant_genesis_phase`, mixed-phase preflight rejection)
   - `src-tauri/src/core/world_artifact.rs` (`WorldIdentity` genesis phase stamp)
@@ -204,7 +204,7 @@ card `E1`; implement once so plant and ecosystem teams measure on one canonical 
 ## Card `P8` — Inhabiting an Individual Plant, Temporal Views & Renderer Contract (`PLT-S08`)
 
 - **START WHEN:** `P2` + `P3` merged, `ADR-0015` `D-PLANT-EVO-5`/`D-PLANT-EVO-6` resolved, and
-  shared-island `Inhabit` host/transport primitives (`ADR-0014` `I1`–`I6`) merged on trunk.
+  shared-island `Inhabit` host/transport primitives ([`ADR-0014`](../../decisions/ADR-0014-shared-island-host-and-guests.md) [`I1`–`I6`](2026-11-24-island-cards.md)) merged on trunk.
 - **Proposed `ALLOWED PATHS`:**
   - `src-tauri/src/core/observer.rs`, `src-tauri/src/core/world_record/` (`PlantGuestIntent` variants + `CauseId` recording)
   - `src-tauri/src/core/components.rs`, `src-tauri/src/core/telemetry_export.rs`, `src-tauri/src/core/emit.rs` (`PlantRenderSample`, `GrassFieldRenderTile`)

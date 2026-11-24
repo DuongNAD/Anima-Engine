@@ -12,12 +12,13 @@ superseded_by: none
 
 > **Status: `proposed` — awaiting owner acceptance and decisions `D-PLANT-EVO-1`–`D-PLANT-EVO-6`.**
 > Do **not** begin Rust or frontend implementation of evolving plants until the owner accepts this
-> ADR and answers `D-PLANT-EVO-1`–`D-PLANT-EVO-6` (and note `QD-BIO-D2`: any new `live.*` key or
-> observable waits for `C12 E3B-PIN` to unpin the post-E3b `LIVE_KEYS` / observable assertions).
+> ADR and answers `D-PLANT-EVO-1`–`D-PLANT-EVO-6` (per `QD-BIO-D2`, `C12 E3B-PIN` `#260` @ `7e383b8b` is now
+> merged at `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 754-761`, permitting opt-in
+> post-freeze `live.*` keys and observables provided absent-means-legacy `0.0 == Default` holds).
 > Initiated per `QD-LIFE` (`MSG_20261124_124500`, corrected in `MSG_20261124_131500`),
 > `QD-GENESIS` (`MSG_20261124_134500`, `140000`), and `QD-PLAYRULES` (`MSG_20261124_150000`).
-> Code anchors below are verified on `origin/feat/ecological-selection` at trunk commit
-> `902e505d58dbe034a1771bcea352742c296985d9`.
+> Code anchors below were verified at `902e505d58dbe034a1771bcea352742c296985d9` and refreshed/re-verified
+> on `origin/feat/ecological-selection` at trunk commit `aef12cb641d8d1e02dc35c97f2e74ee2fbb87b93`.
 
 ---
 
@@ -68,9 +69,10 @@ longer remain static props and an unselective scalar pasture grid. Auditing trun
      (`components.rs:149-156`) via `src/PixiViewport.tsx:604-648` and
      `src/components/Landscape/LiveEnvironment.tsx:20-310`, while grass maps
      `SpatialDensityReport::vegetation_density` (`src-tauri/src/core/telemetry_export.rs:420, 495`).
-   - `LIVE_KEYS` (`31` keys at `live_experiment.rs:280`) and emitted observables (`28` IDs) remain
-     pinned by `src-tauri/tests/prereg_e3b_manifest_tests.rs:418-425, 584-587` until `C12 E3B-PIN`
-     (`QD-BIO-D2`).
+   - `LIVE_KEYS` (`31` keys at `live_experiment.rs:280`) and `28` emitted observables are pinned by
+     `E3B_FREEZE_LIVE_KEYS` and `E3B_FREEZE_OBSERVABLE_IDS` (`src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 754-761`,
+     merged `C12 E3B-PIN` `PR #260` @ `7e383b8b`), permitting additive post-freeze keys only when
+     absent-means-legacy (`0.0 == Default`, `QD-BIO-D2`).
 
 ---
 
@@ -141,7 +143,7 @@ Under **Option A**, the pre-allocated per-cell `EvolvingGrassField` tracks conti
 
 Evolving plants integrate cleanly into both energy regimes without rewriting the `f64` ledger (`RESEARCH_REVIEW` §3 rejects any wholesale `i64` rewrite):
 
-1. **Primary ecosystem path (with planned `ADR-0018` `OpenEnergyFlowLaw` active):**
+1. **Primary ecosystem path (with merged [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`#263`, `proposed`) `OpenEnergyFlowLaw` active):**
    - Solar irradiance (`EnergyEvent::SolarPrimaryProduction`) enters living grass cells (`EvolvingGrassField`) and individual trees/shrubs (`IndividualPlant`) via genotype/cell `light_use_efficiency` multiplied by abiotic limits `f_w(soil_moisture) * f_n(soil_nitrogen) * f_t(air_temperature) * f_light(canopy_cover)` ([`2026-11-24-v5-fields-plants-feedback-spec.md`](../ai/planning/2026-11-24-v5-fields-plants-feedback-spec.md) §2.2).
    - Plant maintenance, root pumping, chemical/structural defence synthesis, and reproductive seed-coat overhead charge `total_cost` and dissipate respired fractions via `EnergyEvent::RespiredHeatLoss` (heat sink) and shed litter / dead wood (`Dead` trees -> `Detritus` / `V4` carcass-decomposition pool -> `DynamicFields::soil_organic` -> mineral `soil_nitrogen` tracked against `DynamicFields::cum_nutrient_uptake` at [`dynamic_fields.rs:106, 461`](../../src-tauri/src/core/dynamic_fields.rs#L106)).
 2. **Closed-EU standalone path (`open_energy_flow = None` + `plant_evolution = Some(...)`):**
@@ -167,7 +169,7 @@ Today's trunk spawns genesis animals from fixed manifest founders (`live.founder
    - Tagged visibly as `"designed founders"` in the genesis manifest, UI treatment banner, and chronicle.
 2. **`G2` — Viability-Screened Plant Founder Pool (upgrade):**
    - Sample candidate plant genotypes across trait distributions on dedicated stream `sim_stream::PLANT_GENESIS`, keeping only founders passing an explicit `VIAB-2`-style multi-generation closed/open-budget viability screen before island start.
-   - **Producers first:** Plants establish sustainable standing crop and seed/pollen balance (`G2` producer trigger, aligned with `ADR-0014` `D-GENESIS-1`) *before* herbivores (and then predators) enter the ecosystem. Shared-island and science conclusions require robustness across `>= 3` independent founder pools rather than one hand-picked start.
+   - **Producers first:** Plants establish sustainable standing crop and seed/pollen balance (`G2` producer trigger, aligned with [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) `D-GENESIS-1`) *before* herbivores (and then predators) enter the ecosystem. Shared-island and science conclusions require robustness across `>= 3` independent founder pools rather than one hand-picked start.
 3. **`G3` — Emergent First Organisms (time-boxed research spike):**
    - Treated strictly as an opt-in, separate world-law spike (`<= 2 weeks` of agent work) where minimal self-replicating genotype tapes compete and decode into valid genotypes until crossing `G2`'s viability threshold (explicitly declaring that prebiotic chemistry / chemical origin of life is **not modeled**). Legacy `G1`/`G2` paths remain untouched.
 
@@ -220,7 +222,7 @@ Extending trunk DTOs cleanly without dictating meshes, shaders, or visual style:
 
 ## 9. Opt-In Rollback, Manifest Fingerprint & Explicit Exclusions (`RESEARCH_REVIEW` §3)
 
-- **Opt-in schema (`laws.rs:28-32, 79` & `live_experiment.rs:280`):** Add `#[serde(default, skip_serializing_if = "Option::is_none")] pub plant_evolution: Option<PlantEvolutionLaw>` on `WorldLawSet` and `live.plant_evolution` / `live.plant_genesis_phase` manifest keys (gated behind `C12 E3B-PIN` per `QD-BIO-D2`). Inside `WorldLawSet::canonicalize()` (`laws.rs:85-95`), `plant_evolution: None` **must emit zero tag bytes** (matching `WorldIdentity::sim_world_sha256` at `manifest.rs:459-464`, unlike `exotic_energy` which emits `tag(0x00)` at `laws.rs:90`), keeping every legacy `WorldLawSet::baseline().fingerprint()` unchanged.
+- **Opt-in schema (`laws.rs:28-32, 79` & `live_experiment.rs:280`):** Add `#[serde(default, skip_serializing_if = "Option::is_none")] pub plant_evolution: Option<PlantEvolutionLaw>` on `WorldLawSet` and `live.plant_evolution` / `live.plant_genesis_phase` manifest keys (permitted by merged `C12 E3B-PIN` `#260` under `QD-BIO-D2` provided absent-means-legacy `0.0 == Default` holds at `prereg_e3b_manifest_tests.rs:574-603`). Inside `WorldLawSet::canonicalize()` (`laws.rs:85-95`), `plant_evolution: None` **must emit zero tag bytes** (matching `WorldIdentity::sim_world_sha256` at `manifest.rs:459-464`, unlike `exotic_energy` which emits `tag(0x00)` at `laws.rs:90`), keeping every legacy `WorldLawSet::baseline().fingerprint()` unchanged.
 - **Conditional snapshot validation & `world_checksum` (`snapshot.rs:602-626, 789`):** Hash evolving grass trait arrays (`EvolvingGrassField`) and active `IndividualPlant` stage/genotype/reserve state **only** when `plant_evolution` is enabled; absent/disabled leaves `world_checksum`, `SerializedTree`, and all pre-ADR-0015 save fixtures bit-identical.
 - **Explicit rejections upheld from `RESEARCH_REVIEW_2026-11-24_modern_biology.md` §3:**
   - Zero post-germination L-systems or ongoing genotype developmental plasticity (`ADR-0001`).
@@ -271,4 +273,5 @@ Implementation proceeds strictly through sequenced cards **`P1`–`P8`** in
 - World laws, observers & science gates: [`ADR-0002`](ADR-0002-world-laws-and-exotic-energy.md), [`ADR-0003`](ADR-0003-evolved-per-agent-brains.md), [`ADR-0004`](ADR-0004-observer-as-declared-intervention.md), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md)
 - Soil, water & decomposition specs: [`2026-11-24-v4-carcasses-decomposition-spec.md`](../ai/planning/2026-11-24-v4-carcasses-decomposition-spec.md), [`2026-11-24-v5-fields-plants-feedback-spec.md`](../ai/planning/2026-11-24-v5-fields-plants-feedback-spec.md), [`2026-11-24-v10-soak-leak-spec.md`](../ai/planning/2026-11-24-v10-soak-leak-spec.md)
 - Benchmarks & card roadmap: [`docs/paper/data/scaling.md`](../paper/data/scaling.md), [`docs/ai/planning/2026-11-24-plant-cards.md`](../ai/planning/2026-11-24-plant-cards.md)
-- Parallel wave ADR references (cited in backticks until merged to trunk): `ADR-0014` (`PR #256`, shared islands & `QD-GENESIS` `D-GENESIS-1`/`D-GENESIS-2`), `ADR-0016` (allopatric worlds / changing surface), `ADR-0017` (evolved chemical/acoustic signals), `ADR-0018` (`OpenEnergyFlowLaw`, `QD-ECOSCALE` three tiers), `ADR-0019` (`PR #259`, brain–body interface).
+- Merged wave companion ADRs: [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) (`PR #256`, `accepted`, shared islands & `QD-GENESIS` `D-GENESIS-1`/`D-GENESIS-2`), [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`PR #263`, `proposed`, `OpenEnergyFlowLaw`, `QD-ECOSCALE` three tiers).
+- Unmerged wave ADR references (cited in backticks until merged to trunk): `ADR-0016` (allopatric worlds / changing surface), `ADR-0017` (evolved chemical/acoustic signals), `ADR-0019` (`PR #259`, brain–body interface).
