@@ -2,7 +2,7 @@
 title: Ba môi trường sống QD-REALMS (nước, trời, hang) — đánh giá đề xuất ngoài
 status: proposed
 owner: simulation-architecture
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-24
 review_cycle: quarterly
 ---
 
@@ -16,9 +16,10 @@ review_cycle: quarterly
 > triển khai qua ba ADR mà nó gọi là "ADR-01/02/03". Tài liệu này **không** phải hợp đồng, kế hoạch
 > hay quyết định. Số đo của repo chỉ nằm ở
 > [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
-> Quyết định QD-REALMS ([`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md), dòng 285) đã định thứ
-> tự: **mỗi lần một môi trường, mỗi môi trường một ADR riêng** (số trống tiếp theo là ADR-0011 trở
-> đi), chỉ sau kết quả SEL2-P; trước đó cá, chim, thú hoang và hang vẫn là trang trí. Không thẻ nào
+> Quyết định QD-REALMS ([`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md), mục `QD-REALMS`) đã định thứ
+> tự: **mỗi lần một môi trường, mỗi môi trường một ADR riêng** (cập nhật 2026-11-24: ADR-0011 được
+> để dành cho renderer sau NR-SPIKE, ADR-0012 và ADR-0013 đã dùng, nên số trống tiếp theo là ADR-0014
+> trở đi), chỉ sau kết quả SEL2-P; trước đó cá, chim, thú hoang và hang vẫn là trang trí. Không thẻ nào
 > từ báo cáo gốc được mở trước khi Chặng 4 (VIAB-1 → E3b / SEL2-P2) đóng.
 
 ## 0. Nhãn bằng chứng và kết luận ngắn
@@ -127,7 +128,7 @@ review_cycle: quarterly
 ## 5. Chỗ báo cáo gốc sai về repo hoặc va với quy tắc (`Đã kiểm`)
 
 1. **Đánh số ADR.** "ADR-01/02/03" trùng ADR-0001 (vòng đời phát triển), ADR-0002 (luật thế giới) và
-   ADR-0003 (não tiến hoá). Môi trường đầu tiên sẽ là ADR-0011 hoặc số sau đó.
+   ADR-0003 (não tiến hoá). Môi trường đầu tiên sẽ là ADR-0014 hoặc số sau đó (ADR-0011 để dành cho renderer; ADR-0012, ADR-0013 đã dùng; kiểm lại chỉ mục ADR khi viết).
 2. **Kích thước thế giới.** Báo cáo gốc dùng 4.096 × 4.096 × 512 m ở 1 m/ô. World v2 là khối núi
    40,96 km ở 10 m/px (lưới 4096²), cao độ từ −1.500 m tới +5.700 m; mô phỏng chạy trên `sim_256`
    (256²). Mọi con số bộ nhớ của báo cáo gốc tính cho một thế giới khác.
@@ -171,7 +172,7 @@ Kiểm tra mẫu (web, 2026-11-22):
 ## 7. Việc nên làm tiếp (`Suy luận`, chờ chủ dự án)
 
 1. **Không** mở thẻ code nào từ báo cáo gốc trước khi Chặng 4 đóng và SEL2-P có kết quả.
-2. Khi mở môi trường nước: một ADR riêng (ADR-0011+), bắt đầu từ CPG sóng lan truyền (ADR-0006 Phương
+2. Khi mở môi trường nước: một ADR riêng (ADR-0014+), bắt đầu từ CPG sóng lan truyền (ADR-0006 Phương
    án B), rồi lực chất lưu opt-in, rồi cột nước giữ EU kín; bump `LIVE_MODEL_VERSION` theo ADR-0008.
 3. Ứng viên rẻ, độc lập với môi trường: chi phí bảo dưỡng giác quan trong `total_cost`, sau khoá opt-in
    như `brain_metabolic_cost`.

@@ -278,10 +278,11 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
   nhưng genotype của các bước trung gian bị xoá, nên không phân loại được từng bước có lợi / trung tính /
   có hại. Định nghĩa hoàn thành cần nói rõ giữ chúng bằng cách nào: nhật ký sai phân trên cạnh, hay ghim
   tổ tiên trước khi nén.
-- **Ca sinh của thế giới sống chưa vào tracker.** Lời gọi `add_reproduction` duy nhất là ở
-  `simulation_loop.rs` (vòng MAP-Elites). `SpawnOffspringCommand` có `parent_ids` nhưng không ghi vào
-  tracker, và các con cùng cha nhận cùng `lineage_id`. Line of descent trên thế giới sống cần việc này
-  trước.
+- **Ca sinh của thế giới sống vào tracker — đã xong ở dạng opt-in (F-066, #207).** Lúc rà soát
+  2026-11-22, chỉ vòng MAP-Elites gọi `add_reproduction` và các con cùng cha nhận cùng `lineage_id`. Nay
+  khoá `live.lineage_tracking = 1` ghi mọi ca sinh/chết live với id riêng, `origin_tick` và
+  `destruction_tick`, mà không đổi quỹ đạo. Line of descent trên quần thể live làm được với đồ thị có
+  thật; app desktop chưa đặt khoá.
 
 **Vì sao đáng làm sớm:** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi
 lần sinh sản kèm **bản sao đầy đủ** `MorphologyGenotype` và **không bao giờ prune**. Đó là đường

@@ -2,7 +2,7 @@
 title: Đồng tiến hoá não–thân, evo-devo và vận động tiếp đất — đánh giá đề xuất ngoài
 status: proposed
 owner: simulation-architecture
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-24
 review_cycle: quarterly
 ---
 
@@ -123,6 +123,12 @@ Vấn đề thật không phải số chiều mà là **chất lượng điều 
   tốc góc ổn định ở bước 1/60 s. **Chưa đo trong Anima.**
 - Mọi chi phí năng lượng của tăng trưởng phải đi vào `total_cost` trong `metabolic_decay_system`
   (luật cứng của ADR-0003) để chảy qua `respired` vào detritus.
+- **Cập nhật 2026-11-24:** [ADR-0013](../decisions/ADR-0013-live-creature-lifecycle.md) (proposed, chờ
+  chủ dự án quyết D1–D5) đề xuất tuổi theo lịch và giai đoạn sống `Juvenile → Adult → Senescent` opt-in,
+  với chi phí trưởng thành đi qua `total_cost`. Nó **không** cho đổi hình học thân giữa đời: lên `Adult`
+  hay `Senescent` chỉ đổi giai đoạn sinh sản và trao đổi chất, không chạy lại development (Decision
+  Driver 3). Vì vậy câu hỏi tăng trưởng kích thước trong đời ở trên vẫn mở. `Suy luận`: nếu muốn có nó, nên nêu
+  trong lúc chủ dự án quyết ADR-0013, thay vì viết một ADR riêng.
 
 ## 3. Vận động tiếp đất (ADR-0006)
 
@@ -132,6 +138,8 @@ Vấn đề thật không phải số chiều mà là **chất lượng điều 
   `steering_drive_system` ([`locomotion.rs`](../../src-tauri/src/core/locomotion.rs)) ghi
   `target_velocity`, và lực ngoài duy nhất là `(target_velocity − velocity) · mass · 2.0` trên gốc.
   Hệ này opt-in; khi tắt, quỹ đạo cũ giữ nguyên từng bit.
+- *(Cập nhật 2026-11-24: founder mặc định vẫn 3 đốt; E3b và SEL2-P2 dùng founder 2 đốt opt-in qua
+  `live.founder_genotype = 1` — QĐ-E3B D5, QĐ-SEL2P2 D1. Thăm dò của ADR-0006 làm trên thân 3 đốt.)*
 - Bằng chứng thăm dò trong ADR-0006: cản dị hướng **không** tạo lực đẩy vì CPG 3 đốt hiện là **dao
   động đứng** quanh một trục cố định; lực đẩy từ ma sát cần **sóng lan truyền lệch pha**. Đó là
   **Phương án B**, đã được ghi là tuỳ chọn sau khi CPG sóng lan truyền được thiết kế riêng.
