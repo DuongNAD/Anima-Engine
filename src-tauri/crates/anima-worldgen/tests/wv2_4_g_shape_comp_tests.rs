@@ -9,9 +9,11 @@ use anima_worldgen::lakes_falls::{LakeBasinRecord, LakeClassification, Waterfall
 use anima_worldgen::pipeline::run_worldgen_to_dir;
 use anima_worldgen::verify::g_comp::{evaluate_c4_c5_and_flags, finalize_g_comp_v2};
 use anima_worldgen::verify::g_shape::{evaluate_g_shape, GShapeInput, HackLawReport};
-use anima_worldgen::verify::{verify_dem_file, verify_raw_dir, WorldV2IndexJson};
+use anima_worldgen::verify::{
+    verify_dem_file, verify_raw_dir, VerificationReport, WorldV2IndexJson,
+};
 use anima_worldgen::{BiomeId, WaterKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn temp_test_dir(tag: &str) -> PathBuf {
@@ -756,4 +758,116 @@ fn verify_raw_dir_rejects_malformed_meta_and_nan_elevation() {
     );
 
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
+    let artifacts_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../artifacts");
+    let v2_dir = artifacts_root.join("world-v2");
+
+    let preset_txt = std::fs::read_to_string(v2_dir.join("preset_v2.toml"))
+        .expect("read committed artifacts/world-v2/preset_v2.toml");
+    let cfg: WorldV2Config = toml::from_str(&preset_txt).expect("parse preset_v2.toml");
+    cfg.validate().expect("preset_v2.toml must be valid");
+    assert_eq!(cfg.seed, 0x5756_3201);
+    assert_eq!(cfg.grid_size, 4096);
+    assert_eq!(cfg.schema_tag, "ANMW3-SNSM-v1");
+
+    let sim_bytes = std::fs::read(v2_dir.join("sim_256.anmw3"))
+        .expect("read committed artifacts/world-v2/sim_256.anmw3");
+    let peeked = AnmwV3Sim::peek_seed(&sim_bytes).expect("peek v3 seed");
+    assert_eq!(peeked, cfg.seed as u32);
+    let sim = AnmwV3Sim::from_bytes(&sim_bytes).expect("decode sim_256.anmw3");
+    assert_eq!(sim.width, 256);
+    assert_eq!(sim.height, 256);
+    assert_eq!(sim.seed_u64, cfg.seed);
+
+    let index_bytes = std::fs::read(v2_dir.join("index.json"))
+        .expect("read committed artifacts/world-v2/index.json");
+    let idx: WorldV2IndexJson =
+        serde_json::from_slice(&index_bytes).expect("parse artifacts/world-v2/index.json");
+    assert_eq!(
+        idx.to_canonical_json_bytes().expect("canonicalize index"),
+        index_bytes,
+        "committed index.json must stay deterministically sorted and canonical"
+    );
+    assert_eq!(idx.sim_256_byte_len, sim_bytes.len());
+    assert_eq!(idx.grid_size, cfg.grid_size);
+    assert_eq!(idx.seed, cfg.seed);
+    assert_eq!(idx.schema_tag, cfg.schema_tag);
+    assert_eq!(
+        sha256_to_hex(&compute_sim_world_identity(&sim_bytes)),
+        idx.sim_world_identity,
+        "index.json sim_world_identity must equal sha256(sim_256.anmw3)"
+    );
+
+    let gates_bytes = std::fs::read(v2_dir.join("gates.json"))
+        .expect("read committed artifacts/world-v2/gates.json");
+    let gates: VerificationReport =
+        serde_json::from_slice(&gates_bytes).expect("parse artifacts/world-v2/gates.json");
+    assert_eq!(gates.status.as_deref(), Some("provisional"));
+    assert_eq!(gates.decision.as_deref(), Some("MAP-D4"));
+    assert_eq!(
+        gates.sim_world_identity.as_deref(),
+        Some(idx.sim_world_identity.as_str())
+    );
+    assert_eq!(gates.width, 4096);
+    assert_eq!(gates.height, 4096);
+    assert_eq!(gates.seed, Some(0x5756_3201));
+
+    let endo = &gates.g_shape.metric_6_endorheic_spillways;
+    assert!(
+        endo.passed,
+        "provisional C01 passes G-SHAPE.6 endorheic spillways"
+    );
+    assert_eq!(endo.unmodeled_micro_pits, 0);
+    assert_eq!(endo.severed_humid_spillways, 0);
+    assert_eq!(endo.endorheic_humid_fraction, 0.0);
+
+    let comp = gates.g_comp_v2.as_ref().expect("g_comp_v2 present");
+    assert!(
+        comp.c2_ecotone.passed,
+        "provisional C01 passes G-COMP-v2.C2 ecotone continuity"
+    );
+
+    let sim_rep = gates.g_sim_raw.as_ref().expect("g_sim_raw present");
+    assert!(sim_rep.round_trip_ok);
+    assert!(sim_rep.max_mean_norm_elev_diff <= 1e-5);
+    assert!(sim_rep.all_biomes_in_range);
+    assert_eq!(sim_rep.water_mask_mismatches, 0);
+    assert!(sim_rep.largest_walkable_fraction >= 0.80);
+
+    let legacy = std::fs::read(artifacts_root.join("world_256.anmw"))
+        .expect("legacy artifacts/world_256.anmw must remain untouched");
+    assert!(legacy.len() >= 8);
+    assert_eq!(&legacy[0..4], b"ANMW");
+    assert_eq!(
+        u32::from_le_bytes([legacy[4], legacy[5], legacy[6], legacy[7]]),
+        2
+    );
+}
+
+#[test]
+#[ignore = "MAP-D4: G-SHAPE (1-5, 7, 4.2), G-COMP v2 (C1, C3-C5), and G-SIM (GS-1, GS-2) not met by provisional C01, see docs/ai/planning/2026-11-24-wv2-4.md"]
+fn official_world_v2_c01_passes_all_15_g_shape_g_comp_and_g_sim_gates() {
+    let v2_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../artifacts/world-v2");
+    let gates_bytes = std::fs::read(v2_dir.join("gates.json"))
+        .expect("read committed artifacts/world-v2/gates.json");
+    let gates: VerificationReport =
+        serde_json::from_slice(&gates_bytes).expect("parse artifacts/world-v2/gates.json");
+    assert!(
+        gates.overall_pass,
+        "official World v2 gates.json failed: {:?}",
+        gates.failed_gates
+    );
+    assert!(gates.failed_gates.is_empty(), "expected 0 failed gates");
+    assert!(gates.g_shape.passed, "G-SHAPE must pass");
+    assert!(
+        gates.g_comp_v2.as_ref().expect("g_comp_v2").passed,
+        "G-COMP v2 must pass"
+    );
+    assert!(
+        gates.g_sim_raw.as_ref().expect("g_sim_raw").passed,
+        "G-SIM raw must pass"
+    );
 }

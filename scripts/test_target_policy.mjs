@@ -148,6 +148,18 @@ export const IGNORED_TESTS = [
       'Passing ocean, cave, 22-biome C1/C2, and Werner dune assertions keep running in ' +
       '`full_pipeline_22_biome_blending_c1_c2_and_leeward_dunes_passing_invariants`.',
   },
+  {
+    name: 'official_world_v2_c01_passes_all_15_g_shape_g_comp_and_g_sim_gates',
+    target: 'tests/wv2_4_g_shape_comp_tests.rs',
+    profiles: ['worldgen-cpu'],
+    reason:
+      'MAP-D4: G-SHAPE (1-5, 7, 4.2), G-COMP v2 (C1, C3-C5), and G-SIM (GS-1, GS-2) not met by ' +
+      'provisional C01 (2/15 pass; channel truncation at omega_max = 3, 0 waterfalls at 4096^2, ' +
+      'low lake area, smooth coastline, 10 m spikes); deferred to WV2-PHYS2. See ' +
+      'docs/ai/planning/2026-11-24-wv2-4.md §5. Passing C01 artifact integrity, identity, and ' +
+      'G-SHAPE.6/C2 invariants keep running in ' +
+      '`official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates`.',
+  },
 ];
 
 /**

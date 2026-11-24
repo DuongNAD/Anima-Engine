@@ -66,6 +66,10 @@ pub struct GSimRawReport {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VerificationReport {
     pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<String>,
     pub mode: String,
     pub seed: Option<u64>,
     pub schema_tag: Option<String>,
@@ -678,6 +682,8 @@ pub fn verify_raw_dir(
 
     Ok(VerificationReport {
         schema_version: 1,
+        status: None,
+        decision: None,
         mode: "raw".to_owned(),
         seed: Some(meta.seed),
         schema_tag: Some(meta.schema_tag),
@@ -746,6 +752,8 @@ pub fn verify_dem_file(
 
     Ok(VerificationReport {
         schema_version: 1,
+        status: None,
+        decision: None,
         mode: "dem_input".to_owned(),
         seed: None,
         schema_tag: None,

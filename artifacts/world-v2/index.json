@@ -1,0 +1,14 @@
+{
+  "extent_m": 40960,
+  "format_version": 1,
+  "generator_version": 3,
+  "grid_size": 4096,
+  "release_archive": null,
+  "release_archive_sha256": null,
+  "schema_tag": "ANMW3-SNSM-v1",
+  "seed": 1465266689,
+  "sim_256_byte_len": 1442804,
+  "sim_256_file": "sim_256.anmw3",
+  "sim_world_identity": "cbdd3ba9f57725ada233d1b43f2f5804fe8cb0fe0b098ca5ef8ae0aae5784c4d",
+  "tiles": []
+}
