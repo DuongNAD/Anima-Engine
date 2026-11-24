@@ -339,22 +339,22 @@ fn check_canonical_sightlines(
     total_h_m: &[f32],
     water_h_m: &[f32],
 ) -> (usize, usize) {
-    let max_surface = total_h_m
-        .iter()
-        .zip(water_h_m.iter())
-        .map(|(&t, &w)| t.max(w))
-        .fold(0.0_f32, f32::max);
+    let mut peak_idx = (height / 2) * width + (width / 2);
+    let mut max_surface = f32::NEG_INFINITY;
+    for (idx, (&t, &w)) in total_h_m.iter().zip(water_h_m.iter()).enumerate() {
+        let s = t.max(w);
+        if s > max_surface {
+            max_surface = s;
+            peak_idx = idx;
+        }
+    }
     let wf = (width - 1) as f64;
     let hf = (height - 1) as f64;
-    let center_c = 0.5 * wf;
-    let center_r = 0.5 * hf;
-    let center_h = f64::from(
-        total_h_m[(height / 2) * width + (width / 2)]
-            .max(water_h_m[(height / 2) * width + (width / 2)]),
-    );
-    let target = (center_c, center_r, center_h + 40.0);
+    let peak_c = (peak_idx % width) as f64;
+    let peak_r = (peak_idx / width) as f64;
+    let target = (peak_c, peak_r, f64::from(max_surface) + 40.0);
 
-    // 8 canonical azimuths around the map rim looking inward from well above max relief.
+    // 8 canonical azimuths around the map rim looking inward toward the massif summit from above relief.
     let views = [
         (0.50 * wf, 0.04 * hf, f64::from(max_surface) + 2_500.0),
         (0.96 * wf, 0.04 * hf, f64::from(max_surface) + 2_800.0),
@@ -370,8 +370,16 @@ fn check_canonical_sightlines(
     for &(cam_c, cam_r, cam_y) in &views {
         let cc = (cam_c.round() as usize).min(width - 1);
         let cr = (cam_r.round() as usize).min(height - 1);
-        let surf_cam = f64::from(total_h_m[cr * width + cc].max(water_h_m[cr * width + cc]));
-        if cam_y <= surf_cam + 50.0 {
+        let mut local_max_surf = f64::NEG_INFINITY;
+        for dr in -1isize..=1 {
+            let nr = (cr as isize + dr).clamp(0, height as isize - 1) as usize;
+            for dc in -1isize..=1 {
+                let nc = (cc as isize + dc).clamp(0, width as isize - 1) as usize;
+                let s = f64::from(total_h_m[nr * width + nc].max(water_h_m[nr * width + nc]));
+                local_max_surf = local_max_surf.max(s);
+            }
+        }
+        if cam_y < local_max_surf + 100.0 {
             obstructed += 1;
             continue;
         }

@@ -603,3 +603,47 @@ fn cli_generate_preset_defaults_verify_gates_and_sorted_index_identity() {
     assert_eq!(gates_val["world_sha256"], lib_meta.world_sha256);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn hillslope_rills_below_q_min_excluded_from_channel_mask() {
+    let n = 128_usize;
+    let dx = 40.0_f32;
+    let mut dem = vec![0.0_f32; n * n];
+    // Steep concave convergent bowl draining down to r = 115 (`S > 0.7`, so `A * S^2 >= 500` even at 1 cell).
+    for r in 0..n {
+        for c in 0..n {
+            let idx = r * n + c;
+            if r >= 118 {
+                dem[idx] = -20.0;
+            } else {
+                let lat = (c as f32 - 64.0).abs();
+                dem[idx] = 20.0 + (118 - r) as f32 * 30.0 + lat * 28.0;
+            }
+        }
+    }
+
+    let mut base_in = GShapeInput::from_dem_only(&dem, n, n, dx, 0.0);
+    base_in.q_min_m3_s = 0.0;
+    let out_no_qmin = evaluate_g_shape(&base_in);
+
+    let mut qmin_in = GShapeInput::from_dem_only(&dem, n, n, dx, 0.0);
+    qmin_in.q_min_m3_s = 0.027_778;
+    let out_with_qmin = evaluate_g_shape(&qmin_in);
+
+    let cnt_no_qmin = out_no_qmin.is_channel.iter().filter(|&&c| c).count();
+    let cnt_with_qmin = out_with_qmin.is_channel.iter().filter(|&&c| c).count();
+    assert!(
+        cnt_with_qmin > 0 && cnt_with_qmin * 2 < cnt_no_qmin,
+        "Q_min gate must exclude shallow steep hillside trickles while retaining mainstem channels (no_qmin={cnt_no_qmin}, with_qmin={cnt_with_qmin})"
+    );
+    assert!(
+        out_with_qmin
+            .report
+            .metric_3_drainage_density
+            .global_km_per_km2
+            < out_no_qmin
+                .report
+                .metric_3_drainage_density
+                .global_km_per_km2
+    );
+}

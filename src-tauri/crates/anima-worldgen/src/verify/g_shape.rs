@@ -34,6 +34,7 @@ pub struct GShapeInput<'a> {
     pub total_h_m: &'a [f32],
     pub precip_m_yr: Option<&'a [f32]>,
     pub pet_m_yr: Option<&'a [f32]>,
+    pub discharge_q_m3_s: Option<&'a [f32]>,
     pub river_w_m: Option<&'a [f32]>,
     pub water_kind: Option<&'a [u8]>,
     pub glacier_h_m: Option<&'a [f32]>,
@@ -44,6 +45,8 @@ pub struct GShapeInput<'a> {
     pub reported_severed_humid_spillways: Option<usize>,
     pub reported_endorheic_land_fraction: Option<f32>,
     pub reported_endorheic_humid_fraction: Option<f32>,
+    /// Minimum mean-annual discharge `Q >= q_min_m3_s` (`§4.1` Metric 1) excluding dry gullies.
+    pub q_min_m3_s: f32,
     /// Minimum channel node sample floor for Hack's Law (`500` in §4.1 at regional scales).
     pub min_hack_samples: usize,
     /// When false (`--dem-input` without rainfall grids), skip rain-shadow vs windward subchecks.
@@ -340,8 +343,9 @@ pub fn evaluate_g_shape(input: &GShapeInput<'_>) -> GShapeHydroOutput {
         }
     };
     let eff_river_w: &[f32] = input.river_w_m.unwrap_or(&hydro.river_w_m);
+    let eff_q: &[f32] = input.discharge_q_m3_s.unwrap_or(&hydro.discharge_q_m3_s);
 
-    // Build continuous D8 channel DAG mask off Ocean/Lake water bodies.
+    // Build continuous D8 channel DAG mask off Ocean/Lake water bodies (`A S^2 >= tau_chan & Q >= Q_min`).
     let mut is_channel = vec![false; n];
     for i in 0..n {
         let (is_ocean, is_lake) =
@@ -349,7 +353,9 @@ pub fn evaluate_g_shape(input: &GShapeInput<'_>) -> GShapeHydroOutput {
         if is_ocean || is_lake {
             continue;
         }
-        if hydro.is_channel[i] || (input.river_w_m.is_some() && eff_river_w[i] >= 0.5) {
+        if (hydro.is_channel[i] && eff_q[i] >= input.q_min_m3_s)
+            || (input.river_w_m.is_some() && eff_river_w[i] >= 0.5)
+        {
             is_channel[i] = true;
         }
     }
@@ -1676,6 +1682,7 @@ impl GShapeInput<'_> {
             total_h_m,
             precip_m_yr: None,
             pet_m_yr: None,
+            discharge_q_m3_s: None,
             river_w_m: None,
             water_kind: None,
             glacier_h_m: None,
@@ -1686,6 +1693,11 @@ impl GShapeInput<'_> {
             reported_severed_humid_spillways: None,
             reported_endorheic_land_fraction: None,
             reported_endorheic_humid_fraction: None,
+            q_min_m3_s: if width * height >= 512 * 512 {
+                0.027_778
+            } else {
+                0.001
+            },
             min_hack_samples: if width * height >= 512 * 512 { 500 } else { 20 },
             has_climate_fields: false,
         }

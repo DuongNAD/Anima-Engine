@@ -519,6 +519,7 @@ pub fn verify_raw_dir(
     let total_h_m = read_bin_f32(&raw_dir.join("total_h_m.bin"), n)?;
     let water_h_m = read_bin_f32(&raw_dir.join("water_h_m.bin"), n)?;
     let water_kind = read_bin_u8(&raw_dir.join("water_kind.bin"), n)?;
+    let discharge_q_m3_s = read_bin_f32(&raw_dir.join("discharge_q_m3_s.bin"), n)?;
     let river_w_m = read_bin_f32(&raw_dir.join("river_w_m.bin"), n)?;
     let glacier_h_m = read_bin_f32(&raw_dir.join("glacier_h_m.bin"), n)?;
     let lithology_id = read_bin_u8(&raw_dir.join("lithology_id.bin"), n)?;
@@ -533,6 +534,7 @@ pub fn verify_raw_dir(
         total_h_m: &total_h_m,
         precip_m_yr: Some(&precip_m_yr),
         pet_m_yr: Some(&pet_m_yr),
+        discharge_q_m3_s: Some(&discharge_q_m3_s),
         river_w_m: Some(&river_w_m),
         water_kind: Some(&water_kind),
         glacier_h_m: Some(&glacier_h_m),
@@ -543,12 +545,14 @@ pub fn verify_raw_dir(
         reported_severed_humid_spillways: Some(meta.stats.severed_humid_spillways),
         reported_endorheic_land_fraction: Some(meta.stats.endorheic_land_fraction),
         reported_endorheic_humid_fraction: Some(meta.stats.endorheic_humid_fraction),
+        q_min_m3_s: if n >= 512 * 512 { 0.027_778 } else { 0.001 },
         min_hack_samples: if n >= 512 * 512 { 500 } else { 20 },
         has_climate_fields: true,
     };
     let shape_out = evaluate_g_shape(&shape_in);
     drop(precip_m_yr);
     drop(pet_m_yr);
+    drop(discharge_q_m3_s);
     drop(lithology_id);
 
     let c4_c5_summary = evaluate_c4_c5_and_flags(
