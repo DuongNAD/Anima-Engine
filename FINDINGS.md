@@ -30,6 +30,197 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-080 — `BrainPolicy.lifetime_learning` cannot be enabled from an experiment manifest (`ANIMA_LIFETIME_LEARNING` env-only / always `false` in `LiveWorldConfig`)
+- **Ngày:** 2026-11-24
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/core/live_experiment.rs:2637-2641,2753-2762`: `build_live_world` constructs `BrainPolicy` without enabling `lifetime_learning` (`LifetimeLearning::default()`, i.e. `enabled: false`) and never reads ambient `ANIMA_LIFETIME_LEARNING`; `LiveWorldConfig` defines no `lifetime_learning` field or `live.lifetime_learning` manifest key.
+  - `src-tauri/src/core/resources.rs:812-835,861-899`: `BrainPolicy.lifetime_learning` defaults to `enabled: false` and is only populated from `ANIMA_LIFETIME_LEARNING` in `BrainPolicy::from_env()` (requiring `learning && evolved`).
+  - `src-tauri/src/ai/model.rs:1115-1122`: `hrrl_learning_system` skips Baldwin/in-life weight updates whenever `!(policy.evolved && policy.lifetime_learning.enabled && policy.lifetime_learning.interval > 0)`.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Even with `live.evolved_brains = 1.0`, experiment manifests have no declared key to enable or parameterize `BrainPolicy.lifetime_learning`, because `build_live_world` strictly rejects ambient environment variables so manifests stay self-contained.
+  - **Impact:** No preregistered headless experiment manifest can test Baldwin-effect hypotheses or interactions between inherited brains (`live.evolved_brains`) and in-life learning.
+  - **Frozen experiments / artifacts (`git grep lifetime_learning` & `evolved_brains` in `src-tauri/tests/fixtures` and `artifacts/`):** **0** manifests or artifacts reference `lifetime_learning`; **68** `evolved_brains` files across E-SEL1 (`15`), E2 (`18`), E3 (`13`), E3b (`14`), and SEL2-P (`8`), plus `src-tauri/tests/fixtures/snapshots/schema7_burn013_shared_learner.json`, all run with `lifetime_learning.enabled == false`.
+  - **Proposed fix (default-preserving):** Add declared opt-in manifest key(s) such as `"live.lifetime_learning"` (and any needed interval/rate keys) parsed into `LiveWorldConfig`; when absent or `0.0`, keep `LifetimeLearning::default()` (`enabled: false`) so all `68` frozen `evolved_brains` fixtures and shared-brain runs remain bit-identical, and enforce `live.evolved_brains = 1.0` at preflight when `"live.lifetime_learning" = 1.0` (since learning without per-agent brains is a no-op per `resources.rs:892-894`).
+- **Tái hiện:** Static audit of `src-tauri/src/core/live_experiment.rs:2637-2641,2753-2762` and `src-tauri/src/core/resources.rs:861-899`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-079 — Morphology mutation stops adding nodes at `nodes.len() < 15`, whereas crossover and migration allow up to `128`
+- **Ngày:** 2026-11-24
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/evolution/mutation.rs:161-163`: `add_node` mutation only runs while `genotype.nodes.len() < 15`.
+  - `src-tauri/src/evolution/crossover.rs:161-163`: structural crossover permits offspring up to `crate::core::components::MAX_MIGRATION_MORPHOLOGY_NODES` (`128`).
+  - `src-tauri/src/core/components.rs:189-192` & `src-tauri/src/core/agent_systems.rs:20-25`: `MAX_MIGRATION_MORPHOLOGY_NODES = 128` and `BODY_WALK_CAPACITY = MAX_MIGRATION_MORPHOLOGY_NODES` explicitly note the gap against the `15`-node live mutation cap.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Morphological complexity growth through live point mutation stops hard at `15` nodes (`mutation.rs:163`), whereas `crossover.rs:161-163` and restore/migration bounds allow up to `128` nodes (`MAX_MIGRATION_MORPHOLOGY_NODES`).
+  - **Impact:** Live lineages started from stock `2`- or `3`-segment founders can never evolve beyond `15` nodes via mutation, while imported or crossed morphologies between `15` and `128` nodes behave inconsistently (cannot grow further by mutation) and reflect two undocumented ceilings.
+  - **Frozen experiments / artifacts (`git grep` in `src-tauri/tests/fixtures` and `artifacts/`):** **0** manifest keys configure this limit directly, though every frozen evolutionary run with `live.mutation_rate > 0` executes `mutation.rs:163`.
+  - **Proposed fix (default-preserving):** Changing `15` unconditionally would alter mutation RNG draws and body size in any lineage reaching `15` nodes. Keep default `15` bit-identical for all existing manifests and either document the deliberate dual ceiling (`15` live mutation vs `128` import/crossover headroom) or add an opt-in manifest key (e.g., `"live.max_mutation_nodes"`, default `15`, validated `<= 128`).
+- **Tái hiện:** Static audit of `src-tauri/src/evolution/mutation.rs:161-163`, `src-tauri/src/evolution/crossover.rs:161-163`, and `src-tauri/src/core/components.rs:189-192`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-078 — Model limitation (not a bug): closed-EU ecosystem omits primary solar energy input, and lake water refills unconditionally without hydrologic conservation
+- **Ngày:** 2026-11-24
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/core/telemetry_export.rs:324-330`: doc comment of `generate_energy_flux_report` documents a strictly closed EU budget with no exogenous solar source; `src-tauri/src/core/environmental_systems.rs:30-85` (`resource_field_regrowth_system`) gates primary plant regrowth strictly on `detritus` EU (`pool.detritus -= grown; pool.plants += grown;`).
+  - `src-tauri/src/core/environmental_systems.rs:231-240,337-348`: `lake_replenishment_system` refills lakes unconditionally at a fixed rate up to capacity; drinking transfers water from lakes to agent `hydration` (`337-348`), while dehydration/evaporation/metabolism do not conserve or return water mass.
+  - `src-tauri/src/core/aggregate_population.rs:277`: dormant `Cohort.hydration` doc comment explicitly notes water is `"Not a conserved quantity"`.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** **Architectural/model limitation (not a software bug):** (1) The closed-EU model has no continuous solar influx — total world EU is fixed at genesis and vegetation regrows only by recycling `detritus`; (2) lake water regenerates exogenously (`lake_replenishment_system`) rather than conserving global H2O across rainfall, lakes, and agents.
+  - **Impact:** Long-run carrying capacity is governed by initial energy endowment plus detritus turnover rather than open solar productivity, and hydrological stress reflects local drinking/refill rate imbalances rather than finite watershed conservation. Analyzing outputs as an open solar food web or closed water budget without stating these assumptions causes misinterpretation.
+  - **Frozen experiments / artifacts (`git grep` in `src-tauri/tests/fixtures` and `artifacts/`):** **135** files reference `detritus` (E2 `49`, E3 `22`, E3b `18`, VIAB-1/1b `33`, E-SEL1 `6`, SEL2-P `3`, core experiments `3`, snapshot `1`), **107** files reference `hydration` (`144` match `lake|hydration`) across E-SEL1, E2, E3, E3b, SEL2-P, VIAB-1, VIAB-1b, maps, and snapshots — all built directly on closed-EU and non-conserved hydration dynamics.
+  - **Proposed fix (default-preserving):** Keep default closed-EU and current lake replenishment bit-identical (no bug fix should alter closed-EU invariants or water dynamics). Record both abstractions explicitly in ecosystem/contract documentation; if open-energy or closed-hydrology regimes are studied later, gate them strictly behind opt-in world policies (`live.solar_flux`, `live.closed_hydrology`).
+- **Tái hiện:** Static audit of `src-tauri/src/core/telemetry_export.rs:324-330`, `src-tauri/src/core/environmental_systems.rs:231-240,337-348`, and `src-tauri/src/core/aggregate_population.rs:277`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-077 — `crossover_brains` has no production callers (asexual cloning only) while `AgentSex` draws from `SimRng` without affecting mating
+- **Ngày:** 2026-11-24
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/evolution/brain_genotype.rs:700,950-964`: `pub fn crossover_brains` exists and is exercised only by unit tests (`git grep crossover_brains src-tauri/src` shows `0` production callers).
+  - `src-tauri/src/core/components.rs:15-18`: `pub enum AgentSex { Male, Female }`.
+  - `src-tauri/src/core/agent_systems.rs:419-430,494-525,598-609`: `SpawnGenotypeCommand` and `SpawnOffspringCommand` draw `SimRng::gen_bool(0.5)` to attach `AgentSex`, whereas `autonomous_reproduction_system` reproduces asexually from a single parent.
+  - `src-tauri/src/core/environmental_systems.rs:397`, `src-tauri/src/core/telemetry_export.rs:180-191`, `src-tauri/src/core/simulation_state.rs:130-134`: `demographic_census_system` reports sex ratios, and snapshot serialization preserves `sex: Option<AgentSex>` explicitly to maintain the founder vs. offspring ECS archetype swap order across restore (`F-045`).
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** All live reproduction is asexual/clonal with mutation, leaving `crossover_brains` unused outside unit tests (`brain_genotype.rs:700,950-964`), while newborn offspring still consume a `SimRng::gen_bool(0.5)` draw and receive an `AgentSex` component (`agent_systems.rs:598-609`) that plays no causal role in mate choice, recombination, or traits.
+  - **Impact:** Evolutionary runs lack sexual recombination, and sex-ratio telemetry (`telemetry_export.rs:180-191`) describes inert RNG labels rather than two-parent biology. Crucially, removing the `AgentSex` RNG draw or ECS component by default would alter `SimRng` trajectories and post-restore death table swap order (`F-045`).
+  - **Frozen experiments / artifacts (`git grep -E crossover_brains|AgentSex|agent_sex` in `src-tauri/tests/fixtures` and `artifacts/`):** **0** literal matches, though every frozen run with births executes `SpawnOffspringCommand`'s `SimRng::gen_bool(0.5)` draw and `AgentSex` archetype split.
+  - **Proposed fix (default-preserving):** Keep default asexual cloning plus the existing `AgentSex` draw and component intact so `SimRng` state and snapshot swap order (`F-045`) remain bit-identical. Document `AgentSex` as demographic-only in asexual runs, and wire `crossover_brains` + two-parent mating only behind a new opt-in key (e.g., `"live.sexual_reproduction": 1.0`).
+- **Tái hiện:** Static audit (`git grep crossover_brains src-tauri/src`; `src-tauri/src/core/agent_systems.rs:419-430,598-609`).
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-076 — Brain target-vector inputs bypass finite visual/olfactory limits by computing an omniscient global nearest-food/prey vector
+- **Ngày:** 2026-11-24
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/core/agent_systems.rs:1743-1785,1830-1833`: inside `sensory_system`, `local_target_vec` iterates over all `Food` (`food_query`) or all living `Prey` (`prey_query`) globally with unbounded distance (`1743-1772`) and writes it into neural inputs (`1830-1833`), alongside bounded raycast `hit_distance` (`1774-1785`, max `10.0`).
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Every agent's brain receives an accurate local bearing/direction (`local_target_vec`) toward the closest `Food` (or living `Prey` for predators) across the whole map regardless of vision range, terrain occlusion, or sensory morphology.
+  - **Impact:** Agents effectively possess omniscient global food/prey localization instead of locally bounded perception, understating search costs and weakening selective pressure on sensory exploration or ray-based navigation.
+  - **Frozen experiments / artifacts (`src-tauri/tests/fixtures` and `artifacts/`):** **0** manifest keys configure target-vector range directly, but every frozen brain-driven run (**68** `evolved_brains` files across E-SEL1, E2, E3, E3b, SEL2-P plus shared-brain runs such as `VIAB-1`/`VIAB-1b` and `schema7_burn013_shared_learner.json`) runs `sensory_system` with unbounded `local_target_vec`.
+  - **Proposed fix (default-preserving):** Bounding `local_target_vec` by default would alter brain inputs and break bit-identity of all existing and frozen runs. Keep unbounded `local_target_vec` when the opt-in key is absent/`0.0`, and introduce a declared opt-in key (e.g., `"live.local_target_range"` or `"live.bounded_target_vector"`) that zeroes out targets beyond finite visual/sensory range for perceptual-limitation studies.
+- **Tái hiện:** Static audit of `src-tauri/src/core/agent_systems.rs:1743-1785,1830-1833`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-075 — Pheromone/olfaction systems are scheduled, but production spawns never attach `PheromoneReleaser` or `OlfactorySensors`, leaving brain inputs 13-14 at `0` and `action_index::SIGNAL` unread
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/ai/pheromone.rs:130-182,223-235` & `src-tauri/src/core/simulation_schedule.rs:167-169`: defines `OlfactorySensors` and `PheromoneReleaser`, and schedules `agent_release_pheromone_system`, `update_pheromone_grid_system`, and `agent_read_pheromone_system`, but `git grep` shows `0` production spawn sites attach `PheromoneReleaser` or `OlfactorySensors`.
+  - `src-tauri/src/core/agent_systems.rs:1641,1824-1846,1953-1957`: `sensory_system` reads `Option<&OlfactorySensors>`, defaulting brain inputs `13-14` (`left_reading, right_reading`) to `(0.0, 0.0)`; `action_resolution_system` maps slots `4..=6` (`PHEROMONE_EMIT`, `ATTACK_INTENT`, `FEED_INTENT`) to `ActionGates` (`src-tauri/src/core/components.rs:501-509`), never reading slot `7`.
+  - `src-tauri/src/evolution/brain_genotype.rs:42-43,50-54`: defines `action_index::SIGNAL = 7` inside `EVOLVED_ARCH` (`15` inputs, `8` outputs); `git grep action_index::SIGNAL src-tauri/src` returns zero readers.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Although pheromone grids, emission/sensing systems, `ActionGates.pheromone_emit` (`slot 4`), and `action_index::SIGNAL` (`slot 7`) all exist in code, no production spawn attaches `PheromoneReleaser` or `OlfactorySensors`, and nothing consumes `action_index::SIGNAL`. Consequently, `pheromone_grid` remains empty, brain inputs `13-14` are identically `0.0` for all agents, and output slot `7` has zero effect on the world.
+  - **Impact:** Chemical signaling and olfaction are completely inert across all runs, evolved brains carry dead input/output dimensions, and researchers inspecting `EVOLVED_ARCH` (`15 -> 8`) may wrongly assume pheromone signaling is active.
+  - **Frozen experiments / artifacts (`git grep` in `src-tauri/tests/fixtures` and `artifacts/`):** **1** direct snapshot match (`src-tauri/tests/fixtures/snapshots/schema7_burn013_shared_learner.json` with empty `pheromone_grid`), plus **68** `evolved_brains` files (E-SEL1 `15`, E2 `18`, E3 `13`, E3b `14`, SEL2-P `8`) whose 15-input/8-output networks expect `(0.0, 0.0)` at inputs `13-14`.
+  - **Proposed fix (default-preserving):** Attaching `OlfactorySensors` / `PheromoneReleaser` by default would feed non-zero odor signals into inputs `13-14` and diverge all frozen runs. Keep production spawning without those components by default (`0.0` inputs bit-identical), and wire `PheromoneReleaser` + `OlfactorySensors` attachment plus `action_index::SIGNAL` vs `ActionGates.pheromone_emit` semantics behind an explicit opt-in key (e.g., `"live.pheromones": 1.0`).
+- **Tái hiện:** Static audit (`git grep PheromoneReleaser src-tauri/src`, `git grep OlfactorySensors src-tauri/src`, `git grep action_index::SIGNAL src-tauri/src`).
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-074 — `LINDEMAN_EFFICIENCY = 0.40` contradicts its `"~10% canonical"` doc comment and conflates strike assimilation with whole-trophic-level transfer
+- **Ngày:** 2026-11-24
+- **Loại:** SMELL
+- **Vị trí:**
+  - `src-tauri/src/core/ecology.rs:153-155,198,882`: defines `pub const LINDEMAN_EFFICIENCY: f32 = 0.40;` while the doc comment calls `"~10% canonical"`.
+  - `src-tauri/src/core/resources.rs:780-797`: `PredatorIncomePolicy::kill_efficiency` defaults to `LINDEMAN_EFFICIENCY` and documents it as strike assimilation efficiency (returning `(removed - gained)` to detritus).
+  - `src-tauri/src/core/live_experiment.rs:183-186,424-426,715-725`: `LIVE_KEY_KILL_EFFICIENCY` (`"live.kill_efficiency"`) defaults to `LINDEMAN_EFFICIENCY` (`0.40`).
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** `LINDEMAN_EFFICIENCY` is named after Lindeman's ~10% trophic-level ecological efficiency and cites `"~10% canonical"` in its comment (`ecology.rs:153-155`), yet is set to `0.40`. In the engine, `0.40` actually parameterizes *predator assimilation efficiency per successful strike on captured prey biomass* (gross-growth / ecosystem Lindeman efficiency is lower once metabolism and non-predatory deaths are included).
+  - **Impact:** Misleads biological interpretation and audits; naively changing `LINDEMAN_EFFICIENCY` from `0.40` to `0.10` would break predation energetics in all frozen and historical experiments.
+  - **Frozen experiments / artifacts (`git grep -E LINDEMAN|kill_efficiency` in `src-tauri/tests/fixtures` and `artifacts/`):** **4** preregistration manifests explicitly pin `"live.kill_efficiency": 0.4` (`src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json:124`, `src-tauri/tests/fixtures/experiments_e3b/e3b-preregistration.json:155`, `artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/manifests/e3-preregistration.json:124`, `artifacts/experiments/e3b-productivity-gradient-body-mass/confirmation/manifests/e3b-preregistration.json:155`), and all frozen runs without the key default to `0.40`.
+  - **Proposed fix (default-preserving):** Keep the numeric default `0.40` bit-identical. Clarify the doc comments in `ecology.rs:153-155`, `resources.rs:780`, and `live_experiment.rs:183-186` (and optionally alias/rename internally to `STRIKE_ASSIMILATION_EFFICIENCY` while keeping `"live.kill_efficiency"` default `0.40`) to state explicitly that `0.40` is captured-prey assimilation efficiency rather than ecosystem-level Lindeman efficiency, with `"live.kill_efficiency"` available for 10% sensitivity sweeps.
+- **Tái hiện:** Static audit of `src-tauri/src/core/ecology.rs:153-155` and `src-tauri/src/core/live_experiment.rs:183-186,424-426`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-073 — `"Pathogen"` / `PathogenTransmission` mortality cause is never recorded in `DemographicTracker` or `mortality_system`
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/telemetry_export.rs:89,109,225-226`: `DemographicTracker` defines `deaths_pathogen`, handles `"Pathogen"` in `record_death`, and exports `MortalityCauseCount { cause: "Pathogen", ... }`, but `git grep '"Pathogen"' src-tauri/src` finds zero callers passing `"Pathogen"`.
+  - `src-tauri/src/core/live_experiment.rs:1349-1405`: executes `InterventionKind::PathogenTransmission` effects on agent `homeo.energy` without tagging pathogen-caused mortality.
+  - `src-tauri/src/core/mortality.rs:164-192`: `mortality_system` passes only `"Senescence"` (`lifespan >= 300`) and `"Starvation"` to `DemographicTracker::record_death` (`168-180`; `DemographicTracker` has no `"Dehydration"` cause so thirst deaths are filed under `"Starvation"`), while `VitalStatistics::record_death_by` (`166,187-192`) tracks `DeathCause::{Starvation, Dehydration}`.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Even when `PathogenTransmission` drains agent energy, resulting deaths are logged to `DemographicTracker` as `"Starvation"` or `"Senescence"` (`mortality.rs:168-180`), and to `VitalStatistics` as `DeathCause::Starvation` (or `Dehydration`), leaving `DemographicTracker.deaths_pathogen` permanently `0`.
+  - **Impact:** Demographic telemetry cannot attribute mortality to pathogen interventions, silently reporting `0` pathogen deaths whenever `PathogenTransmission` is tested.
+  - **Frozen experiments / artifacts (`git grep -E Pathogen|pathogen` in `src-tauri/tests/fixtures` and `artifacts/`):** **0** files.
+  - **Proposed fix (default-preserving):** Runs without `PathogenTransmission` have no pathogen events, so default runs remain bit-identical. Either attach a pathogen-attribution marker/cause in `mortality_system` when `PathogenTransmission` directly kills or drains an infected agent (without changing default starvation/dehydration thresholds or runs lacking `PathogenTransmission`), or emit a preflight/doc note if pathogen mortality attribution is deferred until a dedicated `DeathCause::Pathogen` rule is specified.
+- **Tái hiện:** Static audit (`git grep '"Pathogen"' src-tauri/src`; `src-tauri/src/core/live_experiment.rs:1349-1395`; `src-tauri/src/core/mortality.rs:164-192`).
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-072 — Death-cause label `"Senescence"` is assigned solely by `lifespan >= 300` without an underlying ageing mechanism
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/mortality.rs:155,164-192`: `mortality_system` only kills agents via `DeathCause::{Starvation, Dehydration}` (and `VitalStatistics` records those true causes), while `164-180` maps `lifespan >= 300` to `"Senescence"` for `DemographicTracker::record_death` (as the code comment acknowledges) and defaults other deaths to `"Starvation"`.
+  - `src-tauri/src/core/telemetry_export.rs:85-90,103-112,216-219`: `DemographicTracker` increments `deaths_senescence` on `"Senescence"` and exports `"Senescence"` counts.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Agents do not experience physiological ageing or age-triggered death; any agent dying of starvation or dehydration after `>= 300` ticks is re-labeled `"Senescence"` in `DemographicTracker` (`mortality.rs:164-180`), while unknown strings default to `"Starvation"`. Note that experiment observables `live.deaths_starvation` and `live.deaths_dehydration` track `DeathCause` directly and remain accurate.
+  - **Impact:** Demographic telemetry conflates long-lived starvation and dehydration deaths with senescence, fabricating ageing mortality where none exists in simulation mechanics.
+  - **Frozen experiments / artifacts (`git grep Senescence` in `src-tauri/tests/fixtures` and `artifacts/`):** **0** files.
+  - **Proposed fix (default-preserving):** Documented label fix only: preserve the actual `DeathCause` string (`"Starvation"` or `"Dehydration"`) passed to `DemographicTracker` (or rename the `lifespan >= 300` bucket label to a documented long-lived cause label such as `"Starvation (Age >= 300)"` / explicit cohort breakdown) without altering mortality timing, `VitalStatistics`, closed-EU flow, or any observable trajectory. Add true age-dependent mortality later only behind an opt-in key (e.g., `"live.senescence": 1.0`).
+- **Tái hiện:** Static audit of `src-tauri/src/core/mortality.rs:155,164-192` and `src-tauri/src/core/telemetry_export.rs:85-90,103-112`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-071 — `InterventionKind::GeneticInjection` writes a ledger entry without modifying any agent genotype or brain
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/live_experiment.rs:1281-1296`: `InterventionKind::GeneticInjection { target_species, trait_modifications, count }` records ledger state without altering morphology genotypes, metabolic efficiency, sensory range, or brain parameters of any agent.
+  - `src-tauri/src/core/experiment/interventions.rs:96-123` & `src-tauri/src/core/experiment/manifest.rs:608-645`: validate and digest `GeneticInjection` + `TraitMod` entries.
+  - `src-tauri/src/core/world_record/ring.rs:165,209-219,271-278` & `src-tauri/src/core/world_record/chain.rs:92` serialize and replay `GeneticInjection` records; `src-tauri/src/core/scenario.rs:226` (`ReferenceEvolutionWorld::step`) applies scenario-level `GeneticInjection` bookkeeping.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** `GeneticInjection` manifests validate (`interventions.rs:96`), enter canonical run hashes (`manifest.rs:608`), and appear in the applied intervention ledger (`live_experiment.rs:1281-1296`), yet execute as a complete no-op on `AgentGenotype`, metabolic/sensory traits, and `AgentBrain`.
+  - **Impact:** Counterfactual or experiment manifests scheduling `GeneticInjection` silently behave identically to unperturbed sham runs while claiming the genetic intervention was applied.
+  - **Frozen experiments / artifacts (`git grep -E GeneticInjection|genetic_injection` in `src-tauri/tests/fixtures` and `artifacts/`):** **0** files.
+  - **Proposed fix (default-preserving):** Because `0` frozen experiments or artifacts use `GeneticInjection`, runs without it stay bit-identical. Either reject `GeneticInjection` cleanly at preflight (refusing unimplemented sham interventions) until an ADR/spec defines deterministic target ordering and body/brain application of `TraitMod`, or implement deterministic target selection and trait mutation inside `live_experiment.rs:1281-1296` only when a `GeneticInjection` command fires.
+- **Tái hiện:** Static audit of `src-tauri/src/core/live_experiment.rs:1281-1296` (no agent queries or genotype/brain writes inside the `GeneticInjection` arm).
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-070 — `live.ecological_fitness` has no effect in headless `live_experiment` runs because `LiveChannels.epoch_stats` is drained without epoch selection
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/live_experiment.rs:236-239,370,468,681-692,2689-2696`: validates `"live.ecological_fitness"` (`0.0 | 1.0`) and inserts `FitnessRuleSetting` into `World`.
+  - `src-tauri/src/core/live_experiment.rs:2411-2420,3573-3577`: `drain_absent_thread_queues` (`2417-2420`) drains `self.channels.transitions` and `self.channels.epoch_stats` (`stats_rx` paired with `EvolutionSender` at `3573-3577`) in headless runs where no evolution worker thread exists; meanwhile `EvolutionQueue` (`src-tauri/src/core/resources.rs:1021`, fed via `EvolutionReceiver` in `apply_staggered_evolution_system` at `agent_systems.rs:1389`) remains empty.
+  - `src-tauri/src/core/agent_systems.rs:1297-1384`: `check_epoch_completion_system` computes `FitnessRuleSetting`-weighted fitness (`1315,1344-1380`) when sending `Vec<AgentEpochStats>` via `EvolutionSender` (`1299,1380`).
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** In headless `live_experiment` runs, `FitnessRuleSetting` only feeds `AgentEpochStats` sent over `EvolutionSender` (`check_epoch_completion_system`, `agent_systems.rs:1344-1380`) into `LiveChannels.epoch_stats`, which `drain_absent_thread_queues` (`live_experiment.rs:2417-2420`) drains and discards without running epoch replacement (so `EvolutionQueue` never receives spawns from `EvolutionReceiver`), while live demography runs via `autonomous_reproduction_system` and `mortality_system`. Setting `"live.ecological_fitness": 1.0` therefore produces the exact same trajectory as `0.0` headless.
+  - **Impact:** Scientific manifests (such as E3 and E3b) declare `"live.ecological_fitness": 1.0` expecting ecological fitness ranking to operate, when headless execution ignores `FitnessRuleSetting` completely.
+  - **Frozen experiments / artifacts (`git grep live\.ecological_fitness` in `src-tauri/tests/fixtures` and `artifacts/`):** **27** files — `artifacts/experiments/e3-productivity-gradient-body-mass` (`6`), `artifacts/experiments/e3b-productivity-gradient-body-mass` (`7`, including `e3b-preregistration.json:122`), `src-tauri/tests/fixtures/experiments_e3` (`7`), `src-tauri/tests/fixtures/experiments_e3b` (`7`, including `e3b-preregistration.json:122`).
+  - **Proposed fix (default-preserving):** Refusing `"live.ecological_fitness"` or turning on epoch replacement for `"live.ecological_fitness": 1.0` would break all `27` frozen E3/E3b fixtures and artifacts. Keep existing headless stepping bit-identical for `"live.ecological_fitness"`, emit a preflight warning clarifying that `"live.ecological_fitness"` only affects epoch-worker replacement (inactive in headless `live_world` mode), and gate any future headless epoch-selection path behind a new opt-in key (e.g., `"live.headless_epoch_selection": 1.0`).
+- **Tái hiện:** Static audit of `src-tauri/src/core/live_experiment.rs:2411-2420,2689-2696,3573-3577` and `src-tauri/src/core/agent_systems.rs:1297-1384`.
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
+### F-069 — `live.archive_coverage` always reports `0` in headless runs while bypassing `ensure_observables_supported` preflight
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/live_experiment.rs:1642,1694,1704,1750,1849-1852,1885,3623-3625`: `read_live_observables` (`1750`, wrapped by `live_observables` at `1694` and `live_observables_peek` at `1704`) reads `world.get_resource::<BevyMapElitesArchive>()` and emits `"live.archive_coverage"` from `a.archive.grid.len()` (`MapElitesArchive.grid` at `src-tauri/src/evolution/map_elites.rs:41-48`), defaulting to `0.0`.
+  - `src-tauri/src/core/live_experiment.rs:849-890`: `LiveWorldConfig::ensure_observables_supported` validates death and birth observables against active rules, but omits `"live.archive_coverage"`.
+  - `src-tauri/src/core/simulation_loop.rs:620-626,832-854,1411-1415,2391-2400,2417`: the evolution worker maintains its own local `MapElitesArchive` (`620-626`) and copies it into `BevyMapElitesGrid` (`832-854`) for viewer display (`2391-2400,2417`), while the world's `BevyMapElitesArchive` receives no insertions in headless `live_experiment` runs.
+  - `src-tauri/src/core/experiment/observables.rs:40,365-380`: defines `ER10` observable metadata (`source` field) and records Branch `O-5` / `ensure_observables_supported` rule requiring refusing observables whose producing structure is absent rather than reporting fabricated zeros.
+- **Phát hiện bởi:** tay (biology audit on trunk `071ef25`)
+- **Triệu chứng:** Because `BevyMapElitesArchive` in the headless `World` is never populated (`simulation_loop.rs:620-626,1411-1415`), `live.archive_coverage` reports `0.0` on every headless tick/checkpoint instead of either computing real coverage or failing `ensure_observables_supported` (`observables.rs:365-380`, `ER10` in `docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md:183-195`).
+  - **Impact:** Any downstream analysis reading `live.archive_coverage` from headless runs sees `0.0` (creating false zero-diversity readings unless manually excluded, as noted under `S5` in `docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md:158` and `docs/ai/planning/2026-11-24-e3b-preregistration.md:117`).
+  - **Frozen experiments / artifacts (`git grep live\.archive_coverage` in `src-tauri/tests/fixtures` and `artifacts/`):** **54** files — `artifacts/experiments/e2-evolved-brain-default` (`10`), `artifacts/experiments/e3-productivity-gradient-body-mass` (`11`), `artifacts/experiments/e3b-productivity-gradient-body-mass` (`10`), `src-tauri/tests/fixtures/experiments_e3` (`7`), `src-tauri/tests/fixtures/experiments_e3b` (`7`), `src-tauri/tests/fixtures/experiments_esel1` (`6`), `src-tauri/tests/fixtures/experiments_sel2p` (`3`).
+  - **Proposed fix (default-preserving):** Rejecting `"live.archive_coverage"` unconditionally in `ensure_observables_supported` would break all `54` frozen manifests/artifacts that request the extended observable set. Keep frozen manifests valid and outputs bit-identical by: (a) emitting a preflight warning when `"live.archive_coverage"` is requested in headless mode without an active archive producer (and gating hard preflight refusal behind an opt-in strict observable contract / schema version bump), and/or (b) syncing headless archive metrics into `BevyMapElitesArchive` only behind an explicit opt-in key (e.g., `"live.archive_sync": 1.0`).
+- **Tái hiện:** Static audit (`src-tauri/src/core/live_experiment.rs:849-890,1849-1852,3623-3625`; `src-tauri/src/core/simulation_loop.rs:620-626`).
+- **Test khoá lại:** chưa có
+- **Trạng thái:** OPEN
+
 ### F-068 — `persistence_stress_tests::test_100_save_load_cycles` intermittent snapshot-restore abort (`evolution morphology-node cursor precedes saved genotypes`)
 - **Ngày:** 2026-11-24
 - **Loại:** BUG
