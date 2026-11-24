@@ -9,6 +9,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 // Map 2 Fantasy Crystals & Bioluminescent Cave Architecture
 // -------------------------------------------------------------------------------------------------
 
+export const MAP2_CRYSTALS_DECORATION_LABEL = 'Decoration, not simulated: fantasy crystals';
+
 export interface Map2FantasyCrystalsProps {
   size?: number;
   waterLevel?: number;
@@ -344,7 +346,14 @@ export const Map2FantasyCrystals: React.FC<Map2FantasyCrystalsProps> = ({
   });
 
   return (
-    <group name="map2-fantasy-crystals-root">
+    <group
+      name="map2-fantasy-crystals-root"
+      userData={{
+        decoration: true,
+        simulated: false,
+        label: MAP2_CRYSTALS_DECORATION_LABEL,
+      }}
+    >
       {spires.length > 0 && (
         <instancedMesh
           ref={spireMeshRef}

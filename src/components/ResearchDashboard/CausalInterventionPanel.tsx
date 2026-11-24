@@ -14,6 +14,12 @@ export type InterventionKindName =
   | 'ToxicityPlume'
   | 'PathogenTransmission';
 
+const GENETIC_INJECTION_REASON = 'not implemented in the live world';
+const GENETIC_INJECTION_FINDING = 'F-071';
+const UNIMPLEMENTED_REASONS: Partial<Record<InterventionKindName, string>> = {
+  GeneticInjection: GENETIC_INJECTION_REASON,
+};
+
 /**
  * Interventions cannot be dispatched from the desktop app: the backend has no
  * `dispatch_causal_intervention` command. The panel keeps what is real (the region picker over the
@@ -148,7 +154,11 @@ export const CausalInterventionPanel: React.FC = () => {
             <select
               data-testid="intervention-kind-select"
               value={kind}
-              onChange={(e) => setKind(e.target.value as InterventionKindName)}
+              onChange={(e) => {
+                const next = e.target.value as InterventionKindName;
+                if (next in UNIMPLEMENTED_REASONS) return;
+                setKind(next);
+              }}
               style={{
                 backgroundColor: 'rgba(9, 9, 11, 0.8)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
@@ -163,10 +173,23 @@ export const CausalInterventionPanel: React.FC = () => {
               <option value="Deforest">🪓 Deforestation (Vegetation harvest)</option>
               <option value="RemovePredators">🎯 Predator Culling (Carnivore removal)</option>
               <option value="AddNutrient">🌱 Nutrient Enrichment (Soil boost)</option>
-              <option value="GeneticInjection">🧬 Genetic Injection (Trait mutation)</option>
+              <option value="GeneticInjection" disabled title={GENETIC_INJECTION_REASON}>
+                🧬 Genetic Injection — disabled: {GENETIC_INJECTION_REASON} ({GENETIC_INJECTION_FINDING})
+              </option>
               <option value="ToxicityPlume">☣️ Toxicity Plume (Chemical pollutant)</option>
               <option value="PathogenTransmission">🦠 Pathogen Outbreak (Epidemic)</option>
             </select>
+            <div data-testid="unimplemented-interventions-notice" style={{ color: '#cbd5e1', marginTop: 2 }}>
+              Disabled: <code>GeneticInjection</code> — {GENETIC_INJECTION_REASON} (
+              <a
+                data-testid="unimplemented-intervention-finding-link"
+                href="FINDINGS.md#f-071"
+                style={{ color: '#fbbf24', textDecoration: 'underline' }}
+              >
+                FINDINGS.md {GENETIC_INJECTION_FINDING}
+              </a>
+              ).
+            </div>
           </div>
 
           {/* Intensity Slider & Sign Toggle */}
