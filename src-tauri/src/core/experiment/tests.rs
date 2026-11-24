@@ -19,6 +19,7 @@ pub(super) fn base_manifest() -> ExperimentManifest {
         experiment_id: "exp-1".into(),
         name: "baseline".into(),
         observer: ObserverPolicy::default(),
+        island: None,
         world_identity: WorldIdentity {
             seed: 1337,
             generator_version: 20,
@@ -26,6 +27,7 @@ pub(super) fn base_manifest() -> ExperimentManifest {
             height: 128,
             checksum: 0xDEAD_BEEF,
             sim_world_sha256: None,
+            genesis_phase: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: ref_init(),

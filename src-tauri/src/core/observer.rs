@@ -89,6 +89,24 @@ impl ObserverPolicy {
         !self.allows_focus()
     }
 
+    /// Whether a shared-island host guest session may run under this policy (`ADR-0014`).
+    ///
+    /// [`Absent`](Self::Absent) refuses shared-island guest ingress; [`Spectate`](Self::Spectate)
+    /// permits read-only `Spectate` guests; [`Inhabit`](Self::Inhabit) permits both `Spectate`
+    /// and embodied `Inhabit` guests.
+    pub fn allows_island_guests(&self) -> bool {
+        !matches!(self, Self::Absent)
+    }
+
+    /// Whether a guest with `role` may participate under this policy (`ADR-0014`).
+    pub fn allows_guest_role(&self, role: crate::core::island::GuestRole) -> bool {
+        match *self {
+            Self::Absent => false,
+            Self::Spectate => matches!(role, crate::core::island::GuestRole::Spectate),
+            Self::Inhabit { .. } => true,
+        }
+    }
+
     /// The cause the observer's effects root at, if this policy has one.
     pub fn cause_id(&self) -> Option<CauseId> {
         match *self {
@@ -102,7 +120,9 @@ impl ObserverPolicy {
     /// An [`Inhabit`](Self::Inhabit) rooted at [`CAUSE_BACKGROUND`] is the one way to state this
     /// wrongly: it declares that a human perturbed the world and then files the consequences under
     /// baseline dynamics, so `trace_to_root` would report the observer's own doing as something the
-    /// world did by itself. That is worse than not declaring at all.
+    /// world did by itself. That is worse than not declaring at all. Similarly, the
+    /// `ISLAND_GUEST_CAUSE_BASE..CAUSE_OBSERVER` band is reserved for host-assigned LAN guest
+    /// slots (`ADR-0014`).
     pub fn rejection_reason(&self) -> Option<String> {
         match *self {
             Self::Inhabit { cause_id } if cause_id == CAUSE_BACKGROUND => Some(
@@ -110,6 +130,13 @@ impl ObserverPolicy {
                  observer's effects as baseline dynamics"
                     .to_string(),
             ),
+            Self::Inhabit { cause_id } if anima_domain::causal::is_island_guest_cause(cause_id) => {
+                Some(format!(
+                    "Inhabit cause id {cause_id} lies in the host-reserved shared-island guest \
+                     band ({}..{CAUSE_OBSERVER}, ADR-0014)",
+                    anima_domain::causal::ISLAND_GUEST_CAUSE_BASE
+                ))
+            }
             _ => None,
         }
     }

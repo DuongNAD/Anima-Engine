@@ -591,6 +591,7 @@ mod tests {
             experiment_id: "mana-slice".into(),
             name: "renewable-patchy-mana".into(),
             observer: crate::core::observer::ObserverPolicy::default(),
+            island: None,
             world_identity: WorldIdentity::default(),
             laws: WorldLawSet::with_exotic(ExoticEnergyLaw::mana_patchy(200.0, 5)),
             initial_conditions: ref_init(),

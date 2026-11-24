@@ -53,6 +53,7 @@ fn manifest() -> ExperimentManifest {
         observable_ids,
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 
