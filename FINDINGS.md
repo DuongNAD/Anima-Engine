@@ -30,6 +30,36 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-068 — `persistence_stress_tests::test_100_save_load_cycles` intermittent snapshot-restore abort (`evolution morphology-node cursor precedes saved genotypes`)
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/tests/persistence_stress_tests.rs:422-435` (`thread::sleep(Duration::from_millis(15))` at `:422` inside the `1..=100` save/load loop before `engine.save_request_tx.send(tx_cycle)` at `:427-430` and `rx_cycle.recv_timeout` within `:426-435`)
+  - `src-tauri/src/core/simulation_state.rs:716,812-814` (`evolution_worker_resume_state` at `:716`; `:812-814`: `if saved.node_id_counter < node_id_counter { return Err("evolution morphology-node cursor precedes saved genotypes".into()); }`)
+  - `src-tauri/src/core/simulation_loop.rs:436-454,627` (restore validation calls `evolution_worker_resume_state` at `:436-454`; worker thread `evo_handle` binds `let mut node_id_counter = evolution_worker_resume.node_id_counter;` at `:627`, captures `node_id_counter` (`:673`) and replies to checkpoint requests at `:669-680`, mutates at `:878,:923`, while save/checkpoint drains and checks quiescence at `:2032-2073`)
+- **Phát hiện bởi:** `anima-mac` (`WV2-3` review, 2026-11-24; PR `#242` / `docs/ai/planning/2026-11-24-wv2-3.md:120` / hub `test_runs/anima-mac_WV2-3_report.md`)
+- **Triệu chứng:**
+  - **Confirmed by reading trunk `cf3fb24a`:** `evolution_worker_resume_state` rejects restore at `simulation_state.rs:812-814` with `"evolution morphology-node cursor precedes saved genotypes"` whenever `saved.node_id_counter < node_id_counter`, checked on restore at `simulation_loop.rs:436-454`; the `evo_handle` thread holds a local `mut node_id_counter` (`simulation_loop.rs:627`, incremented at `:878,:923`) synced across channels during checkpoint save (`:669-673`, `:2032-2073`), while `test_100_save_load_cycles` sleeps `15 ms` between `start` and `save_request_tx` (`persistence_stress_tests.rs:422-435`).
+  - **Reported only by `anima-mac` (not re-run with Cargo on `anima-dell`):** intermittently aborted snapshot restore on earlier full-suite and isolated runs, while passing `4 passed; 0 failed` in `7.33s` in both Round 1 (`task-4902`) and Round 2 (`task-5034`) `-j 2` runs; deterministic trigger not yet isolated.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test persistence_stress_tests test_100_save_load_cycles` (intermittent per `anima-mac` report; not re-run on `anima-dell`)
+- **Test khoá lại:** none (intermittent pre-existing race; no fix in D9)
+- **Trạng thái:** OPEN — found by `anima-mac` (`WV2-3` review, 2026-11-24). No fix in D9.
+
+### F-067 — `demographic_census_system` -> `build_demographic_census` allocates on the heap every tick inside `build_tick_schedule`
+- **Ngày:** 2026-11-24
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/simulation_schedule.rs:192` (`demographic_census_system,` inside the `.chain()` of `build_tick_schedule()` with no `.run_if(...)` cadence guard — runs every tick)
+  - `src-tauri/src/core/environmental_systems.rs:391-422` (`let mut agent_data = Vec::new();` at `:405`, `.push(...)` at `:413`, calling `build_demographic_census(&agent_data, tracker.as_deref())` at `:418` unconditionally before checking `if let Some(ref mut res) = census_resource` at `:419`)
+  - `src-tauri/src/core/telemetry_export.rs:128-259` (allocates `cohorts = vec![...]` at `:136-157`, `mortality_causes = vec![...]` with 5 `.to_string()` calls at `:207-228`, and `fecundity_by_age = vec![...]` with 3 `.to_string()` calls at `:230-243` per invocation)
+- **Phát hiện bởi:** `anima-mac` (`WV2-3` review, 2026-11-24; PR `#242` / `docs/ai/planning/2026-11-24-wv2-3.md:119` / hub `test_runs/anima-mac_WV2-3_report.md`)
+- **Triệu chứng:**
+  - **Confirmed by reading trunk `cf3fb24a`:** `demographic_census_system` runs every tick (no cadence guard) in `simulation_schedule.rs:192` (`build_tick_schedule` `.chain()` `:131-200`, `55` tuple items at `:133-196` = `49` systems + `6` `apply_deferred`) and allocates heap memory every tick via `agent_data = Vec::new()` (`environmental_systems.rs:405,413`) plus `3` `Vec`s and `8` `String`s inside `build_demographic_census` (`telemetry_export.rs:136-243`) even when `DemographicCensusState` is absent (`environmental_systems.rs:419`), conflicting with the `CLAUDE.md` zero-heap-allocation hot-loop rule.
+  - **Reported only by `anima-mac` (not re-run with Cargo on `anima-dell`):** running what `docs/ai/planning/2026-11-24-wv2-3.md:119` describes as the full 52-system `build_tick_schedule` performed `7338` allocations across `50` ticks, leading `world_v2_sim_gate_tests.rs:998` (`GS-4`) to isolate a 7-system World v2 hot schedule.
+- **Tái hiện:** run `ThreadTrackingAllocator` over full 52-system `build_tick_schedule` for `50` ticks as reported in `docs/ai/planning/2026-11-24-wv2-3.md:119` (not re-run on `anima-dell`)
+- **Test khoá lại:** none for full `build_tick_schedule` (no fix in D9)
+- **Trạng thái:** OPEN — found by `anima-mac` (`WV2-3` review, 2026-11-24). No fix in D9.
+
 ### F-066 — Ca sinh trong thế giới live không bao giờ tới lineage tracker, và anh em cùng cha dùng chung một lineage id
 - **Ngày:** 2026-11-22
 - **Loại:** BUG
@@ -102,7 +132,8 @@ Quy tắc ghi:
 - **Triệu chứng:** Khi `cargo mutants` sao chép thư mục crate `src-tauri/` sang sandbox tạm (`/tmp/cargo-mutants-src-tauri-...`), đường dẫn tương đối `../../src/components/ExperimentWorldControl.tsx` không tồn tại bên trong bản sao. Lệnh baseline `cargo test --no-run` thất bại ngay với `os error 2` ở `start_from_manifest_tests`, khiến cả `just hunt`, `just hunt-file` lẫn cổng `just verify <mutant>` đều gãy trên toàn crate `anima-engine`. (`just verify` không đối số không gọi `cargo-mutants` nên vẫn chạy.)
 - **Tái hiện:** `just hunt-file src/core/terrain_navigation.rs 2 land_mask_tests` → `ERROR cargo build failed in an unmutated tree, so no mutants were tested` (ghi chi tiết trong `mutants.out/log/baseline.log`).
 - **Test khoá lại:** chưa có (cần đổi cách test frontend↔backend kiểm tra fixture từ đường nội bộ crate hoặc qua script npm thay vì `include_str!("../../...")`).
-- **Trạng thái:** OPEN (đã có bản vá ở Draft PR #198, nhánh `mac/fix-f061`)
+- **Trạng thái:** FIXED (27a1bd7b, #198, test start_from_manifest_tests::bundled_frontend_sel2p_manifest_passes_viewer_preflight_and_matches_fixture)
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** PR `#198` đã merge (`27a1bd7b`, 2026-11-22T13:55:38Z); `src-tauri/tests/start_from_manifest_tests.rs:757` đọc fixture nội bộ crate (`include_str!("fixtures/experiments_sel2p/sel2p-selected.json")`) và `:777-799` kiểm `CARGO_MANIFEST_DIR` lúc runtime; `git grep 'include_str!("\.\./\.\./'` dưới `src-tauri/tests/` trả `0` kết quả. Dòng gốc: OPEN (đã có bản vá ở Draft PR #198, nhánh `mac/fix-f061`)
 
 ### F-060 — `DynamicFields::step_soil` trừ `absorbed` bằng `f32` trước khi ép sang `f64`, phá vỡ bảo toàn dinh dưỡng hơn `1.000 NM` trong một tick với `AddNutrient` cường độ lớn
 - **Ngày:** 2026-11-21
@@ -179,7 +210,8 @@ Quy tắc ghi:
 - **Triệu chứng:** Chú thích ở `:147-158` nói kiểm tra tách route bắt đúng trường hợp có người thêm `import * as THREE from 'three'` vào trang chính. Khi làm đúng như vậy, rolldown gom three.js vào một chunk tên `defineProperty-*.js` (502 KiB) và `index.html` tải nó, nhưng kiểm tra in `entry index.html ... 3D renderer: no` và không báo lỗi, vì tên chunk không bắt đầu bằng `react-three-fiber`. Cổng vẫn đỏ, nhưng chỉ nhờ ngân sách byte: chunk `defineProperty` vượt 170 KiB, tổng chỉ vượt 3,2 KiB. Một thay đổi nhỏ hơn về byte sẽ lọt qua.
 - **Tái hiện:** trên trunk `4794b6f`: `git show 82a7a604:scripts/paper/gate_faults/check_bundle.patch | git apply && npm run build && npm run check:bundle`. Kết quả có dòng `entry index.html 12 static chunk(s), 3D renderer: no` và `OVER defineProperty 501.9 KiB`. Hoàn tác bằng `git checkout -- src/App.tsx`.
 - **Test khoá lại:** chưa có. Bản sửa nên nhận ra three.js theo nội dung hoặc theo module gốc trong manifest của Vite, không theo tên chunk; đối chứng âm chính là patch trên.
-- **Trạng thái:** OPEN (đã có bản vá ở Draft PR #197, nhánh `mac/fix-vacuous-gates-f054`).
+- **Trạng thái:** FIXED (03b9d3d9, #197, test tests/frontend/checkBundleBudget.test.ts)
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** PR `#197` đã merge (`03b9d3d9`, 2026-11-22T13:56:28Z); `scripts/check_bundle_budget.mjs:261-264` quét `collectStaticChunkClosure` + `hasThreeJsSignature` (`:116,124`), khoá bởi 7 test trong `tests/frontend/checkBundleBudget.test.ts:73,113,223`. Dòng gốc: OPEN (đã có bản vá ở Draft PR #197, nhánh `mac/fix-vacuous-gates-f054`).
 
 ### F-053 — `live.mean_lifespan` trong `final_observables` luôn bằng 0: cửa sổ đã bị lần lấy mẫu cuối rút cạn trước khi đọc
 - **Ngày:** 2026-11-20
@@ -192,6 +224,7 @@ Quy tắc ghi:
 - **Tái hiện:** `python3 -c "import json;d=json.load(open('artifacts/experiments/e3-productivity-gradient-body-mass/confirmation/final-observables.json'));print(d)" | grep -o "live.mean_lifespan[^,]*"` (cả 36 giá trị đều là `0.0`), hoặc chạy `just test` (`post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration` và `observables_tests::cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork`).
 - **Test khoá lại:** `post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration`, `observables_tests::{cumulative_mean_lifespan_tracks_all_windows_without_draining_and_respects_zero_deaths, cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork}`, và `prereg_sel2p_manifest_tests::drift_arm_omits_cause_split_observables_and_smoke_manifests_are_blind_to_body_mass` (khẳng định `live.cumulative_mean_lifespan` tích luỹ `[0, tick]` không bị rút cạn và khớp từng bit qua `run K -> save -> load -> run N-K`, trong khi 5 chỉ số cửa sổ cũ và toàn bộ artifact đã commit `E2`/`E3`/`E-SEL1`/`SEL2-P` giữ nguyên không đổi).
 - **Trạng thái:** mitigated (`live.cumulative_mean_lifespan`, nhánh `mac/r5-findings-fixes`, R5 Part 2 — thẻ `F053-FIX`). **Phần còn OPEN:** cả 5 bộ đếm cửa sổ cũ trong `final_observables` (`live.births`, `live.deaths`, `live.deaths_starvation`, `live.deaths_dehydration`, và `live.mean_lifespan` cũ) vẫn bị rút về `0.0` khi `duration_ticks % sample_period == 0`. **Khai báo tác động registry:** do bổ sung `live.cumulative_mean_lifespan` vào `ObservableRegistry::live_default()`, mọi lượt **chạy lại** tương lai của `E2`, `E3`, `E-SEL1`, hoặc `SEL2-P` sẽ có thêm 1 cột chuỗi thời gian và `run_id` mới (registry fingerprint thay đổi); các artifact đã commit giữ nguyên không đổi.
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** PR `#200` đã merge (`d0747e37`, 2026-11-23T12:51:48Z); hai test `post_194_hardening_audit_tests::f053_final_observables_drains_all_five_windowed_vital_metrics_on_aligned_duration` và `observables_tests::cumulative_mean_lifespan_matches_bit_exact_across_disk_save_load_fork` tồn tại trên thân cây; giữ nguyên `mitigated` vì `live_experiment.rs:1840,1845` (`sample_window`/`peek_window`) và `experiment_runner.rs:548` vẫn rút 5 bộ đếm cửa sổ cũ về `0.0` theo thiết kế giữ tương thích bit cho artifact cũ.
 
 ### F-052 — `prey_cap` chỉ là cửa chặn, không phải giới hạn: bộ đếm quần thể không tăng theo số ca sinh đã xếp trong cùng tick
 - **Ngày:** 2026-11-20
@@ -344,6 +377,7 @@ Quy tắc ghi:
 - **Tái hiện:** `just verify`
 - **Test khoá lại:** `gpu_brain_batch_parity_tests::evolved_brains_in_run_inference_batch_bypass_shared_brain_model`, `gpu_brain_batch_parity_tests::batched_3d_tensor_forward_matches_per_agent_brain_genotype_loop_on_ndarray`, `gpu_brain_batch_parity_tests::batched_3d_tensor_forward_on_wgpu_matches_per_agent_brain_genotype_loop`
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `src-tauri/src/ai/model.rs:384-406` vẫn rẽ nhánh `(Some(brain), _)` sang `brain.forward_into(...)` trên CPU bỏ qua `BrainModel`; giữ nguyên `OPEN`.
 
 ### F-034 — PR #40 đóng 8 gate đỏ nhưng làm đỏ 5 gate đang xanh, và một trong năm cái đó **không phải** staleness
 - **Ngày:** 2026-11-01
@@ -424,6 +458,7 @@ Quy tắc ghi:
   Trên PR #40 nên xoá luôn khối `ignore` cho khỏi để lại warning — việc đó mới cần quyền `deny.toml`,
   và nó là vệ sinh, không phải điều kiện để xanh.
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `src-tauri/Cargo.lock` đã nâng lên `tokio = "1.53.3"` và `src-tauri/deny.toml:118` để `ignore = []` (xoá ngoại lệ `RUSTSEC-2026-0386` từ commit `62750f3` / PR `#44` `8388e326` → `#45` `27c82736`; CI chạy `cargo deny check` tại `.github/workflows/ci.yml:122`); giữ nguyên `OPEN` do chưa có unit regression test đặt tên riêng cho advisory này.
 
 ### F-032 — `deny.toml` phản chiếu miễn trừ của `audit.toml`, hai công cụ không soi cùng một thứ — nhưng đó **không** phải lý do gate đỏ
 - **Ngày:** 2026-10-31 (sửa chẩn đoán 2026-11-01)
@@ -480,6 +515,7 @@ Quy tắc ghi:
   `deny.toml` là build config, `AGENTS.md` chặn, cần người chủ mở quyền. **Không còn chặn gate:**
   việc này chỉ dọn hai warning; muốn gate xanh thì bump `tokio` ([F-033]), không cần file này.
 - **Trạng thái:** OPEN (hạ xuống vệ sinh — không chặn CI)
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `src-tauri/deny.toml:112-118` đã bỏ toàn bộ bảng phản chiếu `.cargo/audit.toml` (`ignore = []`, kèm chú thích *Do NOT mirror `.cargo/audit.toml` here* từ commit `62750f3` / PR `#44` → `#45`); giữ nguyên `OPEN (hạ xuống vệ sinh — không chặn CI)` do là cấu hình CI không có unit test riêng.
 
 ### F-031 — `thread_tracking_allocator_tests` đỏ trên macOS: chính hai `Barrier::wait()` của test nằm trong cửa sổ đo
 - **Ngày:** 2026-10-31
@@ -538,6 +574,7 @@ Quy tắc ghi:
   **không tăng** so với danh sách đã kiểm.
 - **Trạng thái:** OPEN — gate B1b vẫn là bước tiến thật (nó bắt đúng 6 cặp của F-029); đây là biên
   của nó, phải nói ra chứ không được để người đọc sau tưởng gate phủ mọi lần rút.
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `src-tauri/tests/schedule_ambiguity_tests.rs:49-55` vẫn chỉ liệt kê `SIMRNG_SYSTEMS: [&str; 5]` (chưa có source-scan gate cho `Command` rút `SimRng` qua `&mut World`); giữ nguyên `OPEN`.
 
 ### F-029 — Thứ tự rút `SimRng` của thế giới sống phụ thuộc tiến trình: `1d301c3` thêm system thứ năm không có cạnh thứ tự, và gate ambiguity chỉ canh năng lượng
 - **Ngày:** 2026-10-31
@@ -651,6 +688,7 @@ Quy tắc ghi:
 - **Test khoá lại:** chưa có. Sửa là một trong hai: cài cờ `--count` vào script, hoặc bỏ dòng echo
   (gate `dataflow-verify` đã in con số). Không nên giữ nguyên.
 - **Trạng thái:** OPEN — nhỏ, chưa chặn gì, nhưng đừng để nó thành chỗ thứ tư.
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** PR `#104` đã merge (`e490bfa4` / `b8d1fa7`, 2026-11-17T08:56:19Z): `scripts/verify_dataflow.py:66-86` đã cài `count_truth` / `--count` và `justfile` không còn `2>/dev/null || echo '(chay dataflow-verify de xem)'`; giữ nguyên `OPEN` do chưa có unit test riêng kiểm tra cờ `--count`.
 
 ### F-027 — `cargo modules` chỉ sinh cạnh `uses` khi có item tham chiếu symbol, không phải khi có `use`
 - **Ngày:** 2026-10-31
@@ -749,6 +787,7 @@ Quy tắc ghi:
 - **Tái hiện:** commit sạch toàn bộ thay đổi (hoặc đứng ở HEAD sau 893098b) rồi chạy `just verify` → exit 1, stdout/stderr rỗng. So sánh: trước khi commit, cùng lệnh in `TU CHỐI: ...` bình thường vì law 1 chặn sớm trước dòng 41.
 - **Đề xuất sửa (cho chủ dự án — `scripts/` nằm ngoài vùng ghi của agent):** thêm `|| true` cho phép gán ở dòng 41, giống cách đã làm với `CHANGED`/`BAD`/`NONKIT`; hoặc đổi thành `grep ... | sed ... | sort -u || true`. Không thay đổi ngữ nghĩa luật nào.
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** PR `#104` đã merge (`e490bfa4` / `b8d1fa7`, 2026-11-17T08:56:19Z): `scripts/verify.sh:43` đã thêm `|| true` với chú thích `(F-024)` ở `:41-42`; giữ nguyên `OPEN` do chưa có unit test tự động cho `scripts/verify.sh`.
 
 ### F-018 — Sinh thái không nối vào chọn lọc: cả crate có đúng một fitness và nó là quãng đường
 - **Ngày:** 2026-08-25
@@ -908,6 +947,7 @@ Quy tắc ghi:
   bảng `[workspace]` rỗng (kèm chú thích) vào `src-tauri/anima-core/Cargo.toml`.
   Không ảnh hưởng build crate chính (src-tauri không phụ thuộc anima-core).
   Quét tươi mở khoá — kéo theo phát hiện F-015.
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** bảng `[workspace]` rỗng hiện diện tại `src-tauri/anima-core/Cargo.toml:30` (chú thích F-014 tại `:23-29`, commit `1ec6ac5`, owner duyệt 2026-08-24); giữ nguyên dòng trạng thái gốc do không có PR merge riêng và không có unit test.
 
 ### F-015 — anima-core không biên dịch được sau merge 157f85d: import path stale + validator tham chiếu ngược crate cha
 - **Ngày:** 2026-08-24
@@ -979,6 +1019,7 @@ Quy tắc ghi:
   cùng subtree (không còn là cây đơn) — khi đó cross-edge nhiều hơn một và
   mutant PHẢI bị giết bằng test.
 - **Trạng thái:** OPEN (đã loại khỏi mutation gate, chờ điều kiện gỡ)
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** điều kiện gỡ chưa đạt — `src-tauri/anima-core/src/crossover.rs:120-122` giữ nguyên biểu thức prune cây và `src-tauri/anima-core/.cargo/mutants.toml:10` còn ngoại lệ; giữ nguyên `OPEN`.
 
 
 
@@ -1030,6 +1071,7 @@ Quy tắc ghi:
   overflow-checks trong profile release/test; hoặc đổi sang số có dấu +
   `rem_euclid`. Khi đó mutant không còn tương đương và PHẢI bị giết bằng test.
 - **Trạng thái:** OPEN (đã loại khỏi mutation gate, chờ điều kiện gỡ)
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** điều kiện gỡ chưa đạt — `src-tauri/src/ai/pheromone.rs:195` giữ nguyên `(z + GRID_SIZE - 1) % GRID_SIZE` và `src-tauri/.cargo/mutants.toml:20` còn ngoại lệ; giữ nguyên `OPEN`.
 
 ### F-012 — Merge 157f85d đồng bộ src theo origin/main nhưng bỏ sót 11+ suite test
 - **Ngày:** 2026-08-24
@@ -1077,6 +1119,7 @@ Quy tắc ghi:
   trong `src-tauri/src`) cho thấy đúng 1 file thứ 12 cùng cảnh ngộ:
   `src-tauri/tests/organism_library_tests.rs`, không tồn tại trên origin/main →
   xoá theo cùng uỷ quyền và tiêu chí.
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** cả `12` suite test mồ côi nêu trên vẫn đã được xoá khỏi `src-tauri/tests/` (`770b5f3` xoá `11` suite đầu, `f021fd7` xoá `organism_library_tests.rs`); giữ nguyên `OPEN` do chưa hợp nhất thành một PR độc lập kèm regression test.
 
 
 ### F-010 — verify.sh chết im lặng (exit 1, không output) khi không có thay đổi nào trong thư mục tests
@@ -1097,6 +1140,7 @@ Quy tắc ghi:
   AGENTS.md; cần người sở hữu kit sửa bằng cách thêm `|| true` hoặc xử lý rỗng
   tường minh trước khi gán `GUARD_DIRS`).
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** trùng với [F-024]; PR `#104` đã merge (`e490bfa4` / `b8d1fa7`) thêm `|| true` vào `GUARD_DIRS` tại `scripts/verify.sh:43`; giữ nguyên `OPEN` do chưa có unit test tự động cho `scripts/verify.sh`.
 
 ### F-001 — MAP-Elites chọn cha mẹ trên HashMap nên sim không tái lập được
 - **Ngày:** 2026-08-11
@@ -1133,6 +1177,7 @@ Quy tắc ghi:
 - **Đã xử lý:** thêm `exclude_re` vào `src-tauri/.cargo/mutants.toml` kèm lý do, để
   chúng không sinh task rác mỗi lượt quét. Gỡ ra khi nào struct nhận được mock qua DI.
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `git grep -l "World::new()" -- src-tauri/tests/` vẫn khớp `39` file test lắp `World::new()` riêng; giữ nguyên `OPEN`.
 
 ### F-003 — Luật xử lý hoà fitness trong MAP-Elites chưa từng được quyết định
 - **Ngày:** 2026-08-11
@@ -1162,6 +1207,7 @@ Quy tắc ghi:
 - **Tái hiện:** `just verify "src/evolution/lineage.rs:187:9: replace FallbackLineageTracker::is_online -> bool with false"`
 - **Test khoá lại:** chưa có — cần refactor `FallbackLineageTracker` (thêm constructor nhận status mock hoặc trait `Neo4jClient`) để test được.
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `src-tauri/src/evolution/lineage.rs:679-688` (`is_online` / `mark_offline`) và ngoại lệ `src-tauri/.cargo/mutants.toml:34` chưa đổi (chưa có DI/mock); giữ nguyên `OPEN`.
 
 ### F-005 — Ba cặp phụ thuộc vòng giữa các module lõi
 - **Ngày:** 2026-08-11
@@ -1182,6 +1228,7 @@ Quy tắc ghi:
   Gate này chặn một cạnh **mới**; nó không gỡ sáu vòng đang có.
 - **Trạng thái:** OPEN — sáu vòng vẫn còn. Gỡ chúng là việc của kế hoạch tách crate (S1 trở đi), đang chờ
   QĐ-M2. Cập nhật 2026-11-18 (bước S0.4 của kế hoạch đó).
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `dataflow.json` vẫn giữ đủ `6` cặp hai chiều (`('ai','core'), ('ai','evolution'), ('ai','physics'), ('commands','core'), ('core','evolution'), ('core','physics')`); giữ nguyên `OPEN`.
 
 ### F-006 — get_bin_coords nuốt NaN và gán vào ô gốc, im lặng
 - **Ngày:** 2026-08-11
@@ -1206,6 +1253,7 @@ Quy tắc ghi:
   counter để thấy được. Sửa im lặng bằng cách clamp là giấu lỗi, không phải sửa.
 - **Trạng thái:** OPEN — chưa chứng minh được NaN thật sự phát sinh trong đường
   chạy sim, nhưng hành vi khi nó phát sinh thì sai rõ ràng.
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** `src-tauri/src/evolution/map_elites.rs:147-154` (`get_bin_coords`) vẫn trả `(i32, i32)` ép `.floor() as i32` chưa lọc NaN/non-finite; giữ nguyên `OPEN`.
 
 ### F-007 — Logic sim hàn chặt vào vỏ Tauri, chặn cả fuzz lẫn Miri
 - **Ngày:** 2026-08-11
@@ -1261,3 +1309,4 @@ Quy tắc ghi:
 - **Đã xử lý:** `exclude_re` trong `anima-core/.cargo/mutants.toml` kèm điều kiện
   gỡ ra (nếu khoảng lấy mẫu trở thành bất đối xứng)
 - **Trạng thái:** OPEN
+- **Đối chiếu thân cây (2026-11-24, `cf3fb24a`):** điều kiện gỡ chưa đạt — `src-tauri/anima-core/.cargo/mutants.toml:14` còn ngoại lệ `replace \+ with -`; giữ nguyên `OPEN`.
