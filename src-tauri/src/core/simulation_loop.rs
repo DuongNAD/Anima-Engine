@@ -2162,7 +2162,9 @@ impl SimulationEngine {
                                     .max(worker_checkpoint.node_id_counter);
                                 state.next_node_id = Some(unified_next_node_id);
                                 if let Some(mut next_node_id) =
-                                    world.get_resource_mut::<crate::core::agent_systems::NextNodeId>()
+                                    world
+                                        .get_resource_mut::<crate::core::agent_systems::NextNodeId>(
+                                        )
                                 {
                                     next_node_id.0 = next_node_id.0.max(unified_next_node_id);
                                 }
