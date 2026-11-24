@@ -81,6 +81,39 @@ pub struct WorldArtifact {
     pub biome: Vec<u8>,
 }
 
+pub mod opt_sha256_hex {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(value: &Option<[u8; 32]>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            let hex = value.as_ref().map(anima_worldgen::anmw_v3::sha256_to_hex);
+            hex.serialize(serializer)
+        } else {
+            value.serialize(serializer)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<[u8; 32]>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let opt = Option::<String>::deserialize(deserializer)?;
+            opt.map(|hex| {
+                anima_worldgen::anmw_v3::sha256_from_hex(&hex).map_err(|e| {
+                    serde::de::Error::custom(format!("invalid sim_world_sha256 hex: {e}"))
+                })
+            })
+            .transpose()
+        } else {
+            Option::<[u8; 32]>::deserialize(deserializer)
+        }
+    }
+}
+
 /// A world's identity fingerprint, persisted in save state so a load re-binds to the SAME world
 /// instead of silently regenerating a different one (M1.5 / S08). Stored as a Bevy `Resource` at
 /// `init_world` and copied into `SavedSimulationState`; a mismatch on load means the save belongs to
@@ -92,6 +125,15 @@ pub struct WorldIdentity {
     pub width: u32,
     pub height: u32,
     pub checksum: u32,
+    /// Optional SHA-256 of the raw `sim_256.anmw3` bytes (World v2 `LD-2`); `None` for legacy v1/v2
+    /// and headless `TerrainSource::Generated` worlds so JSON fixtures and manifest fingerprints stay
+    /// byte-identical.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::core::world_artifact::opt_sha256_hex"
+    )]
+    pub sim_world_sha256: Option<[u8; 32]>,
 }
 
 impl WorldIdentity {
@@ -111,6 +153,7 @@ impl WorldIdentity {
             width: map.width as u32,
             height: map.height as u32,
             checksum: fnv1a_32(&payload),
+            sim_world_sha256: None,
         }
     }
 
@@ -122,7 +165,7 @@ impl WorldIdentity {
         if *self == WorldIdentity::default() || self == current {
             return None;
         }
-        Some(format!(
+        let legacy = format!(
             "saved world (seed {}, gen {}, {}x{}, checksum {:#010x}) != current world (seed {}, gen {}, {}x{}, checksum {:#010x})",
             self.seed,
             self.generator_version,
@@ -134,7 +177,20 @@ impl WorldIdentity {
             current.width,
             current.height,
             current.checksum,
-        ))
+        );
+        if self.sim_world_sha256.is_none() && current.sim_world_sha256.is_none() {
+            Some(legacy)
+        } else {
+            let fmt_sha = |opt: Option<[u8; 32]>| match opt {
+                Some(d) => anima_worldgen::anmw_v3::sha256_to_hex(&d),
+                None => "none".to_string(),
+            };
+            Some(format!(
+                "{legacy} [sim_world_sha256 {} != {}]",
+                fmt_sha(self.sim_world_sha256),
+                fmt_sha(current.sim_world_sha256)
+            ))
+        }
     }
 }
 
@@ -186,6 +242,12 @@ impl WorldArtifact {
             return Err("bad artifact magic (expected ANMW)".to_string());
         }
         let version = read_u32_le(bytes, 4)?;
+        if version == anima_worldgen::anmw_v3::ANMW_V3_VERSION {
+            return Err(format!(
+                "unsupported ANMW v3 artifact version {} (expected {}): pre-switchover desktop reader refuses ANMW v3 before WV2-7; regenerate or wait for WV2-7",
+                version, WORLD_ARTIFACT_VERSION
+            ));
+        }
         if version != WORLD_ARTIFACT_VERSION {
             return Err(format!(
                 "unsupported artifact version {} (expected {}); regenerate the world",
@@ -205,6 +267,12 @@ impl WorldArtifact {
             return Err("bad artifact magic (expected ANMW)".to_string());
         }
         let version = read_u32_le(bytes, 4)?;
+        if version == anima_worldgen::anmw_v3::ANMW_V3_VERSION {
+            return Err(format!(
+                "unsupported ANMW v3 artifact version {} (expected {}): pre-switchover desktop reader refuses ANMW v3 before WV2-7; regenerate or wait for WV2-7",
+                version, WORLD_ARTIFACT_VERSION
+            ));
+        }
         if version != WORLD_ARTIFACT_VERSION {
             return Err(format!(
                 "unsupported artifact version {} (expected {}); regenerate the world",
@@ -311,6 +379,7 @@ impl WorldArtifact {
             width: self.width as u32,
             height: self.height as u32,
             checksum: self.checksum(),
+            sim_world_sha256: None,
         }
     }
 
@@ -455,6 +524,33 @@ pub fn map_biome_backend_to_frontend(back: u8) -> u8 {
     }
 }
 
+/// Maps a decoded `ANMW v3` simulation bundle (`sim_256.anmw3`) and its exact serialized bytes
+/// into the runtime [`TerrainMap`] and dual-pinned [`WorldIdentity`] (`sim_world_sha256 =
+/// Some(sha256(sim_bytes))`, `LD-2`).
+pub fn terrain_map_from_v3_sim(
+    sim: &anima_worldgen::anmw_v3::AnmwV3Sim,
+    sim_bytes: &[u8],
+) -> Result<(TerrainMap, WorldIdentity), String> {
+    sim.validate()
+        .map_err(|e| format!("invalid ANMW v3 sim bundle: {e}"))?;
+    let terrain = TerrainMap {
+        width: sim.width as usize,
+        height: sim.height as usize,
+        elevations: sim.elevation.clone(),
+        moistures: sim.moisture.clone(),
+        temperatures: sim.temperature.clone(),
+        biomes: sim.backend_biomes(),
+        flows: sim.flow.clone(),
+        pois: sim.land_pois(10),
+    };
+    let mut identity =
+        WorldIdentity::from_terrain(&terrain, sim.sim_seed_u32, sim.generator_version);
+    identity.sim_world_sha256 = Some(anima_worldgen::anmw_v3::compute_sim_world_identity(
+        sim_bytes,
+    ));
+    Ok((terrain, identity))
+}
+
 /// Canonical on-disk location of the shared World Artifact: the frontend writes it here during world
 /// generation and the simulation reads it at `init_world`. Overridable via `ANIMA_WORLD_ARTIFACT`;
 /// defaults to a stable temp path that both the writer (main thread) and the sim thread derive
@@ -465,6 +561,31 @@ pub fn default_artifact_path() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("anima_world_artifact.anmw"))
 }
 
+/// Fallible counterpart to [`world_seed_from_disk`] that explicitly rejects `ANMW v3` headers
+/// before desktop switchover (`WV2-7`) instead of silently falling back to the default seed.
+pub fn try_world_seed_from_disk() -> Result<u32, String> {
+    let path = default_artifact_path();
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(crate::core::terrain::MapSettings::default().seed);
+        }
+        Err(e) => {
+            return Err(format!(
+                "failed to read world artifact at {}: {e}",
+                path.display()
+            ));
+        }
+    };
+    if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
+        return Err(format!(
+            "refusing to read seed from ANMW v3 world artifact at {} before WV2-7 desktop switchover",
+            path.display()
+        ));
+    }
+    WorldArtifact::peek_seed(&bytes)
+}
+
 /// The world's seed as it can be determined **before** the ECS world is built.
 ///
 /// Mirrors the branch `core::ecs::init_world` takes: a shared artifact on disk supplies the seed,
@@ -472,12 +593,23 @@ pub fn default_artifact_path() -> PathBuf {
 /// [`WorldIdentity`] must read `identity.seed` instead — this is only for code that runs earlier,
 /// such as the evolution thread, which is spawned before the world exists.
 ///
-/// The two paths agreeing is a contract, not a coincidence; it is pinned by a test.
+/// Pre-switchover guard (`WV2-3`): an `ANMW v3` header on disk **panics loudly** instead of
+/// silently falling back to the default local seed.
 pub fn world_seed_from_disk() -> u32 {
-    std::fs::read(default_artifact_path())
-        .ok()
-        .and_then(|bytes| WorldArtifact::peek_seed(&bytes).ok())
-        .unwrap_or_else(|| crate::core::terrain::MapSettings::default().seed)
+    let path = default_artifact_path();
+    match std::fs::read(&path) {
+        Ok(bytes) => {
+            if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
+                panic!(
+                    "refusing to read seed from ANMW v3 world artifact at {} before WV2-7 desktop switchover (pre-switchover loud rejection)",
+                    path.display()
+                );
+            }
+            WorldArtifact::peek_seed(&bytes)
+                .unwrap_or_else(|_| crate::core::terrain::MapSettings::default().seed)
+        }
+        Err(_) => crate::core::terrain::MapSettings::default().seed,
+    }
 }
 
 /// Persist artifact bytes to `path`, creating the parent directory. The payload is validated first so
@@ -776,6 +908,102 @@ mod tests {
         assert!(
             tm.biomes.iter().any(|&b| b >= 4),
             "a real world has land biomes"
+        );
+    }
+
+    #[test]
+    fn wv2_3_world_identity_is_copy_omits_none_and_roundtrips_sha256_hex() {
+        fn assert_copy<T: Copy>() {}
+        assert_copy::<WorldIdentity>();
+
+        let mut legacy = tiny_artifact().identity();
+        assert_eq!(legacy.sim_world_sha256, None);
+        let legacy_json = serde_json::to_string(&legacy).expect("serialize legacy identity");
+        assert!(
+            !legacy_json.contains("sim_world_sha256"),
+            "sim_world_sha256: None must be omitted in JSON: {legacy_json}"
+        );
+        let back_legacy: WorldIdentity =
+            serde_json::from_str(&legacy_json).expect("deserialize legacy");
+        assert_eq!(back_legacy, legacy);
+
+        // Deserializing JSON without `sim_world_sha256` keeps `None`.
+        let raw_no_sha =
+            r#"{"seed":42,"generator_version":3,"width":256,"height":256,"checksum":7}"#;
+        let parsed: WorldIdentity = serde_json::from_str(raw_no_sha).expect("parse legacy json");
+        assert_eq!(parsed.sim_world_sha256, None);
+
+        // With Some(sha): human-readable JSON emits 64-char lowercase hex and round-trips.
+        let digest = [0xABu8; 32];
+        let mut v3 = legacy;
+        v3.sim_world_sha256 = Some(digest);
+        let v3_json = serde_json::to_string(&v3).expect("serialize v3 identity");
+        assert!(v3_json.contains("sim_world_sha256"));
+        assert!(v3_json.contains(&"ab".repeat(32)));
+        let back_v3: WorldIdentity = serde_json::from_str(&v3_json).expect("deserialize v3");
+        assert_eq!(back_v3, v3);
+
+        // Non-human-readable (bincode) also round-trips cleanly.
+        let encoded =
+            bincode::serde::encode_to_vec(v3, bincode::config::standard()).expect("bincode encode");
+        let (decoded, _): (WorldIdentity, usize) =
+            bincode::serde::decode_from_slice(&encoded, bincode::config::standard())
+                .expect("bincode decode");
+        assert_eq!(decoded, v3);
+
+        // Invalid hex length / char is rejected loudly.
+        let bad_hex = r#"{"seed":1,"generator_version":1,"width":1,"height":1,"checksum":1,"sim_world_sha256":"zz"}"#;
+        assert!(serde_json::from_str::<WorldIdentity>(bad_hex).is_err());
+
+        // `mismatch_against` distinguishes `Some` vs `None` and two distinct digests.
+        legacy.sim_world_sha256 = Some([0x11u8; 32]);
+        let msg = legacy
+            .mismatch_against(&v3)
+            .expect("distinct sha256 must trigger mismatch");
+        assert!(msg.contains("sim_world_sha256"));
+    }
+
+    #[test]
+    fn wv2_3_reader_refuses_anmw_v3_header_and_maps_v3_sim_bundle() {
+        use anima_worldgen::anmw_v3::{
+            compute_sim_world_identity, derive_sim_seed_u32, AnmwV3Sim, ANMW_V3_FLAGS_STANDARD,
+            ANMW_V3_SIM_SIZE, ANMW_V3_WORLD_SCALE,
+        };
+
+        let n = (ANMW_V3_SIM_SIZE * ANMW_V3_SIM_SIZE) as usize;
+        let sim = AnmwV3Sim {
+            width: ANMW_V3_SIM_SIZE,
+            height: ANMW_V3_SIM_SIZE,
+            sea_level_norm: anima_worldgen::SEA_LEVEL_NORM,
+            sim_seed_u32: derive_sim_seed_u32(0x1234_5678_9ABC_DEF0),
+            seed_u64: 0x1234_5678_9ABC_DEF0,
+            generator_version: 3,
+            world_scale: ANMW_V3_WORLD_SCALE,
+            flags: ANMW_V3_FLAGS_STANDARD,
+            elevation: vec![0.4; n],
+            moisture: vec![0.5; n],
+            temperature: vec![0.6; n],
+            flow: vec![0.1; n],
+            slope: vec![0.02; n],
+            biome_22: vec![4; n], // Grassland -> backend 4
+            water_kind: vec![0; n],
+            waterfalls: Vec::new(),
+            cave_entrances: Vec::new(),
+        };
+        let bytes = sim.to_bytes().expect("encode v3");
+        let peek_err = WorldArtifact::peek_seed(&bytes).expect_err("v2 peek_seed must refuse v3");
+        assert!(peek_err.contains("ANMW v3") && peek_err.contains("version"));
+        let dec_err = WorldArtifact::from_bytes(&bytes).expect_err("v2 from_bytes must refuse v3");
+        assert!(dec_err.contains("ANMW v3") && dec_err.contains("version"));
+
+        let decoded = AnmwV3Sim::from_bytes(&bytes).expect("v3 decode");
+        let (tm, wid) = terrain_map_from_v3_sim(&decoded, &bytes).expect("map v3 to TerrainMap");
+        assert_eq!(tm.width, 256);
+        assert_eq!(tm.height, 256);
+        assert_eq!(wid.seed, sim.sim_seed_u32);
+        assert_eq!(
+            wid.sim_world_sha256,
+            Some(compute_sim_world_identity(&bytes))
         );
     }
 }

@@ -25,6 +25,7 @@ pub(super) fn base_manifest() -> ExperimentManifest {
             width: 128,
             height: 128,
             checksum: 0xDEAD_BEEF,
+            sim_world_sha256: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: ref_init(),
@@ -675,4 +676,103 @@ fn intervention_kind_tags_are_distinct() {
         hashes.insert(c.hash());
     }
     assert_eq!(hashes.len(), kinds.len());
+}
+
+#[test]
+fn wv2_3_manifest_fingerprint_is_legacy_identical_when_sha_none_and_sensitive_when_some() {
+    use crate::core::experiment::Canon;
+    use crate::core::intervention::{Curve, InterventionKind, Region};
+
+    // Deserialize an existing committed fixture (no stored fingerprint constant in this test) and
+    // verify that its fingerprint equals the exact pre-WV2-3 5-field canonical encoding computed
+    // directly from the manifest's fields.
+    let raw = load_fixture("baseline-no-exotic.json");
+    let manifest: ExperimentManifest =
+        serde_json::from_str(&raw).expect("parse baseline-no-exotic fixture");
+    assert_eq!(manifest.world_identity.sim_world_sha256, None);
+
+    let mut legacy = Canon::new();
+    legacy.tag(0xF0).u16(manifest.schema_version);
+    legacy
+        .tag(0xF1)
+        .u32(manifest.world_identity.seed)
+        .u32(manifest.world_identity.generator_version)
+        .u32(manifest.world_identity.width)
+        .u32(manifest.world_identity.height)
+        .u32(manifest.world_identity.checksum);
+    manifest.laws.canonicalize(&mut legacy);
+    manifest.initial_conditions.canonicalize(&mut legacy);
+
+    let mut ivs: Vec<&InterventionCommand> = manifest.interventions.iter().collect();
+    ivs.sort_by_key(|cmd| (cmd.start_tick, cmd.id));
+    legacy.tag(0xF2).u64(ivs.len() as u64);
+    for cmd in ivs {
+        legacy.u32(cmd.id).u32(cmd.cause_id);
+        // No interventions in baseline-no-exotic; assert it so the legacy encoder never skips.
+        assert!(
+            matches!(cmd.kind, InterventionKind::RainfallDelta)
+                && matches!(cmd.region, Region::Global)
+                && matches!(cmd.curve, Curve::Step),
+            "unexpected intervention in baseline fixture"
+        );
+    }
+
+    let mut seeds = manifest.seeds.clone();
+    seeds.sort_unstable();
+    legacy.tag(0xF3).u64(seeds.len() as u64);
+    for s in seeds {
+        legacy.u64(s);
+    }
+    legacy
+        .tag(0xF4)
+        .u64(manifest.duration_ticks)
+        .u64(manifest.sample_period);
+    legacy
+        .tag(0xF6)
+        .u64(manifest.exotic_interventions.len() as u64);
+    assert!(manifest.exotic_interventions.is_empty());
+
+    let mut obs = manifest.observable_ids.clone();
+    obs.sort();
+    legacy.tag(0xF5).u64(obs.len() as u64);
+    for id in obs {
+        legacy.str(&id);
+    }
+    legacy.tag(0xF7);
+    match manifest.observer {
+        ObserverPolicy::Absent => {
+            legacy.tag(0x60);
+        }
+        ObserverPolicy::Spectate => {
+            legacy.tag(0x61);
+        }
+        ObserverPolicy::Inhabit { cause_id } => {
+            legacy.tag(0x62).u32(cause_id);
+        }
+    }
+
+    let legacy_fp = legacy.hash();
+    assert_eq!(
+        manifest.fingerprint(),
+        legacy_fp,
+        "sim_world_sha256: None must preserve the exact legacy manifest fingerprint"
+    );
+
+    // Mixing a distinct SHA-256 flips the fingerprint and surfaces in FactorDiff.
+    let mut m_a = manifest.clone();
+    m_a.world_identity.sim_world_sha256 = Some([0x11; 32]);
+    let mut m_b = manifest.clone();
+    m_b.world_identity.sim_world_sha256 = Some([0x22; 32]);
+
+    assert_ne!(m_a.fingerprint(), legacy_fp);
+    assert_ne!(m_b.fingerprint(), legacy_fp);
+    assert_ne!(m_a.fingerprint(), m_b.fingerprint());
+    assert_eq!(
+        FactorDiff::diff_paths(&manifest, &m_a),
+        vec!["world_identity".to_string()]
+    );
+    assert_eq!(
+        FactorDiff::diff_paths(&m_a, &m_b),
+        vec!["world_identity".to_string()]
+    );
 }

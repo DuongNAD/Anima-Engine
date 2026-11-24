@@ -16,6 +16,12 @@ use bevy_ecs::prelude::World;
 fn load_shared_world_artifact(settings: &MapSettings) -> Option<(TerrainMap, WorldIdentity)> {
     let path = crate::core::world_artifact::default_artifact_path();
     let bytes = std::fs::read(&path).ok()?; // no shared world on disk yet → fall back
+    if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
+        panic!(
+            "refusing to boot on ANMW v3 shared world artifact at {} before WV2-7 desktop switchover (pre-switchover loud rejection)",
+            path.display()
+        );
+    }
     match WorldArtifact::from_bytes(&bytes) {
         Ok(artifact) => {
             let terrain = artifact.to_terrain_map(settings.width, settings.height);
