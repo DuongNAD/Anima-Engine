@@ -2,19 +2,16 @@
 title: Swarm ba máy giao tiếp qua Google Drive — giao thức và prompt
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-15
+last_reviewed: 2026-11-24
 review_cycle: weekly
 ---
 
 # Swarm ba máy giao tiếp qua Google Drive
 
-> **Trạng thái 2026-11-17: đây không phải cách đang chạy; giữ làm phương án dự phòng.** Từ 2026-11-17 Đợt 2
-> chạy trên hai máy Claude Code (`agent-mac`, `agent-win`) theo
-> [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) §1, không qua thư mục Drive. Giao thức ở đây (BLOCK D,
-> ba trạm Gemini trong Antigravity) vẫn dùng lại được nếu swarm Antigravity chạy lại. Hai điều cần biết trước
-> khi dùng lại: khối `DECISIONS` ở §7 đã cũ, lấy khối đã điền ở §4 của `AGENT_WORKFLOW.md`; và các điều kiện
-> tiên quyết ở §2.1 đều đã xong. Tài liệu này không ghi lại nó đã từng được dùng cho thẻ nào, nên đừng trích
-> nó làm bằng chứng rằng một thẻ đã chạy theo giao thức này.
+> **Trạng thái 2026-11-24 (thân cây `f976e66d`; kế tiếp cập nhật 2026-11-17): bản nháp giao thức thủ công `AnimaSwarm` (`PROTOCOL.md` / `BOARD.md` / `BLOCK D`) ở trang này KHÔNG đang chạy; giữ làm tài liệu lịch sử / phương án dự phòng.**
+>
+> - **Sửa cập nhật 2026-11-17:** từ `2026-11-18` (`QD-HUB` và `QD-LEAD` trong [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) §1 & §4), điều phối đa máy **đang** chạy qua thư mục Google Drive dùng chung `Anima_Agent_Hub` (`anima_bridge.py`) giữa ba worker Antigravity/Gemini (`anima-mac`, `anima-case`, `anima-dell`) và phiên lead Claude Code, thay cho bản nháp `AnimaSwarm` (`msgs/` + `STATUS.md` thủ công) ở đây.
+> - **Đối chiếu §2.1 & §7 trên `f976e66d`:** cả 4 việc chuẩn bị ở §2.1 đều đã xong (`b1953e4` sửa 32 lint clippy; `970d963` / `QD-E2M = B` chốt ở `#59`; `npm run check:e2` có ở `package.json:32`, `(not re-measured 2026-11-24)`; `AGENT_WORKFLOW.md` §1/§3/§4 đã cập nhật). Toàn bộ Đợt 2 ở bảng §7 đã đóng (`G1`–`G7`, `G9`, `R0` merge qua `#47`, `#48`, `#49`, `#94`, `#95`, `#98`, `#107`, `#114`, `#123`; `G8` hợp đồng IPC dùng [`IPC_CONTRACT.md`](../../reference/IPC_CONTRACT.md) + `scripts/check_ipc_reference.mjs` theo `AGENT_WORKFLOW.md` §3). Mọi đường dẫn nêu ở dòng nháp `R5-AUTH` (`src-tauri/src/core/agent_systems.rs`, `mortality.rs`, `spawn.rs`, `telemetry_export.rs`, `energy_ledger.rs`, `src-tauri/src/commands/simulation.rs`, `src-tauri/src/bin/anima-lab.rs`) và `rust-toolchain.toml` đều tồn tại; khối `DECISIONS` ở §7 đã cũ và được thay bằng [`AGENT_WORKFLOW §4`](../../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0). Không sửa nguyên văn các mẫu prompt tiếng Anh ở §3–§6; `last_reviewed` cập nhật lên `2026-11-24`.
 
 > Tài liệu này **không** thay thẻ, luật hay quyết định nào. Thẻ, PROMPT 0, BLOCK S và VERIFIER vẫn ở
 > [`2026-11-05-swarm-prompts.md`](2026-11-05-swarm-prompts.md); BLOCK 0 vẫn ở
