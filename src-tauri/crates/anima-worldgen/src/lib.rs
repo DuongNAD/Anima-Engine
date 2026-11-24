@@ -10,6 +10,8 @@
 
 #[cfg(any(feature = "reader", feature = "generate"))]
 pub mod anmw_v3;
+#[cfg(feature = "bake")]
+pub mod bake;
 #[cfg(feature = "generate")]
 pub mod biomes;
 #[cfg(any(feature = "reader", feature = "generate"))]
