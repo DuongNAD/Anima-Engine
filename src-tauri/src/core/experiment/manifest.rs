@@ -39,6 +39,7 @@ pub fn ae210_reference_manifests() -> Vec<(&'static str, ExperimentManifest)> {
             width: 128,
             height: 128,
             checksum: 0xDEAD_BEEF,
+            sim_world_sha256: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![
@@ -455,6 +456,12 @@ impl ExperimentManifest {
             .u32(self.world_identity.width)
             .u32(self.world_identity.height)
             .u32(self.world_identity.checksum);
+        if let Some(sha) = self.world_identity.sim_world_sha256 {
+            c.tag(0xF8);
+            for chunk in sha.as_chunks::<8>().0 {
+                c.u64(u64::from_le_bytes(*chunk));
+            }
+        }
 
         // Laws + initial conditions (each self-canonicalizing).
         self.laws.canonicalize(&mut c);

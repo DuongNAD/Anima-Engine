@@ -1225,7 +1225,7 @@ export const GATES = [
     id: 'feature_separation_engine',
     source: getFeatureSeparationSlice(REPO_ROOT, 'engine').source,
     ciCommand: getFeatureSeparationSlice(REPO_ROOT, 'engine').command,
-    faultSummary: 'Add `anima-worldgen = { path = "crates/anima-worldgen" }` to `src-tauri/Cargo.toml`',
+    faultSummary: 'Enable the `generate` feature on `anima-worldgen` in `src-tauri/Cargo.toml`',
     patch: 'feature_separation_engine.patch',
     needsCargo: true,
     run(wt) {

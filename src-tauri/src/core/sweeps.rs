@@ -1298,6 +1298,7 @@ mod tests {
                 width: 16,
                 height: 16,
                 checksum: 1,
+                sim_world_sha256: None,
             },
             laws: WorldLawSet::baseline(),
             initial_conditions: InitialConditionSet::new(vec![("plants".into(), 10.0)]),

@@ -2047,6 +2047,18 @@ fn validate_smoke_dir_for_ensemble(dir: &Path) -> Result<SmokeVerification, Stri
 
     let wid_obj = &prov["world_identity_observed"];
     let world_identity = if wid_obj.is_object() {
+        let sim_world_sha256 = match wid_obj.get("sim_world_sha256") {
+            Some(v) if !v.is_null() => {
+                let hex = v
+                    .as_str()
+                    .ok_or("smoke wid sim_world_sha256 must be hex string")?;
+                Some(
+                    anima_worldgen::anmw_v3::sha256_from_hex(hex)
+                        .map_err(|e| format!("smoke wid sim_world_sha256: {e}"))?,
+                )
+            }
+            _ => None,
+        };
         Some(WorldIdentity {
             seed: wid_obj["seed"].as_u64().ok_or("smoke wid seed")? as u32,
             generator_version: wid_obj["generator_version"]
@@ -2055,6 +2067,7 @@ fn validate_smoke_dir_for_ensemble(dir: &Path) -> Result<SmokeVerification, Stri
             width: wid_obj["width"].as_u64().ok_or("smoke wid width")? as u32,
             height: wid_obj["height"].as_u64().ok_or("smoke wid height")? as u32,
             checksum: wid_obj["checksum"].as_u64().ok_or("smoke wid checksum")? as u32,
+            sim_world_sha256,
         })
     } else {
         None

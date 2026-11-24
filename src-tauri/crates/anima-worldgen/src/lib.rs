@@ -8,6 +8,8 @@
 //! `ChaCha12Rng` seeding, configuration validation, and the Stage S1 regional tectonic uplift &
 //! stratigraphic lithology generator.
 
+#[cfg(any(feature = "reader", feature = "generate"))]
+pub mod anmw_v3;
 #[cfg(feature = "generate")]
 pub mod biomes;
 #[cfg(any(feature = "reader", feature = "generate"))]
@@ -227,6 +229,13 @@ impl WaterKind {
 pub fn normalize_elevation(elevation_m: f32) -> f32 {
     let span = ELEV_MAX_M - ELEV_MIN_M;
     ((elevation_m - ELEV_MIN_M) / span).clamp(0.0, 1.0)
+}
+
+/// Maps normalized `[0.0, 1.0]` elevation back to physical metres (`[-1500, +5700]`).
+#[must_use]
+pub fn denormalize_elevation(elev_norm: f32) -> f32 {
+    let span = ELEV_MAX_M - ELEV_MIN_M;
+    ELEV_MIN_M + elev_norm * span
 }
 
 #[cfg(test)]
