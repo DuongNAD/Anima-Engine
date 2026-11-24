@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { getSkyParams } from './utils/skyParams';
 
 interface WeatherProps {
   weather: 'clear' | 'rain' | 'snow' | 'fog';
@@ -137,17 +138,18 @@ export const Weather: React.FC<WeatherProps> = ({
     (weather === 'snow' ? currentSnowIntensity : 0) * maxSnowCount
   );
 
-  // Fog color changes based on time of day (darker at night, grayish in storm/fog)
-  let targetFogColor = '#cccccc';
-  if (timeOfDay < 5 || timeOfDay > 20) {
-    targetFogColor = '#020208'; // Night dark fog
-  } else if (weather === 'rain' || weather === 'fog') {
-    targetFogColor = '#8a9ba8'; // Rainy/foggy grayish blue
+  // Synchronize fog color with atmospheric horizon color
+  const skyParams = getSkyParams(timeOfDay);
+  const horizonBase = new THREE.Color(skyParams.skyColor).lerp(new THREE.Color(skyParams.hemiSkyColor), 0.4);
+  
+  if (weather === 'rain') {
+    horizonBase.lerp(new THREE.Color('#4a5568'), 0.4); // Rainy storm tint
   } else if (weather === 'snow') {
-    targetFogColor = '#d0dce5'; // Snowy cool white
-  } else {
-    targetFogColor = '#87ceeb'; // Clear day light blue
+    horizonBase.lerp(new THREE.Color('#cbd5e1'), 0.3); // Snowy cool tint
+  } else if (weather === 'fog') {
+    horizonBase.lerp(new THREE.Color('#94a3b8'), 0.5); // Foggy haze tint
   }
+  const targetFogColor = '#' + horizonBase.getHexString();
 
   return (
     <group

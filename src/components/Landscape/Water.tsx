@@ -11,6 +11,7 @@ interface WaterProps {
   width?: number;
   height?: number;
   timeOfDay?: number; // Added to sync day/night lighting
+  seed?: string | number;
 }
 
 // Custom GLSL Vertex Shader
@@ -28,28 +29,66 @@ const vertexShader = `
 
   #include <fog_pars_vertex>
 
+  // Multi-directional Gerstner Wave Calculation
+  struct Wave {
+    vec2 dir;
+    float steepness;
+    float amplitude;
+    float frequency;
+    float speed;
+  };
+
+  vec3 gerstnerWave(vec3 pos, Wave w, float t, float wind) {
+    vec2 d = normalize(w.dir);
+    float k = w.frequency;
+    float phase = k * dot(d, pos.xy) + t * w.speed * wind;
+    float c = cos(phase);
+    float s = sin(phase);
+    
+    // Displace vertex in 3D space: x/y horizontally pulled towards wave crest, z vertically elevated
+    float q = w.steepness;
+    float a = w.amplitude;
+    
+    return vec3(
+      q * a * d.x * c,
+      q * a * d.y * c,
+      a * s
+    );
+  }
+
   void main() {
     vUv = uv;
     vType = uWaterType;
     
     vec3 localPos = position;
     
-    // Wave displacements based on water body type
+    // Wave displacements based on water body type using Gerstner wave equations
     if (uWaterType < 0.5) {
-      // Ocean: Large slow swells
-      float waveX = sin(position.x * 0.02 + time * windSpeed * 0.4) * 0.3;
-      float waveY = cos(position.y * 0.02 + time * windSpeed * 0.3) * 0.3;
-      localPos.z += waveX + waveY;
+      // Ocean: Sum of 3 multi-directional Gerstner waves with steepness control for sharp crests
+      Wave w1 = Wave(vec2(1.0, 0.5), 0.35, 0.4, 0.08, 1.2);
+      Wave w2 = Wave(vec2(-0.7, 0.7), 0.25, 0.25, 0.15, 1.5);
+      Wave w3 = Wave(vec2(0.2, -1.0), 0.2, 0.15, 0.25, 2.0);
+
+      vec3 g1 = gerstnerWave(position, w1, time, windSpeed);
+      vec3 g2 = gerstnerWave(position, w2, time, windSpeed);
+      vec3 g3 = gerstnerWave(position, w3, time, windSpeed);
+
+      localPos += g1 + g2 + g3;
     } else if (uWaterType < 1.5) {
-      // Lake: Calm tiny ripples
-      localPos.z += sin(position.x * 0.2 + time * windSpeed * 1.5) * 
-                    cos(position.y * 0.2 + time * windSpeed * 1.2) * 0.1;
+      // Lake: Calm multi-directional Gerstner ripples
+      Wave w1 = Wave(vec2(1.0, 0.2), 0.1, 0.08, 0.3, 1.0);
+      Wave w2 = Wave(vec2(-0.5, 0.8), 0.1, 0.05, 0.5, 1.4);
+      vec3 g1 = gerstnerWave(position, w1, time, windSpeed);
+      vec3 g2 = gerstnerWave(position, w2, time, windSpeed);
+      localPos += g1 + g2;
     } else {
-      // River: Flowing waves along uFlowDirection
-      float flowTime = time * windSpeed * 2.0;
-      float coord = dot(position.xz, normalize(uFlowDirection));
-      localPos.y += sin(coord * 0.25 - flowTime) * 
-                    cos(dot(position.xz, vec2(-uFlowDirection.y, uFlowDirection.x)) * 0.25 + time * 1.5) * 0.08;
+      // River: Flowing Gerstner waves along uFlowDirection
+      vec2 flowDir = normalize(uFlowDirection);
+      Wave w1 = Wave(flowDir, 0.25, 0.12, 0.25, 2.5);
+      Wave w2 = Wave(vec2(-flowDir.y, flowDir.x), 0.15, 0.06, 0.4, 2.0);
+      vec3 g1 = gerstnerWave(position, w1, time, windSpeed);
+      vec3 g2 = gerstnerWave(position, w2, time, windSpeed);
+      localPos += g1 + g2;
     }
 
     // Transform to world space
@@ -128,11 +167,9 @@ const fragmentShader = `
 
   void main() {
     // 1. Heightmap UV Mapping and Depth Calculation
-    // Map world XZ coordinate [-size/2, size/2] to UV [0, 1]
     vec2 terrainUV = (vWorldPosition.xz + terrainSize * 0.5) / terrainSize;
     
-    
-    // Sample heightmap (elevation is pre-scaled by 1.8 in CPU texture creation)
+    // Sample heightmap
     vec4 texVal = texture2D(tHeightMap, terrainUV);
     float terrainWorldY = texVal.r;
     float moisture = texVal.g;
@@ -176,7 +213,7 @@ const fragmentShader = `
     float n2 = noise(waveUv2 * 10.0);
     
     if (temperature < -0.5) {
-      // Ice sheet: static rough perturbation (no time)
+      // Ice sheet: static rough perturbation
       float iceN1 = noise(vWorldPosition.xz * 5.0);
       float iceN2 = noise(vWorldPosition.xz * 12.0);
       normal.x += (iceN1 - 0.5) * 0.25;
@@ -194,9 +231,9 @@ const fragmentShader = `
     normal = normalize(normal);
 
     // 4. Lighting and Day/Night integration
-    vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+    vec3 viewDir = normalize(vViewPosition);
     
-    // Sun Contribution (Lambertian diffuse + Blinn-Phong specular)
+    // Sun Contribution
     vec3 sunDir = normalize(sunDirection);
     float sunDiffuse = max(dot(normal, sunDir), 0.0);
     vec3 sunHalfDir = normalize(sunDir + viewDir);
@@ -216,32 +253,44 @@ const fragmentShader = `
     vec3 specularTerm = (sunSpec * sunColor * sunIntensity) + (moonSpec * moonColor * moonIntensity);
     vec3 finalColor = waterColor * (ambientTerm + diffuseTerm) + specularTerm;
 
-    // Fresnel Reflection Mix
-    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 5.0);
-    fresnel = clamp(fresnel, 0.0, 0.85);
-    vec3 lightColorCombined = ambientTerm + diffuseTerm + specularTerm;
-    finalColor = mix(finalColor, reflectionColor * lightColorCombined, fresnel);
+    // 5. Sky-Aware Fresnel Reflections (reflection = reflect(-vViewPosition, vNormal))
+    vec3 reflectDir = reflect(-viewDir, normal);
+    float skyGradient = clamp(reflectDir.y * 0.5 + 0.5, 0.0, 1.0);
+    vec3 skyHorizon = ambientTerm * 1.5 + vec3(0.1, 0.15, 0.2);
+    vec3 skyZenith = reflectionColor * (sunColor * sunIntensity + vec3(0.2)) * 0.8 + vec3(0.05, 0.1, 0.3);
+    vec3 skyReflectionColor = mix(skyHorizon, skyZenith, skyGradient);
 
-    // 1. Water level baseline
-    float baseWaterY = 1.0; 
-    float foamWidth = 1.0; // Foam zone thickness in world units
-    float foamLine = 0.0;
+    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 5.0);
+    fresnel = clamp(fresnel, 0.05, 0.85);
+    finalColor = mix(finalColor, skyReflectionColor, fresnel);
+
+    // 6. Dynamic Wave Crest Foam & Shoreline Depth Foam
+    float foamWidth = 1.0;      // Shoreline foam width limit
+    float crestThreshold = 1.2; // Crest peak height threshold
+    float totalFoam = 0.0;
     
+    // Shoreline depth foam (depth < foamWidth)
     if (depth < foamWidth) {
       float foamNoise = fbm(vWorldPosition.xz * 2.0 + vec2(0.0, time * 0.8));
       float distFactor = clamp(1.0 - (depth / foamWidth), 0.0, 1.0);
-      
-      // Crisp foam strands using thresholded noise
-      foamLine = step(0.45, foamNoise * distFactor);
-      
-      // Smoothly fade out foam exactly at the waterline contact
+      float shorelineFoam = step(0.45, foamNoise * distFactor);
       float edgeBlend = smoothstep(0.0, 0.15, depth);
-      foamLine *= edgeBlend;
-      
-      finalColor = mix(finalColor, vec3(1.0), foamLine * 0.9);
+      totalFoam = max(totalFoam, shorelineFoam * edgeBlend);
     }
 
-    // 6. Base Transparency & Water Edge Softening
+    // Dynamic wave crest foam (vWorldPosition.y > crestThreshold)
+    if (vWorldPosition.y > crestThreshold && vType < 0.5) {
+      float crestFactor = smoothstep(crestThreshold, crestThreshold + 0.35, vWorldPosition.y);
+      float crestNoise = fbm(vWorldPosition.xz * 3.5 + vec2(time * 1.4, time * 0.9));
+      float crestFoam = step(0.38, crestNoise * crestFactor);
+      totalFoam = max(totalFoam, crestFoam);
+    }
+
+    if (totalFoam > 0.0) {
+      finalColor = mix(finalColor, vec3(0.95, 0.98, 1.0), totalFoam * 0.9);
+    }
+
+    // 7. Base Transparency & Water Edge Softening
     float alpha = mix(0.35, 0.95, depthFactor) * depthTransparency;
     if (temperature > 0.95) {
       alpha = 0.95; // Lava is opaque
@@ -249,10 +298,10 @@ const fragmentShader = `
       alpha = 0.90; // Ice is mostly opaque
     }
     if (depth < foamWidth) {
-      alpha = mix(alpha, 0.95, foamLine); // Foam increases opacity
+      alpha = mix(alpha, 0.95, totalFoam); // Foam increases opacity
     }
     
-    // Smoothly fade to 0 opacity exactly at depth=0 (edge wetness blend)
+    // Smoothly fade to 0 opacity at depth=0
     alpha *= smoothstep(0.0, 0.05, depth);
 
     gl_FragColor = vec4(finalColor, alpha);
@@ -268,6 +317,7 @@ export const Water: React.FC<WaterProps> = ({
   width = 500,
   height = 500,
   timeOfDay = 12.0,
+  seed = 'seed',
 }) => {
   const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
   const actualWidth = isVitest ? Math.min(width, 100) : width;
@@ -284,7 +334,7 @@ export const Water: React.FC<WaterProps> = ({
   const particlesRef = useRef<THREE.Points>(null);
 
   // Generate terrain data
-  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, 'seed'), [actualWidth, actualHeight]);
+  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, seed), [actualWidth, actualHeight, seed]);
 
   // Convert elevation data into a Float32 RGBA DataTexture
   const heightMapTexture = useMemo(() => {

@@ -18,6 +18,7 @@ interface CloudDescriptor {
 
 export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
   const skyRef = useRef<THREE.Mesh>(null);
+  const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const cloudsGroupRef = useRef<THREE.Group>(null);
 
   // Orbit calculations
@@ -72,6 +73,18 @@ export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
 
   useFrame((state, delta) => {
     const safeDelta = Math.min(delta, 0.1);
+
+    // Dynamic camera-following directional light shadow frustum tracking
+    if (dirLightRef.current && state.camera) {
+      const camPos = state.camera.position;
+      const focusX = camPos.x;
+      const focusZ = camPos.z;
+      dirLightRef.current.position.set(focusX + sunX, Math.max(sunY, 20), focusZ + sunZ);
+      if (dirLightRef.current.target) {
+        dirLightRef.current.target.position.set(focusX, 0, focusZ);
+        dirLightRef.current.target.updateMatrixWorld();
+      }
+    }
     
     // Rotate the sky dome slowly
     if (skyRef.current && skyRef.current.rotation) {
@@ -109,8 +122,9 @@ export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
         <meshBasicMaterial color={params.skyColor} side={THREE.BackSide} />
       </mesh>
 
-      {/* Main directional sun light */}
+      {/* Main directional sun light with camera-tracking shadow frustum */}
       <directionalLight
+        ref={dirLightRef}
         name="sky-light"
         position={sunPosition}
         color={params.sunColor}
@@ -118,11 +132,11 @@ export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={1000}
-        shadow-camera-left={-150}
-        shadow-camera-right={150}
-        shadow-camera-top={150}
-        shadow-camera-bottom={-150}
+        shadow-camera-far={1200}
+        shadow-camera-left={-250}
+        shadow-camera-right={250}
+        shadow-camera-top={250}
+        shadow-camera-bottom={-250}
       />
 
       {/* Moonlight (opposite to sun, active when moon is up) */}

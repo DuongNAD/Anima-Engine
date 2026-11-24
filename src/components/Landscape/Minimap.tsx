@@ -4,11 +4,13 @@ import { generateTerrain, TerrainCell } from './utils/terrainGenerator';
 interface MinimapProps {
   gridWidth?: number;
   gridHeight?: number;
+  seed?: string | number;
 }
 
 export const Minimap: React.FC<MinimapProps> = ({
   gridWidth = 64,
   gridHeight = 64,
+  seed = 'seed',
 }) => {
   const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
   const actualWidth = isVitest ? Math.min(gridWidth, 100) : gridWidth;
@@ -18,8 +20,8 @@ export const Minimap: React.FC<MinimapProps> = ({
 
   // Generate the exact same terrain cells to render the minimap
   const terrain = useMemo(() => {
-    return generateTerrain(actualWidth, actualHeight, 'seed');
-  }, [actualWidth, actualHeight]);
+    return generateTerrain(actualWidth, actualHeight, seed);
+  }, [actualWidth, actualHeight, seed]);
 
   const getMinimapCellColor = (cell: TerrainCell) => {
     if (cell.isRiver === 3) return { r: 26, g: 122, b: 144 }; // Pond

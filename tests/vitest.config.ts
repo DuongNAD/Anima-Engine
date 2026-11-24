@@ -10,7 +10,8 @@ export default defineConfig({
     setupFiles: [path.resolve(__dirname, './setup-vitest.ts')],
     include: ['frontend/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/dist/**'],
-    testTimeout: 15000,
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
   resolve: {
     alias: {

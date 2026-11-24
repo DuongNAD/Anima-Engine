@@ -1257,4 +1257,107 @@ Integrity mode: development
 - [ ] The map is verified to be 1000x1000 in scale with distinct Desert, Jungle, Glacier, and Volcanic environments visible.
 - [ ] All 235 frontend tests in `npm run test:frontend` pass successfully.
 
+## Follow-up — 2026-06-19T04:29:05Z
+
+Recreate the procedural map generation system using FastNoiseLite to focus intensely on shaping highly realistic, natural-looking terrain, particularly smooth mountain ranges and organic river systems.
+
+Working directory: e:\project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Realistic Terrain Shaping
+The elevation generation must produce natural geological features: distinct, smooth mountain ranges, rolling hills, and flat basins. Avoid noise artifacts that make the terrain look like random static.
+
+### R2. Natural Hydrology (Rivers & Lakes)
+River paths must flow naturally downhill from high elevations, carve realistic valleys, and pool into lakes at local minima.
+
+### R3. FastNoiseLite Integration
+Fully utilize FastNoiseLite's advanced noise types (e.g., Cellular for biome boundaries, OpenSimplex2/Fractal for elevation, Domain Warping for coastlines) to achieve the organic look.
+
+## Acceptance Criteria
+
+### Visual Quality
+- [ ] Visual inspection confirms that mountains look like cohesive ranges rather than random spikes.
+- [ ] Rivers visually carve distinct paths and connect smoothly to lakes or oceans without flowing uphill.
+- [ ] Coastlines appear organically eroded (via domain warping or similar techniques).
+
+### Programmatic Verification
+- [ ] Automated tests pass (`npm run test:frontend`): Rivers still correctly identify downhill paths, and vegetation placement adheres to biome logic without generating on snow peaks or underwater.
+
+## Follow-up — 2026-06-19T04:41:44Z
+
+Redesign the terrain generator to produce a natural-looking continent. The map should feature realistic mountains, waterfalls, dense jungles, and highly diverse ecological biomes with smooth, organic transitions.
+
+Working directory: e:\project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Continent Topology
+Generate a vast continental landmass. The terrain should be predominantly land, with ocean/water bodies appearing primarily at the outer edges or as large inland lakes. Avoid completely flat artificial borders.
+
+### R2. Natural Ecosystems
+Generate highly diverse ecological zones (e.g., jungles, snow peaks, temperate forests, deserts). Ensure transitions between these biomes are organic, blended, and visually continuous, eliminating any harsh straight-line biome borders.
+
+### R3. Realistic Topography
+Create distinct, organic mountain ranges, deep valleys, and natural river networks. Rivers must carve plausible paths through the continent and form natural waterfalls at steep terrain drops.
+
+## Acceptance Criteria
+
+### Visual Quality
+- [ ] Visual inspection confirms a massive continental landmass with oceans primarily at the fringes.
+- [ ] Multiple distinct biomes are visually identifiable, and the borders between them are smoothly blended (no straight lines).
+- [ ] Mountains cluster into organic ranges rather than looking like scattered artificial spikes.
+
+### Programmatic Verification
+- [ ] Automated tests pass (`npm run test:frontend`), ensuring that fundamental data structures for the map generation remain intact and that downstream systems (like vegetation placement) function correctly with the new terrain shape.
+
+## Follow-up — 2026-07-24T15:21:34+07:00
+
+Tái thiết kế địa hình (Terrain Generator) và môi trường 3D của Anima Engine theo phong cách cảnh quan thiên nhiên thực tế (Photorealistic Natural World): loại bỏ hoàn toàn cách chia vệt hình quạt và hố tròn phẳng nhân tạo, thay vào đó là hệ thống địa hình thiên nhiên đa dạng gồm dãy núi hùng vĩ, thung lũng xanh tươi, sông suối uốn lượn uốn quanh và bờ biển tự nhiên.
+
+Working directory: `e:/project/Anima-Engine`
+Integrity mode: development
+
+## Requirements
+
+### R1. Photorealistic Natural Terrain & Biomes
+- Thay thế hoàn toàn thuật toán chia 4 vùng quạt và hố tròn trung tâm nhân tạo.
+- Áp dụng thuật toán tạo địa hình hữu cơ thực tế:
+  - Sinh dãy núi nhấp nhô hùng vĩ với hiệu ứng mài mòn tự nhiên (Erosion simulation / Ridged Multi-fractal noise).
+  - Tạo thung lũng xanh, các dải đồi lượn sóng và bờ biển tự nhiên nối ra biển lớn hoặc hệ thống sông uốn lượn.
+  - Chuyển tiếp Biome tự nhiên (Rừng, Cỏ, Sa mạc, Tuyết núi cao) dựa trên độ cao, độ ẩm và độ dốc (Slope) mượt mà bằng Voronoi / Perlin noise blending.
+
+### R2. Realistic Environment Shading & Vegetation Sampling
+- Cải tiến thị giác và độ chân thực của môi trường:
+  - **Terrain Slope-based PBR Shading**: Đá dốc ở vách núi, cỏ ở thung lũng, tuyết ở đỉnh núi và cát ven nước, hòa trộn (blend) tự nhiên không vệt cắt.
+  - **Realistic Water & River System**: Dòng sông uốn lượn chảy từ núi xuống biển/hồ, độ sâu trong suốt (depth fog) và gợn sóng sinh động.
+  - **Vegetation Density Distribution**: Cây cối mọc theo cụm thực tế (Eco-clustering), mật độ dày ở thung lũng/ven sông, không mọc trên vách đá dốc dựng đứng hay đỉnh núi tuyết.
+  - **Atmosphere & Dynamic Sky**: Sương mù khoảng cách (Distance Fog) kết hợp ánh sáng mặt trời chiếu bóng tạo độ sâu điện ảnh.
+
+### R3. Map Caching Integrity & Performance Verification
+- Tích hợp liền mạch với hệ thống Map Caching IndexedDB có sẵn: Sinh map tự nhiên ở lần đầu và cache lại toàn bộ heightmap/biome/vegetation cho các lần khởi chạy sau.
+- Tối ưu hóa GPU Instancing & LOD để duy trì tốc độ khung hình mượt mà (60 FPS).
+- Chạy toàn bộ test suite (`npm run build` và `npm test`) để đảm bảo không lỗi TypeScript hay runtime error.
+
+## Acceptance Criteria
+
+### Natural Terrain & Biome Aesthetics
+- [ ] Địa hình hiển thị cảnh quan thiên nhiên tự nhiên: dãy núi, thung lũng, dòng sông uốn lượn mềm mại, loại bỏ 100% các đường chia quạt và hố tròn hình học.
+- [ ] Vùng chuyển tiếp giữa các Biomes (đất, cỏ, đá vách núi, tuyết đỉnh núi) hòa trộn mịn màng dựa trên độ cao và độ dốc.
+
+### Environment & Shaders
+- [ ] Mặt nước có độ sâu, hiệu ứng dòng chảy/gợn sóng chân thực.
+- [ ] Cây cối phân bố tự nhiên theo thảm thực vật phù hợp với độ dốc và nguồn nước.
+- [ ] Ánh sáng và sương mù tạo cảm giác chiều sâu không gian chân thực như thế giới thực.
+
+### System Verification & Caching
+- [ ] Lần đầu mở: Sinh map thiên nhiên mới và lưu vào IndexedDB. Lần sau mở: Nạp tức thì từ cache.
+- [ ] Nút "Clear Cache & Regenerate" tạo lại bản đồ thiên nhiên mới thành công.
+- [ ] Build dự án (`npm run build`) vượt qua không có lỗi.
+
+
+
+
 

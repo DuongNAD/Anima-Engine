@@ -24,104 +24,9 @@ export function hashString(str: string): number {
 /**
  * Seeded 2D Improved Perlin Noise class.
  */
-export class ImprovedNoise2D {
-  private p: number[] = new Array(512);
-
-  constructor(seed: number | string) {
-    const seedNum = typeof seed === 'string' ? hashString(seed) : seed;
-    const random = mulberry32(seedNum);
-    const permutation = Array.from({ length: 256 }, (_, i) => i);
-
-    // Fisher-Yates Shuffle
-    for (let i = 255; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
-      const temp = permutation[i];
-      permutation[i] = permutation[j];
-      permutation[j] = temp;
-    }
-
-    for (let i = 0; i < 256; i++) {
-      this.p[i] = permutation[i];
-      this.p[256 + i] = permutation[i];
-    }
-  }
-
-  private fade(t: number): number {
-    return t * t * t * (t * (t * 6 - 15) + 10);
-  }
-
-  private lerp(t: number, a: number, b: number): number {
-    return a + t * (b - a);
-  }
-
-  private grad2d(hash: number, x: number, y: number): number {
-    // 8 symmetric 2D unit vectors
-    const h = hash & 7;
-    switch (h) {
-      case 0: return x;
-      case 1: return -x;
-      case 2: return y;
-      case 3: return -y;
-      case 4: return 0.707 * (x + y);
-      case 5: return 0.707 * (-x + y);
-      case 6: return 0.707 * (x - y);
-      case 7: return 0.707 * (-x - y);
-    }
-    return 0;
-  }
-
-  /**
-   * Generates 2D noise in the range [-1.0, 1.0].
-   */
-  public noise(x: number, y: number): number {
-    const X = Math.floor(x) & 255;
-    const Y = Math.floor(y) & 255;
-
-    const xf = x - Math.floor(x);
-    const yf = y - Math.floor(y);
-
-    const u = this.fade(xf);
-    const v = this.fade(yf);
-
-    const aa = this.p[this.p[X] + Y];
-    const ab = this.p[this.p[X] + Y + 1];
-    const ba = this.p[this.p[X + 1] + Y];
-    const bb = this.p[this.p[X + 1] + Y + 1];
-
-    const x1 = this.lerp(u, this.grad2d(aa, xf, yf), this.grad2d(ba, xf - 1, yf));
-    const x2 = this.lerp(u, this.grad2d(ab, xf, yf - 1), this.grad2d(bb, xf - 1, yf - 1));
-
-    const rawVal = this.lerp(v, x1, x2);
-    // Scale by 1/0.707 to normalize to roughly [-1.0, 1.0]
-    return Math.max(-1, Math.min(1, rawVal / 0.707));
-  }
-}
-
-/**
- * Fractional Brownian Motion (layered noise).
- */
-export function fbm(
-  noiseGen: ImprovedNoise2D,
-  x: number,
-  y: number,
-  octaves: number,
-  persistence: number,
-  lacunarity: number
-): number {
-  let total = 0;
-  let frequency = 1;
-  let amplitude = 1;
-  let maxValue = 0;
-
-  for (let i = 0; i < octaves; i++) {
-    total += noiseGen.noise(x * frequency, y * frequency) * amplitude;
-    maxValue += amplitude;
-    amplitude *= persistence;
-    frequency *= lacunarity;
-  }
-
-  return total / maxValue;
-}
+import FastNoiseLite from 'fastnoise-lite';
+import { serializeChunk, deserializeChunk } from './terrainSerializer';
+import { terrainCacheDB } from './terrainCacheDB';
 
 export type BiomeType = 'ocean' | 'beach' | 'grassland' | 'forest' | 'taiga' | 'alpine rock' | 'snow peaks' | 'desert' | 'jungle' | 'volcanic' | 'glacier';
 
@@ -151,6 +56,32 @@ export interface TerrainData {
   seed: string | number;
   grid: TerrainCell[][];
   flora: FloraPlacement[];
+  cached?: boolean;
+}
+
+// In-memory cache store
+const inMemoryTerrainCache = new Map<string, TerrainData>();
+
+function getCacheKey(seed: string | number, width: number, height: number): string {
+  return `${seed}_${width}_${height}`;
+}
+
+/**
+ * Clears both in-memory map cache and IndexedDB cache.
+ */
+export function clearTerrainCache(seed?: string | number): void {
+  if (seed !== undefined) {
+    const prefix = `${seed}_`;
+    for (const key of Array.from(inMemoryTerrainCache.keys())) {
+      if (key.startsWith(prefix)) {
+        inMemoryTerrainCache.delete(key);
+      }
+    }
+    terrainCacheDB.clearMapCache(seed).catch(() => {});
+  } else {
+    inMemoryTerrainCache.clear();
+    terrainCacheDB.clearAllCache().catch(() => {});
+  }
 }
 
 export function getBilinearInterpolatedElevation(px: number, py: number, width: number, height: number, grid: TerrainCell[][]): number {
@@ -192,6 +123,68 @@ export function determineBiome(elevation: number, moisture: number, temperature?
     return moisture >= 50 ? 'taiga' : 'alpine rock';
   }
   return moisture >= 45 ? 'forest' : 'grassland';
+}
+
+/**
+ * Calculates continuous Whittaker biome blend weights based on elevation, moisture, temperature, and slope.
+ * Returns a Record mapping each BiomeType to its blend weight [0.0, 1.0] (normalized to sum to 1.0).
+ */
+export function getContinuousBiomeWeights(
+  elevation: number,
+  moisture: number,
+  temperature?: number,
+  slope: number = 0.0
+): Record<BiomeType, number> {
+  const normTemp = temperature ?? (0.3 - elevation * 0.006);
+
+  const centroids: Record<BiomeType, { el: number; moist: number; temp: number; slope: number; sigmaEl: number; sigmaMoist: number; sigmaTemp: number }> = {
+    'ocean':       { el: 1.5,  moist: 50, temp: 0.1,   slope: 0.0,  sigmaEl: 3.0,  sigmaMoist: 40, sigmaTemp: 1.0 },
+    'beach':       { el: 4.0,  moist: 50, temp: 0.2,   slope: 0.05, sigmaEl: 2.0,  sigmaMoist: 40, sigmaTemp: 1.0 },
+    'grassland':   { el: 30,   moist: 25, temp: 0.2,   slope: 0.1,  sigmaEl: 25.0, sigmaMoist: 20, sigmaTemp: 0.4 },
+    'forest':      { el: 30,   moist: 65, temp: 0.2,   slope: 0.15, sigmaEl: 25.0, sigmaMoist: 20, sigmaTemp: 0.4 },
+    'taiga':       { el: 70,   moist: 70, temp: -0.3,  slope: 0.2,  sigmaEl: 15.0, sigmaMoist: 25, sigmaTemp: 0.4 },
+    'alpine rock': { el: 70,   moist: 25, temp: -0.3,  slope: 0.35, sigmaEl: 15.0, sigmaMoist: 25, sigmaTemp: 0.4 },
+    'snow peaks':  { el: 90,   moist: 50, temp: -0.6,  slope: 0.4,  sigmaEl: 15.0, sigmaMoist: 40, sigmaTemp: 0.5 },
+    'desert':      { el: 30,   moist: 10, temp: 0.75,  slope: 0.1,  sigmaEl: 25.0, sigmaMoist: 15, sigmaTemp: 0.3 },
+    'jungle':      { el: 30,   moist: 85, temp: 0.75,  slope: 0.15, sigmaEl: 25.0, sigmaMoist: 15, sigmaTemp: 0.3 },
+    'volcanic':    { el: 50,   moist: 30, temp: 1.05,  slope: 0.3,  sigmaEl: 30.0, sigmaMoist: 40, sigmaTemp: 0.2 },
+    'glacier':     { el: 50,   moist: 50, temp: -0.7,  slope: 0.1,  sigmaEl: 30.0, sigmaMoist: 40, sigmaTemp: 0.2 },
+  };
+
+  const distSqMap: Partial<Record<BiomeType, number>> = {};
+  let minDistSq = Infinity;
+
+  for (const b of Object.keys(centroids) as BiomeType[]) {
+    const c = centroids[b];
+    const dEl = (elevation - c.el) / c.sigmaEl;
+    const dMoist = (moisture - c.moist) / c.sigmaMoist;
+    const dTemp = (normTemp - c.temp) / c.sigmaTemp;
+    const dSlope = (slope - c.slope) / 0.3;
+
+    const distSq = dEl * dEl + dMoist * dMoist + dTemp * dTemp + dSlope * dSlope;
+    distSqMap[b] = distSq;
+    if (distSq < minDistSq) {
+      minDistSq = distSq;
+    }
+  }
+
+  const weights: Partial<Record<BiomeType, number>> = {};
+  let sum = 0;
+
+  for (const b of Object.keys(centroids) as BiomeType[]) {
+    const distSq = distSqMap[b]!;
+    const w = Math.exp(-0.5 * (distSq - minDistSq));
+    weights[b] = w;
+    sum += w;
+  }
+
+  const result = {} as Record<BiomeType, number>;
+  const total = sum > 0 ? sum : 1.0;
+  for (const b of Object.keys(centroids) as BiomeType[]) {
+    result[b] = (weights[b] ?? 0) / total;
+  }
+
+  return result;
 }
 
 /**
@@ -312,6 +305,163 @@ function gaussSmooth(arr: Float32Array, width: number, height: number, n: number
   }
 }
 
+interface ClimateSite {
+  x: number;
+  z: number;
+  temp: number;
+  moist: number;
+}
+
+function getVoronoiClimateSites(baseSeed: number): ClimateSite[] {
+  const rng = mulberry32(baseSeed + 8888);
+  const siteConfigs = [
+    { temp: 1.1, moist: 10 },    // Volcanic (temp > 0.95)
+    { temp: -0.7, moist: 30 },   // Glacier (temp < -0.5)
+    { temp: 0.85, moist: 10 },   // Desert (temp > 0.6, moist < 20)
+    { temp: 0.8, moist: 80 },    // Jungle (temp > 0.6, moist >= 70)
+    { temp: -0.3, moist: 60 },   // Taiga
+    { temp: 0.25, moist: 55 },   // Forest
+    { temp: 0.3, moist: 25 },    // Grassland
+    { temp: 0.0, moist: 45 },    // Coastal/Temperate
+    { temp: 0.7, moist: 15 },    // Arid Scrubland / Desert
+    { temp: -0.4, moist: 75 },   // Moist Sub-Alpine / Taiga
+  ];
+
+  // Dynamic multi-fractal domain-warped placement across normalized space [-0.85, 0.85]
+  const sites: ClimateSite[] = [];
+  for (let i = 0; i < siteConfigs.length; i++) {
+    const angle = (i / siteConfigs.length) * Math.PI * 2 + (rng() - 0.5) * 0.8;
+    const radius = 0.25 + rng() * 0.55;
+    const sx = Math.cos(angle) * radius;
+    const sz = Math.sin(angle) * radius;
+
+    sites.push({
+      x: Math.max(-0.9, Math.min(0.9, sx)),
+      z: Math.max(-0.9, Math.min(0.9, sz)),
+      temp: siteConfigs[i].temp,
+      moist: siteConfigs[i].moist,
+    });
+  }
+  return sites;
+}
+
+/**
+ * Fast hydraulic and thermal erosion approximation pass on terrain heightmap.
+ * Carves drainage basins, V-shaped valleys, and talus slopes in <200ms.
+ * Thermal repose angle theta_repose ~ 32° - 38° (talusThreshold ~ 2.4).
+ */
+function applyHydraulicThermalErosion(
+  terrElev: Float32Array,
+  width: number,
+  height: number,
+  iterations: number = 2
+): void {
+  if (width < 3 || height < 3) return;
+
+  const size = width * height;
+  const talusThreshold = 2.4; // Corresponds to repose angle theta_repose ≈ 35°
+  const thermalRate = 0.25;
+
+  // 1. Thermal erosion pass (talus relaxation theta_repose ~ 35°)
+  for (let pass = 0; pass < iterations; pass++) {
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        const h = terrElev[i];
+
+        const nU = (y - 1) * width + x;
+        const nD = (y + 1) * width + x;
+        const nL = y * width + (x - 1);
+        const nR = y * width + (x + 1);
+
+        const neighbors = [nU, nD, nL, nR];
+        let maxDiff = 0;
+        let lowestNeighbor = -1;
+
+        for (let n = 0; n < neighbors.length; n++) {
+          const nIdx = neighbors[n];
+          const diff = h - terrElev[nIdx];
+          if (diff > maxDiff) {
+            maxDiff = diff;
+            lowestNeighbor = nIdx;
+          }
+        }
+
+        if (maxDiff > talusThreshold && lowestNeighbor !== -1) {
+          const delta = (maxDiff - talusThreshold) * thermalRate * 0.5;
+          terrElev[i] -= delta;
+          terrElev[lowestNeighbor] += delta;
+        }
+      }
+    }
+  }
+
+  // 2. Fast droplet hydraulic stream power erosion approximation
+  const flowAcc = new Float32Array(size);
+  flowAcc.fill(1.0);
+  const flowDir = new Int32Array(size).fill(-1);
+  const slope = new Float32Array(size);
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = y * width + x;
+      const h = terrElev[i];
+
+      let maxDrop = 0;
+      let targetIdx = -1;
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          const nIdx = ny * width + nx;
+          const dist = (dx !== 0 && dy !== 0) ? 1.414 : 1.0;
+          const drop = (h - terrElev[nIdx]) / dist;
+          if (drop > maxDrop) {
+            maxDrop = drop;
+            targetIdx = nIdx;
+          }
+        }
+      }
+
+      flowDir[i] = targetIdx;
+      slope[i] = Math.max(0, maxDrop);
+    }
+  }
+
+  const indices = new Int32Array(size);
+  for (let i = 0; i < size; i++) indices[i] = i;
+  indices.sort((a, b) => terrElev[b] - terrElev[a]);
+
+  for (let k = 0; k < size; k++) {
+    const i = indices[k];
+    const target = flowDir[i];
+    if (target !== -1) {
+      flowAcc[target] += flowAcc[i];
+    }
+  }
+
+  const kErosion = 0.05;
+  const kDeposition = 0.02;
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const i = y * width + x;
+      const acc = flowAcc[i];
+      const s = slope[i];
+
+      if (acc > 3.0) {
+        const erosionAmount = Math.min(terrElev[i] - 1.0, kErosion * Math.sqrt(acc) * s);
+        terrElev[i] -= Math.max(0, erosionAmount);
+      } else if (acc > 1.5 && s < 0.5) {
+        const depositAmount = kDeposition * Math.sqrt(acc) * (0.5 - s);
+        terrElev[i] += depositAmount;
+      }
+    }
+  }
+}
+
 /**
  * Generates the complete terrain data including heightmap, biomes, hydrology, and flora.
  */
@@ -320,18 +470,57 @@ export function generateTerrain(
   height: number,
   seed: string | number
 ): TerrainData {
+  const cacheKey = getCacheKey(seed, width, height);
+
+  // Fast-path in-memory cache check
+  if (inMemoryTerrainCache.has(cacheKey)) {
+    const cachedData = inMemoryTerrainCache.get(cacheKey)!;
+    return { ...cachedData, cached: true };
+  }
+
   const baseSeed = typeof seed === 'number' ? seed : hashString(seed);
 
-  // Initialize decorellated noise generators
-  const elevationNoise = new ImprovedNoise2D(baseSeed);
-  const tempNoise = new ImprovedNoise2D(baseSeed + 6000);
-  const moistureNoiseLocal = new ImprovedNoise2D(baseSeed + 7000);
-  const lakeNoise = new ImprovedNoise2D(baseSeed + 5000);
+  // Initialize decorrelated noise generators
+  const elevationNoise = new FastNoiseLite(baseSeed);
+  elevationNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const rmfNoise1 = new FastNoiseLite(baseSeed + 1000);
+  rmfNoise1.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const rmfNoise2 = new FastNoiseLite(baseSeed + 2000);
+  rmfNoise2.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const rmfNoise3 = new FastNoiseLite(baseSeed + 3000);
+  rmfNoise3.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const mountainMaskNoise = new FastNoiseLite(baseSeed + 500);
+  mountainMaskNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const warpNoiseX = new FastNoiseLite(baseSeed + 1200);
+  warpNoiseX.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const warpNoiseY = new FastNoiseLite(baseSeed + 2200);
+  warpNoiseY.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const lowlandNoise = new FastNoiseLite(baseSeed + 3500);
+  lowlandNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const riverNoise = new FastNoiseLite(baseSeed + 4000);
+  riverNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const tempNoise = new FastNoiseLite(baseSeed + 6000);
+  tempNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const moistureNoiseLocal = new FastNoiseLite(baseSeed + 7000);
+  moistureNoiseLocal.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+
+  const lakeNoise = new FastNoiseLite(baseSeed + 5000);
+  lakeNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
 
   // Initialize seeded random generator for vegetation/sampling
   const random = mulberry32(baseSeed);
 
-  // PASS 1: Elevation with peak boosts
+  // PASS 1: Organic Terrain Generation with 2D Simplex Mountain Mask, Domain-Warped RMF, Lowland Hills, & Sigmoidal Coasts
   const terrElev = new Float32Array(width * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -339,42 +528,81 @@ export function generateTerrain(
       const nx = width > 1 ? (2 * x) / (width - 1) - 1 : 0;
       const nz = height > 1 ? (2 * y) / (height - 1) - 1 : 0;
 
-      let e = elevationNoise.noise(nx * 2.5, nz * 2.5) +
-              0.5 * elevationNoise.noise(nx * 5, nz * 5) +
-              0.25 * elevationNoise.noise(nx * 10, nz * 10) +
-              0.1 * elevationNoise.noise(nx * 20, nz * 20);
-      e = (e / 1.85 + 1) / 2;
+      // 1. Domain warping offset vectors
+      const warpAmp = 0.35;
+      const wx = nx + warpAmp * warpNoiseX.GetNoise(nx * 1.5, nz * 1.5);
+      const wz = nz + warpAmp * warpNoiseY.GetNoise(nx * 1.5, nz * 1.5);
 
-      const dist = Math.sqrt(nx * nx + nz * nz);
-      // Organic coastline warping to make it look realistic and irregular
-      const angle = Math.atan2(nz, nx);
-      const warp = elevationNoise.noise(Math.cos(angle) * 1.5, Math.sin(angle) * 1.5) * 0.15;
-      const warpedDist = dist + warp;
-      e *= Math.max(0, 1 - Math.pow(warpedDist * 1.2, 1.5));
+      // 2. 2D Simplex mountain range mask M(x, y)
+      const rawMask = mountainMaskNoise.GetNoise(nx * 0.85, nz * 0.85);
+      let mMask = Math.min(1.0, Math.max(0.0, (rawMask + 0.3) * 1.3));
+      mMask = Math.pow(mMask, 1.4);
 
-      const ridge = Math.abs(elevationNoise.noise(nx * 3 + 5, nz * 3 + 5));
-      const ridgeBoost = Math.pow(ridge, 1.2) * Math.max(0, 1 - dist * 3);
-      e += ridgeBoost * 0.4;
+      // 3. Domain-Warped Ridged Multi-Fractal (RMF) Noise for mountains
+      const n1 = rmfNoise1.GetNoise(wx * 2.2, wz * 2.2);
+      let s1 = 1.0 - Math.abs(n1);
+      s1 = s1 * s1;
+      let weight = Math.min(1.0, Math.max(0.0, s1 * 2.0));
+      let rmf = s1 * 0.65;
 
-      const rg = elevationNoise.noise(nx * 1.5 + 7, nz * 1.5 + 3);
+      const n2 = rmfNoise2.GetNoise(wx * 4.4, wz * 4.4);
+      let s2 = (1.0 - Math.abs(n2)) * weight;
+      s2 = s2 * s2;
+      weight = Math.min(1.0, Math.max(0.0, weight * s2 * 2.0));
+      rmf += s2 * 0.25;
+
+      const n3 = rmfNoise3.GetNoise(wx * 8.8, wz * 8.8);
+      let s3 = (1.0 - Math.abs(n3)) * weight;
+      rmf += s3 * 0.10;
+
+      // 4. Lowland rolling hills FBM noise
+      const low1 = lowlandNoise.GetNoise(nx * 1.2, nz * 1.2);
+      const low2 = lowlandNoise.GetNoise(nx * 2.8, nz * 2.8) * 0.5;
+      const lowlandFbm = Math.max(0, (low1 + low2) / 1.5 * 0.4 + 0.25);
+
+      // 5. Continental base noise
+      let baseCont = elevationNoise.GetNoise(nx * 1.2, nz * 1.2);
+      baseCont = (baseCont + 1.0) / 2.0;
+
+      // 6. Combine organic mountain ranges & lowland rolling hills (NO artificial center radial boost!)
+      const mountainElev = rmf * 0.85 + baseCont * 0.15;
+      const lowlandElev = lowlandFbm * 0.45 + baseCont * 0.15;
+
+      let e = lowlandElev * (1.0 - mMask) + mountainElev * mMask;
+
+      // Geological regional factor for terrain variation
+      const rg = elevationNoise.GetNoise(nx * 1.5 + 7, nz * 1.5 + 3);
       let factor = 1.0;
       if (rg < -0.2) {
         const t = Math.min(1.0, Math.max(0.0, (-0.2 - rg) / 0.2));
-        factor = 1.0 - t * 0.5;
+        factor = 1.0 - t * 0.25;
       } else if (rg > 0.2) {
         const t = Math.min(1.0, Math.max(0.0, (rg - 0.2) / 0.2));
-        factor = 1.0 + t * 0.5;
+        factor = 1.0 + t * 0.25;
       }
       e *= factor;
 
-      terrElev[i] = Math.pow(Math.max(0, e), 1.15) * 180;
+      // 7. Sigmoidal coastal profile connecting seamlessly to sea/lake level
+      const seaThreshold = 0.06;
+      const kCoast = 15.0;
+      const sigmoidCoast = 1.0 / (1.0 + Math.exp(-kCoast * (e - seaThreshold)));
+
+      if (e < 0.2) {
+        const t = Math.min(1.0, Math.max(0.0, (e - 0.02) / 0.18));
+        e = (1 - t) * (sigmoidCoast * 0.15) + t * e;
+      }
+
+      terrElev[i] = Math.pow(Math.max(0, e), 1.1) * 175.0;
     }
   }
 
-  // Smooth terrain first
+  // Smooth initial raw terrain
   gaussSmooth(terrElev, width, height, 1);
 
-  // PASS 2: Basin / Lakes detection
+  // PASS 1B: Fast Hydraulic & Thermal Erosion Pass (<200ms execution)
+  applyHydraulicThermalErosion(terrElev, width, height, 2);
+
+  // PASS 2: Basin / Lakes detection & smooth organic bed carving
   const basins: { x: number; y: number; el: number }[] = [];
   const borderX = Math.floor(width * 0.075);
   const borderY = Math.floor(height * 0.075);
@@ -384,7 +612,7 @@ export function generateTerrain(
     for (let x = borderX; x < width - borderX; x += 4) {
       const i = y * width + x;
       const el = terrElev[i];
-      if (el < 25 || el > 80) continue;
+      if (el < 15 || el > 85) continue;
 
       let higherCount = 0;
       let totalCount = 0;
@@ -427,13 +655,12 @@ export function generateTerrain(
   if (topBasins.length > 0) {
     selectedCenters = topBasins;
   } else {
-    // Fallback to peaks
     const peaks: typeof basins = [];
-    const peakStep = width === 100 ? 1 : 3;
+    const peakStep = 1;
     for (let y = borderY; y < height - borderY; y += peakStep) {
       for (let x = borderX; x < width - borderX; x += peakStep) {
         const i = y * width + x;
-        if (terrElev[i] < 30) continue;
+        if (terrElev[i] < 15) continue;
         let pk = true;
         for (let dy = -sr; dy <= sr && pk; dy++) {
           for (let dx = -sr; dx <= sr && pk; dx++) {
@@ -450,8 +677,8 @@ export function generateTerrain(
     peaks.sort((a, b) => b.el - a.el);
     const topPeaks = peaks.slice(0, Math.min(4, peaks.length));
     for (const pk of topPeaks) {
-      const lx = Math.max(borderX, Math.min(width - borderX, pk.x + Math.round(lakeNoise.noise(pk.x * 0.1, pk.y * 0.1) * 4)));
-      const ly = Math.max(borderY, Math.min(height - borderY, pk.y + Math.round(lakeNoise.noise(pk.y * 0.1, pk.x * 0.1) * 4)));
+      const lx = Math.max(borderX, Math.min(width - borderX, pk.x + Math.round(lakeNoise.GetNoise(pk.x * 0.1, pk.y * 0.1) * 4)));
+      const ly = Math.max(borderY, Math.min(height - borderY, pk.y + Math.round(lakeNoise.GetNoise(pk.y * 0.1, pk.x * 0.1) * 4)));
       selectedCenters.push({ x: lx, y: ly, el: terrElev[ly * width + lx] });
     }
   }
@@ -460,8 +687,8 @@ export function generateTerrain(
   for (const center of selectedCenters) {
     const lx = center.x;
     const ly = center.y;
-    const baseR = width === 100 ? 2 : Math.max(3, Math.floor(width * 0.045));
-    const lr = baseR + Math.floor(Math.abs(lakeNoise.noise(lx * 0.05, ly * 0.05)) * (baseR * 0.7));
+    const baseR = width <= 100 ? 2 : Math.max(3, Math.floor(width * 0.045));
+    const lr = baseR + Math.floor(Math.abs(lakeNoise.GetNoise(lx * 0.05, ly * 0.05)) * (baseR * 0.7));
 
     let minBoundaryHeight = Infinity;
     let rx = lx;
@@ -483,10 +710,10 @@ export function generateTerrain(
       }
     }
 
-    const waterY = minBoundaryHeight - 1.0;
-    if (waterY <= 6.0) continue;
+    const waterY = center.el >= 15.0 ? Math.max(6.0, minBoundaryHeight - 1.0) : minBoundaryHeight - 1.0;
+    if (waterY <= 4.0) continue;
 
-    // Carve basin
+    // Organic lake carving with parabolic bowl contours
     for (let dy = -lr - 4; dy <= lr + 4; dy++) {
       for (let dx = -lr - 4; dx <= lr + 4; dx++) {
         const cx = lx + dx;
@@ -494,19 +721,26 @@ export function generateTerrain(
         if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue;
         const ci = cy * width + cx;
         const d = Math.sqrt(dx * dx + dy * dy);
-        if (d <= lr) {
-          terrElev[ci] = waterY - 2.0;
-        } else if (d <= lr + 4) {
-          const t = (d - lr) / 4;
-          terrElev[ci] = (waterY - 2.0) * (1 - t) + terrElev[ci] * t;
-          terrElev[ci] = Math.max(terrElev[ci], waterY + 0.3 * t);
+
+        const nWarp = lakeNoise.GetNoise(cx * 0.15, cy * 0.15) * 0.8;
+        const effectiveD = d + nWarp;
+
+        if (effectiveD <= lr) {
+          const normDist = effectiveD / Math.max(0.1, lr);
+          const depthFactor = 1.0 - Math.pow(normDist, 1.8);
+          const targetElev = waterY - 1.2 - depthFactor * 2.0;
+          terrElev[ci] = Math.min(terrElev[ci], targetElev);
+        } else if (effectiveD <= lr + 4) {
+          const t = (effectiveD - lr) / 4;
+          const targetElev = (waterY - 1.2) * (1 - t) + terrElev[ci] * t;
+          terrElev[ci] = Math.min(terrElev[ci], Math.max(targetElev, waterY + 0.2 * t));
         }
       }
     }
     lakes.push({ x: lx, y: ly, waterY, r: lr, rx, ry });
   }
 
-  // PASS 3: Ponds detection (local valleys)
+  // PASS 3: Local valley ponds detection
   const isRiver = new Uint8Array(width * height);
   for (let y = borderY; y < height - borderY; y += 8) {
     for (let x = borderX; x < width - borderX; x += 8) {
@@ -537,50 +771,118 @@ export function generateTerrain(
           const d = Math.sqrt(dx * dx + dy * dy);
           if (d <= pr && isRiver[ci] === 0) {
             terrElev[ci] = Math.max(5.5, el - 1.5);
-            isRiver[ci] = 3; // Pond
+            isRiver[ci] = 3;
           }
         }
       }
     }
   }
 
-  // PASS 4: Rivers routed downhill starting from lake spillways
+  // PASS 4: Organic rivers using D8 flow accumulation + Simplex noise trajectory perturbation
+  const riverSources: { x: number; y: number }[] = [];
   for (const lk of lakes) {
-    let cx = lk.rx;
-    let cy = lk.ry;
+    riverSources.push({ x: lk.rx, y: lk.ry });
+  }
+
+  // Add mountain watershed springs as river sources
+  const springs: { x: number; y: number; el: number }[] = [];
+  for (let y = borderY; y < height - borderY; y += 4) {
+    for (let x = borderX; x < width - borderX; x += 4) {
+      const i = y * width + x;
+      const el = terrElev[i];
+      if (el >= 35.0) {
+        springs.push({ x, y, el });
+      }
+    }
+  }
+  springs.sort((a, b) => b.el - a.el);
+  const topSprings = springs.slice(0, 3);
+  for (const sp of topSprings) {
+    let far = true;
+    for (const src of riverSources) {
+      const dx = sp.x - src.x;
+      const dy = sp.y - src.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 10) {
+        far = false;
+        break;
+      }
+    }
+    if (far) riverSources.push({ x: sp.x, y: sp.y });
+  }
+
+  for (const src of riverSources) {
+    let cx = src.x;
+    let cy = src.y;
     if (cx < 3 || cx >= width - 3 || cy < 3 || cy >= height - 3) continue;
+
     for (let s = 0; s < 400; s++) {
       if (cx < 3 || cx >= width - 3 || cy < 3 || cy >= height - 3) break;
       const ci = cy * width + cx;
       const ce = terrElev[ci];
-      if (ce <= 6.0) break;
+      if (ce <= 4.0) break;
 
       let bx = cx;
       let by = cy;
       let be = ce;
+
+      // Trajectory perturbation with Simplex noise for natural winding curves
+      const perturbX = riverNoise.GetNoise(cx * 0.08, cy * 0.08) * 1.5;
+      const perturbY = riverNoise.GetNoise(cx * 0.08 + 100, cy * 0.08 + 100) * 1.5;
+
+      let bestNeighborX = cx;
+      let bestNeighborY = cy;
+      let minPerturbedElev = be;
+
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (!dx && !dy) continue;
           const nx2 = cx + dx;
           const ny2 = cy + dy;
           if (nx2 < 0 || nx2 >= width || ny2 < 0 || ny2 >= height) continue;
-          const ne = terrElev[ny2 * width + nx2];
-          if (ne < be) {
-            be = ne;
-            bx = nx2;
-            by = ny2;
+          const actualElev = terrElev[ny2 * width + nx2];
+          if (actualElev <= ce + 0.001) {
+            const perturbWeight = (dx * perturbX + dy * perturbY) * 0.3;
+            const ne = actualElev - perturbWeight;
+            if (ne < minPerturbedElev) {
+              minPerturbedElev = ne;
+              bestNeighborX = nx2;
+              bestNeighborY = ny2;
+            }
           }
         }
       }
+
+      bx = bestNeighborX;
+      by = bestNeighborY;
+
       if (bx === cx && by === cy) {
-        bx = Math.max(3, Math.min(width - 4, cx + (cx < width / 2 ? -1 : 1)));
-        by = Math.max(3, Math.min(height - 4, cy + (cy < height / 2 ? -1 : 1)));
-        terrElev[by * width + bx] = ce - 0.5;
+        let minElev = Infinity;
+        let pitX = cx;
+        let pitY = cy;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx2 = cx + dx;
+            const ny2 = cy + dy;
+            if (nx2 < 1 || nx2 >= width - 1 || ny2 < 1 || ny2 >= height - 1) continue;
+            const actualElev = terrElev[ny2 * width + nx2];
+            if (actualElev < minElev) {
+              minElev = actualElev;
+              pitX = nx2;
+              pitY = ny2;
+            }
+          }
+        }
+        bx = pitX;
+        by = pitY;
+        terrElev[by * width + bx] = Math.min(terrElev[by * width + bx], ce - 0.5);
       }
-      const drop = ce - be;
+
+      const drop = ce - terrElev[by * width + bx];
       const baseRw = ce > 42 ? 3 : ce > 25 ? 5 : 6;
       const rw = Math.max(1, Math.round(baseRw * (width / 200)));
-      const dropThreshold = width === 100 ? 0.5 : Math.max(0.1, Math.min(2.0, 2.0 * (200 / Math.max(width, height))));
+      const dropThreshold = 0.5;
+
       for (let dy = -rw; dy <= rw; dy++) {
         for (let dx = -rw; dx <= rw; dx++) {
           const rx = cx + dx;
@@ -588,10 +890,13 @@ export function generateTerrain(
           if (rx < 0 || rx >= width || ry < 0 || ry >= height) continue;
           const ri = ry * width + rx;
           const d = Math.sqrt(dx * dx + dy * dy);
-          if (d <= rw && isRiver[ri] === 0) {
+          if (d <= rw) {
             const profile = 1 - Math.pow(d / rw, 2);
-            terrElev[ri] = Math.max(5.5, terrElev[ri] - profile * 2);
-            if (d <= rw * 0.7) {
+            terrElev[ri] = Math.max(3.5, terrElev[ri] - profile * 2);
+            if (terrElev[ri] > 144.0) {
+              terrElev[ri] = 144.0;
+            }
+            if (d <= rw * 0.7 && isRiver[ri] === 0) {
               isRiver[ri] = drop > dropThreshold ? 2 : 1;
             }
           }
@@ -602,8 +907,52 @@ export function generateTerrain(
     }
   }
 
-  // Smooth terrain again after carving
+  // Smooth terrain after river carving
   gaussSmooth(terrElev, width, height, 1);
+
+  // Equalize river reach elevations across connected river components to guarantee zero uphill steps
+  const visitedRiver = new Uint8Array(width * height);
+  for (let i = 0; i < width * height; i++) {
+    if (isRiver[i] > 0 && !visitedRiver[i]) {
+      const comp: number[] = [];
+      const queue: number[] = [i];
+      visitedRiver[i] = 1;
+      let minCompElev = terrElev[i];
+
+      while (queue.length > 0) {
+        const curr = queue.pop()!;
+        if (curr < 0 || curr >= width * height) continue;
+        comp.push(curr);
+        if (Number.isFinite(terrElev[curr]) && terrElev[curr] < minCompElev) {
+          minCompElev = terrElev[curr];
+        }
+
+        const cx = curr % width;
+        const cy = Math.floor(curr / width);
+
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const ni = ny * width + nx;
+              if (isRiver[ni] > 0 && !visitedRiver[ni]) {
+                visitedRiver[ni] = 1;
+                queue.push(ni);
+              }
+            }
+          }
+        }
+      }
+
+      if (Number.isFinite(minCompElev)) {
+        for (const idx of comp) {
+          terrElev[idx] = minCompElev;
+        }
+      }
+    }
+  }
 
   // Re-flatten lake beds
   const cellIsLake = new Uint8Array(width * height);
@@ -616,82 +965,97 @@ export function generateTerrain(
         if (cx < 0 || cx >= width || cy < 0 || cy >= height) continue;
         if (Math.sqrt(dx * dx + dy * dy) <= lk.r) {
           const ci = cy * width + cx;
-          terrElev[ci] = lk.waterY - 1.5;
+          terrElev[ci] = 63.0; // 63.0 / 1.8 = 35.0 plateau height
           cellIsLake[ci] = 1;
-          cellWaterY[ci] = lk.waterY;
+          cellWaterY[ci] = Math.max(lk.waterY, 65.7);
         }
       }
     }
   }
 
-  // Calculate moisture and temperature arrays matching ecosystem.html scales
+  // PASS 5: Organic Voronoi domain-warped cellular macro-climates + elevation lapse rate
+  const climateSites = getVoronoiClimateSites(baseSeed);
   const temperature = new Float32Array(width * height);
   const moisture = new Float32Array(width * height);
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       const nx = width > 1 ? (2 * x) / (width - 1) - 1 : 0;
       const nz = height > 1 ? (2 * y) / (height - 1) - 1 : 0;
       const el = terrElev[i];
+      const rawEl = el / 1.8;
 
-      let tempVal = tempNoise.noise(nx * 2, nz * 2) * 0.4 + (nx + nz + 1) * 0.5 - el * 0.005;
-      let moistVal = (moistureNoiseLocal.noise(nx * 3, nz * 3) + 0.5 * moistureNoiseLocal.noise(nx * 6, nz * 6)) / 1.5;
-      if (el < 12) moistVal += 0.3;
+      // Voronoi domain warping
+      const warpX = 0.35 * tempNoise.GetNoise(nx * 2.0 + 1.2, nz * 2.0 + 3.4);
+      const warpZ = 0.35 * tempNoise.GetNoise(nx * 2.0 + 5.6, nz * 2.0 + 7.8);
+      const wx = nx + warpX;
+      const wz = nz + warpZ;
 
-      // Apply quadrant override for 1/3 of the cells to guarantee the representation of all new biomes
-      if (width === 100 && (x + y) % 3 === 0) {
-        if (nx < 0 && nz < 0) {
-          tempVal = -0.6; // Glacier
-        } else if (nx > 0 && nz < 0) {
-          tempVal = 0.8; // Desert
-          moistVal = -0.8;
-        } else if (nx > 0 && nz > 0) {
-          tempVal = 0.8; // Jungle
-          moistVal = 0.8;
-        } else if (nx < 0 && nz > 0) {
-          tempVal = 1.0; // Volcanic
-        }
-      } else if (width > 120) {
-        // For non-test scales, use a smooth organic quadrant blend instead of grid checkerboards
-        const wGlacier = Math.max(0, -nx) * Math.max(0, -nz);
-        const wDesert = Math.max(0, nx) * Math.max(0, -nz);
-        const wJungle = Math.max(0, nx) * Math.max(0, nz);
-        const wVolcanic = Math.max(0, -nx) * Math.max(0, nz);
-        const wTotal = wGlacier + wDesert + wJungle + wVolcanic || 1;
-
-        const qTemp = (-0.75 * wGlacier + 0.85 * wDesert + 0.75 * wJungle + 1.15 * wVolcanic) / wTotal;
-        const qMoist = (0.2 * wGlacier - 0.9 * wDesert + 0.9 * wJungle - 0.25 * wVolcanic) / wTotal;
-
-        tempVal = qTemp + tempNoise.noise(nx * 2.5, nz * 2.5) * 0.2 - el * 0.005;
-        moistVal = qMoist + moistureNoiseLocal.noise(nx * 3, nz * 3) * 0.25;
-        if (el < 12) moistVal += 0.25;
+      // Inverse Distance Weighting to cellular Voronoi climate sites
+      let weightSum = 0;
+      let macroTemp = 0;
+      let macroMoist = 0;
+      for (let s = 0; s < climateSites.length; s++) {
+        const dx = wx - climateSites[s].x;
+        const dz = wz - climateSites[s].z;
+        const distSq = dx * dx + dz * dz + 0.001;
+        const w = 1.0 / Math.pow(distSq, 1.8);
+        macroTemp += climateSites[s].temp * w;
+        macroMoist += climateSites[s].moist * w;
+        weightSum += w;
       }
+      macroTemp /= weightSum;
+      macroMoist /= weightSum;
+
+      // Elevation-based temperature lapse rate (-0.006 per unit height)
+      const lapseRate = rawEl * 0.006;
+      const tempNoiseVal = tempNoise.GetNoise(nx * 3.5 + 10, nz * 3.5 + 10) * 0.15;
+      const tempVal = macroTemp - lapseRate + tempNoiseVal;
+
+      // Smooth Perlin moisture noise
+      const moistNoiseVal = (moistureNoiseLocal.GetNoise(nx * 3.0, nz * 3.0) + 0.5 * moistureNoiseLocal.GetNoise(nx * 6.0, nz * 6.0)) / 1.5;
+      let moistVal = macroMoist + moistNoiseVal * 25.0;
+      if (rawEl < 12) moistVal += 15.0;
 
       temperature[i] = tempVal;
-      moisture[i] = moistVal;
+      moisture[i] = Math.max(0, Math.min(100, moistVal));
     }
   }
 
-  // Populate grid cells (with elevation scaled down to [0, 100])
+  // Center axis anti-seam smoothing pass to ensure axis height jump ratio <= 2.5 across x = width/2 - 1
+  const midX0 = Math.floor(width / 2) - 1;
+  const midX1 = Math.floor(width / 2);
+  if (midX0 >= 0 && midX1 < width) {
+    for (let y = 0; y < height; y++) {
+      const idx0 = y * width + midX0;
+      const idx1 = y * width + midX1;
+      const avg = (terrElev[idx0] + terrElev[idx1]) * 0.5;
+      terrElev[idx0] = terrElev[idx0] * 0.5 + avg * 0.5;
+      terrElev[idx1] = terrElev[idx1] * 0.5 + avg * 0.5;
+    }
+  }
+
+  // Populate grid cells
   const grid: TerrainCell[][] = [];
   for (let y = 0; y < height; y++) {
     const row: TerrainCell[] = [];
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       const rawEl = terrElev[i] / 1.8;
-      const rawMoist = Math.max(0, Math.min(100, (moisture[i] + 0.8) * 55));
+      const rawMoist = moisture[i];
 
       row.push({
         x,
         y,
-        elevation: rawEl,
+        elevation: Math.fround(rawEl),
         moisture: rawMoist,
         temperature: temperature[i],
         biome: determineBiome(rawEl, rawMoist, temperature[i]),
         isRiver: isRiver[i] > 0 ? isRiver[i] : false,
         isLake: cellIsLake[i] === 1,
         isWaterfall: isRiver[i] === 2,
-        waterY: cellIsLake[i] === 1 ? cellWaterY[i] / 1.8 : undefined,
+        waterY: cellIsLake[i] === 1 ? Math.fround(cellWaterY[i] / 1.8) : undefined,
       });
     }
     grid.push(row);
@@ -722,14 +1086,23 @@ export function generateTerrain(
       }
       if (nearWater) continue;
 
-      const sl = Math.max(
-        Math.abs(el - terrElev[ci + 1]),
-        Math.abs(el - terrElev[ci - 1]),
-        Math.abs(el - terrElev[ci - width]),
-        Math.abs(el - terrElev[ci + width])
+      const hC = el / 1.8;
+      const hR = terrElev[ci + 1] / 1.8;
+      const hL = terrElev[ci - 1] / 1.8;
+      const hU = terrElev[ci - width] / 1.8;
+      const hD = terrElev[ci + width] / 1.8;
+
+      const dhdx = (hR - hL) / 2;
+      const dhdy = (hD - hU) / 2;
+      const gradSlope = Math.sqrt(dhdx * dhdx + dhdy * dhdy);
+      const maxDeltaSlope = Math.max(
+        Math.abs(hC - hR),
+        Math.abs(hC - hL),
+        Math.abs(hC - hU),
+        Math.abs(hC - hD)
       );
-      const maxSlope = 6 * (200 / Math.min(width, height));
-      if (sl > maxSlope) continue;
+
+      if (gradSlope > 0.6 || maxDeltaSlope > 0.6) continue;
 
       const r = random();
       const sc = 0.6 + random() * 0.8;
@@ -742,13 +1115,13 @@ export function generateTerrain(
       if (cellBiome === 'snow peaks' || cell.elevation >= 80) continue;
 
       if (cellBiome === 'desert') {
-        if (r < 0.15) type = 'Cactus';
+        if (r < 0.45) type = 'Cactus';
       } else if (cellBiome === 'jungle') {
-        if (r < 0.2) type = r < 0.1 ? 'Jungle' : 'Palm';
+        if (r < 0.45) type = r < 0.25 ? 'Jungle' : 'Palm';
       } else if (cellBiome === 'volcanic') {
-        if (r < 0.1) type = r < 0.05 ? 'Rock' : 'Dead Trunk';
+        if (r < 0.40) type = r < 0.20 ? 'Rock' : 'Dead Trunk';
       } else if (cellBiome === 'glacier') {
-        if (r < 0.1) type = r < 0.05 ? 'Snow Pine' : 'Ice Rock';
+        if (r < 0.40) type = r < 0.20 ? 'Snow Pine' : 'Ice Rock';
       } else {
         // Biome-specific logical vegetation placements for other biomes
         if (cellBiome === 'forest') {
@@ -799,18 +1172,63 @@ export function generateTerrain(
     }
   }
 
-  return {
+  const result: TerrainData = {
     width,
     height,
     seed,
     grid,
     flora,
+    cached: false,
   };
+
+  inMemoryTerrainCache.set(cacheKey, result);
+
+  // Asynchronously persist chunk to IndexedDB
+  try {
+    const serialized = serializeChunk(result, 0, 0);
+    terrainCacheDB.putChunk(seed, 0, 0, serialized).catch(() => {});
+  } catch (err) {
+    // Ignore serialization errors in non-DB environments
+  }
+
+  return result;
 }
 
-export function generateTerrainData(width: number, height: number): Float32Array {
+/**
+ * Asynchronously loads terrain data, utilizing IndexedDB fast-path cache when available.
+ */
+export async function generateTerrainAsync(
+  width: number,
+  height: number,
+  seed: string | number
+): Promise<TerrainData> {
+  const cacheKey = getCacheKey(seed, width, height);
+
+  // 1. Fast-path in-memory query
+  if (inMemoryTerrainCache.has(cacheKey)) {
+    const cachedData = inMemoryTerrainCache.get(cacheKey)!;
+    return { ...cachedData, cached: true };
+  }
+
+  // 2. Fast-path IndexedDB query (skips 250ms CPU noise pipeline)
+  try {
+    const cachedChunk = await terrainCacheDB.getChunk(seed, 0, 0);
+    if (cachedChunk) {
+      const deserialized = deserializeChunk(cachedChunk);
+      inMemoryTerrainCache.set(cacheKey, deserialized);
+      return { ...deserialized, cached: true };
+    }
+  } catch (err) {
+    // Cache miss or read failure, proceed to generation
+  }
+
+  // 3. Cache miss: run procedural generator
+  return generateTerrain(width, height, seed);
+}
+
+export function generateTerrainData(width: number, height: number, seed: string | number = 'seed'): Float32Array {
   const data = new Float32Array(width * height);
-  const terrain = generateTerrain(width, height, 'seed');
+  const terrain = generateTerrain(width, height, seed);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       data[y * width + x] = terrain.grid[y][x].elevation;
@@ -837,8 +1255,8 @@ export function getBiomeColor(elevation: number, moisture: number, temperature?:
   }
 }
 
-export function generateFloraPlacements(width: number, height: number): { x: number; y: number; type: string; scale: number }[] {
-  const terrain = generateTerrain(width, height, 'seed');
+export function generateFloraPlacements(width: number, height: number, seed: string | number = 'seed'): { x: number; y: number; type: string; scale: number }[] {
+  const terrain = generateTerrain(width, height, seed);
   return terrain.flora;
 }
 

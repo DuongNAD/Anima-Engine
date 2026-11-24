@@ -11,7 +11,7 @@ import PositionalAudio from './PositionalAudio';
 import CameraControls from './CameraControls';
 import Minimap from './Minimap';
 import { audioManager } from './utils/audioManager';
-import { generateTerrainData } from './utils/terrainGenerator';
+import { generateTerrainData, clearTerrainCache } from './utils/terrainGenerator';
 
 // Patch THREE.Object3D to prevent R3F crash on data-* attributes in browser
 if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as any).data) {
@@ -49,6 +49,19 @@ export const LandscapeShowcase: React.FC = () => {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'fly' | 'cinematic' | 'map'>('orbit');
   const [timeOfDay, setTimeOfDay] = useState<number>(12.0);
+  const [seedKey, setSeedKey] = useState<number>(0);
+  const [cacheStatus, setCacheStatus] = useState<string>('Cached (IndexedDB)');
+
+  const currentSeed = `seed_${seedKey}`;
+
+  const handleRegenerateCache = () => {
+    clearTerrainCache();
+    setCacheStatus('Computed (Noise)');
+    setSeedKey((prev) => prev + 1);
+    setTimeout(() => {
+      setCacheStatus('Cached (IndexedDB)');
+    }, 500);
+  };
 
   useEffect(() => {
     audioManager.initialize();
@@ -83,7 +96,7 @@ export const LandscapeShowcase: React.FC = () => {
   const actualWidth = isVitest ? 100 : 1000;
   const actualHeight = isVitest ? 100 : 1000;
 
-  const heightMap = useMemo(() => generateTerrainData(actualWidth, actualHeight), [actualWidth, actualHeight]);
+  const heightMap = useMemo(() => generateTerrainData(actualWidth, actualHeight, currentSeed), [actualWidth, actualHeight, currentSeed]);
 
   let windSpeed = 1.0;
   let precipitationRate = 0.0;
@@ -126,9 +139,11 @@ export const LandscapeShowcase: React.FC = () => {
         cameraMode={cameraMode}
         onCameraModeChange={setCameraMode}
         timeOfDay={timeOfDay}
+        onRegenerateCache={handleRegenerateCache}
+        cacheStatus={cacheStatus}
       />
 
-      <Minimap gridWidth={1000} gridHeight={1000} />
+      <Minimap gridWidth={1000} gridHeight={1000} seed={currentSeed} />
 
       <Canvas
         camera={{ position: [0, 150, 300], fov: 60 }}
@@ -136,14 +151,14 @@ export const LandscapeShowcase: React.FC = () => {
         style={{ width: '100%', height: '100%' }}
       >
         <Sky speed={speed} timeOfDay={timeOfDay} />
-        <Terrain width={1000} height={1000} wetnessRatio={wetnessRatio} />
+        <Terrain width={1000} height={1000} wetnessRatio={wetnessRatio} seed={currentSeed} />
         {/* Seabed mesh base underneath the transparent water plane */}
         <mesh rotation-x={-Math.PI / 2} position={[0, -5, 0]} receiveShadow name="seabed-mesh">
           <planeGeometry args={[2000, 2000]} />
           <meshStandardMaterial color="#d2b48c" roughness={0.9} metalness={0.1} />
         </mesh>
-        <Water width={1000} height={1000} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} />
-        <Vegetation width={1000} height={1000} windSpeed={windSpeed} densityFactor={1.0} />
+        <Water width={1000} height={1000} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} seed={currentSeed} />
+        <Vegetation width={1000} height={1000} windSpeed={windSpeed} densityFactor={1.0} seed={currentSeed} />
         <Weather weather={weather} precipitationRate={precipitationRate} />
         <PositionalAudio id="ambient-forest" position={[0, 2, 0]} volume={volume} isMuted={isMuted} />
         <PositionalAudio id="waterfall" position={[10, 1, 10]} volume={volume} isMuted={isMuted} />

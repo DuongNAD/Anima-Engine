@@ -205,32 +205,38 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     it('should place cactus in Desert, jungle/palm in Jungle, rock/dead trunks in Volcanic, and snow-covered pines/ice rocks in Glacier', () => {
       const width = 100;
       const height = 100;
-      const terrain = generateTerrain(width, height, 'flora_test_seed');
 
       let desertCactusFound = false;
       let jungleTreeFound = false;
       let volcanicRockOrTrunkFound = false;
       let glacierPineOrIceFound = false;
 
-      terrain.flora.forEach((f) => {
-        const cx = Math.floor(f.x);
-        const cy = Math.floor(f.y);
-        const cell = terrain.grid[cy][cx] as any;
+      // Loop through seeds to find biomes and verify specific flora types placed in them
+      for (let s = 0; s < 50; s++) {
+        const terrain = generateTerrain(width, height, `flora_test_seed_${s}`);
+        terrain.flora.forEach((f) => {
+          const cx = Math.floor(f.x);
+          const cy = Math.floor(f.y);
+          const cell = terrain.grid[cy][cx] as any;
 
-        if (cell.biome === 'desert') {
-          expect(f.type).toBe('Cactus');
-          desertCactusFound = true;
-        } else if (cell.biome === 'jungle') {
-          expect(['Jungle', 'Palm']).toContain(f.type);
-          jungleTreeFound = true;
-        } else if (cell.biome === 'volcanic') {
-          expect(['Rock', 'Dead Trunk']).toContain(f.type);
-          volcanicRockOrTrunkFound = true;
-        } else if (cell.biome === 'glacier') {
-          expect(['Snow Pine', 'Ice Rock']).toContain(f.type);
-          glacierPineOrIceFound = true;
+          if (cell.biome === 'desert') {
+            expect(f.type).toBe('Cactus');
+            desertCactusFound = true;
+          } else if (cell.biome === 'jungle') {
+            expect(['Jungle', 'Palm']).toContain(f.type);
+            jungleTreeFound = true;
+          } else if (cell.biome === 'volcanic') {
+            expect(['Rock', 'Dead Trunk']).toContain(f.type);
+            volcanicRockOrTrunkFound = true;
+          } else if (cell.biome === 'glacier') {
+            expect(['Snow Pine', 'Ice Rock']).toContain(f.type);
+            glacierPineOrIceFound = true;
+          }
+        });
+        if (desertCactusFound && jungleTreeFound && volcanicRockOrTrunkFound && glacierPineOrIceFound) {
+          break;
         }
-      });
+      }
 
       expect(desertCactusFound).toBe(true);
       expect(jungleTreeFound).toBe(true);

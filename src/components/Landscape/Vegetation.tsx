@@ -11,6 +11,7 @@ interface VegetationProps {
   windDirection?: number; // Prop required by Milestone 4
   densityFactor?: number;
   maxCapacity?: number;
+  seed?: string | number;
 }
 
 // Helper to merge two buffer geometries with distinct vertex colors
@@ -71,6 +72,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
   windDirection,
   densityFactor = 1.0,
   maxCapacity = 1000,
+  seed = 'seed',
 }) => {
   const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
   const actualWidth = isVitest ? Math.min(width, 100) : width;
@@ -79,8 +81,8 @@ export const Vegetation: React.FC<VegetationProps> = ({
   // Use windDirection if defined, fallback to windAngle
   const currentWindDirection = windDirection !== undefined ? windDirection : windAngle;
 
-  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, 'seed'), [actualWidth, actualHeight]);
-  const allPlacements = useMemo(() => generateFloraPlacements(actualWidth, actualHeight), [actualWidth, actualHeight]);
+  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, seed), [actualWidth, actualHeight, seed]);
+  const allPlacements = useMemo(() => generateFloraPlacements(actualWidth, actualHeight, seed), [actualWidth, actualHeight, seed]);
 
   // Scale maxCapacity with map size if not explicitly set high
   const activeMaxCapacity = useMemo(() => {
@@ -300,26 +302,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
     uniforms.windAngle.value = currentWindDirection;
   }, [currentWindDirection, uniforms]);
 
-  // Update clock time on frame ticks
-  useFrame((state) => {
-    const elapsed = state.clock.getElapsedTime();
-    if (uniforms) {
-      if (uniforms.uTime) uniforms.uTime.value = elapsed;
-      if (uniforms.time) uniforms.time.value = elapsed;
-    }
-    // Update all materials' uniforms if they exist on the material
-    Object.values(materials).forEach((mat) => {
-      if (mat.userData.uniforms) {
-        if (mat.userData.uniforms.uTime) mat.userData.uniforms.uTime.value = elapsed;
-        if (mat.userData.uniforms.time) mat.userData.uniforms.time.value = elapsed;
-        if (mat.userData.uniforms.uWindSpeed) mat.userData.uniforms.uWindSpeed.value = windSpeed;
-        if (mat.userData.uniforms.windSpeed) mat.userData.uniforms.windSpeed.value = windSpeed;
-        if (mat.userData.uniforms.uWindDirection) mat.userData.uniforms.uWindDirection.value = currentWindDirection;
-        if (mat.userData.uniforms.windAngle) mat.userData.uniforms.windAngle.value = currentWindDirection;
-      }
-    });
-  });
-
   // Shader customization function to inject wind sway warp
   const customizeWindSwayShader = (shader: any) => {
     shader.uniforms.uTime = uniforms.uTime;
@@ -428,6 +410,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       Bush: createWindMat('#5a9e45'),
       Rock: createStaticMat('#a08860'),
       PalmTrunk: createWindMat('#8b6914'),
+      PalmLaves: createWindMat('#44aa33'),
       PalmLeaves: createWindMat('#44aa33'),
       Cactus: createWindMat('#3a7a30'),
       JungleTrunk: createWindMat('#4a3520'),
@@ -442,6 +425,28 @@ export const Vegetation: React.FC<VegetationProps> = ({
       IceRock: createStaticMat('#88ccee'),
     };
   }, [uniforms]);
+
+  // Update clock time on frame ticks
+  useFrame((state) => {
+    const elapsed = state.clock.getElapsedTime();
+    if (uniforms) {
+      if (uniforms.uTime) uniforms.uTime.value = elapsed;
+      if (uniforms.time) uniforms.time.value = elapsed;
+    }
+    // Update all materials' uniforms if they exist on the material
+    if (materials) {
+      Object.values(materials).forEach((mat: any) => {
+        if (mat && mat.userData && mat.userData.uniforms) {
+          if (mat.userData.uniforms.uTime) mat.userData.uniforms.uTime.value = elapsed;
+          if (mat.userData.uniforms.time) mat.userData.uniforms.time.value = elapsed;
+          if (mat.userData.uniforms.uWindSpeed) mat.userData.uniforms.uWindSpeed.value = windSpeed;
+          if (mat.userData.uniforms.windSpeed) mat.userData.uniforms.windSpeed.value = windSpeed;
+          if (mat.userData.uniforms.uWindDirection) mat.userData.uniforms.uWindDirection.value = currentWindDirection;
+          if (mat.userData.uniforms.windAngle) mat.userData.uniforms.windAngle.value = currentWindDirection;
+        }
+      });
+    }
+  });
 
   // Instance refs
   const oakTRef = useRef<THREE.InstancedMesh>(null);

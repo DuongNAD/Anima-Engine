@@ -12,6 +12,8 @@ interface LandscapeControlsOverlayProps {
   cameraMode: string;
   onCameraModeChange: (m: 'orbit' | 'fly' | 'cinematic' | 'map') => void;
   timeOfDay: number;
+  onRegenerateCache?: () => void;
+  cacheStatus?: string;
 }
 
 export const LandscapeControlsOverlay: React.FC<LandscapeControlsOverlayProps> = ({
@@ -26,6 +28,8 @@ export const LandscapeControlsOverlay: React.FC<LandscapeControlsOverlayProps> =
   cameraMode,
   onCameraModeChange,
   timeOfDay,
+  onRegenerateCache,
+  cacheStatus,
 }) => {
   // Format clock time (HH:MM)
   const hh = Math.floor(timeOfDay);
@@ -105,6 +109,9 @@ export const LandscapeControlsOverlay: React.FC<LandscapeControlsOverlayProps> =
         <p style={{ fontSize: '0.7rem', color: '#7a8a9a', margin: '2px 0' }}>
           <span style={{ color: '#ffaa00', fontWeight: 600 }}>{weatherLabel}</span> | Cam{' '}
           <span style={{ color: '#4fc3f7', fontWeight: 600 }}>{cameraLabel}</span>
+        </p>
+        <p style={{ fontSize: '0.7rem', color: '#7a8a9a', margin: '2px 0' }}>
+          Cache: <span style={{ color: '#4ade80', fontWeight: 600 }}>{cacheStatus || 'Cached (IndexedDB)'}</span>
         </p>
       </div>
 
@@ -257,6 +264,27 @@ export const LandscapeControlsOverlay: React.FC<LandscapeControlsOverlayProps> =
           title="Fog"
         >
           🌫️
+        </button>
+
+        <div style={{ width: '1px', height: '20px', backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />
+
+        {/* Clear Cache & Regenerate Button */}
+        <button
+          onClick={onRegenerateCache}
+          style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.25)',
+            border: '1px solid rgba(239, 68, 68, 0.6)',
+            color: '#fca5a5',
+            padding: '4px 10px',
+            borderRadius: '7px',
+            cursor: 'pointer',
+            fontSize: '0.65rem',
+            fontWeight: 600,
+            transition: 'all 0.2s ease',
+          }}
+          title="Clear IndexedDB cache and regenerate terrain"
+        >
+          ♻️ Clear Cache & Regenerate
         </button>
 
         <div style={{ width: '1px', height: '20px', backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />

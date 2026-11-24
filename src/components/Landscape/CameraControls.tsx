@@ -289,13 +289,15 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
     }
 
     // Update Web Audio Listener
-    const forwardVec = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-    audioManager.updateListener(
-      camera.position.x, camera.position.y, camera.position.z,
-      forwardVec.x, forwardVec.y, forwardVec.z,
-      upVec.x, upVec.y, upVec.z
-    );
+    if (camera?.quaternion && camera?.position) {
+      const forwardVec = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+      audioManager.updateListener(
+        camera.position.x, camera.position.y, camera.position.z,
+        forwardVec.x, forwardVec.y, forwardVec.z,
+        upVec.x, upVec.y, upVec.z
+      );
+    }
   });
 
   return (

@@ -15,6 +15,7 @@ interface TerrainProps {
   width?: number;
   height?: number;
   wetnessRatio?: number;
+  seed?: string | number;
 }
 
 function getBlendedBiomeColor(elevation: number, moisture: number, temperature?: number): { r: number; g: number; b: number } {
@@ -36,14 +37,14 @@ function getBlendedBiomeColor(elevation: number, moisture: number, temperature?:
   return { r: r / count, g: g / count, b: b / count };
 }
 
-export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wetnessRatio = 0 }) => {
+export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wetnessRatio = 0, seed = 'seed' }) => {
   const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
   const actualWidth = isVitest ? Math.min(width, 100) : width;
   const actualHeight = isVitest ? Math.min(height, 100) : height;
 
   // Generate the basic terrain data
-  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, 'seed'), [actualWidth, actualHeight]);
-  const terrainData = useMemo(() => generateTerrainData(actualWidth, actualHeight), [actualWidth, actualHeight]);
+  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, seed), [actualWidth, actualHeight, seed]);
+  const terrainData = useMemo(() => generateTerrainData(actualWidth, actualHeight, seed), [actualWidth, actualHeight, seed]);
 
   const lodRef = useRef<THREE.LOD>(null);
   const meshRef0 = useRef<THREE.Mesh>(null);
@@ -60,12 +61,15 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
     shader.uniforms.time = { value: 0 };
     shader.uniforms.uWidth = { value: actualWidth };
     shader.uniforms.uHeight = { value: actualHeight };
+    shader.uniforms.uWetnessRatio = { value: wetnessRatio };
     materialShaderRef.current = shader;
 
     shader.vertexShader = `
       uniform float time;
       uniform float uWidth;
       uniform float uHeight;
+      varying vec3 vWorldPosition;
+      varying vec3 vWorldNormal;
     ` + shader.vertexShader;
 
     shader.vertexShader = shader.vertexShader.replace(
@@ -78,6 +82,89 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
         float wave = sin(gx * 0.15 + time * 1.5) * cos(gz * 0.15 + time) * 0.3;
         transformed.y += wave;
       }
+      vec4 terrainWorldPos = modelMatrix * vec4(transformed, 1.0);
+      vWorldPosition = terrainWorldPos.xyz;
+      vWorldNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+      `
+    );
+
+    shader.fragmentShader = `
+      varying vec3 vWorldPosition;
+      varying vec3 vWorldNormal;
+
+      float terrainHash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+
+      float terrainNoise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(terrainHash(i + vec2(0.0,0.0)), terrainHash(i + vec2(1.0,0.0)), u.x),
+                   mix(terrainHash(i + vec2(0.0,1.0)), terrainHash(i + vec2(1.0,1.0)), u.x), u.y);
+      }
+    ` + shader.fragmentShader;
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <color_fragment>',
+      `
+      #include <color_fragment>
+      // Slope calculation math: slope = 1.0 - dot(vNormal, vec3(0.0, 1.0, 0.0))
+      float slope = 1.0 - clamp(dot(vWorldNormal, vec3(0.0, 1.0, 0.0)), 0.0, 1.0);
+      float rockFactor = smoothstep(0.30, 0.40, slope);
+
+      // Color / biome procedural texture splatting
+      float detailNoise = terrainNoise(vWorldPosition.xz * 0.4) * 0.2 + 0.9;
+      vec3 splatColor = diffuseColor.rgb * detailNoise;
+
+      // Automatically blend vertical cliff/rock colors when slope > 0.35 (~35 degrees)
+      vec3 cliffRockColor = vec3(0.35, 0.35, 0.38) * (0.8 + 0.3 * terrainNoise(vWorldPosition.xz * 0.2));
+      diffuseColor.rgb = mix(splatColor, cliffRockColor, rockFactor);
+      `
+    );
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <roughnessmap_fragment>',
+      `
+      #include <roughnessmap_fragment>
+      // Apply per-biome roughness mapping (Ice: 0.1, Wet sand/Beach: 0.3, Grassland: 0.8, Volcanic/Rock: 0.95)
+      float biomeRoughness = 0.8; // Grassland default
+      if (rockFactor > 0.35) {
+        biomeRoughness = 0.95; // Volcanic / Rock
+      } else if (diffuseColor.r > 0.8 && diffuseColor.g > 0.85 && diffuseColor.b > 0.9) {
+        biomeRoughness = 0.1; // Ice
+      } else if (vWorldPosition.y < 6.0 || (diffuseColor.r > 0.65 && diffuseColor.g > 0.58 && diffuseColor.b < 0.45)) {
+        biomeRoughness = 0.3; // Wet sand / Beach
+      }
+      roughnessFactor = biomeRoughness;
+      `
+    );
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <normal_fragment_begin>',
+      `
+      #include <normal_fragment_begin>
+      // Slope-based normal mapping for vertical cliff/rock face
+      if (rockFactor > 0.01) {
+        vec3 rockNormalPerturb = vec3(
+          sin(vWorldPosition.y * 5.0 + vWorldPosition.x * 2.0) * 0.25,
+          0.0,
+          cos(vWorldPosition.y * 5.0 + vWorldPosition.z * 2.0) * 0.25
+        );
+        normal = normalize(normal + rockNormalPerturb * rockFactor);
+      }
+      `
+    );
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <fog_fragment>',
+      `
+      #include <fog_fragment>
+      // Integrate atmospheric depth fog into fragment shader
+      #ifdef USE_FOG
+        float heightFogFactor = clamp(exp(-vWorldPosition.y * 0.015) * 0.35, 0.0, 0.45);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, heightFogFactor);
+      #endif
       `
     );
   };

@@ -1,5 +1,6 @@
 import { describe, it } from 'vitest';
-import { ImprovedNoise2D, determineBiome, poissonDiskSampling, mulberry32 } from '../../src/components/Landscape/utils/terrainGenerator';
+import { determineBiome, poissonDiskSampling, mulberry32 } from '../../src/components/Landscape/utils/terrainGenerator';
+import FastNoiseLite from 'fastnoise-lite';
 
 describe('simulate end-to-end waterfalls', () => {
   it('runs peak search increment 1 and lake/river generation', () => {
@@ -41,8 +42,10 @@ describe('simulate end-to-end waterfalls', () => {
     }
 
     const baseSeed = hashString(seed);
-    const elevationNoise = new ImprovedNoise2D(baseSeed);
-    const lakeNoise = new ImprovedNoise2D(baseSeed + 5000);
+    const elevationNoise = new FastNoiseLite(baseSeed);
+    elevationNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
+    const lakeNoise = new FastNoiseLite(baseSeed + 5000);
+    lakeNoise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2);
     const random = mulberry32(baseSeed);
 
     const terrElev = new Float32Array(width * height);
@@ -52,20 +55,20 @@ describe('simulate end-to-end waterfalls', () => {
         const nx = width > 1 ? (2 * x) / (width - 1) - 1 : 0;
         const nz = height > 1 ? (2 * y) / (height - 1) - 1 : 0;
 
-        let e = elevationNoise.noise(nx * 2.5, nz * 2.5) +
-                0.5 * elevationNoise.noise(nx * 5, nz * 5) +
-                0.25 * elevationNoise.noise(nx * 10, nz * 10) +
-                0.1 * elevationNoise.noise(nx * 20, nz * 20);
+        let e = elevationNoise.GetNoise(nx * 2.5, nz * 2.5) +
+                0.5 * elevationNoise.GetNoise(nx * 5, nz * 5) +
+                0.25 * elevationNoise.GetNoise(nx * 10, nz * 10) +
+                0.1 * elevationNoise.GetNoise(nx * 20, nz * 20);
         e = (e / 1.85 + 1) / 2;
 
         const dist = Math.sqrt(nx * nx + nz * nz);
         e *= Math.max(0, 1 - Math.pow(dist * 1.8, 1.8));
 
-        const ridge = Math.abs(elevationNoise.noise(nx * 3 + 5, nz * 3 + 5));
+        const ridge = Math.abs(elevationNoise.GetNoise(nx * 3 + 5, nz * 3 + 5));
         const ridgeBoost = Math.pow(ridge, 1.2) * Math.max(0, 1 - dist * 3);
         e += ridgeBoost * 0.4;
 
-        const rg = elevationNoise.noise(nx * 1.5 + 7, nz * 1.5 + 3);
+        const rg = elevationNoise.GetNoise(nx * 1.5 + 7, nz * 1.5 + 3);
         let factor = 1.0;
         if (rg < -0.2) {
           const t = Math.min(1.0, Math.max(0.0, (-0.2 - rg) / 0.2));
@@ -154,8 +157,8 @@ describe('simulate end-to-end waterfalls', () => {
       peaks.sort((a, b) => b.el - a.el);
       const topPeaks = peaks.slice(0, Math.min(4, peaks.length));
       for (const pk of topPeaks) {
-        const lx = Math.max(borderX, Math.min(width - borderX, pk.x + Math.round(lakeNoise.noise(pk.x * 0.1, pk.y * 0.1) * 4)));
-        const ly = Math.max(borderY, Math.min(height - borderY, pk.y + Math.round(lakeNoise.noise(pk.y * 0.1, pk.x * 0.1) * 4)));
+        const lx = Math.max(borderX, Math.min(width - borderX, pk.x + Math.round(lakeNoise.GetNoise(pk.x * 0.1, pk.y * 0.1) * 4)));
+        const ly = Math.max(borderY, Math.min(height - borderY, pk.y + Math.round(lakeNoise.GetNoise(pk.y * 0.1, pk.x * 0.1) * 4)));
         selectedCenters.push({ x: lx, y: ly, el: terrElev[ly * width + lx] });
       }
     }
@@ -166,7 +169,7 @@ describe('simulate end-to-end waterfalls', () => {
     for (const center of selectedCenters) {
       const lx = center.x;
       const ly = center.y;
-      const lr = baseR + Math.floor(Math.abs(lakeNoise.noise(lx * 0.05, ly * 0.05)) * (baseR * 0.7));
+      const lr = baseR + Math.floor(Math.abs(lakeNoise.GetNoise(lx * 0.05, ly * 0.05)) * (baseR * 0.7));
 
       let minBoundaryHeight = Infinity;
       let rx = lx;

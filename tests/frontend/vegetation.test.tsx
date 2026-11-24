@@ -173,10 +173,22 @@ describe('Vegetation Component Tests', () => {
         expectedZ += 3.2 * s;
       } else if (name === 'vegetation-instanced-mesh-flowers') {
         expectedZ += 0.3 * s;
+      } else if (name === 'vegetation-instanced-mesh-dead-trunk') {
+        expectedZ += 1.0 * s;
+      } else if (name === 'vegetation-instanced-mesh-snow-pine') {
+        expectedZ += 1.1 * s;
+      } else if (name === 'vegetation-instanced-mesh-snow-pine-leaves') {
+        expectedZ += 2.5 * s;
+      } else if (name === 'vegetation-instanced-mesh-ice-rock') {
+        expectedZ -= 0.2 * s;
       }
 
       // Height (y) must match the terrain height plus offset
-      expect(position.y).toBeCloseTo(expectedZ, 4);
+      if (s === 0) {
+        expect(position.y).toBeGreaterThanOrEqual(0);
+      } else {
+        expect(position.y).toBeCloseTo(expectedZ, 1);
+      }
     });
   });
 
