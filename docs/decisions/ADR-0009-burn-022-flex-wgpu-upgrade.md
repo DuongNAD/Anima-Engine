@@ -1,9 +1,9 @@
 ---
 title: ADR-0009 — Nâng Burn lên 0.22.1, dùng burn-flex và cô lập stream WGPU liên luồng (QĐ-C, QĐ-R1c-a, QĐ-R1c-b)
-status: proposed
+status: accepted
 owner: architecture
-last_reviewed: 2026-11-18
-decision_date: 2026-11-18
+last_reviewed: 2026-11-24
+decision_date: 2026-11-24
 supersedes: none
 superseded_by: none
 ---
@@ -11,6 +11,7 @@ superseded_by: none
 # ADR-0009 — Nâng Burn lên 0.22.1, dùng `burn-flex` và cô lập stream WGPU liên luồng (`QĐ-C`, `QĐ-R1c-a`, `QĐ-R1c-b`)
 
 > **Trạng thái: đề xuất (`proposed`), chờ phê duyệt của chủ dự án sau khi tháo các điểm chặn R5 ngoài phạm vi uỷ quyền thẻ R1c.**
+> **Cập nhật trạng thái (2026-11-24 — `QD-OPENQ` / `QD-C2`):** Đã được chủ dự án phê duyệt **`accepted` (`2026-11-24`, `QD-OPENQ` Nhóm A, `PR #255`)**; câu hỏi mở pháp lý còn lại (`utf8-chars@3.0.7`) được giải quyết bởi `QD-C2`. Văn bản đề xuất gốc bên dưới được giữ nguyên theo chính sách ADR bất biến.
 > Phần mã nguồn, test, di trú snapshot và ADR này được thực hiện trên nhánh `win/r1c-burn-upgrade` (từ `origin/feat/ecological-selection`). Toàn bộ phép đo bên dưới lấy trực tiếp trên Windows 11 x64 + RTX 5060 Ti cùng một cấu hình vừa kiểm chứng.
 
 ## Bối cảnh
@@ -96,3 +97,10 @@ Trong phép chạy `GPU_WGPU` cuối với feature thu hẹp, tốc độ hồi 
 
 - **Đã thu hẹp khoảng cách từ 4 crate xuống còn đúng 1 crate (`utf8-chars 3.0.7`):** Điều kiện 1, 2, 3, 4, 5, 7 và toàn bộ `gen:compliance` / `check:compliance` đều xanh trên cấu hình thu hẹp.
 - **Quyết định `QĐ-C` còn lại của chủ dự án:** Do không có tập feature Cargo nào gỡ được `utf8-chars@3.0.7` (`pliron/std`) và `buildid@1.1.0` (`cubecl-runtime`/`cubecl-server`) mà vẫn giữ `ml-wgpu` (`burn/wgpu`) biên dịch và chạy Điều kiện 2/5, chủ dự án cần quyết định giữ hay bỏ `ml-wgpu` (hoặc cấp ngoại lệ pháp lý cho `utf8-chars 3.0.7`). Sau quyết định cuối cùng, cập nhật `CLAUDE.md`, `STATE_OF_THE_PROJECT.md` ở thẻ nối tiếp và chuyển ADR này sang `accepted`.
+  *(Ghi chú ngày 2026-11-24: Đã trả lời bởi `QD-OPENQ` / `QD-C2` dưới đây; giữ nguyên văn đề xuất gốc.)*
+
+## Quyết định chấp nhận (2026-11-24 — `QD-OPENQ` / `QD-C2`)
+
+- **Phê duyệt:** Ngày `2026-11-24`, chủ dự án phê duyệt Nhóm A (`"Duyệt A và B"`, ghi nhận trong `QD-OPENQ`, `PR #255`), chuyển `ADR-0009` sang trạng thái **`accepted`** với `decision_date: 2026-11-24` (thẻ `D22 ADR-STATUS`).
+- **Giải quyết câu hỏi mở còn lại (`QD-C2`):** Vấn đề tồn đọng về trường `license` trần trong `Cargo.toml` của `utf8-chars@3.0.7` đã được giải quyết theo **`QD-C2`** (`QD-OPENQ` Nhóm A): coi tuyên bố giấy phép trong Cargo là cấp phép hợp lệ; chấp nhận rủi ro pháp lý liên quan (không phải tư vấn pháp lý), qua đó giữ cấu hình `burn 0.22.1` + `burn-flex` và tuỳ chọn `ml-wgpu` thu hẹp như đã kiểm chứng.
+- **Ghi chú đồng bộ (`CLAUDE.md:41`):** `CLAUDE.md` tại dòng 41 vẫn ghi `ADR-0009` ở trạng thái `proposed`; tệp `CLAUDE.md` nằm ngoài phạm vi sửa của thẻ `D22` và được chuyển báo cáo để phiên Lead cập nhật.
