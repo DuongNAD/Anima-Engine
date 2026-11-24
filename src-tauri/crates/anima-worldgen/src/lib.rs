@@ -36,6 +36,8 @@ pub mod pipeline;
 pub mod rng;
 #[cfg(feature = "generate")]
 pub mod tectonic;
+#[cfg(feature = "generate")]
+pub mod verify;
 
 /// Fixed physical domain width/depth in metres (`40.96 km × 40.96 km` tropical coastal massif).
 pub const WORLD_EXTENT_M: f32 = 40_960.0;
