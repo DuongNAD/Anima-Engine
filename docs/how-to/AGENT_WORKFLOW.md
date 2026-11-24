@@ -378,6 +378,15 @@ QD-SIGNALS = a language system means creatures communicating: evolved signalling
             carried, receivers' response, shuffled-signal controls); a guest speaks only through its organism's
             channels, and human chat is out of world. ADR-0017 (proposed). (Owner in chat, 2026-11-24: "hệ thống
             ngôn ngữ", "Sinh vật giao tiếp với nhau".)
+QD-ECOSCALE = the ecosystem sustains itself through cycles, not caps: energy from sunlight flows up the food chain
+            under the closed-EU contract, detritus and carcasses return nutrients through decomposers (V4, V5),
+            and populations are regulated by food, predation and space (density dependence); live.prey_cap
+            becomes a legacy option, off on shared islands once that works. Organisms of very different sizes
+            use three tiers: individuals (medium and large animals, trees, shrubs; inhabitable), swarms or
+            super-individuals (a mosquito swarm, a fish school), and per-cell population fields (grass,
+            plankton, soil fauna, larvae). Pace scales with size (Kleiber); QD-PLAYRULES' 1-2 h lifespan is for
+            the typical inhabitable animal. Milestone 1 inhabits individuals only. ADR-0018 (proposed); numbers
+            stay D-slots. (Owner in chat, 2026-11-24: "oke đồng ý".)
 QD-WV25   = the three World v2 WV2-5 gates, answered in advance: (a) staging CC0 source assets for grid bake
             workers is allowed within QD-ASSETS (ambientCG and Poly Haven only, CC0-1.0 only, at most 60 MB
             downloaded and 20 MB committed, SOURCES.json with one licence_url per entry, GRID WORKER jobs under
@@ -924,6 +933,9 @@ R5-AUTH   =
   in the Dell main checkout only: create and push one branch dell/wip-backup-20261124 holding its uncommitted
   changes (secrets and build noise excluded and reported), then switch back; no stash, reset, clean, deletion,
   force or PR.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_153000), to anima-dell, documents
+  only: for card ECOSYSTEM-ADR, one new docs/decisions/ADR-0018-ecosystem-scales-and-cycles.md (proposed) and
+  one docs/ai/planning/2026-11-24-ecosystem-cards.md; no other path.
   AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_112000), to anima-case: card
   ISLAND-INVENTORY writes one hub file test_runs/anima-case_island_inventory_20261124.md and nothing in the
   repository.
