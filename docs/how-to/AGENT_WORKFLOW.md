@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-23
+last_reviewed: 2026-11-24
 review_cycle: monthly
 ---
 
@@ -357,6 +357,55 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
+            4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
+            (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
+            smooth cliff-less coast and ~4,600 needle spikes at 10 m. Decision: Options 3 + 1. Commit C01
+            (ranked first by the pre-registered rule) as a provisional world under artifacts/world-v2/
+            with gates.json recording all 15 gates as measured, "status": "provisional"; gates and
+            thresholds stay defined and unchanged; tests asserting an unmet gate on the official artifact
+            are #[ignore]d by name with a MAP-D4 reason in scripts/test_target_policy.mjs. The physics
+            rework (channel initiation and runoff, knickpoint waterfalls, lakes, coastal cliffs, spike
+            smoothing) is a later card WV2-PHYS2. (Owner in chat, 2026-11-24: "Tạm dùng C01 + sửa vật
+            lý sau".)
+QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
+            runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
+            example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
+            run_live_drift_pair path, blind by construction; run_sel2p_experiment.rs and src-tauri/src stay
+            unchanged. (Owner in chat, 2026-11-24: "Cho viết một file example mới".)
+QD-SEL2P2-D1..D7 = SEL2-P2 owner decisions on the draft of #247, all as the author recommended (owner in
+            chat, 2026-11-24: "duyệt theo khuyến nghị"): D1 (a) live.founder_genotype = 1.0 (2-segment
+            founder) in every arm, plus a blind 200,000-tick VIAB-2 pre-check before freeze (12 seeds
+            880001..=880012, survival and gate metrics only, pass at >= 11/12 survival in each of
+            scarce_mut0, selected, scarce_drift; disclose the mutation.rs:211 operator-4 wall); D2 (a)
+            resource_capacity_scale = 0.75, founder_layout = 0, drift_reset_ticks = 2000, with a
+            pre-approved escalation to founder_layout = 2 only if VIAB-2 at fl = 0 falls short on min_N or
+            C2; D3 (a) m = 3 {H1 selected-drift, H2 selected-mut0, H3 drift-mut0}, Holm, alpha 0.05;
+            D4 (b) primary endpoint ln(z_sel / z_drift), SESOI +-ln(1.10); D5 (a) N = 48 pairs, seeds
+            900001 + 1000*k for k = 0..47 (144 runs) on Windows 1; D6 (a) attrition per the #214 template
+            R3 (complete pairs primary iff p_ext <= 5% and pi_LL >= 0.85, with Lee bounds and RMST(200k),
+            else Lachin worst-rank over all N), drift_valid == true and has_shortfall == false per
+            contrast; D7 (a) QD-SEL2g pooled baseline of 12 seeds 970501..=970512,
+            min_surviving_baseline_seeds = 6, smoke C1 >= 5, C2 in [0.4, 0.6], C3 >= 30, C4 > 0.50,
+            C5 > 0. Merging the later freeze PR is a separate owner approval, as #231 was.
+QD-E3B-T  = the frozen E3b test no_trait_mass_observable_in_smoke_manifests_or_pre_run_artifact_paths
+            (src-tauri/tests/prereg_e3b_manifest_tests.rs, frozen in ebe636d, #231) asserted that
+            confirmation/ does not exist, which only holds before the run. It is rescoped in E3B-RUN
+            (#245) in the strict form: the recursive trait_mass scan still covers every file except
+            confirmation/ and a top-level RESULT.md, and a confirmation/ bundle must carry
+            smoke_reference.wp2_passed == true; both negative controls fail as required. Smoke-only
+            scanning (the author's option 1) was declined. (Owner in chat, 2026-11-24: "Cho sửa, giữ
+            chặt".)
+QD-WAVE1124b = second queue for anima-dell, documents only, no cargo build (its free RAM is often
+            below its 5 GiB floor): D8 V-SPECS-2 (V7-V11 and H10/H11), D9 FINDINGS-SYNC, D10 DOC-REVIEW,
+            D11 AI-USE-LOG; at most two of its own docs PRs open; reviewer anima-mac. While anima-dell
+            cannot build, the lead takes the cargo half of its reviews of anima-case (wave rule A1
+            point 6); a three-seed replay of a Windows run stays on Windows. Full text: hub file
+            PROMPTS_2026-11-24b_WIN2_anima-dell.md. (Owner in chat, 2026-11-24: "Giao thêm cho Dell".)
+QD-TRIAL-V2 = the owner's next hands-on trial waits for World v2 milestone 1 (WV2-7, the app on the
+            bundled sim_256 world); no trial installer is built from the trunk before then, though the
+            release-build workflow (#233) can produce one on request. (Owner in chat, 2026-11-24: "tôi
+            nghĩ xong map v2 tôi sẽ thử nghiệm sau", then "Chỉ merge, bỏ build".)
 QD-WAVE1124 = a 24-hour autonomous wave on three machines (owner in chat, 2026-11-24: "Duyệt, sẽ dán"):
             anima-case (Windows 1) runs lane E (E3b smoke, confirmation run and RESULT, then SEL2-P2 and
             law-fork drafts) and lane W (world record WR1, WR2 per ADR-0008, then S7 after the E3b
@@ -747,6 +796,39 @@ R5-AUTH   =
   src-tauri/crates/anima-worldgen/Cargo.toml so that it injects exactly the same fault (one added line
   bevy_ecs = "0.13.0" in [dependencies]) and nothing else. WV2-2 grew that Cargo.toml, so the M2 fault
   patch no longer applied and gateControls.test.ts failed (CI job 137908480045). No other path.
+  -- Added during the wave, 2026-11-24, by the lead in chat with the owner; the hub message or file named
+  -- in each line holds the full text. --
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead: "Cho sửa, giữ chặt"; hub MSG_20261124_055500):
+  for card E3B-RUN only, you may also edit src-tauri/tests/prereg_e3b_manifest_tests.rs lines 609-627
+  (the end of no_trait_mass_observable_in_smoke_manifests_or_pre_run_artifact_paths) in one separate
+  commit, in the strict form of QD-E3B-T, with negative controls (a) trait_mass under smoke/ and
+  (b) wp2_passed = false both shown failing. No other line of that file and no other path.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead: "Giao thêm cho Dell"; hub
+  PROMPTS_2026-11-24b_WIN2_anima-dell.md), to anima-dell: for card V-SPECS-2 only, new files
+  docs/ai/planning/2026-11-24-v7-*-spec.md through 2026-11-24-v11-*-spec.md and one
+  docs/ai/planning/2026-11-24-h10-h11-release-gates.md; for card FINDINGS-SYNC only, FINDINGS.md
+  (status changes only with evidence, dated lines appended, two new entries from anima-mac's WV2-3
+  report); for card DOC-REVIEW only, exactly the documents that check_docs_metadata.mjs --report lists
+  as overdue when the card starts (not docs/archive/, docs/ai/README.md, CLAUDE.md or AGENTS.md); for
+  card AI-USE-LOG only, an appended entry in docs/paper/AI_USE_LOG.md. No other path.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead: "duyệt theo khuyến nghị"; hub
+  MSG_20261124_080000), to anima-case: for card SEL2P2-VIAB2 only, you may (1) edit
+  docs/ai/planning/2026-11-24-sel2-p2-preregistration-draft.md to fill D1-D7 with QD-SEL2P2-D1..D7
+  (options not chosen stay, marked "not chosen"); (2) write runner output under
+  artifacts/experiments/sel2-p2/viab2/**; (3) write one note docs/ai/planning/<date>-sel2-p2-viab2-results.md.
+  No change under src-tauri/; a missing runner mode or key is BLOCKED, not written. Blind: no body mass
+  and no trait_mass value is computed, printed or committed.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_084500), to anima-mac: for card
+  WV2-4 only, within its existing paths, commit C01 as the provisional world under MAP-D4
+  (artifacts/world-v2/{preset_v2.toml,sim_256.anmw3,index.json,gates.json}, gates.json with all 15 gates as
+  measured), MAP-D4 #[ignore] reasons with named rows in scripts/test_target_policy.mjs, and a MAP-D4 section in
+  the WV2-4 note. No threshold change anywhere.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_084500), to anima-case: for card
+  SEL2P2-VIAB2 only, in addition to its paths above, one new example src-tauri/examples/run_viab2_probe.rs,
+  one new test src-tauri/tests/viab2_probe_tests.rs, and src-tauri/Cargo.toml only for an [[example]] /
+  [[test]] entry if required-features are needed. Not src-tauri/src/**, not run_sel2p_experiment.rs, not any
+  frozen fixture. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and
+  no others.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 

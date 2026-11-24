@@ -238,7 +238,7 @@ pub enum WorldEvent {
 }
 
 /// Macroscopic EU and population summary checkpoint at `tick_end`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WorldKeyframe {
     pub tick: u64,
     pub agent_count: u32,
@@ -371,6 +371,7 @@ pub enum WorldRecordError {
     },
     InvalidHexCharacter(char),
     Serialization(String),
+    Io(String),
 }
 
 impl WorldRecordError {
@@ -493,6 +494,7 @@ impl fmt::Display for WorldRecordError {
                 write!(f, "invalid hexadecimal character '{ch}' in digest")
             }
             Self::Serialization(msg) => write!(f, "world record serialization error: {msg}"),
+            Self::Io(msg) => write!(f, "world record I/O error: {msg}"),
         }
     }
 }
