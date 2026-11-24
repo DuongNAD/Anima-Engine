@@ -22,7 +22,7 @@ shift || true
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OXS_RUN="${OXIDESWARM_RUN:-$HOME/OxideSwarm-trial/run.sh}"
-HUB_DIR="${ANIMA_HUB_DIR:-$HOME/Library/CloudStorage/GoogleDrive-duonganhdn2000@gmail.com/Drive của tôi/Anima_Agent_Hub}"
+HUB_DIR="${ANIMA_HUB_DIR:-}"
 WORKER="${GRID_WORKER:-desktop-3epv830}"
 WORKSPACE="${GRID_WORKSPACE:-anima-t1}"
 PRESET_REL="${WORLD_V2_PRESET:-artifacts/world-v2/preset_v2.toml}"
@@ -36,6 +36,7 @@ usage() {
 Usage: scripts/grid_bake_world_v2.sh [--dry-run] <probe-gpu|generate|verify|fields|lighting|pack|assets|all>
 
 Environment overrides:
+  ANIMA_HUB_DIR        Anima_Agent_Hub directory (required for live submit; optional under --dry-run)
   GRID_WORKER          Target worker name (default: desktop-3epv830; always required)
   GRID_WORKSPACE       Registered workspace (anima-t1, anima-t2, anima-trunk, anima-verify, anima-worldbake; default: anima-t1)
   GRID_FIELD_STRIPS    Strip count K for JOB-W3 sharding (default: 4)
@@ -63,7 +64,7 @@ if [[ -z "$WORKER" ]]; then
 fi
 
 preflight_checks() {
-  if [[ -f "$HUB_DIR/WORK_PLAN.md" ]]; then
+  if [[ -n "$HUB_DIR" && -f "$HUB_DIR/WORK_PLAN.md" ]]; then
     if grep -qE '^GRID:\s*PAUSED' "$HUB_DIR/WORK_PLAN.md"; then
       echo "GRID PAUSED in $HUB_DIR/WORK_PLAN.md; refusing submission" >&2
       exit 3
@@ -73,6 +74,11 @@ preflight_checks() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "[dry-run] preflight: WORKER=$WORKER WORKSPACE=$WORKSPACE PRESET=$PRESET_REL"
     return 0
+  fi
+
+  if [[ -z "$HUB_DIR" || ! -f "$HUB_DIR/WORK_PLAN.md" || ! -f "$HUB_DIR/anima_bridge.py" ]]; then
+    echo "GRID NOT READY: set ANIMA_HUB_DIR to Anima_Agent_Hub (containing WORK_PLAN.md and anima_bridge.py)" >&2
+    exit 3
   fi
 
   if [[ ! -x "$OXS_RUN" ]]; then
@@ -98,11 +104,14 @@ if state != "connected" or "workspaces" not in feats or "cargo" not in tools:
 print(f"[grid] worker {target} ready (state={state}, features={feats}, tools={tools})")
 PY
 
-  if [[ -f "$HUB_DIR/anima_bridge.py" ]]; then
-    if python3 "$HUB_DIR/anima_bridge.py" --agent-id anima-mac activity --show 2>/dev/null | grep -qiE 'agent-anima-case.*ACTIVE'; then
-      echo "ERROR: anima-case is currently ACTIVE on $WORKER; wait until idle/blocked/done" >&2
-      exit 3
-    fi
+  local activity_out
+  if ! activity_out="$(python3 "$HUB_DIR/anima_bridge.py" --agent-id anima-mac activity --show)"; then
+    echo "GRID NOT READY: failed to query anima_bridge.py activity in $HUB_DIR" >&2
+    exit 3
+  fi
+  if printf '%s\n' "$activity_out" | grep -qiE 'agent-anima-case.*ACTIVE'; then
+    echo "ERROR: anima-case is currently ACTIVE on $WORKER; wait until idle/blocked/done" >&2
+    exit 3
   fi
 }
 
