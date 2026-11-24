@@ -357,6 +357,22 @@ QD-E3B    = E3b preregistration decisions D1-D5, from the lead's recommendation 
               opt-in key live.founder_genotype.
             E3b covers about 4.0 / 1.9 / 4.0 generations (U/S/T) in 18k ticks, which is why D5 removes
             the 3.3 -> 2.5 founder sweep. (Owner in chat, 2026-11-23: "Duyệt theo đề xuất".)
+MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
+            4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
+            (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
+            smooth cliff-less coast and ~4,600 needle spikes at 10 m. Decision: Options 3 + 1. Commit C01
+            (ranked first by the pre-registered rule) as a provisional world under artifacts/world-v2/
+            with gates.json recording all 15 gates as measured, "status": "provisional"; gates and
+            thresholds stay defined and unchanged; tests asserting an unmet gate on the official artifact
+            are #[ignore]d by name with a MAP-D4 reason in scripts/test_target_policy.mjs. The physics
+            rework (channel initiation and runoff, knickpoint waterfalls, lakes, coastal cliffs, spike
+            smoothing) is a later card WV2-PHYS2. (Owner in chat, 2026-11-24: "Tạm dùng C01 + sửa vật
+            lý sau".)
+QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
+            runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
+            example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
+            run_live_drift_pair path, blind by construction; run_sel2p_experiment.rs and src-tauri/src stay
+            unchanged. (Owner in chat, 2026-11-24: "Cho viết một file example mới".)
 QD-SEL2P2-D1..D7 = SEL2-P2 owner decisions on the draft of #247, all as the author recommended (owner in
             chat, 2026-11-24: "duyệt theo khuyến nghị"): D1 (a) live.founder_genotype = 1.0 (2-segment
             founder) in every arm, plus a blind 200,000-tick VIAB-2 pre-check before freeze (12 seeds
@@ -802,6 +818,17 @@ R5-AUTH   =
   artifacts/experiments/sel2-p2/viab2/**; (3) write one note docs/ai/planning/<date>-sel2-p2-viab2-results.md.
   No change under src-tauri/; a missing runner mode or key is BLOCKED, not written. Blind: no body mass
   and no trait_mass value is computed, printed or committed.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_084500), to anima-mac: for card
+  WV2-4 only, within its existing paths, commit C01 as the provisional world under MAP-D4
+  (artifacts/world-v2/{preset_v2.toml,sim_256.anmw3,index.json,gates.json}, gates.json with all 15 gates as
+  measured), MAP-D4 #[ignore] reasons with named rows in scripts/test_target_policy.mjs, and a MAP-D4 section in
+  the WV2-4 note. No threshold change anywhere.
+  AUTHORIZATION (owner, 2026-11-24, in chat to the lead; hub MSG_20261124_084500), to anima-case: for card
+  SEL2P2-VIAB2 only, in addition to its paths above, one new example src-tauri/examples/run_viab2_probe.rs,
+  one new test src-tauri/tests/viab2_probe_tests.rs, and src-tauri/Cargo.toml only for an [[example]] /
+  [[test]] entry if required-features are needed. Not src-tauri/src/**, not run_sel2p_experiment.rs, not any
+  frozen fixture. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and
+  no others.
 CURRENT WAVE = 3 (Đợt 3 trở đi, từ 2026-11-18; chặng 4 của kế hoạch 13/11)
 ```
 
