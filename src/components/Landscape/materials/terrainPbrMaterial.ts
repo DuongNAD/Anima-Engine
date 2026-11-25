@@ -291,6 +291,8 @@ float lkSunVis = 1.0;
     lkSunVis = mix(lkSunVis, clamp(lkSunVis * 0.45 + 0.30 + 0.35 * lkNHi.g, 0.0, 1.0),
                    max(lkStretch * 0.8, lkSnow * 0.6));
   }
+  // Moving shadows of the cumulus layer overhead (direct sun only).
+  lkSunVis *= atmoCloudShadow(lkWp);
 }
 `;
 

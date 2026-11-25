@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildLookNoiseTexture } from '../utils/worldTerrainTextures';
 
 // prototype, to be replaced — WV2-LOOK aerial perspective shared by the World v2 terrain, flora
 // and ocean.
@@ -30,6 +31,24 @@ export interface AtmosphereUniforms {
   /** Low marine/spray layer: extinction per unit at sea level, and its scale height (units). */
   uAtmoMarineDensity: { value: number };
   uAtmoMarineH: { value: number };
+  /** Physical (Preetham) sky weight: 1 by day on the World v2 look path, 0 = legacy gradient. */
+  uAtmoPhys: { value: number };
+  uAtmoBetaR: { value: THREE.Vector3 };
+  uAtmoBetaM: { value: THREE.Vector3 };
+  uAtmoSunE: { value: number };
+  uAtmoMieG: { value: number };
+  uAtmoSkyExposure: { value: number };
+  /** Cloud layer: 0 = off. Coverage threshold, base height (units), metres per unit, wind (m/s). */
+  uAtmoCloudOn: { value: number };
+  uAtmoCloudCover: { value: number };
+  uAtmoCloudY: { value: number };
+  uAtmoMPerUnit: { value: number };
+  uAtmoWind: { value: THREE.Vector2 };
+  uAtmoTime: { value: number };
+  uAtmoCloudTex: { value: THREE.Texture | null };
+  /** Coarse terrain-height texture (units) and the render size it spans: clouds clear off peaks. */
+  uAtmoGroundTex: { value: THREE.Texture | null };
+  uAtmoRenderSize: { value: number };
 }
 
 /** One live set, written by `WorldSky`, read by every World v2 material that hazes. */
@@ -44,20 +63,130 @@ export const atmosphereUniforms: AtmosphereUniforms = {
   uAtmoSeaY: { value: 35 },
   uAtmoMarineDensity: { value: 0 },
   uAtmoMarineH: { value: 1 },
+  uAtmoPhys: { value: 0 },
+  uAtmoBetaR: { value: new THREE.Vector3() },
+  uAtmoBetaM: { value: new THREE.Vector3() },
+  uAtmoSunE: { value: 0 },
+  uAtmoMieG: { value: 0.8 },
+  uAtmoSkyExposure: { value: 0.25 },
+  uAtmoCloudOn: { value: 0 },
+  uAtmoCloudCover: { value: 0.65 },
+  uAtmoCloudY: { value: 120 },
+  uAtmoMPerUnit: { value: 34 },
+  uAtmoWind: { value: new THREE.Vector2(7, 2.5) },
+  uAtmoTime: { value: 0 },
+  uAtmoCloudTex: { value: null },
+  uAtmoGroundTex: { value: null },
+  uAtmoRenderSize: { value: 1200 },
 };
 
-/** Configure the haze for a scene of `renderSize` units whose sea surface sits at `seaY`. */
-export function configureAtmosphere(renderSize: number, heightUnits: number, seaY: number): void {
-  // ~50% haze at ~0.55 * renderSize (≈ 23 km on the 41 km C01 world) for a sea-level ray.
-  atmosphereUniforms.uAtmoDensity.value = Math.LN2 / (renderSize * 0.55);
-  // Haze scale height ≈ 2.2 km of the 7.2 km elevation span.
-  atmosphereUniforms.uAtmoScaleH.value = heightUnits * (2200 / 7200);
+// ---- Preetham sky (the model in three/examples/jsm/objects/Sky.js), parameters per sun ----------
+const TOTAL_RAYLEIGH = [5.804542996261093e-6, 1.3562911419845635e-5, 3.0265902468824876e-5];
+const MIE_CONST = [1.8399918514433978e14, 2.7798023919660528e14, 4.0790479543861094e14];
+const SKY_TURBIDITY = 2.5;
+const SKY_RAYLEIGH = 1.2;
+const SKY_MIE_COEFF = 0.005;
+
+/**
+ * Per-frame sky inputs for a unit sun direction. `physWeight` blends the Preetham sky in (day)
+ * against the legacy gradient (night, where Preetham has no moon or stars).
+ */
+export function updateAtmosphereSun(sunDir: THREE.Vector3, physWeight: number): void {
+  const cutoff = 1.6110731556870734;
+  const zen = Math.acos(THREE.MathUtils.clamp(sunDir.y, -1, 1));
+  atmosphereUniforms.uAtmoSunE.value = 1000 * Math.max(0, 1 - Math.exp(-((cutoff - zen) / 1.5)));
+  atmosphereUniforms.uAtmoBetaR.value.set(
+    TOTAL_RAYLEIGH[0] * SKY_RAYLEIGH,
+    TOTAL_RAYLEIGH[1] * SKY_RAYLEIGH,
+    TOTAL_RAYLEIGH[2] * SKY_RAYLEIGH,
+  );
+  const c = 0.2 * SKY_TURBIDITY * 10e-18;
+  atmosphereUniforms.uAtmoBetaM.value.set(
+    0.434 * c * MIE_CONST[0] * SKY_MIE_COEFF,
+    0.434 * c * MIE_CONST[1] * SKY_MIE_COEFF,
+    0.434 * c * MIE_CONST[2] * SKY_MIE_COEFF,
+  );
+  atmosphereUniforms.uAtmoPhys.value = physWeight;
+}
+
+let cloudNoiseTex: THREE.DataTexture | null = null;
+
+
+/**
+ * Configure the haze and cloud layer for a scene of `renderSize` units showing a world of
+ * `extentM` metres whose elevation span `elevSpanM` maps to `heightUnits`, sea surface at `seaY`.
+ * Every distance is set in metres and converted, so a larger world keeps the same look.
+ */
+export function configureAtmosphere(
+  renderSize: number,
+  heightUnits: number,
+  seaY: number,
+  extentM: number,
+  elevSpanM: number,
+): void {
+  const unitsPerM = renderSize / extentM;
+  const unitsPerMY = heightUnits / elevSpanM;
+  // ~50% haze over ~23 km for a sea-level ray.
+  atmosphereUniforms.uAtmoDensity.value = Math.LN2 / (23000 * unitsPerM);
+  // Haze scale height ~2.2 km.
+  atmosphereUniforms.uAtmoScaleH.value = 2200 * unitsPerMY;
   atmosphereUniforms.uAtmoSeaY.value = seaY;
   // A thin salt-spray/marine layer (~60 m scale height): ~15% extra haze over 2 km at sea
   // level, so surf-side cliffs and headlands behind the surf lose contrast (CST-01). Cameras
   // above a few hundred metres look through almost none of it.
-  atmosphereUniforms.uAtmoMarineDensity.value = -Math.log(0.85) / ((2000 / 40960) * renderSize);
-  atmosphereUniforms.uAtmoMarineH.value = heightUnits * (60 / 7200);
+  atmosphereUniforms.uAtmoMarineDensity.value = -Math.log(0.85) / (2000 * unitsPerM);
+  atmosphereUniforms.uAtmoMarineH.value = 60 * unitsPerMY;
+  // Fair-weather cumulus: bases ~1.9 km above the sea.
+  atmosphereUniforms.uAtmoCloudY.value = seaY + 1900 * unitsPerMY;
+  atmosphereUniforms.uAtmoMPerUnit.value = 1 / unitsPerM;
+  if (!cloudNoiseTex) cloudNoiseTex = buildLookNoiseTexture();
+  atmosphereUniforms.uAtmoCloudTex.value = cloudNoiseTex;
+}
+
+let groundTex: THREE.DataTexture | null = null;
+
+/**
+ * A 256^2 max-pooled terrain height map (scene units) so the cloud layer clears where the ground
+ * reaches its base instead of slicing through the massif. `elevation` is the world's normalised
+ * elevation grid (`size^2`), `heightUnits` its full span in units.
+ */
+export function setAtmosphereGround(
+  elevation: Float32Array,
+  size: number,
+  heightUnits: number,
+  renderSize: number,
+): void {
+  const R = 256;
+  const data = new Float32Array(R * R);
+  const step = size / R;
+  for (let y = 0; y < R; y += 1) {
+    for (let x = 0; x < R; x += 1) {
+      let m = 0;
+      const y0 = Math.floor(y * step);
+      const x0 = Math.floor(x * step);
+      for (let yy = y0; yy < Math.min(size, Math.floor((y + 1) * step)); yy += 2) {
+        for (let xx = x0; xx < Math.min(size, Math.floor((x + 1) * step)); xx += 2) {
+          const e = elevation[yy * size + xx];
+          if (e > m) m = e;
+        }
+      }
+      data[y * R + x] = m * heightUnits;
+    }
+  }
+  groundTex?.dispose();
+  groundTex = new THREE.DataTexture(data, R, R, THREE.RedFormat, THREE.FloatType);
+  groundTex.minFilter = THREE.NearestFilter;
+  groundTex.magFilter = THREE.NearestFilter;
+  groundTex.wrapS = THREE.ClampToEdgeWrapping;
+  groundTex.wrapT = THREE.ClampToEdgeWrapping;
+  groundTex.needsUpdate = true;
+  atmosphereUniforms.uAtmoGroundTex.value = groundTex;
+  atmosphereUniforms.uAtmoRenderSize.value = renderSize;
+}
+
+/** Turn the cloud layer (and its shadows) on or off. */
+export function setAtmosphereClouds(on: boolean): void {
+  atmosphereUniforms.uAtmoCloudOn.value = on ? 1 : 0;
 }
 
 /** Attach the shared uniforms to a shader passed through `onBeforeCompile`. */
@@ -76,8 +205,79 @@ uniform float uAtmoScaleH;
 uniform float uAtmoSeaY;
 uniform float uAtmoMarineDensity;
 uniform float uAtmoMarineH;
+uniform float uAtmoPhys;
+uniform vec3 uAtmoBetaR;
+uniform vec3 uAtmoBetaM;
+uniform float uAtmoSunE;
+uniform float uAtmoMieG;
+uniform float uAtmoSkyExposure;
+uniform float uAtmoCloudOn;
+uniform float uAtmoCloudCover;
+uniform float uAtmoCloudY;
+uniform float uAtmoMPerUnit;
+uniform vec2 uAtmoWind;
+uniform float uAtmoTime;
+uniform sampler2D uAtmoCloudTex;
+uniform sampler2D uAtmoGroundTex;
+uniform float uAtmoRenderSize;
 
-vec3 atmoSkyColor(vec3 d) {
+// Preetham sky radiance (as three/examples/jsm/objects/Sky.js), tone-mapped with three's ACES fit
+// and sRGB-encoded here, so the dome, the haze and the water's sky reflection share one
+// display-space colour and meet without a seam.
+vec3 atmoAcesFit(vec3 c) {
+  const mat3 inM = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+  const mat3 outM = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+  c = inM * c;
+  vec3 a = c * (c + 0.0245786) - 0.000090537;
+  vec3 b = c * (0.983729 * c + 0.4329510) + 0.238081;
+  return clamp(outM * (a / b), 0.0, 1.0);
+}
+vec3 atmoPreetham(vec3 d) {
+  vec3 sd = normalize(uAtmoSunDir);
+  float za = acos(max(0.0, d.y));
+  float inv = 1.0 / (cos(za) + 0.15 * pow(93.885 - za * 57.29578, -1.253));
+  vec3 fex = exp(-(uAtmoBetaR * 8.4e3 * inv + uAtmoBetaM * 1.25e3 * inv));
+  float ct = dot(d, sd);
+  float rPhase = 0.05968310365946075 * (1.0 + pow(ct * 0.5 + 0.5, 2.0));
+  float g2 = uAtmoMieG * uAtmoMieG;
+  float mPhase = 0.07957747154594767 * (1.0 - g2) / pow(1.0 - 2.0 * uAtmoMieG * ct + g2, 1.5);
+  vec3 ratio = (uAtmoBetaR * rPhase + uAtmoBetaM * mPhase) / (uAtmoBetaR + uAtmoBetaM);
+  vec3 lin = pow(uAtmoSunE * ratio * (1.0 - fex), vec3(1.5));
+  lin *= mix(vec3(1.0), pow(uAtmoSunE * ratio * fex, vec3(0.5)), clamp(pow(1.0 - sd.y, 5.0), 0.0, 1.0));
+  vec3 c = (lin + vec3(0.1) * fex) * 0.04 + vec3(0.0, 0.0003, 0.00075);
+  c = atmoAcesFit(c * uAtmoSkyExposure / 0.6);
+  return pow(c, vec3(1.0 / 2.2));
+}
+
+// Cumulus coverage at a point (metres, world xz), drifting with the wind. Three octaves of the
+// tileable noise at unrelated scales so the 256-texel tiles do not visibly repeat.
+float atmoCloudCov(vec2 pM) {
+  vec2 q = pM + uAtmoWind * uAtmoTime;
+  // A slow ~60 km field groups the cells into cloudier and clearer regions.
+  float region = texture2D(uAtmoCloudTex, q / 61000.0 + 0.53).a;
+  float n = texture2D(uAtmoCloudTex, q / 9100.0 + 0.13).r * 0.55
+          + texture2D(uAtmoCloudTex, q / 3300.0 + 0.71).g * 0.30
+          + texture2D(uAtmoCloudTex, q / 1170.0 + 0.37).b * 0.15;
+  float thr = uAtmoCloudCover + (0.5 - region) * 0.22;
+  float cov = smoothstep(thr, thr + 0.16, n);
+  // Cleared where the ground reaches the cloud base (no layer slicing through the massif).
+  vec2 uvMap = (pM / uAtmoMPerUnit) / uAtmoRenderSize + 0.5;
+  if (uvMap.x > 0.0 && uvMap.x < 1.0 && uvMap.y > 0.0 && uvMap.y < 1.0) {
+    float g = texture2D(uAtmoGroundTex, uvMap).r;
+    cov *= 1.0 - smoothstep(-6.0, -1.0, g - uAtmoCloudY);
+  }
+  return cov;
+}
+// Sun transmittance through the cloud layer for a point on the ground (1 = clear sun).
+float atmoCloudShadow(vec3 p) {
+  if (uAtmoCloudOn < 0.5) return 1.0;
+  vec3 sd = normalize(uAtmoSunDir);
+  if (sd.y <= 0.02) return 1.0;
+  vec3 c = p + sd * ((uAtmoCloudY - p.y) / sd.y);
+  return 1.0 - 0.62 * atmoCloudCov(c.xz * uAtmoMPerUnit);
+}
+
+vec3 atmoSkyColorLegacy(vec3 d) {
   float h = clamp(d.y, 0.0, 1.0);
   vec3 col = mix(uAtmoHorizon, uAtmoZenith, pow(h, 0.58));
   float dayMix = smoothstep(0.18, 0.72, max(uAtmoHorizon.r, max(uAtmoHorizon.g, uAtmoHorizon.b)));
@@ -86,6 +286,12 @@ vec3 atmoSkyColor(vec3 d) {
   float s = max(dot(d, normalize(uAtmoSunDir)), 0.0);
   col += uAtmoSunColor * pow(s, 10.0) * 0.16 * uAtmoGlow;
   return col;
+}
+
+vec3 atmoSkyColor(vec3 d) {
+  if (uAtmoPhys <= 0.0) return atmoSkyColorLegacy(d);
+  vec3 p = atmoPreetham(d);
+  return uAtmoPhys >= 1.0 ? p : mix(atmoSkyColorLegacy(d), p, uAtmoPhys);
 }
 
 // Mean of exp(-y/H) along a straight ray from height y0 to y1 (closed form).

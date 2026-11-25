@@ -206,10 +206,13 @@ const fragmentShader = /* glsl */ `
       // Near the map edge the terrain is sunk under the sea for looks (terrain material) while the
       // SDF still calls it land: no surf there, and the sea stays opaque over it.
       float edgeBand = smoothstep(0.86, 0.93, boxN) * isOcean;
+      // Off the data the sea floor falls away: the sunk edge band and everything past the map
+      // read as deep open ocean (no shallow rim tracing the map's straight border).
+      depthM = mix(depthM, max(depthM, 400.0), edgeBand);
 
       // Depth colour (CST-04): clear and green over the swash and bar, teal over the shelf,
       // saturated deep blue offshore; the light tint is held to the near-shore band.
-      float nearShore = 1.0 - smoothstep(280.0, 500.0, offM);
+      float nearShore = (1.0 - smoothstep(280.0, 500.0, offM)) * (1.0 - edgeBand);
       float dClear = 1.0 - exp(-depthM / 3.0);
       float dTeal = 1.0 - exp(-depthM / 12.0);
       float dDeep = max(1.0 - exp(-depthM / 35.0), (1.0 - nearShore) * isOcean);
@@ -218,6 +221,8 @@ const fragmentShader = /* glsl */ `
       dDeep = mix(dDeep, 1.0, vEdge);
       vec3 wcol = mix(vec3(0.22, 0.50, 0.46), vec3(0.06, 0.32, 0.37), dClear);
       wcol = mix(wcol, vec3(0.02, 0.11, 0.27), dDeep);
+      // Abyssal plain beyond the island: a touch darker the further off the map.
+      wcol = mix(wcol, vec3(0.012, 0.075, 0.21), smoothstep(1.0, 1.8, boxN) * isOcean);
 
       // Surf zone (CST-01..03): breaker lines parallel to the shore, each a white crest with a
       // streaky foam trail seaward of it, travelling shoreward; foam thins toward the beach.
@@ -322,6 +327,10 @@ const fragmentShader = /* glsl */ `
       float ndh2 = max(dot(nrm, normalize(sdir + vdir)), 0.0);
       float spec2 = pow(ndh2, 220.0) * 1.4 * det + pow(ndh2, 24.0) * 0.06;
       float diff2 = clamp(dot(nrm, sdir) * 0.45 + 0.64, 0.0, 1.0);
+      // Cloud shadows on the sea: no glints, a darker body.
+      float cloudSh = atmoCloudShadow(vWorldPos);
+      spec2 *= cloudSh * cloudSh;
+      diff2 *= mix(0.70, 1.0, cloudSh);
       vec3 rn = normalize(vec3(nrm.x * 0.3, 1.0, nrm.z * 0.3));
       float schlick = 0.02 + 0.98 * pow(1.0 - max(dot(rn, vdir), 0.0), 5.0);
       vec3 rdir = reflect(-vdir, rn);

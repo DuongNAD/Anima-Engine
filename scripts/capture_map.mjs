@@ -41,7 +41,8 @@ const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'wa
 // baselines keep the same set, order and poses.
 //   coastnear  low camera (~50-70 m above the waterline) just offshore of the `coast` beach,
 //              looking along the shore: the surf zone, swash and beach at close range.
-const OPTIONAL_VIEW_IDS = ['coastnear'];
+//   vista      low oblique (~2.2 km above the sea) along the main massif, sky and horizon in frame.
+const OPTIONAL_VIEW_IDS = ['coastnear', 'vista'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -442,6 +443,25 @@ function pageGlInfo() {
  * data (highest peak, a river cell, a waterfall, the densest trees, ...), so the views follow the
  * world if generation changes. A view whose feature does not exist comes back `skipped` with why.
  */
+/** Extent (manifest) and elevation span (format constants) of the World v2 bake, or null. */
+function readWorldMetrics() {
+  const out = { extentM: null, elevSpanM: null };
+  try {
+    out.extentM = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'public/world-v2/index.json'), 'utf8')).extent_m ?? null;
+  } catch {
+    /* no World v2 tiles staged: the metre-based views fall back to the v1 scale guess below */
+  }
+  try {
+    const src = fs.readFileSync(path.join(REPO_ROOT, 'src/components/Landscape/utils/worldArtifactV3.ts'), 'utf8');
+    const lo = Number(/WV2_ELEV_MIN_M\s*=\s*(-?[\d.]+)/.exec(src)?.[1]);
+    const hi = Number(/WV2_ELEV_MAX_M\s*=\s*(-?[\d.]+)/.exec(src)?.[1]);
+    if (Number.isFinite(lo) && Number.isFinite(hi) && hi > lo) out.elevSpanM = hi - lo;
+  } catch {
+    /* format constants not found */
+  }
+  return out;
+}
+
 function pageAnalyseWorld() {
   const BIOMES = [
     'Ocean', 'Beach', 'Desert', 'Savanna', 'Grassland', 'Shrubland', 'Forest', 'Jungle', 'Taiga',
@@ -453,6 +473,7 @@ function pageAnalyseWorld() {
   const N = w.size;
   const sea = w.seaLevel;
   const notes = [];
+  const metrics = window.__mapCaptureWorld || {};
 
   // ---- scale: terrain extent from the mesh itself, so a changed RENDER_SIZE is followed.
   let R = 1200;
@@ -696,10 +717,11 @@ function pageAnalyseWorld() {
       // coastnear (opt-in): just offshore of the same beach, low over the water, looking along
       // the shoreline (whichever direction keeps the line of sight nearest the waterline).
       const seaAz = downhillAz(c[0], c[1]);
-      if (seaAz === null) skip('coastnear', 'flat shore cell: no seaward direction');
+      if (!metrics.extentM) skip('coastnear', 'no World v2 manifest: map extent unknown');
+      else if (seaAz === null) skip('coastnear', 'flat shore cell: no seaward direction');
       else {
         const seaY = sea * H;
-        const unitsPerM = R / 40960;
+        const unitsPerM = R / metrics.extentM; // horizontal units per metre
         // Walk seaward from the beach cell to the waterline (the Beach biome can sit inland of it).
         let wl = null;
         for (let m = 0; m <= 2000 && !wl; m += 20) {
@@ -709,7 +731,8 @@ function pageAnalyseWorld() {
         }
         const base = wl ?? c;
         const out = 160 * unitsPerM; // ~160 m offshore of the waterline
-        const eyeY = seaY + 55 * (H / 7200); // ~55 m above the waterline
+        const uYc = H / (metrics.elevSpanM || 7200); // vertical units per metre
+        const eyeY = seaY + 55 * uYc; // ~55 m above the waterline
         const pos = [base[0] + out * Math.cos(seaAz), eyeY, base[1] + out * Math.sin(seaAz)];
         let best = null;
         for (const sgn of [1, -1]) {
@@ -718,7 +741,7 @@ function pageAnalyseWorld() {
           const tx = base[0] + along * Math.cos(tan) - 40 * unitsPerM * Math.cos(seaAz);
           const tz = base[1] + along * Math.sin(tan) - 40 * unitsPerM * Math.sin(seaAz);
           const err = Math.abs(elevAt(tx, tz) - sea);
-          if (insideMap(tx, tz) && (!best || err < best.err)) best = { err, target: [tx, seaY + 2 * (H / 7200), tz] };
+          if (insideMap(tx, tz) && (!best || err < best.err)) best = { err, target: [tx, seaY + 2 * uYc, tz] };
         }
         if (!best || !insideMap(pos[0], pos[2]) || surfAt(pos[0], pos[2]) > eyeY - 0.2) {
           skip('coastnear', 'no clear low viewpoint offshore of the coast beach');
@@ -730,6 +753,61 @@ function pageAnalyseWorld() {
           );
         }
       }
+    }
+  }
+
+  // vista (opt-in): along the main massif from a low oblique height, sky and horizon in frame.
+  // The massif axis is the principal axis of the high ground (top 40% of the land relief); the
+  // camera sits off one end of it, pushed toward the lower side, ~2.2 km above the sea.
+  {
+    let n = 0;
+    let mx = 0;
+    let mz = 0;
+    const pts = [];
+    const thr = sea + (maxE - sea) * 0.6;
+    for (let gy = 0; gy < N; gy += 8) {
+      for (let gx = 0; gx < N; gx += 8) {
+        if (w.elevation[gy * N + gx] < thr) continue;
+        const x = cellToR(gx);
+        const z = cellToR(gy);
+        pts.push([x, z]);
+        mx += x;
+        mz += z;
+        n++;
+      }
+    }
+    if (n < 8) skip('vista', 'no massif (too little high ground)');
+    else {
+      mx /= n;
+      mz /= n;
+      let sxx = 0;
+      let szz = 0;
+      let sxz = 0;
+      for (const [x, z] of pts) {
+        sxx += (x - mx) * (x - mx);
+        szz += (z - mz) * (z - mz);
+        sxz += (x - mx) * (z - mz);
+      }
+      const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz);
+      const ax = [Math.cos(ang), Math.sin(ang)];
+      const len = Math.sqrt(Math.max(sxx, szz) / n) * 2;
+      let side = [-ax[1], ax[0]];
+      if (elevAt(mx + side[0] * len * 0.5, mz + side[1] * len * 0.5) > elevAt(mx - side[0] * len * 0.5, mz - side[1] * len * 0.5)) {
+        side = [-side[0], -side[1]];
+      }
+      const uY = H / (metrics.elevSpanM || 7200); // vertical units per metre
+      const seaY = sea * H;
+      let pos = [mx - ax[0] * len * 0.9 + side[0] * len * 0.45, seaY + 2200 * uY, mz - ax[1] * len * 0.9 + side[1] * len * 0.45];
+      // Keep the camera on the map and above the ground.
+      const lim = R * 0.46;
+      pos = [Math.max(-lim, Math.min(lim, pos[0])), pos[1], Math.max(-lim, Math.min(lim, pos[2]))];
+      pos[1] = Math.max(pos[1], surfAt(pos[0], pos[2]) + 600 * uY);
+      const target = [mx + ax[0] * len * 0.9, seaY + 700 * uY, mz + ax[1] * len * 0.9];
+      put(
+        'vista',
+        { position: pos, target, azimuthDeg: deg(azTo(pos, target)), pitchDeg: 0, lineOfSight: 'unchecked (oblique)' },
+        `along the main massif (${n} high cells), ~2.2 km above the sea`,
+      );
     }
   }
 
@@ -1181,6 +1259,9 @@ async function main() {
     report.environment.softwareGl = /swiftshader|llvmpipe|software|basic render/i.test(report.environment.gl?.renderer ?? '');
     log(`WebGL: ${report.environment.gl?.renderer ?? 'unknown'}${report.environment.softwareGl ? '  <-- SOFTWARE RASTERISER' : ''}`);
 
+    // World extent / elevation span for the metre-based optional views, read from the World v2
+    // manifest and the format constants (no hard-coded map size).
+    await page.evaluate((m) => (window.__mapCaptureWorld = m), readWorldMetrics());
     const analysis = await page.evaluate(pageAnalyseWorld);
     await page.evaluate((s) => (window.__mapCaptureScale = s), { renderSize: analysis.renderSize, heightUnits: analysis.heightUnits });
     report.world = { size: analysis.worldSize, renderSize: analysis.renderSize, heightUnits: Math.round(analysis.heightUnits * 10) / 10, seaLevel: analysis.seaLevel, notes: analysis.notes };

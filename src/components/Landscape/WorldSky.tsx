@@ -1,9 +1,14 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getWorldLightRig, sunDirectionWithTilt, type SkyParams } from './utils/skyParams';
-import { atmosphereUniforms } from './materials/atmosphere';
-import { makeSceneRandom, sceneDelta } from './utils/sceneClock';
+import {
+  ATMOSPHERE_FRAGMENT_PARS,
+  atmosphereUniforms,
+  setAtmosphereClouds,
+  updateAtmosphereSun,
+} from './materials/atmosphere';
+import { makeSceneRandom, sceneDelta, sceneElapsed } from './utils/sceneClock';
 
 // Gradient sky dome: zenith deepens, horizon pales into haze, and a soft halo wraps the sun.
 // A flat single-colour dome is the single biggest "this is a tech demo" tell — the gradient
@@ -40,6 +45,76 @@ const SKY_FRAGMENT = /* glsl */ `
     gl_FragColor = vec4(col, 1.0);
   }
 `;
+
+// prototype, to be replaced — WV2-LOOK dome: the shared Preetham sky (atmosphere.ts) plus the
+// moon's halo. The same function colours the haze and the water's sky reflection, so land, sea
+// and sky meet at the horizon without a seam.
+const SKY_LOOK_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vDir;
+  uniform vec3 uMoonDir;
+  uniform float uMoonGlow;
+  ${ATMOSPHERE_FRAGMENT_PARS}
+  void main() {
+    vec3 d = normalize(vDir);
+    vec3 col = atmoSkyColor(vec3(d.x, max(d.y, 0.0), d.z));
+    float m = max(dot(d, normalize(uMoonDir)), 0.0);
+    col += vec3(0.58, 0.66, 0.8) * (pow(m, 700.0) * 0.55 + pow(m, 26.0) * 0.05) * uMoonGlow;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+// prototype, to be replaced — WV2-LOOK fair-weather cumulus: one horizontal layer at the cloud
+// base (atmosphere.ts sets its height in metres), coverage from the same function that casts the
+// cloud shadows on terrain, sea and flora, so every shadow belongs to a cloud overhead.
+const CLOUD_VERTEX = /* glsl */ `
+  uniform float uAtmoCloudY;
+  varying vec3 vWp;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    wp.y = uAtmoCloudY;
+    vWp = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+const CLOUD_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vWp;
+  ${ATMOSPHERE_FRAGMENT_PARS}
+  void main() {
+    vec2 pM = vWp.xz * uAtmoMPerUnit;
+    float cov = atmoCloudCov(pM);
+    if (cov <= 0.003) discard;
+    vec3 sd = normalize(uAtmoSunDir);
+    vec3 vdir = normalize(vWp - cameraPosition);
+    float fromAbove = step(vWp.y, cameraPosition.y);
+    // Thin margins are bright and translucent; thick cores are greyer from below.
+    float edge = 1.0 - smoothstep(0.0, 0.7, cov);
+    vec2 q = pM + uAtmoWind * uAtmoTime;
+    float lump = texture2D(uAtmoCloudTex, q / 620.0 + 0.29).a;
+    vec3 lit = vec3(0.97, 0.97, 0.955);
+    vec3 base = vec3(0.66, 0.70, 0.77) * mix(0.92, 1.06, lump);
+    vec3 below = mix(base, lit, edge * 0.75 + 0.1);
+    vec3 above = mix(lit * mix(0.86, 1.0, lump), lit, edge);
+    vec3 col = mix(below, above, fromAbove);
+    // Silver lining when looking toward the sun.
+    float fwd = pow(max(dot(vdir, sd), 0.0), 8.0);
+    col += vec3(1.0, 0.95, 0.85) * fwd * (0.15 + edge * 0.35);
+    float a = cov * 0.93;
+    // Seen edge-on the layer is a sheet: fade it out toward the horizon line.
+    // (From below it also hides layer slivers crossing in front of the massif.)
+    a *= mix(smoothstep(0.10, 0.38, abs(vdir.y)), smoothstep(0.05, 0.26, abs(vdir.y)), fromAbove);
+    vec3 hazeC = atmoSkyColor(normalize(vec3(vdir.x, abs(vdir.y) * 0.2, vdir.z)));
+    col = mix(col, hazeC, atmoHazeAmount(cameraPosition, vWp));
+    gl_FragColor = vec4(min(col, vec3(1.0)), a);
+  }
+`;
+
+/** Per-frame inputs of the WV2-LOOK physical sky and clouds (module state, not React state). */
+function applyLookAtmosphere(sunDir: THREE.Vector3, timeSec: number): void {
+  updateAtmosphereSun(sunDir, THREE.MathUtils.smoothstep(sunDir.y, -0.08, 0.06));
+  atmosphereUniforms.uAtmoTime.value = timeSec;
+}
 
 // ---------------------------------------------------------------------------------------
 // WorldSky — day/night sky + lighting for the huge world (WorldShowcase).
@@ -164,6 +239,16 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   const tmpColor = useMemo(() => new THREE.Color(), []);
   const HAZE = useMemo(() => new THREE.Color('#eef6fb'), []);
   const skyUniforms = useMemo(() => createSkyUniforms(), []);
+  // WV2-LOOK dome: the shared atmosphere set plus the moon terms of the legacy block.
+  const lookSkyUniforms = useMemo(
+    () => ({ ...atmosphereUniforms, uMoonDir: skyUniforms.uMoonDir, uMoonGlow: skyUniforms.uMoonGlow }),
+    [skyUniforms],
+  );
+  const cloudUniforms = useMemo<Record<string, THREE.IUniform>>(() => ({ ...atmosphereUniforms }), []);
+  useEffect(() => {
+    setAtmosphereClouds(look);
+    return () => setAtmosphereClouds(false);
+  }, [look]);
 
   const DOME_R = worldScale * 6.5; // 2600 @400 — beyond camera maxDistance (1200)
   const ORBIT_R = worldScale * 4.5; // 1800
@@ -274,6 +359,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       tmpColor,
       HAZE,
     );
+    if (look) applyLookAtmosphere(skyUniforms.uSunDir.value, sceneElapsed(state.clock));
 
     if (cloudsRef.current) {
       const children = cloudsRef.current.children;
@@ -287,17 +373,44 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
 
   return (
     <group name="world-sky-group">
-      {/* Sky dome — gradient shader (zenith -> horizon haze) with a soft sun halo. */}
+      {/* Sky dome — gradient shader (zenith -> horizon haze) with a soft sun halo; on the
+          WV2-LOOK path the shared physical sky instead. */}
       <mesh name="world-sky-dome">
         <sphereGeometry args={[DOME_R, 32, 24]} />
-        <shaderMaterial
-          vertexShader={SKY_VERTEX}
-          fragmentShader={SKY_FRAGMENT}
-          uniforms={skyUniforms}
-          side={THREE.BackSide}
-          fog={false}
-        />
+        {look ? (
+          <shaderMaterial
+            key="look"
+            vertexShader={SKY_VERTEX}
+            fragmentShader={SKY_LOOK_FRAGMENT}
+            uniforms={lookSkyUniforms}
+            side={THREE.BackSide}
+            fog={false}
+          />
+        ) : (
+          <shaderMaterial
+            key="legacy"
+            vertexShader={SKY_VERTEX}
+            fragmentShader={SKY_FRAGMENT}
+            uniforms={skyUniforms}
+            side={THREE.BackSide}
+            fog={false}
+          />
+        )}
       </mesh>
+      {look ? (
+        <mesh name="world-cloud-layer" rotation-x={-Math.PI / 2} frustumCulled={false} renderOrder={3}>
+          <planeGeometry args={[worldScale * 14, worldScale * 14, 1, 1]} />
+          <shaderMaterial
+            vertexShader={CLOUD_VERTEX}
+            fragmentShader={CLOUD_FRAGMENT}
+            uniforms={cloudUniforms}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            fog={false}
+          />
+        </mesh>
+      ) : null}
 
       <directionalLight
         name="world-sun-light"
@@ -365,7 +478,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
 
       {/* Puffy low-poly clouds: overlapping flat-shaded ellipsoids read as soft cumulus from
           any angle (the old axis-aligned boxes looked like slabs at the horizon). */}
-      <group ref={cloudsRef} name="world-clouds-group">
+      <group ref={cloudsRef} name="world-clouds-group" visible={!look}>
         {clouds.map((cloud) => (
           <group key={cloud.id} position={cloud.position}>
             {/* The core puff casts a real shadow — drifting cloud shadows sweep the land. */}

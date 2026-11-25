@@ -117,11 +117,12 @@ function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-          diffuseColor.rgb *= mix(1.0, 0.55, 1.0 - smoothstep(uAtmoSeaY + 0.01, uAtmoSeaY + 0.07, vLkFloraWp.y));`,
+          diffuseColor.rgb *= mix(1.0, 0.55, 1.0 - smoothstep(uAtmoSeaY + 0.01, uAtmoSeaY + 0.07, vLkFloraWp.y));
+          diffuseColor.rgb *= mix(0.6, 1.0, atmoCloudShadow(vLkFloraWp));`,
         )
         .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
   };
-  material.customProgramCacheKey = () => 'wv2-look-flora-v3';
+  material.customProgramCacheKey = () => 'wv2-look-flora-v4';
   return material;
 }
 

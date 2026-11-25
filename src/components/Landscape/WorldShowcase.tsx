@@ -46,8 +46,8 @@ import {
   type LodFocusPayload,
 } from '../../utils/lodFocus';
 import { sunDirectionForTime, sunDirectionWithTilt } from './utils/skyParams';
-import { configureAtmosphere } from './materials/atmosphere';
-import { SEA_LEVEL_NORM } from './worldV2/types';
+import { configureAtmosphere, setAtmosphereGround } from './materials/atmosphere';
+import { ELEV_SPAN_M, SEA_LEVEL_NORM } from './worldV2/types';
 import { ALWAYS_DAY_HOUR, sceneDelta, stepTimeOfDay } from './utils/sceneClock';
 import {
   QUALITY_SELECTIONS,
@@ -320,6 +320,13 @@ export const WorldShowcase: React.FC = () => {
   const teleportRef = useRef<{ x: number; z: number } | null>(null);
 
   // Diagnostics hook (like __worldScene): lets tooling inspect the generated world data.
+  // WV2-LOOK: coarse ground heights so the cloud layer clears where the massif reaches it.
+  useEffect(() => {
+    if (worldV2Bundle && world) {
+      setAtmosphereGround(world.elevation, world.size, RENDER_SIZE * HEIGHT_RATIO, RENDER_SIZE);
+    }
+  }, [world, worldV2Bundle]);
+
   useEffect(() => {
     window.__world = world;
   }, [world]);
@@ -535,7 +542,13 @@ export const WorldShowcase: React.FC = () => {
     ? sunDirectionWithTilt(timeOfDay, V2_SUN_TILT)
     : sunDirectionForTime(timeOfDay);
   if (worldV2Bundle) {
-    configureAtmosphere(RENDER_SIZE, RENDER_SIZE * HEIGHT_RATIO, SEA_LEVEL_NORM * RENDER_SIZE * HEIGHT_RATIO);
+    configureAtmosphere(
+      RENDER_SIZE,
+      RENDER_SIZE * HEIGHT_RATIO,
+      SEA_LEVEL_NORM * RENDER_SIZE * HEIGHT_RATIO,
+      worldV2Bundle.extentM,
+      ELEV_SPAN_M,
+    );
   }
   const worldV2Meta = worldV2Bundle ? worldV2RenderMeta(worldV2Bundle) : null;
   // Canonical poses are published in the canonical [-100, 100] bounds; the scene is a different
