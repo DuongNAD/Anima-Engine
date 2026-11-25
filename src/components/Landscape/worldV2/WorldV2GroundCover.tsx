@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { sampleElevation } from '../utils/worldSample';
 import type { World } from '../utils/worldGen';
 import type { QualityTier } from '../utils/qualityTiers';
 import { WORLD_EXTENT_M, type WorldV2LoadedBundle } from './types';
@@ -61,6 +63,11 @@ function makeTuftGeometry(): THREE.BufferGeometry {
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   return g;
+}
+
+/** A named operation so the frame loop does not mutate a render-owned object inline. */
+function setVisible(obj: THREE.Object3D, visible: boolean): void {
+  obj.visible = visible;
 }
 
 function seeded(seed: number): () => number {
@@ -228,6 +235,19 @@ float gcH(vec2 uvc) {
   useEffect(() => () => instances?.geometry.dispose(), [instances]);
   useEffect(() => () => material?.dispose(), [material]);
 
+  // Hide the whole draw when the camera is higher above the ground than the cover radius: every
+  // tuft would be collapsed anyway, but its vertices would still be shaded.
+  const meshRef = useRef<THREE.InstancedMesh | null>(null);
+  useFrame((state) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const cam = state.camera.position;
+    const u = cam.x / renderSize + 0.5;
+    const v = cam.z / renderSize + 0.5;
+    const ground = u >= 0 && u <= 1 && v >= 0 && v <= 1 ? sampleElevation(world, u, v) * heightUnits : 0;
+    setVisible(mesh, cam.y - ground < radiusUnits);
+  });
+
   if (!instances || !material) return null;
   return (
     <instancedMesh
@@ -238,6 +258,7 @@ float gcH(vec2 uvc) {
       receiveShadow={false}
       userData={{ decorative: true, rwLayer: 'flora' }}
       ref={(mesh: THREE.InstancedMesh | null) => {
+        meshRef.current = mesh;
         if (!mesh || !mesh.instanceMatrix) return;
         mesh.instanceMatrix.array.set(instances.matrices);
         mesh.instanceMatrix.needsUpdate = true;

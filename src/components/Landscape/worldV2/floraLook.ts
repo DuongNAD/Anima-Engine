@@ -141,19 +141,17 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
       return finish([trunk(0.12, 0.035, '#3b2b1e'), ...parts]);
     }
     case LOOK_SPECIES.Broadleaf: {
-      // Multi-lobe crown: one main mass and three smaller lobes at different
+      // Multi-lobe crown: one main mass and two smaller lobes at different
       // heights and azimuths, so the silhouette is irregular from every side (instances are
       // also yawed and stretched independently).
       const r = w * 0.5;
       const main = jitter(new THREE.IcosahedronGeometry(r * 0.78, 0), r * 0.26, 11).scale(1, 0.8, 1).translate(-r * 0.08, 0.64, 0.02);
       const l1 = jitter(new THREE.OctahedronGeometry(r * 0.52, 0), r * 0.18, 12).scale(1, 0.85, 1).translate(r * 0.5, 0.5, r * 0.18);
       const l2 = jitter(new THREE.OctahedronGeometry(r * 0.46, 0), r * 0.16, 13).scale(1, 0.8, 1).translate(-r * 0.42, 0.46, -r * 0.34);
-      const l3 = jitter(new THREE.OctahedronGeometry(r * 0.4, 0), r * 0.14, 14).translate(r * 0.12, 0.86, -r * 0.2);
       const lobes = [
         [main, '#16290f', '#304a1d', 0.3, 1.0, -r * 0.08, 0.6, 0.02],
         [l1, '#132510', '#2b441b', 0.3, 0.8, r * 0.5, 0.48, r * 0.18],
         [l2, '#142710', '#2e471c', 0.28, 0.75, -r * 0.42, 0.44, -r * 0.34],
-        [l3, '#1a2e12', '#36521f', 0.6, 1.0, r * 0.12, 0.84, -r * 0.2],
       ] as const;
       const parts = lobes.map(([g, lo, hi, y0, y1, cx, cy, cz]) => {
         const p = paintGradient(g, lo, hi, y0, y1);

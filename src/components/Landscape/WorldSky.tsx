@@ -57,7 +57,9 @@ const SKY_LOOK_FRAGMENT = /* glsl */ `
   ${ATMOSPHERE_FRAGMENT_PARS}
   void main() {
     vec3 d = normalize(vDir);
-    vec3 col = atmoSkyColor(vec3(d.x, max(d.y, 0.0), d.z));
+    vec3 dd = vec3(d.x, max(d.y, 0.0), d.z);
+    vec3 col = uAtmoPhys >= 1.0 ? atmoPreetham(dd)
+      : (uAtmoPhys <= 0.0 ? atmoSkyColorLegacy(dd) : mix(atmoSkyColorLegacy(dd), atmoPreetham(dd), uAtmoPhys));
     float m = max(dot(d, normalize(uMoonDir)), 0.0);
     col += vec3(0.58, 0.66, 0.8) * (pow(m, 700.0) * 0.55 + pow(m, 26.0) * 0.05) * uMoonGlow;
     gl_FragColor = vec4(col, 1.0);
@@ -104,6 +106,9 @@ const CLOUD_FRAGMENT = /* glsl */ `
     // Seen edge-on the layer is a sheet: fade it out toward the horizon line.
     // (From below it also hides layer slivers crossing in front of the massif.)
     a *= mix(smoothstep(0.10, 0.38, abs(vdir.y)), smoothstep(0.05, 0.26, abs(vdir.y)), fromAbove);
+    // Near the camera the layer thins out (flight-sim practice): a camera flying just above or
+    // below the cloud base sees the ground through it instead of a wall of nearby cloud.
+    a *= smoothstep(220.0, 900.0, length(vWp - cameraPosition) * uAtmoMPerUnit);
     vec3 hazeC = atmoSkyColor(normalize(vec3(vdir.x, abs(vdir.y) * 0.2, vdir.z)));
     col = mix(col, hazeC, atmoHazeAmount(cameraPosition, vWp));
     gl_FragColor = vec4(min(col, vec3(1.0)), a);

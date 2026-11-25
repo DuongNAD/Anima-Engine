@@ -38,6 +38,11 @@ export interface AtmosphereUniforms {
   uAtmoSunE: { value: number };
   uAtmoMieG: { value: number };
   uAtmoSkyExposure: { value: number };
+  /** Display-space Preetham samples for the cheap per-pixel sky (haze, reflections, clouds). */
+  uAtmoZenP: { value: THREE.Color };
+  uAtmoHzSun: { value: THREE.Color };
+  uAtmoHzSide: { value: THREE.Color };
+  uAtmoHzAway: { value: THREE.Color };
   /** Cloud layer: 0 = off. Coverage threshold, base height (units), metres per unit, wind (m/s). */
   uAtmoCloudOn: { value: number };
   uAtmoCloudCover: { value: number };
@@ -69,6 +74,10 @@ export const atmosphereUniforms: AtmosphereUniforms = {
   uAtmoSunE: { value: 0 },
   uAtmoMieG: { value: 0.8 },
   uAtmoSkyExposure: { value: 0.25 },
+  uAtmoZenP: { value: new THREE.Color(0.23, 0.47, 0.75) },
+  uAtmoHzSun: { value: new THREE.Color(0.95, 0.96, 0.97) },
+  uAtmoHzSide: { value: new THREE.Color(0.91, 0.93, 0.94) },
+  uAtmoHzAway: { value: new THREE.Color(0.88, 0.9, 0.91) },
   uAtmoCloudOn: { value: 0 },
   uAtmoCloudCover: { value: 0.65 },
   uAtmoCloudY: { value: 120 },
@@ -107,7 +116,61 @@ export function updateAtmosphereSun(sunDir: THREE.Vector3, physWeight: number): 
     0.434 * c * MIE_CONST[2] * SKY_MIE_COEFF,
   );
   atmosphereUniforms.uAtmoPhys.value = physWeight;
+  // Samples for the cheap per-pixel sky: zenith, and the horizon toward, beside and away from
+  // the sun (exactly the dome's colours there, so the haze meets the dome without a seam).
+  tmpSun.copy(sunDir).normalize();
+  const hx = tmpSun.x;
+  const hz = tmpSun.z;
+  const hl = Math.hypot(hx, hz) || 1;
+  preethamDisplay(tmpDir.set(0, 1, 0), tmpSun, atmosphereUniforms.uAtmoZenP.value);
+  preethamDisplay(tmpDir.set(hx / hl, 0, hz / hl), tmpSun, atmosphereUniforms.uAtmoHzSun.value);
+  preethamDisplay(tmpDir.set(-hz / hl, 0, hx / hl), tmpSun, atmosphereUniforms.uAtmoHzSide.value);
+  preethamDisplay(tmpDir.set(-hx / hl, 0, -hz / hl), tmpSun, atmosphereUniforms.uAtmoHzAway.value);
 }
+
+// JS twin of `atmoPreetham` (same constants, same ACES fit), for the few samples the cheap
+// per-pixel sky interpolates between.
+function acesFit(c: number[]): number[] {
+  const inM = [
+    [0.59719, 0.076, 0.0284],
+    [0.35458, 0.90834, 0.13383],
+    [0.04823, 0.01566, 0.83777],
+  ];
+  const outM = [
+    [1.60475, -0.10208, -0.00327],
+    [-0.53108, 1.10813, -0.07276],
+    [-0.07367, -0.00605, 1.07602],
+  ];
+  const mul = (m: number[][], v: number[]) => [0, 1, 2].map((i) => m[0][i] * v[0] + m[1][i] * v[1] + m[2][i] * v[2]);
+  const x = mul(inM, c).map((v) => (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081));
+  return mul(outM, x).map((v) => Math.min(1, Math.max(0, v)));
+}
+
+function preethamDisplay(d: THREE.Vector3, sun: THREE.Vector3, out: THREE.Color): void {
+  const u = atmosphereUniforms;
+  const za = Math.acos(Math.max(0, d.y));
+  const inv = 1 / (Math.cos(za) + 0.15 * Math.pow(93.885 - za * 57.29578, -1.253));
+  const bR = [u.uAtmoBetaR.value.x, u.uAtmoBetaR.value.y, u.uAtmoBetaR.value.z];
+  const bM = [u.uAtmoBetaM.value.x, u.uAtmoBetaM.value.y, u.uAtmoBetaM.value.z];
+  const ct = d.dot(sun);
+  const rP = 0.05968310365946075 * (1 + Math.pow(ct * 0.5 + 0.5, 2));
+  const g = u.uAtmoMieG.value;
+  const mP = (0.07957747154594767 * (1 - g * g)) / Math.pow(1 - 2 * g * ct + g * g, 1.5);
+  const mixT = Math.min(1, Math.max(0, Math.pow(1 - sun.y, 5)));
+  const c: number[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    const fex = Math.exp(-(bR[i] * 8.4e3 * inv + bM[i] * 1.25e3 * inv));
+    const ratio = (bR[i] * rP + bM[i] * mP) / (bR[i] + bM[i]);
+    let lin = Math.pow(u.uAtmoSunE.value * ratio * (1 - fex), 1.5);
+    lin *= 1 - mixT + mixT * Math.pow(u.uAtmoSunE.value * ratio * fex, 0.5);
+    c.push((lin + 0.1 * fex) * 0.04 + [0, 0.0003, 0.00075][i]);
+  }
+  const t = acesFit(c.map((v) => (v * u.uAtmoSkyExposure.value) / 0.6));
+  out.setRGB(Math.pow(t[0], 1 / 2.2), Math.pow(t[1], 1 / 2.2), Math.pow(t[2], 1 / 2.2), THREE.LinearSRGBColorSpace);
+}
+
+const tmpDir = new THREE.Vector3();
+const tmpSun = new THREE.Vector3();
 
 let cloudNoiseTex: THREE.DataTexture | null = null;
 
@@ -175,8 +238,8 @@ export function setAtmosphereGround(
   }
   groundTex?.dispose();
   groundTex = new THREE.DataTexture(data, R, R, THREE.RedFormat, THREE.FloatType);
-  groundTex.minFilter = THREE.NearestFilter;
-  groundTex.magFilter = THREE.NearestFilter;
+  groundTex.minFilter = THREE.LinearFilter;
+  groundTex.magFilter = THREE.LinearFilter;
   groundTex.wrapS = THREE.ClampToEdgeWrapping;
   groundTex.wrapT = THREE.ClampToEdgeWrapping;
   groundTex.needsUpdate = true;
@@ -211,6 +274,10 @@ uniform vec3 uAtmoBetaM;
 uniform float uAtmoSunE;
 uniform float uAtmoMieG;
 uniform float uAtmoSkyExposure;
+uniform vec3 uAtmoZenP;
+uniform vec3 uAtmoHzSun;
+uniform vec3 uAtmoHzSide;
+uniform vec3 uAtmoHzAway;
 uniform float uAtmoCloudOn;
 uniform float uAtmoCloudCover;
 uniform float uAtmoCloudY;
@@ -268,13 +335,19 @@ float atmoCloudCov(vec2 pM) {
   }
   return cov;
 }
-// Sun transmittance through the cloud layer for a point on the ground (1 = clear sun).
+// Sun transmittance through the cloud layer for a point on the ground (1 = clear sun). Uses the
+// three coarse octaves only (shadows are soft anyway) and no ground lookup.
 float atmoCloudShadow(vec3 p) {
   if (uAtmoCloudOn < 0.5) return 1.0;
   vec3 sd = normalize(uAtmoSunDir);
   if (sd.y <= 0.02) return 1.0;
   vec3 c = p + sd * ((uAtmoCloudY - p.y) / sd.y);
-  return 1.0 - 0.62 * atmoCloudCov(c.xz * uAtmoMPerUnit);
+  vec2 q = c.xz * uAtmoMPerUnit + uAtmoWind * uAtmoTime;
+  float region = texture2D(uAtmoCloudTex, q / 61000.0 + 0.53).a;
+  float n = texture2D(uAtmoCloudTex, q / 9100.0 + 0.13).r * 0.55
+          + texture2D(uAtmoCloudTex, q / 3300.0 + 0.71).g * 0.30 + 0.075;
+  float thr = uAtmoCloudCover + (0.5 - region) * 0.22;
+  return 1.0 - 0.62 * smoothstep(thr - 0.02, thr + 0.2, n);
 }
 
 vec3 atmoSkyColorLegacy(vec3 d) {
@@ -288,9 +361,22 @@ vec3 atmoSkyColorLegacy(vec3 d) {
   return col;
 }
 
+// Cheap per-pixel version of the physical sky for haze, reflections and clouds: the horizon
+// colour interpolated by azimuth to the sun between three exact samples, rising to the zenith
+// sample (the Preetham sky reaches its zenith colour within ~30 degrees), plus a Mie glow. The
+// exact model runs only on the dome.
+vec3 atmoSkyFast(vec3 d) {
+  vec2 sh = normalize(uAtmoSunDir.xz + vec2(1e-5));
+  float az = dot(normalize(d.xz + vec2(1e-5)), sh);
+  vec3 hz = az > 0.0 ? mix(uAtmoHzSide, uAtmoHzSun, az * az) : mix(uAtmoHzSide, uAtmoHzAway, az * az);
+  vec3 col = mix(hz, uAtmoZenP, pow(clamp(d.y, 0.0, 1.0), 0.38));
+  float s = max(dot(d, normalize(uAtmoSunDir)), 0.0);
+  return min(col + vec3(0.10, 0.09, 0.07) * pow(s, 24.0), vec3(1.0));
+}
+
 vec3 atmoSkyColor(vec3 d) {
   if (uAtmoPhys <= 0.0) return atmoSkyColorLegacy(d);
-  vec3 p = atmoPreetham(d);
+  vec3 p = atmoSkyFast(d);
   return uAtmoPhys >= 1.0 ? p : mix(atmoSkyColorLegacy(d), p, uAtmoPhys);
 }
 
