@@ -1954,41 +1954,12 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &hcfg,
             );
             drop(pf_filled);
-            let mut q_channel: Vec<bool> = hydro
-                .is_channel
+            let q_channel: Vec<bool> = hydro
+                .discharge_q_m3_s
                 .iter()
-                .zip(hydro.discharge_q_m3_s.iter())
-                .zip(hydro.river_w_m.iter())
                 .zip(total_h.iter())
-                .map(|(((&is_ch, &q), &rw), &h_m)| {
-                    h_m > crate::SEA_LEVEL_M && ((is_ch && q >= 0.05) || rw >= 0.5)
-                })
+                .map(|(&q, &h_m)| h_m > crate::SEA_LEVEL_M && q >= 0.05)
                 .collect();
-            let channel_seeds: Vec<u32> = q_channel
-                .iter()
-                .enumerate()
-                .filter_map(|(i, &c)| c.then_some(i as u32))
-                .collect();
-            for s_u32 in channel_seeds {
-                let mut cur = s_u32 as usize;
-                for _ in 0..lvl_n {
-                    let d = d8_dir[cur];
-                    if d >= 8 {
-                        break;
-                    }
-                    let nr = (cur / lvl) as isize + DZ8[usize::from(d)];
-                    let nc = (cur % lvl) as isize + DX8[usize::from(d)];
-                    if nr < 0 || nc < 0 || nr >= lvl as isize || nc >= lvl as isize {
-                        break;
-                    }
-                    let nxt = nr as usize * lvl + nc as usize;
-                    if nxt == cur || total_h[nxt] <= crate::SEA_LEVEL_M || q_channel[nxt] {
-                        break;
-                    }
-                    q_channel[nxt] = true;
-                    cur = nxt;
-                }
-            }
             let strahler = crate::anmw_v3::compute_strahler_order(&d8_dir, &q_channel, lvl, lvl);
             drop(q_channel);
 
