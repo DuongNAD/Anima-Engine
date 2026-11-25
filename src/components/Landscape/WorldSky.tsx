@@ -102,8 +102,9 @@ float Hm=uAtmoCloudTop*uAtmoMPerUnitY;
   // Real-size cumulus: ~0.5-1.6 km across over the sea (thin cells), growing to ~3 km and
   // taller where the cell is thick (the windward bank). Thin ones are 1.6-2.4 times wider than
   // tall seen from the side; the centre sits low, so the condensation level cuts a flat base,
-  // and in thick cells some puffs ride higher, building the bank upward.
-  `float rM=mix(250.0,2000.0,pow(top,1.5))*(0.75+0.5*fract(aCell.z*7.13));
+  // and in thick cells some puffs ride higher, building the bank upward. Coarser grids (medium,
+  // low) grow their clouds a little so the bank does not fall apart into separate puffs.
+  `float rM=mix(250.0,2000.0,pow(top,1.5))*(0.75+0.5*fract(aCell.z*7.13))*sqrt(clamp(sp/1000.0,1.0,4.0));
 float asp=mix(2.0,1.1,top)*(0.8+0.4*fract(aCell.w*5.31));
 vec3 rc=normalize(vec3(p.x/uAtmoMPerUnit,uAtmoCloudY,p.y/uAtmoMPerUnit)-cameraPosition);
 float ryM=rM*mix(1.0,1.0/asp,1.0-smoothstep(0.08,0.4,-rc.y));
