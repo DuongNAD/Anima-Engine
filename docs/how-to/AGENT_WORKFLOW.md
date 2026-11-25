@@ -464,6 +464,28 @@ QD-BIO-D4 = a brain-body interface ADR (per-segment CPG drive by the brain) come
             (genotype.rs:253).
             (D1-D4: owner in chat, 2026-11-24: "Duyệt D1–D4", on the lead's review of the six Gemini Deep
             Research reports, hub RESEARCH_REVIEW_2026-11-24_modern_biology.md.)
+QD-WCHG   = ADR-0016 (changing world surface; natural disasters) has its six open gates decided, all as
+            recommended (owner in chat, 2026-11-26 night: "Approve as recommended", after asking for
+            natural disasters):
+            D-WCHG-1 (A): a compact Tier-2 SurfaceDeltaOverlay on the 256^2 sim grid (delta elevation,
+            water stage, cover disturbance, burn timer, dirty-chunk mask) with a bounded per-era event
+            log, about 1 MiB fixed.
+            D-WCHG-2 (A): a Tier-3 era transition when an event's peak |dh| >= 120 m, or it touches
+            >= 5% of land, or cumulative Tier-2 drift crosses its threshold, or an island is created or
+            submerged.
+            D-WCHG-3 (A): bounded tsunami runup as a Tier-2 surface-water pulse through the
+            DynamicFields water budget, after the W2/W3 fault and landslide work.
+            D-WCHG-4 (A): after an era bake, creatures on safe land carry over intact; those stranded on
+            new deep water or active lava die to Detritus unless within R_flee, where mobile animals move
+            to the nearest walkable land (ADR-0001 phenotype kept, no re-rolls).
+            D-WCHG-5 (A): natural hazards are rare by default; frequent eruptions only in an explicit
+            catastrophe scenario.
+            D-WCHG-6 (A): G-SHAPE, G-COMP v2 and G-SIM run after every Tier-3 bake; G-SIM is hard, and
+            geomorphic or biome shifts are reported honestly, never tuned.
+            The cards are W1-W7 (docs/ai/planning/2026-11-24-world-change-cards.md), in their dependency
+            order. Hazards are opt-in world laws (the EVOLUTION_EXPERIMENT_CONTRACT rule): the frozen
+            SEL2-P2 and every prereg_* stay bit-identical. Suffocation by volcanic gas or drowning goes
+            through the respiration design RESP-D, not through these cards.
 QD-ADR0014 = ADR-0014 (shared island, host and guests; PR #256) is accepted with all 24 D-slots as recommended:
             immediate release on disconnect; exclusive possession; bincode quantized deltas at about 20 Hz with a
             LAN cap of 16 guests; interest-area culling with a low-rate global summary; guest-input overflow
