@@ -242,7 +242,8 @@ fn headless_live_world_ignores_env_and_temp_artifacts_while_app_init_world_reads
             .parent()
             .expect("CARGO_MANIFEST_DIR has repo parent")
             .join("artifacts/world-v2/index.json");
-        let raw_idx = std::fs::read_to_string(&idx_path).expect("read artifacts/world-v2/index.json");
+        let raw_idx =
+            std::fs::read_to_string(&idx_path).expect("read artifacts/world-v2/index.json");
         let parsed: serde_json::Value = serde_json::from_str(&raw_idx).expect("parse index.json");
         let hex = parsed["sim_world_identity"]
             .as_str()

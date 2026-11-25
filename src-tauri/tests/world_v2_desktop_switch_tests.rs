@@ -139,11 +139,9 @@ fn wv2_7_desktop_boot_precedence_uses_bundled_then_dev_and_retires_v1_temp_artif
     std::fs::copy(&sim_src, &bundled_sim).expect("copy sim_256.anmw3");
     std::fs::copy(&idx_src, bundle_dir.join("index.json")).expect("copy index.json");
 
-    let bundled_world = try_init_world_with_bundled_path(
-        TerrainSource::AppArtifactOrGenerated,
-        Some(&bundled_sim),
-    )
-    .expect("bundled sim_256.anmw3 boots cleanly");
+    let bundled_world =
+        try_init_world_with_bundled_path(TerrainSource::AppArtifactOrGenerated, Some(&bundled_sim))
+            .expect("bundled sim_256.anmw3 boots cleanly");
     assert_eq!(*bundled_world.resource::<WorldIdentity>(), dev_id);
     assert_eq!(
         try_world_seed_from_disk_with_bundled_path(Some(&bundled_sim)).expect("bundled seed"),
@@ -257,7 +255,8 @@ fn wv2_7_old_saves_refused_by_mismatch_precheck_and_engine_start_backstop() {
     std::env::remove_var("ANIMA_WORLD_ARTIFACT");
     std::env::set_var("ANIMA_USE_GPU", "0");
 
-    let fixture_path = repo_root().join("src-tauri/tests/fixtures/snapshots/schema7_burn013_shared_learner.json");
+    let fixture_path =
+        repo_root().join("src-tauri/tests/fixtures/snapshots/schema7_burn013_shared_learner.json");
     let raw_bytes = std::fs::read(&fixture_path).expect("schema-7 fixture exists");
     let envelope: SnapshotEnvelope = serde_json::from_slice(&raw_bytes).expect("parse envelope");
     envelope.verify().expect("fixture checksum verifies");
@@ -320,7 +319,10 @@ fn wv2_7_old_saves_refused_by_mismatch_precheck_and_engine_start_backstop() {
     engine.stop();
 
     assert_eq!(saved_v2.world_identity, active_id);
-    assert!(saved_v2.world_identity.mismatch_against(&active_id).is_none());
+    assert!(saved_v2
+        .world_identity
+        .mismatch_against(&active_id)
+        .is_none());
 
     let resumed_floor = saved_v2.tick_count;
     let engine2 = SimulationEngine::new();

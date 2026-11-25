@@ -773,14 +773,13 @@ pub fn load_desktop_world_with_bundled_path(
             )
         })?;
         if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
-            let index_path = resolve_v3_index_path_for(&env_path, bundled_sim_path).ok_or_else(
-                || {
+            let index_path =
+                resolve_v3_index_path_for(&env_path, bundled_sim_path).ok_or_else(|| {
                     format!(
                         "missing index.json to verify ANMW v3 ANIMA_WORLD_ARTIFACT at {}",
                         env_path.display()
                     )
-                },
-            )?;
+                })?;
             return load_verified_v3_sim_bytes(&env_path, &bytes, &index_path);
         }
         let artifact = WorldArtifact::from_bytes(&bytes).map_err(|e| {
@@ -850,14 +849,13 @@ pub fn try_world_seed_from_disk_with_bundled_path(
             )
         })?;
         if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
-            let index_path = resolve_v3_index_path_for(&env_path, bundled_sim_path).ok_or_else(
-                || {
+            let index_path =
+                resolve_v3_index_path_for(&env_path, bundled_sim_path).ok_or_else(|| {
                     format!(
                         "missing index.json to verify ANMW v3 ANIMA_WORLD_ARTIFACT at {}",
                         env_path.display()
                     )
-                },
-            )?;
+                })?;
             let expected_sha = read_expected_sim_world_identity(&index_path)?;
             anima_worldgen::anmw_v3::verify_sim_world_identity(&bytes, &expected_sha).map_err(
                 |e| {
@@ -867,8 +865,12 @@ pub fn try_world_seed_from_disk_with_bundled_path(
                     )
                 },
             )?;
-            return anima_worldgen::anmw_v3::AnmwV3Sim::peek_seed(&bytes)
-                .map_err(|e| format!("failed to peek seed from ANMW v3 {}: {e}", env_path.display()));
+            return anima_worldgen::anmw_v3::AnmwV3Sim::peek_seed(&bytes).map_err(|e| {
+                format!(
+                    "failed to peek seed from ANMW v3 {}: {e}",
+                    env_path.display()
+                )
+            });
         }
         return WorldArtifact::peek_seed(&bytes);
     }

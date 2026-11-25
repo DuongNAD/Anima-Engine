@@ -490,16 +490,17 @@ impl SimulationEngine {
             ) {
                 Ok(world) => world,
                 Err(error) => {
-                    eprintln!(
-                        "ERROR: simulation start aborted before workers started: {error}"
-                    );
+                    eprintln!("ERROR: simulation start aborted before workers started: {error}");
                     self.running.store(false, Ordering::SeqCst);
                     return;
                 }
             }
         };
         if let Some(state) = state_to_load.as_ref() {
-            if let Some(reason) = state.world_identity.mismatch_against(&loaded_world.identity) {
+            if let Some(reason) = state
+                .world_identity
+                .mismatch_against(&loaded_world.identity)
+            {
                 eprintln!(
                     "ERROR: snapshot restore aborted before workers started: world identity mismatch ({reason})"
                 );
