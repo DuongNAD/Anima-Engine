@@ -216,41 +216,44 @@ vec2 lkG = (vec2(lkNVHi.g, lkNVHi.b) - 0.5) * (1.0 - lkSnow * 0.7) * 0.9
          + (vec2(lkNHi.b, lkNHi.g) - 0.5) * 0.5;
 // ---- Coast (reference board CST-01, CST-03, CST-04) ------------------------------------------
 float lkHAbove = (lkWp.y - uAtmoSeaY) * (uElevSpanM / uHeightUnits);   // metres above sea
-// Every coast term needs ground within ~60 m of sea level; higher ground skips the SDF fetch.
+// Every coast term needs ground within ~60 m of sea level and ~320 m of the shore: the whole
+// block (SDF fetch included) is skipped elsewhere, which is most of the screen.
 vec2 lkUvDx = dFdx(vMapUv);
 vec2 lkUvDy = dFdy(vMapUv);
-float lkShoreM = 500.0;                                 // metres from the shore, + on land
-float lkExpo = 0.0;
+float lkWet = 0.0;
+float lkSpray = 0.0;
 if (lkHAbove < 60.0) {
   vec4 lkShoreS = textureGrad(uLookShore, vMapUv, lkUvDx, lkUvDy);
-  lkShoreM = lkShoreS.r * 1000.0 - 500.0;
-  lkExpo = lkShoreS.g;
+  float lkShoreM = lkShoreS.r * 1000.0 - 500.0;        // metres from the shore, + on land
+  float lkExpo = lkShoreS.g;
+  float lkCoast = 1.0 - smoothstep(150.0, 320.0, lkShoreM);
+  // Sea bed: below the waterline it is sand, silt and rock, never meadow or canopy.
+  float lkSeabed = (1.0 - smoothstep(-1.0, 0.6, lkHAbove)) * (1.0 - smoothstep(-10.0, 25.0, lkShoreM));
+  if (lkCoast > 0.0 || lkSeabed > 0.0) {
+    vec3 lkBedCol = mix(vec3(0.17, 0.155, 0.12), vec3(0.075, 0.08, 0.075), smoothstep(1.5, 18.0, -lkHAbove))
+      * mix(0.85, 1.12, lkNHi.r);
+    lkGround = mix(lkGround, mix(lkBedCol, lkGround, lkRock * 0.5), lkSeabed);
+    // Beach (CST-03): a narrow, darker sand strip between the surf and the slope. Beach-class
+    // ground higher up becomes dune grass instead of a wide pale band; gentle ground right at
+    // the waterline gets a strip of sand/shingle even where the biome is not Beach.
+    float lkBeachBand = (1.0 - smoothstep(3.0, 11.0, lkHAbove + (lkNHi.g - 0.5) * 4.0)) * step(-0.5, lkHAbove);
+    float lkWaterStrip = (1.0 - smoothstep(1.2, 4.5, lkHAbove)) * step(-0.5, lkHAbove)
+      * (1.0 - smoothstep(0.10, 0.24, lkSlope)) * lkCoast;
+    float lkSandW = max(lkMask.a * lkBeachBand, lkWaterStrip) * (1.0 - lkSnow);
+    vec3 lkSandCol = mix(vec3(0.105, 0.095, 0.078), vec3(0.16, 0.14, 0.11), lkNMid.g) * mix(0.9, 1.08, lkNVHi.r);
+    vec3 lkDuneCol = mix(vec3(0.075, 0.08, 0.045), vec3(0.11, 0.10, 0.065), lkNHi.b);
+    lkGround = mix(lkGround, lkDuneCol, lkMask.a * (1.0 - lkBeachBand) * lkCoast * 0.75 * (1.0 - lkRock));
+    lkGround = mix(lkGround, lkSandCol, lkSandW * (1.0 - lkRock * 0.7));
+    // Swash band (CST-01, CST-04): ground just above the waterline is wet, so darker here and
+    // glossier below (roughness hook + sky reflection at the output stage).
+    lkWet = (1.0 - smoothstep(0.5, 1.1 + 1.0 * lkExpo, lkHAbove + (lkNVHi.b - 0.5) * 0.4))
+      * step(-0.4, lkHAbove) * (1.0 - smoothstep(25.0, 70.0, lkShoreM)) * step(-30.0, lkShoreM);
+    lkGround *= mix(1.0, 0.42, lkWet);
+    // Spray haze over the surf-side ground (applied with the aerial perspective).
+    lkSpray = lkExpo * (1.0 - smoothstep(40.0, 260.0, lkShoreM)) * (1.0 - smoothstep(0.0, 45.0, lkHAbove))
+      * step(-1.0, lkHAbove);
+  }
 }
-float lkCoast = 1.0 - smoothstep(150.0, 320.0, lkShoreM);
-// Sea bed: below the waterline it is sand, silt and rock, never meadow or canopy.
-float lkSeabed = (1.0 - smoothstep(-1.0, 0.6, lkHAbove)) * (1.0 - smoothstep(-10.0, 25.0, lkShoreM));
-vec3 lkBedCol = mix(vec3(0.17, 0.155, 0.12), vec3(0.075, 0.08, 0.075), smoothstep(1.5, 18.0, -lkHAbove))
-  * mix(0.85, 1.12, lkNHi.r);
-lkGround = mix(lkGround, mix(lkBedCol, lkGround, lkRock * 0.5), lkSeabed);
-// Beach (CST-03): a narrow, darker sand strip between the surf and the slope. Beach-class
-// ground higher up becomes dune grass instead of a wide pale band; gentle ground right at the
-// waterline gets a strip of sand/shingle even where the biome is not Beach.
-float lkBeachBand = (1.0 - smoothstep(3.0, 11.0, lkHAbove + (lkNHi.g - 0.5) * 4.0)) * step(-0.5, lkHAbove);
-float lkWaterStrip = (1.0 - smoothstep(1.2, 4.5, lkHAbove)) * step(-0.5, lkHAbove)
-  * (1.0 - smoothstep(0.10, 0.24, lkSlope)) * lkCoast;
-float lkSandW = max(lkMask.a * lkBeachBand, lkWaterStrip) * (1.0 - lkSnow);
-vec3 lkSandCol = mix(vec3(0.105, 0.095, 0.078), vec3(0.16, 0.14, 0.11), lkNMid.g) * mix(0.9, 1.08, lkNVHi.r);
-vec3 lkDuneCol = mix(vec3(0.075, 0.08, 0.045), vec3(0.11, 0.10, 0.065), lkNHi.b);
-lkGround = mix(lkGround, lkDuneCol, lkMask.a * (1.0 - lkBeachBand) * lkCoast * 0.75 * (1.0 - lkRock));
-lkGround = mix(lkGround, lkSandCol, lkSandW * (1.0 - lkRock * 0.7));
-// Swash band (CST-01, CST-04): sand and rock just above the waterline are wet, so darker here
-// and glossier below (roughness hook + sky reflection at the output stage).
-float lkWet = (1.0 - smoothstep(0.5, 1.1 + 1.0 * lkExpo, lkHAbove + (lkNVHi.b - 0.5) * 0.4))
-  * step(-0.4, lkHAbove) * (1.0 - smoothstep(25.0, 70.0, lkShoreM)) * step(-30.0, lkShoreM);
-lkGround *= mix(1.0, 0.42, lkWet);
-// Spray haze over the surf-side ground (applied with the aerial perspective).
-float lkSpray = lkExpo * (1.0 - smoothstep(40.0, 260.0, lkShoreM)) * (1.0 - smoothstep(0.0, 45.0, lkHAbove))
-  * step(-1.0, lkHAbove);
 float lkUnder = clamp((uAtmoSeaY - lkWp.y) / 4.0, 0.0, 1.0);
 lkGround = mix(lkGround, lkGround * vec3(0.42, 0.66, 0.70), lkUnder);
 // Baked cavity: part on albedo, the rest on indirect light (see aomap hook below).
@@ -311,8 +314,8 @@ const WV2_LOOK_NORMAL_FRAGMENT = /* glsl */ `
 // sky at grazing angles, spray softens surf-side ground, then the shared aerial perspective.
 const WV2_LOOK_OUTPUT = /* glsl */ `
 {
-  vec3 lkV = normalize(cameraPosition - vW3WorldPos);
   if (lkWet > 0.01) {
+    vec3 lkV = normalize(cameraPosition - vW3WorldPos);
     vec3 lkWn = normalize(vec3(lkBn.x * 0.35, 1.0, lkBn.y * 0.35));
     float lkF = 0.02 + 0.98 * pow(1.0 - max(dot(lkWn, lkV), 0.0), 5.0);
     vec3 lkR = reflect(-lkV, lkWn);
@@ -321,7 +324,7 @@ const WV2_LOOK_OUTPUT = /* glsl */ `
   }
   vec3 lkHd = normalize(vW3WorldPos - cameraPosition);
   vec3 lkHazeC = atmoSkyColor(normalize(vec3(lkHd.x, lkHd.y * 0.2, lkHd.z)));
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(lkHazeC, vec3(0.9), 0.25), lkSpray * 0.22);
+  if (lkSpray > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(lkHazeC, vec3(0.9), 0.25), lkSpray * 0.22);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, lkHazeC, atmoHazeAmount(cameraPosition, vW3WorldPos));
 }
 `;
