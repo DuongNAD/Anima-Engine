@@ -3,16 +3,16 @@ phase: design
 feature: map-v2
 title: Card WV2-D2 — World v2 Scale-Up (~82 km) and Environments Design
 description: Design proposal for scaling World v2 to ~81.92 km on a side with expanded physically coherent tropical environments, full code/verifier/viewer scale inventory, extent vs resolution trade-off, proposed gate recalibrations, release order options, and open owner decisions
-status: proposed
+status: accepted
 owner: anima-dell
 last_reviewed: 2026-11-26
 ---
 
 # `WV2-D2` — World v2 Scale-Up (`~82 km`) and Environments Design
 
-> **Status: `proposed` (documents only — zero code, zero generator/verifier/tile edits, zero `docs/ai/README.md` edits).**
+> **Status: `accepted`** — All recommendations in `WB-D1..WB-D8` (`§8`) were approved by the owner on `2026-11-25` night (`"Approve as recommended"`) and recorded as **`QD-WV2-D2`** in [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) (PR `#295`, merged `dcaf6e7a`; this design merged in PR `#294`, `8ae6e83d`).
 > - **Provenance:** Code and doc anchors in this design were verified on `origin/feat/ecological-selection` at `81eb1e8ef39c6811b463d417984e9130ea03a258` (`#290` `C16 SEL2P2-FREEZE`, 2026-11-25), alongside pending decisions in Draft PR `#293` (`cf433685f78b9d596f9dd49bd29f7d33dcc4df1e`, `VERIFIED` at review), `WV2-PHYS3` (`PR #274` / `origin/mac/wv2-phys3`), and `WV2-6` (`Draft PR #291` / `origin/win/wv2-6` @ `cdcab9f0`, explicitly marked where cited).
-> - **Gate authority:** Every new threshold, resolution choice, environment scope choice, or release-order recommendation in this document is **`PROPOSED`** and marked with **`WB-D1..WB-D8`** in [`§8`](#8-open-owner-decisions-wb-d1wb-d8).
+> - **Gate authority:** Decisions **`WB-D1..WB-D8`** in [`§8`](#8-open-owner-decisions-wb-d1wb-d8) are **accepted as recommended** under **`QD-WV2-D2`** ([`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md)); implementation follows cards `WV2-BIG-1..WV2-BIG-5` + `WV2-LOOK` (`§7`) without changing `40.96 km` verifier tests or the `256²` sim grid.
 
 ---
 
