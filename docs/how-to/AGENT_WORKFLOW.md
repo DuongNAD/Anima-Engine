@@ -586,6 +586,20 @@ QD-GATES-1125 = the owner delegated the open release and world gates to the lead
             (5) C16 SEL2P2-FREEZE: anima-case opens the win/sel2p2-freeze draft PR, a peer verifies that
             it freezes exactly QD-SEL2P2-D1..D7 and the VIAB-2 settings, and the lead merges it when it
             is VERIFIED at the head and green. That merge is the preregistration freeze.
+QD-WV2-LOOK = after the owner judged the World v2 C01 scene not yet realistic (2026-11-25 evening),
+            the lead prototyped a rendering-only realism pass on mac/wv2-look-proto, on top of #291 at
+            2693116c: slope/altitude terrain shading with side-plane projection on steep faces, aerial
+            perspective, real-scale flora with a flora-driven canopy term, ocean depth colour and
+            natural cave mouths, at 23-29 draw calls on both tiers. It becomes a card, WV2-LOOK, after
+            WV2-6 (#291) merges, and only then: the trunk is merged into the branch (never rebased),
+            a PR is opened and peer-verified with capture:map before/after plus npm run test:e2e with
+            the C01 tiles staged, and the Dell Iris Xe runbook protocol measures it before it merges.
+            The coast is judged against G-REF group 9 (CST-01..CST-04 in the reference board). The
+            prototype's side effects are fixed or recorded in the card: floraClearance canopy radii
+            larger than the rendered trees, the map-edge band lowered visually while colliders keep
+            data heights, and frozen-lake quads hidden on v2. Rendering only: no simulation, world
+            data, verifier or gate change. (Owner in chat, 2026-11-25 evening: "Yes, after WV2-6";
+            on the coast: "tôi nghĩ bạn cần tham khảo bờ biển á".)
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
