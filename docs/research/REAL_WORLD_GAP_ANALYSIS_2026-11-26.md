@@ -16,7 +16,7 @@ review_cycle: quarterly
 > hoạch đã duyệt. Trạng thái đo được của dự án nằm duy nhất ở
 > [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) §1; quyết định của chủ dự án nằm ở
 > [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md). Thiết kế thời tiết và bão đi kèm là thẻ `WX-D`
-> (`docs/ai/design/2026-11-26-weather-storms-design.md`, PR riêng, `status: proposed`).
+> (`docs/ai/design/2026-11-26-weather-storms-design.md`, PR #304, `status: proposed`).
 
 ---
 
