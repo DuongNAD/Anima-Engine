@@ -14,11 +14,11 @@
 
 ---
 
-# 2026-11-25 — `MAP-D5` (`#273`), `ADR-0016` (`#271`), `WV2-PHYS2` (`#270`) & Open `physics_tests` Allocation Flake (`P11`)
+# 2026-11-25 — `I2` (`#272`), `MAP-D5` (`#273`), `ADR-0016` (`#271`), `WV2-PHYS2` (`#270`) & Open `physics_tests` Allocation Flake (`P11`)
 
-- **`MAP-D5` & `ADR-0016` (`#273`, `33a4c197`; `#271`, `0e90f0d5`):** `MAP-D5` keeps provisional `C01` (`cbdd3ba9...`, `WV2-7` boots on `C01`), opens `WV2-PHYS3`, and notes `#270` provenance gap (`C01` reproduces from `#249` `f195a361`, not trunk `preset_v2.toml`); `D15. WORLD-CHANGE-ADR` merged `proposed` [ADR-0016](docs/decisions/ADR-0016-changing-world-surface.md) & `W1–W7` cards.
+- **`I2`, `MAP-D5` & `ADR-0016` (`#272`, `9a53bad6`; `#273`, `33a4c197`; `#271`, `0e90f0d5`):** `N3. I2` landed host `Inhabit` actuation/release and `WR1`/`WR2` `WorldRecordHeader.island` replay; `MAP-D5` keeps provisional `C01` (`cbdd3ba9...`, `WV2-7` boots on `C01`), opens `WV2-PHYS3`, and notes `#270` provenance gap (`C01` reproduces from `#249` `f195a361`, not trunk `preset_v2.toml`); `D15. WORLD-CHANGE-ADR` merged `proposed` [ADR-0016](docs/decisions/ADR-0016-changing-world-surface.md) & `W1–W7` cards.
 - **World v2 physics rework (`#270`, `a146d2f2`, [note](docs/ai/planning/2026-11-24-wv2-phys2.md)):** Reworked `anima-worldgen` generator physics leaving `src/verify/**`, thresholds, and `artifacts/world-v2/` untouched; `S2_1 = P01` at `4096²` passed `9/15` gates (`0` spikes, `30` waterfalls, `40` caves, `16/16` zoned biomes) vs provisional `C01` `2/15`.
-- **Open CI flake & pending PRs:** `test_spatial_grid_zero_allocation` (`src-tauri/tests/physics_tests.rs:532`) flaked on attempt 1 of CI run [45516447719](https://github.com/DuongNAD/Anima-Engine/actions/runs/45516447719) (`1` allocation; Card `P11` with `anima-case`). Open PRs at `0e90f0d5` include `#272` (`I2`), `#274` (`WV2-PHYS3`), `#275` (`D18` `ADR-0017`), and `#276` (`I3`). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+- **Open CI flake & pending PRs:** `test_spatial_grid_zero_allocation` (`src-tauri/tests/physics_tests.rs:532`) flaked on attempt 1 of CI run [45516447719](https://github.com/DuongNAD/Anima-Engine/actions/runs/45516447719) (`1` allocation; Card `P11` with `anima-case`). Open PRs at `9a53bad6` include `#274` (`WV2-PHYS3`), `#275` (`D18` `ADR-0017`), `#276` (`I3`), and `#278` (`WV2-6-PREVIEW` draft). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 ---
 
