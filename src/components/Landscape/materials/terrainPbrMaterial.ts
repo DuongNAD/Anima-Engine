@@ -232,15 +232,15 @@ float lkBeachBand = (1.0 - smoothstep(3.0, 11.0, lkHAbove + (lkNHi.g - 0.5) * 4.
 float lkWaterStrip = (1.0 - smoothstep(1.2, 4.5, lkHAbove)) * step(-0.5, lkHAbove)
   * (1.0 - smoothstep(0.10, 0.24, lkSlope)) * lkCoast;
 float lkSandW = max(lkMask.a * lkBeachBand, lkWaterStrip) * (1.0 - lkSnow);
-vec3 lkSandCol = mix(vec3(0.075, 0.068, 0.056), vec3(0.12, 0.105, 0.085), lkNMid.g) * mix(0.9, 1.08, lkNVHi.r);
+vec3 lkSandCol = mix(vec3(0.105, 0.095, 0.078), vec3(0.16, 0.14, 0.11), lkNMid.g) * mix(0.9, 1.08, lkNVHi.r);
 vec3 lkDuneCol = mix(vec3(0.075, 0.08, 0.045), vec3(0.11, 0.10, 0.065), lkNHi.b);
 lkGround = mix(lkGround, lkDuneCol, lkMask.a * (1.0 - lkBeachBand) * lkCoast * 0.75 * (1.0 - lkRock));
 lkGround = mix(lkGround, lkSandCol, lkSandW * (1.0 - lkRock * 0.7));
 // Swash band (CST-01, CST-04): sand and rock just above the waterline are wet, so darker here
 // and glossier below (roughness hook + sky reflection at the output stage).
-float lkWet = (1.0 - smoothstep(0.6, 2.4 + 2.6 * lkExpo, lkHAbove + (lkNVHi.b - 0.5) * 0.6))
+float lkWet = (1.0 - smoothstep(0.5, 1.1 + 1.0 * lkExpo, lkHAbove + (lkNVHi.b - 0.5) * 0.4))
   * step(-0.4, lkHAbove) * (1.0 - smoothstep(25.0, 70.0, lkShoreM)) * step(-30.0, lkShoreM);
-lkGround *= mix(1.0, 0.45, lkWet);
+lkGround *= mix(1.0, 0.42, lkWet);
 // Spray haze over the surf-side ground (applied with the aerial perspective).
 float lkSpray = lkExpo * (1.0 - smoothstep(40.0, 260.0, lkShoreM)) * (1.0 - smoothstep(0.0, 45.0, lkHAbove))
   * step(-1.0, lkHAbove);

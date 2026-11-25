@@ -163,7 +163,7 @@ const fragmentShader = /* glsl */ `
       dClear = mix(dClear, 1.0, vEdge);
       dTeal = mix(dTeal, 1.0, vEdge);
       dDeep = mix(dDeep, 1.0, vEdge);
-      vec3 wcol = mix(vec3(0.30, 0.56, 0.46), vec3(0.06, 0.32, 0.37), dClear);
+      vec3 wcol = mix(vec3(0.22, 0.50, 0.46), vec3(0.06, 0.32, 0.37), dClear);
       wcol = mix(wcol, vec3(0.02, 0.11, 0.27), dDeep);
 
       // Surf zone (CST-01..03): breaker lines parallel to the shore, each a white crest with a
@@ -232,20 +232,21 @@ const fragmentShader = /* glsl */ `
       float ndh2 = max(dot(nrm, normalize(sdir + vdir)), 0.0);
       float spec2 = pow(ndh2, 220.0) * 1.4 * det + pow(ndh2, 24.0) * 0.06;
       float diff2 = clamp(dot(nrm, sdir) * 0.45 + 0.64, 0.0, 1.0);
-      vec3 c = wcol * diff2 + uSunColor * spec2 * (1.0 - foamAmt);
       vec3 rn = normalize(vec3(nrm.x * 0.3, 1.0, nrm.z * 0.3));
       float schlick = 0.02 + 0.98 * pow(1.0 - max(dot(rn, vdir), 0.0), 5.0);
       vec3 rdir = reflect(-vdir, rn);
       rdir.y = abs(rdir.y);
       float refl = clamp(schlick * 1.1 + 0.03, 0.0, 0.8);
-      c = mix(c, atmoSkyColor(normalize(rdir)), refl * (1.0 - foamAmt));
-      // Foam: white, lit by the sun, slightly blue in its own shade.
+      // Reflection over transmission: absorb is how much of the bed the water column hides.
+      // Very shallow water is mostly the (wet) bed plus sky sheen, not a green film.
+      float absorb = mix(0.10, 0.97, dTeal);
+      vec3 body = wcol * diff2;
+      float a = refl + (1.0 - refl) * absorb;
+      vec3 c = (refl * atmoSkyColor(normalize(rdir)) + (1.0 - refl) * absorb * body) / max(a, 1e-3);
+      c += uSunColor * spec2 * (1.0 - foamAmt);
+      // Foam: white, lit by the sun, slightly blue in its own shade; opaque.
       vec3 foamCol = vec3(0.86, 0.90, 0.93) * (0.82 + 0.18 * diff2);
       c = mix(c, foamCol, clamp(foamAmt, 0.0, 1.0));
-
-      // Clear in the shallows (the bed shows), opaque offshore; reflection and foam are opaque.
-      float a = mix(0.22, 0.97, dTeal);
-      a = max(a, refl);
       a = mix(a, 0.97, clamp(foamAmt * 1.3, 0.0, 1.0));
       a *= smoothstep(0.0, 0.8, depthM);
       // The sea plane is infinite: keep it out of below-sea-level hollows the shore SDF calls land.
