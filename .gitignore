@@ -88,3 +88,4 @@ $.agents/
 /test-results/
 map-prototype/
 .claude/settings.local.json
+/world-v2-tiles-local/

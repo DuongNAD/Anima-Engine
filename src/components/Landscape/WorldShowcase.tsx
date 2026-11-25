@@ -235,7 +235,18 @@ function precipFor(weather: WeatherKind): number {
   return 0;
 }
 
-export const WorldShowcase: React.FC = () => {
+const IS_DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+
+const WorldV2PreviewScene = IS_DEV_MODE
+  ? React.lazy(() => import('./worldV2Preview/WorldV2PreviewScene'))
+  : null;
+
+function isWorldV2PreviewRequested(): boolean {
+  if (!IS_DEV_MODE || typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('worldV2Preview') === '1';
+}
+
+const WorldShowcaseV1: React.FC = () => {
   // Load the world ONCE. With IndexedDB we read the cached world (skipping generation);
   // without it (tests/SSR) we generate synchronously so a frame is available immediately.
   const [world, setWorld] = useState<World | null>(() =>
@@ -985,6 +996,34 @@ const WorldHud: React.FC<{
       </div>
     </div>
   );
+};
+
+export const WorldShowcase: React.FC = () => {
+  if (WorldV2PreviewScene && isWorldV2PreviewRequested()) {
+    return (
+      <React.Suspense
+        fallback={
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              background: '#0a0f1a',
+              color: '#e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: 'system-ui, sans-serif',
+            }}
+          >
+            Loading World v2 Preview…
+          </div>
+        }
+      >
+        <WorldV2PreviewScene />
+      </React.Suspense>
+    );
+  }
+  return <WorldShowcaseV1 />;
 };
 
 export default WorldShowcase;
