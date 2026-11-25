@@ -209,9 +209,11 @@ const fragmentShader = /* glsl */ `
         wcol *= 1.0 - smoothstep(0.80, 0.98, ph) * section * zone * aa * 0.25;
       }
       // Swash (CST-01): a thin lace of spent foam running up the last metres of the beach.
-      float swashN = noise(vWorldPos.xz * 0.55 + vec2(uTime * 0.12, -uTime * 0.09));
-      float swash = (1.0 - smoothstep(2.0, 16.0 + 8.0 * expo, offM))
-        * mix(0.35, smoothstep(0.42, 0.75, swashN), det) * isOcean * (1.0 - edgeBand);
+      float swash = (1.0 - smoothstep(2.0, 16.0 + 8.0 * expo, offM)) * isOcean * (1.0 - edgeBand);
+      if (swash > 0.001) {
+        float swashN = noise(vWorldPos.xz * 0.55 + vec2(uTime * 0.12, -uTime * 0.09));
+        swash *= mix(0.35, smoothstep(0.42, 0.75, swashN), det);
+      }
       foamAmt = max(foamAmt, swash * 0.85 * (1.0 - vEdge));
 
       // Ripples, sun glints, sky fresnel.

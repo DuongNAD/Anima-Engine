@@ -1169,7 +1169,8 @@ export function buildWorldV2TerrainTextures(
     riverMaskMap: createRgbaTex(riverData, size, THREE.NoColorSpace, false),
     splatMap: buildSplatTexture(world),
     horizonMap: createRgbaTex(new Uint8Array(bundle.horizonRgba), size, THREE.NoColorSpace, false),
-    shoreSdfMap: createRgbaTex(shoreSdfData, size, THREE.NoColorSpace, false),
+    // Mipmapped: the WV2-LOOK terrain samples it on every pixel, far ones included.
+    shoreSdfMap: createRgbaTex(shoreSdfData, size, THREE.NoColorSpace, true),
     hydroFlowMap: createRgbaTex(new Uint8Array(bundle.hydroFlowRgba), size, THREE.NoColorSpace, false),
     lookMaskMap: buildWorldV2LookMask(bundle),
     lookNoiseMap: buildLookNoiseTexture(),
