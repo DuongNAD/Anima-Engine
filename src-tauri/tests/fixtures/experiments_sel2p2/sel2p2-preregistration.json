@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "preregistration_id": "sel2-p2-food-scarcity-body-mass",
+  "status": "FROZEN",
+  "registered_on": "2026-11-24",
+  "registered_at_parent_commit": "f195a36",
+  "registered_at_parent_commit_full": "f195a361ec50473932520ad30306bd366d719a6d",
+  "prior_calibration_and_draft_commits": {
+    "viab1_pr215": "f15b2c18663a61fab127a58a1c637a396f1074fd",
+    "founder_2seg_pr224": "98054ba206d275014ecce89e7ab7c2ad603ead1d",
+    "viab1b_pr228": "5721f1fbfb06a191a52037b4e60bff1f1f644da0",
+    "sel2p2_draft_pr247": "f976e66d4929c2e988e728a360dc81d26cc3ea6a",
+    "sel2p2_viab2_pr258": "fce7b981314b949d5a53da338a8c744c835ebd42"
+  },
+  "contains_results": false,
+  "experimental_seeds_run": 0,
+  "smoke_seeds_run": 0,
+  "body_mass_consulted": false,
+  "h1_direction": "two_sided",
+  "question": "Under identical ecological fitness and turnover laws, single herbivore trophic level (live.predator_fraction = 0), adapted 2-segment founder morphology (live.founder_genotype = 1.0, total_mass = 2.5), strict prey cap (320), and viable scarcity (live.resource_capacity_scale = 0.75, founder_layout = 0, drift_reset_ticks = 2000) over 200,000 ticks, does ecological selection shift post-warmup time-integrated genotypic body mass (live.trait_mass_mean) relative to lockstep neutral demographic+mutation drift (scarce_drift, SEL2-D) on the log mean ratio scale D = ln(mean_int_selected / mean_int_scarce_drift)?",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "snapshot_schema_version": 8,
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "harness": "core::live_experiment::{run_live_drift_pair, run_live_drift_ensemble} + core::experiment_runner::{run_manifest_seed, paired_effect}",
+  "plan_document": "docs/ai/planning/2026-11-24-sel2-p2-preregistration.md",
+  "draft_document": "docs/ai/planning/2026-11-24-sel2-p2-preregistration-draft.md",
+  "viab2_results_document": "docs/ai/planning/2026-11-24-sel2-p2-viab2-results.md",
+  "manifests": {
+    "selected": "sel2p2-selected.json",
+    "scarce_mut0": "sel2p2-scarce-mut0.json",
+    "scarce_drift": "sel2p2-scarce-drift.json",
+    "baseline_ref": "sel2p2-baseline-ref.json",
+    "smoke_selected": "sel2p2-smoke-selected.json",
+    "smoke_scarce_mut0": "sel2p2-smoke-scarce-mut0.json",
+    "smoke_scarce_drift": "sel2p2-smoke-scarce-drift.json"
+  },
+  "owner_decisions_locked": {
+    "QD-SEL2P2-D1": "Option (a) (MSG_20261124_080000): live.founder_genotype = 1.0 across all arms AND blind 200k VIAB-2 pre-check PASSED (12/12 survival in baseline_ref, selected, scarce_mut0, scarce_drift; min_N >= 59; 0 trait_mass; PR #258 fce7b981); mutation.rs:209-231 operator-4 wall disclosed",
+    "QD-SEL2P2-D2": "Option (a): live.resource_capacity_scale = 0.75 (1.0 in baseline_ref), live.founder_layout = 0.0, live.drift_reset_ticks = 2000.0 (fallback (b) fl=2 not triggered: VIAB-2 min_N >= 59 and C2 11/12 selected / 12/12 scarce_mut0)",
+    "QD-SEL2P2-D3": "Option (a): m = 3 confirmatory hypothesis family {H1 (selected/scarce_drift), H2 (selected/scarce_mut0), H3 (scarce_drift/scarce_mut0)} with Holm-Bonferroni FWER alpha = 0.05 (0.016667, 0.025, 0.05)",
+    "QD-SEL2P2-D4": "Option (b): primary endpoint log mean ratio D = ln(mean_int_B / mean_int_A) over (20000, 200000], SESOI = +-ln(1.10) (+-0.09531017980432493, [0.909x, 1.100x]), 90% paired t-CI TOST inside (-ln(1.10), +ln(1.10))",
+    "QD-SEL2P2-D5": "Option (a): N = 48 paired confirmation seeds (900001 + 1000*k, k = 0..47, 900001..=947001, 144 confirmation runs) within cap N <= 70 (<= 969001 < 970501 baseline block), executed on Windows 1",
+    "QD-SEL2P2-D6": "Option (a): aligned strictly with Template #214 R3 \u2014 complete pairs primary iff arm extinction p_ext <= 0.05 AND pi_LL >= 0.85, co-reporting Lee (2009) bounds and RMST(tau = 200000); otherwise switch primary to Lachin worst-rank across all N = 48 seeds + separate RMST(200k) + SACE; always require drift_valid == true and has_shortfall == false per contrast",
+    "QD-SEL2P2-D7": "Option (a): QD-SEL2g pooled baseline upgraded to 12 seeds (970501..=970512) with min_surviving_baseline_seeds = 6; smoke thresholds C1 >= 5, C2 in [0.4, 0.6], C3 >= 30, C4 > 0.50, C5 > 0"
+  },
+  "founder_genotype_spec": {
+    "live_key": "live.founder_genotype",
+    "value": 1.0,
+    "nodes_count": 2,
+    "node_masses": [
+      1.5,
+      1.0
+    ],
+    "total_mass": 2.5,
+    "canonical_serde_json_sha256": "dfeb276205f818acf3f34f5d716cbf163598a03a23ffc6964ff85753e280c719",
+    "operator_4_wall": "mutate_genotype requires nodes.len() > 2 for structural node removal (src-tauri/src/evolution/mutation.rs:209-231); structural mutations can only add segments (>= 3), never prune to 1 segment",
+    "initial_trait_mass_var": 0.0
+  },
+  "common_initial_conditions": {
+    "shared_across_all_scarce_arms": {
+      "live.ecological_fitness": 1.0,
+      "live.mortality": 1.0,
+      "live.reproduction": 1.0,
+      "live.locomotion": 1.0,
+      "live.drive_floor": 0.5,
+      "live.thirst_steering": 1.0,
+      "live.evolved_brains": 0.0,
+      "live.founders": 100.0,
+      "live.predator_fraction": 0.0,
+      "live.trees": 8.0,
+      "live.lakes": 16.0,
+      "live.lake_layout": 1.0,
+      "live.plant_reserve": 0.0,
+      "live.food_cap": 50.0,
+      "live.dehydration_ticks": 960.0,
+      "live.prey_cap": 320.0,
+      "live.strict_prey_cap": 1.0,
+      "live.founder_genotype": 1.0,
+      "live.founder_layout": 0.0,
+      "live.resource_capacity_scale": 0.75
+    },
+    "per_arm_values": {
+      "selected": {
+        "live.mutation_rate": 0.05,
+        "live.drift_control": 0.0,
+        "live.drift_reset_ticks": 0.0
+      },
+      "scarce_mut0": {
+        "live.mutation_rate": 0.0,
+        "live.drift_control": 0.0,
+        "live.drift_reset_ticks": 0.0
+      },
+      "scarce_drift": {
+        "live.mutation_rate": 0.05,
+        "live.drift_control": 1.0,
+        "live.drift_reset_ticks": 2000.0
+      },
+      "baseline_ref": {
+        "live.prey_cap": 80.0,
+        "live.resource_capacity_scale": 1.0,
+        "live.mutation_rate": 0.05,
+        "live.drift_control": 0.0,
+        "live.drift_reset_ticks": 0.0
+      }
+    },
+    "explicit_key_count_per_manifest": 23
+  },
+  "default_keys_left_absent": {
+    "live.w_surplus": 1.0,
+    "live.starve_ticks": 120,
+    "live.kill_hydration": 0.0,
+    "live.kill_efficiency": 0.4,
+    "live.target_min_energy": 0.0,
+    "live.land_mask": 0,
+    "live.grass_steering": 0,
+    "live.lineage_tracking": 0
+  },
+  "declared_factors": {
+    "selected_vs_scarce_drift": {
+      "allowed_paths": [
+        "initial_conditions"
+      ],
+      "keys": [
+        "live.drift_control",
+        "live.drift_reset_ticks"
+      ],
+      "selected": {
+        "live.drift_control": 0.0,
+        "live.drift_reset_ticks": 0.0
+      },
+      "scarce_drift": {
+        "live.drift_control": 1.0,
+        "live.drift_reset_ticks": 2000.0
+      }
+    },
+    "selected_vs_scarce_mut0": {
+      "allowed_paths": [
+        "initial_conditions"
+      ],
+      "keys": [
+        "live.mutation_rate"
+      ],
+      "selected": {
+        "live.mutation_rate": 0.05
+      },
+      "scarce_mut0": {
+        "live.mutation_rate": 0.0
+      }
+    },
+    "scarce_drift_vs_scarce_mut0": {
+      "allowed_paths": [
+        "initial_conditions"
+      ],
+      "keys": [
+        "live.drift_control",
+        "live.drift_reset_ticks",
+        "live.mutation_rate"
+      ]
+    },
+    "baseline_ref_vs_smoke_selected": {
+      "allowed_paths": [
+        "initial_conditions",
+        "seeds"
+      ],
+      "keys": [
+        "live.prey_cap",
+        "live.resource_capacity_scale"
+      ],
+      "baseline_ref": {
+        "live.prey_cap": 80.0,
+        "live.resource_capacity_scale": 1.0
+      },
+      "smoke_selected": {
+        "live.prey_cap": 320.0,
+        "live.resource_capacity_scale": 0.75
+      }
+    }
+  },
+  "seeds": {
+    "formula": "900001 + 1000 * k",
+    "seed_base": 900001,
+    "seed_step": 1000,
+    "n_requested": 48,
+    "max_n_cap": 70,
+    "cap_max_seed": 969001,
+    "execution_order": [
+      900001,
+      901001,
+      902001,
+      903001,
+      904001,
+      905001,
+      906001,
+      907001,
+      908001,
+      909001,
+      910001,
+      911001,
+      912001,
+      913001,
+      914001,
+      915001,
+      916001,
+      917001,
+      918001,
+      919001,
+      920001,
+      921001,
+      922001,
+      923001,
+      924001,
+      925001,
+      926001,
+      927001,
+      928001,
+      929001,
+      930001,
+      931001,
+      932001,
+      933001,
+      934001,
+      935001,
+      936001,
+      937001,
+      938001,
+      939001,
+      940001,
+      941001,
+      942001,
+      943001,
+      944001,
+      945001,
+      946001,
+      947001
+    ],
+    "baseline_ref_seeds": [
+      970501,
+      970502,
+      970503,
+      970504,
+      970505,
+      970506,
+      970507,
+      970508,
+      970509,
+      970510,
+      970511,
+      970512
+    ],
+    "min_surviving_baseline_seeds": 6,
+    "smoke_seed": 999931,
+    "smoke_seed_is_excluded_from_analysis": true,
+    "pipeline_check": {
+      "baseline_seeds": [
+        999701,
+        999702,
+        999703,
+        999704,
+        999705,
+        999706
+      ],
+      "smoke_seed": 999711,
+      "pair_seeds": [
+        999721,
+        999722
+      ],
+      "note": "Disjoint 2,000-tick end-to-end pipeline verification seeds only; excluded from smoke, baseline, and confirmation."
+    },
+    "unit_test_seeds": [
+      614001,
+      614002,
+      614999
+    ],
+    "viab_calibration_range_excluded": [
+      880001,
+      880012
+    ]
+  },
+  "duration": {
+    "duration_ticks": 200000,
+    "warmup_ticks": 20000,
+    "confirmation_sample_period": 500,
+    "confirmation_samples_per_run": 400,
+    "confirmation_post_warmup_samples": 360,
+    "smoke_sample_period": 50,
+    "smoke_samples_per_run": 4000,
+    "tail20_threshold_tick": 160000,
+    "pipeline_check_duration_ticks": 2000,
+    "pipeline_check_warmup_ticks": 200
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "role": "primary_confirmatory",
+      "family": "confirmatory_holm_m3",
+      "direction": "two_sided",
+      "numerator_arm": "selected",
+      "denominator_arm": "scarce_drift",
+      "contrast": "selected / scarce_drift",
+      "observable": "live.trait_mass_mean",
+      "primary_metric": "log_mean_ratio_D",
+      "formula": "D_i = ln(mean_int_B_i / mean_int_A_i)",
+      "evaluated_window": "tick in (20000, 200000] (360 samples)"
+    },
+    {
+      "id": "H2",
+      "role": "confirmatory",
+      "family": "confirmatory_holm_m3",
+      "direction": "two_sided",
+      "numerator_arm": "selected",
+      "denominator_arm": "scarce_mut0",
+      "contrast": "selected / scarce_mut0",
+      "observable": "live.trait_mass_mean",
+      "primary_metric": "log_mean_ratio_D",
+      "formula": "D_i = ln(mean_int_B_i / mean_int_A_i)",
+      "evaluated_window": "tick in (20000, 200000] (360 samples)"
+    },
+    {
+      "id": "H3",
+      "role": "confirmatory",
+      "family": "confirmatory_holm_m3",
+      "direction": "two_sided",
+      "numerator_arm": "scarce_drift",
+      "denominator_arm": "scarce_mut0",
+      "contrast": "scarce_drift / scarce_mut0",
+      "observable": "live.trait_mass_mean",
+      "primary_metric": "log_mean_ratio_D",
+      "formula": "D_i = ln(mean_int_B_i / mean_int_A_i)",
+      "evaluated_window": "tick in (20000, 200000] (360 samples)"
+    },
+    {
+      "id": "R1_tail20",
+      "role": "exploratory_robustness",
+      "family": "exploratory_bh_fdr",
+      "observable": "live.trait_mass_mean",
+      "window": "tick > 160000",
+      "decision_effect": "none"
+    },
+    {
+      "id": "R2_window_net_selection_delta",
+      "role": "exploratory_robustness",
+      "family": "exploratory_bh_fdr",
+      "observable": "live.trait_mass_mean",
+      "statistic": "window_net_selection_deltas",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S1_trait_mass_var",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observable": "live.trait_mass_var",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S2_mean_energy_integral",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observable": "live.mean_energy_integral",
+      "statistic": "(I(200000) - I(20000)) / 180000",
+      "decision_effect": "none"
+    },
+    {
+      "id": "S3_lifespan_f053_series_only",
+      "role": "exploratory",
+      "family": "exploratory_bh_fdr",
+      "observables": [
+        "live.births",
+        "live.deaths",
+        "live.mean_lifespan",
+        "live.cumulative_mean_lifespan"
+      ],
+      "evaluated_at": "series_csv_only_for_mean_lifespan_never_final_observables",
+      "decision_effect": "none"
+    },
+    {
+      "id": "RMST",
+      "role": "exploratory_separate_survival",
+      "tau_ticks": 200000,
+      "applies_to": [
+        "H1",
+        "H2",
+        "H3"
+      ],
+      "decision_effect": "none"
+    },
+    {
+      "id": "I1_closed_eu_ledger",
+      "role": "harness_integrity",
+      "observable": "live.closed_eu_total",
+      "max_abs_eu_drift": 1e-06,
+      "decision_effect": "none"
+    }
+  ],
+  "thresholds": {
+    "primary_metric": "log_mean_ratio_D",
+    "formula": "ln(mean_int_B / mean_int_A)",
+    "fwer_alpha": 0.05,
+    "confirmatory_family_size": 3,
+    "holm_thresholds": [
+      0.016666666666666666,
+      0.025,
+      0.05
+    ],
+    "sesoi_log_mean_ratio": 0.09531017980432493,
+    "sesoi_label": "ln(1.10)",
+    "tost_alpha_per_tail": 0.05,
+    "tost_ci_level": 0.9,
+    "ci_level": 0.95,
+    "exploratory_bh_fdr_q": 0.05,
+    "max_arm_extinction_rate_for_complete_pairs": 0.05,
+    "min_pi_ll": 0.85,
+    "min_valid_pairs_for_decision": 41,
+    "min_non_zero_pairs_r7": 7,
+    "require_drift_valid_and_no_shortfall": true,
+    "exact_80pct_holm1_mde_sd_multiplier": 0.4818,
+    "achieved_mde_sd_multiplier": 0.5,
+    "kerby_rc_benchmarks": {
+      "dz_0_50": 0.5205,
+      "dz_0_66": 0.6641,
+      "dz_0_80": 0.7421
+    },
+    "bca_bootstrap_resamples": 10000,
+    "rmst_tau_ticks": 200000,
+    "max_abs_eu_drift": 1e-06,
+    "r10_labels": [
+      "supports",
+      "equivalent_to_zero",
+      "insufficient_evidence"
+    ]
+  },
+  "smoke_gate": {
+    "decision_id": "QD-SEL2g",
+    "reference_method": "option_b_pooled_surviving_prey_cap_80_scale_1",
+    "reference_computed_before_scarce_observables": true,
+    "min_surviving_baseline_seeds": 6,
+    "blind_to_body_mass": true,
+    "forbidden_substring": "trait_mass",
+    "smoke_allowed_non_drift_observables": [
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.standing_crop",
+      "live.births",
+      "live.deaths",
+      "live.mean_lifespan",
+      "live.deaths_starvation",
+      "live.deaths_dehydration",
+      "live.cumulative_mean_lifespan"
+    ],
+    "smoke_allowed_drift_observables": [
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.standing_crop",
+      "live.births",
+      "live.deaths",
+      "live.mean_lifespan",
+      "live.cumulative_mean_lifespan"
+    ],
+    "c1_min_agents": 5,
+    "c1_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c2_g_band": [
+      0.4,
+      0.6
+    ],
+    "c2_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c2_diagnostic_only_arms": [
+      "scarce_drift"
+    ],
+    "c3_min_generations": 30,
+    "c3_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c4_min_starvation_share": 0.5,
+    "c4_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c4_excluded_arms": [
+      "scarce_drift"
+    ],
+    "c5_last_quarter_births_and_deaths_gt_zero": true,
+    "c5_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "hard_stop_confirmation_on_fail": true
+  },
+  "cost": {
+    "runs": 144,
+    "baseline_ref_runs": 12,
+    "arms": 3,
+    "seeds_per_arm": 48,
+    "total_confirmation_ticks": 28800000,
+    "build_profile_required": "release"
+  },
+  "artifacts": {
+    "root": "artifacts/experiments/sel2-p2/",
+    "smoke_subdir": "smoke",
+    "confirmation_subdir": "confirmation",
+    "smoke_dir": "artifacts/experiments/sel2-p2/smoke/",
+    "confirmation_dir": "artifacts/experiments/sel2-p2/confirmation/"
+  },
+  "commands": {
+    "verify_manifest_tests": "cargo test --manifest-path src-tauri/Cargo.toml --features desktop --test prereg_sel2p2_manifest_tests",
+    "verify_self_test": "node scripts/verify_sel2p2_artifacts.mjs --self-test",
+    "verify_pre_or_post_run": "npm run check:sel2p2",
+    "build_future_release_runner": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_sel2p2_experiment",
+    "smoke": "src-tauri/target/release/examples/run_sel2p2_experiment --smoke --manifest-dir src-tauri/tests/fixtures/experiments_sel2p2 --out artifacts/experiments/sel2-p2/smoke",
+    "confirm": "src-tauri/target/release/examples/run_sel2p2_experiment --confirm --manifest-dir src-tauri/tests/fixtures/experiments_sel2p2 --smoke-dir artifacts/experiments/sel2-p2/smoke --out artifacts/experiments/sel2-p2/confirmation",
+    "verify_confirmation": "node scripts/verify_sel2p2_artifacts.mjs artifacts/experiments/sel2-p2/confirmation"
+  },
+  "execution_host_rule": {
+    "single_host_required": true,
+    "world_artifact_isolation_required": true,
+    "world_identity_consistency_required": true,
+    "required_host": "windows/x86_64",
+    "expected_terrain_source": "generated"
+  }
+}

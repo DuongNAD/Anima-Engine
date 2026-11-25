@@ -539,6 +539,53 @@ MAP-D5    = after WV2-PHYS2 (PR #270: S2_1 = P01 at 4096^2 passes 9/15 gates, C0
             code and thresholds unchanged, every candidate pre-registered in the note before it is
             measured, artifacts/world-v2/ untouched. Replacing C01 with any candidate is a separate
             owner decision. (Owner in chat, 2026-11-25: "Keep C01, do PHYS3".)
+MAP-D6    = WV2-PHYS3 (PR #274): the Round-6c candidate S2_6 (coast_frac_amp 0.058, 4096^2) passes
+            10/15 gates with zero regressions against PHYS2 S2_1 (9/15), and it removes C01's summit
+            clipping (max 5,667 m, 0 cells >= 5,699 m; C01 has 514 cells at the 5,700 m ceiling). The same
+            code at the default 0.055 (S2_5) passes 8/15 and fails m1 and m2, and S2_6 passes m2 by 0.05
+            (rs 57.32 < ww 57.37). Decision: #274 merges with default_coast_frac_amp raised to 0.058, so
+            the trunk default reproduces S2_6, once (a) a default run reproduces S2_6 bit for bit and is
+            re-verified, and (b) the same check at 0.057 and 0.059 (4096^2) is measured and reported in
+            the note. The neighbours inform; they do not gate the merge. C01 stays under
+            artifacts/world-v2/ (MAP-D5 unchanged). Replacing C01 with S2_6 is decided later, together
+            with WV2-6, and needs the robustness result. (Owner in chat, 2026-11-25, accepting the
+            lead's recommendation: "oke làm theo ý bạn".)
+MAP-D6a   = amends MAP-D6 after WV2-PHYS3-FINISH Round 7 (anima-mac, BLOCKED of 2026-11-25). Three
+            findings: S2_6 sets two keys, fluvial_k_mult 2.40 and coast_frac_amp 0.058, so raising one
+            default cannot reproduce it (the zero-preset default run at 0.058 passes 8/15); a 0.058
+            default fails a crate test that does not use the 0.055 literal (biomes.rs:1498, seed 10009,
+            Mangrove 32 < 40); and both neighbours regress one gate each (0.057 G-SHAPE.1, 0.059
+            G-SHAPE.2), so S2_6 sits on a knife edge. Decision: the config.rs defaults stay at 0.055 and
+            1.65; #274 merges with exactly pipeline.rs and its note, and condition (a) of MAP-D6 is met
+            by S2_6's explicit parameter set, written complete in the note, reproducing S2_6 bit for bit
+            on the same platform. No test is edited or loosened. A PHYS4 candidate is likewise a
+            parameter set. (Lead ruling LR-PHYS3-1; owner in chat, 2026-11-25 evening: "Agree, keep
+            defaults".)
+QD-WV2-6-PREVIEW = a dev-only WV2-6 preview with locally baked tiles (PR #278, titled "[PREVIEW — do not
+            merge]"), so the owner can see World v2 C01 in a viewer before the full card. It is never
+            merged and ships in no build. The full WV2-6 card keeps its two owner gates: the public tile
+            release (~145 MB on GitHub Releases) and the Iris Xe performance gate on the Dell. (Owner in
+            chat, 2026-11-25: "Yes, preview".)
+QD-GATES-1125 = the owner delegated the open release and world gates to the lead's plan (owner in chat,
+            2026-11-25 evening: "đồng ý theo suggest của bạn"). The plan:
+            (1) #188 is closed as superseded by #196 (anima-dell's assessment); its branch is kept.
+            (2) MAP-D7: C01 is replaced once, not now. After #274 merges (MAP-D6) and WV2-PHYS4 has had
+            two nights, the best Stage-2 candidate with zero regressions against S2_6 and a reported
+            neighbour check replaces C01 under artifacts/world-v2/, with a re-bake of the tile pack, so
+            the tiles are baked and published only for the final world. A new sim_world_identity means
+            old saves are refused, as WV2-7 already does.
+            (3) QD-TRIAL-V3: the owner's hands-on trial uses an internal Windows test installer built by
+            anima-case from the WV2-6 branch with locally staged tiles, shared through the hub and never
+            published. The same build serves as the "after" side of the Iris Xe gate, which the owner
+            runs on the Dell from anima-dell's runbook.
+            (4) The tile pack is published once, for the final world, as a GitHub Release asset before
+            v0.9.0-rc.1 is built, because the release-build workflow must fetch it. This moves the
+            publication date in QD-WV25 (b) earlier. The lead asks the owner for a final yes, naming the
+            asset and its size, before anything is uploaded. The rc is then cut per QD-REL09 after WV2-6
+            merges; the owner pushes main and the tag (G4).
+            (5) C16 SEL2P2-FREEZE: anima-case opens the win/sel2p2-freeze draft PR, a peer verifies that
+            it freezes exactly QD-SEL2P2-D1..D7 and the VIAB-2 settings, and the lead merges it when it
+            is VERIFIED at the head and green. That merge is the preregistration freeze.
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
