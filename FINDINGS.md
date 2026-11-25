@@ -30,6 +30,19 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-081 — `physics_tests::test_spatial_grid_zero_allocation` process-wide tracking flake + `TEST_LOCK` `PoisonError` cascade
+- **Ngày:** 2026-11-25
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/tests/physics_tests.rs:528-536` (`test_spatial_grid_zero_allocation` used process-wide `ALLOCATOR.start_tracking()` around single-threaded `grid.raycast`)
+  - `src-tauri/tests/physics_tests.rs:24,107,187,267,416,493,541,686,763,855` (`TEST_LOCK.lock().unwrap()` poisoned sibling tests on any panic)
+- **Phát hiện bởi:** determinism (`hardening` -> `determinism` on PR `#273` at trunk `a146d2f2`, run `https://github.com/DuongNAD/Anima-Engine/actions/runs/45516447719`)
+- **Triệu chứng:** On run 1 of "kiểm ổn định (5 lần)", `physics_tests::test_spatial_grid_zero_allocation` failed with `"Raycast should perform 0 heap allocations, but made 1"`. That panic poisoned `TEST_LOCK`, causing `test_static_equilibrium`, `test_zero_allocation_hot_path`, and `test_zero_joint_axis_no_nan` to fail with `PoisonError`.
+  - **Root cause:** As documented in `src-tauri/tests/common/allocator.rs`, `start_tracking()` counts allocations from every thread in the process; in a multi-test binary, libtest's main thread allocates while handling harness events and can land inside the single-threaded `grid.raycast` measurement window. Meanwhile, `.unwrap()` on `TEST_LOCK` turned one failure into a 4-test cascade.
+- **Tái hiện:** `cargo test --manifest-path src-tauri/Cargo.toml --release --test physics_tests` (intermittent under `common/allocator.rs` process-wide tracking; CI run `45516447719`).
+- **Test khoá lại:** `physics_tests::test_spatial_grid_zero_allocation` (switched to `ALLOCATOR.start_tracking_this_thread()` on the single-threaded raycast window while keeping process-wide `ALLOCATOR.start_tracking()` on both `Schedule` windows `test_zero_allocation_hot_path` and `test_decoupled_systems_zero_allocation`; recovered `TEST_LOCK` via `unwrap_or_else(|e| e.into_inner())`; negative control with `Vec::<u8>::with_capacity(1)` fails with `"made 1"`; `20/20` `--release` stability runs pass).
+- **Trạng thái:** FIXED (`P11 PHYSICS-ALLOC-FLAKE`, branch `win/p11-physics-alloc-flake`, 2026-11-25).
+
 ### F-080 — `BrainPolicy.lifetime_learning` cannot be enabled from an experiment manifest (`ANIMA_LIFETIME_LEARNING` env-only / always `false` in `LiveWorldConfig`)
 - **Ngày:** 2026-11-24
 - **Loại:** SMELL
