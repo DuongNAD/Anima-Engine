@@ -222,6 +222,7 @@ vec2 lkUvDx = dFdx(vMapUv);
 vec2 lkUvDy = dFdy(vMapUv);
 float lkWet = 0.0;
 float lkSpray = 0.0;
+vec2 lkRipple = vec2(0.0);   // tangent-space tilt from beach ripples and the berm face
 if (lkHAbove < 60.0 && lkHAbove > -45.0) {   // deeper bed is hidden by near-opaque water
   vec4 lkShoreS = textureGrad(uLookShore, vMapUv, lkUvDx, lkUvDy);
   float lkShoreM = lkShoreS.r * 1000.0 - 500.0;        // metres from the shore, + on land
@@ -244,6 +245,18 @@ if (lkHAbove < 60.0 && lkHAbove > -45.0) {   // deeper bed is hidden by near-opa
     vec3 lkDuneCol = mix(vec3(0.075, 0.08, 0.045), vec3(0.11, 0.10, 0.065), lkNHi.b);
     lkGround = mix(lkGround, lkDuneCol, lkMask.a * (1.0 - lkBeachBand) * lkCoast * 0.75 * (1.0 - lkRock));
     lkGround = mix(lkGround, lkSandCol, lkSandW * (1.0 - lkRock * 0.7));
+    // Beach relief through normals (sub-texel for the height data): ripples parallel to the
+    // shore and a berm, a low ridge ~2 m above the sea whose seaward face catches the light.
+    if (lkSandW > 0.02 && lkNear > 0.01) {
+      vec2 lkTx = 1.0 / vec2(textureSize(uLookShore, 0));
+      float sx = textureGrad(uLookShore, vMapUv + vec2(lkTx.x, 0.0), lkUvDx, lkUvDy).r;
+      float sz = textureGrad(uLookShore, vMapUv + vec2(0.0, lkTx.y), lkUvDx, lkUvDy).r;
+      vec2 lkLand = normalize(vec2(sx, sz) - lkShoreS.r + vec2(1e-5));
+      float ripPh = lkShoreM * 0.70 + (lkNMid.r - 0.5) * 6.0 + (lkNHi.g - 0.5) * 2.0;
+      float berm = smoothstep(0.9, 1.7, lkHAbove) * (1.0 - smoothstep(1.7, 2.6, lkHAbove));
+      lkRipple = lkLand * (cos(ripPh) * 0.11 * (1.0 - lkWet * 0.6) - berm * 0.3) * lkSandW * lkNear;
+      lkGround *= 1.0 + 0.10 * berm * lkSandW;
+    }
     // Swash band (CST-01, CST-04): ground just above the waterline is wet, so darker here and
     // glossier below (roughness hook + sky reflection at the output stage).
     lkWet = (1.0 - smoothstep(0.5, 1.1 + 1.0 * lkExpo, lkHAbove + (lkNVHi.b - 0.5) * 0.4))
@@ -306,7 +319,7 @@ const WV2_LOOK_NORMAL_FRAGMENT = /* glsl */ `
   if (lkNf > 0.01) {
     vec2 g = lkG;
     float rough = 0.20 + lkRock * 0.8 + lkMask.r * 0.3 - lkSnow * 0.15;
-    mapN.xy += g * 0.16 * rough * lkNf;
+    mapN.xy += g * 0.16 * rough * lkNf + lkRipple;
     normal = normalize(tbn * mapN);
   }
 }

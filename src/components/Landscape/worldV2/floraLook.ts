@@ -218,8 +218,10 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
       const b = jitter(new THREE.OctahedronGeometry(r * 0.55, 0), r * 0.3, 42).scale(1, 0.6, 1).translate(r * 0.7, r * 0.1, r * 0.35);
       const pa = paintGradient(a, '#363431', '#5a5650', -r * 0.2, r * 0.6);
       const pb = paintGradient(b, '#32302d', '#55514b', -r * 0.2, r * 0.4);
-      pa.computeVertexNormals();
-      pb.computeVertexNormals();
+      // Rounded (weathered) shading instead of flat facets: normals radiate from each block's
+      // centre with an upward bias, which reads as a boulder rather than a low-poly gem.
+      crownNormals(pa, 0, r * 0.05, 0, 0.25);
+      crownNormals(pb, r * 0.7, 0, r * 0.35, 0.25);
       return finish([pa, pb]);
     }
     case LOOK_SPECIES.Bush:

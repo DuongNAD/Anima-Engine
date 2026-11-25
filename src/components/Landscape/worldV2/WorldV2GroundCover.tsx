@@ -38,8 +38,8 @@ function makeTuftGeometry(): THREE.BufferGeometry {
   const pos: number[] = [];
   const col: number[] = [];
   const nrm: number[] = [];
-  const base = new THREE.Color('#2a3516');
-  const tip = new THREE.Color('#7d8a45');
+  const base = new THREE.Color('#222d16');
+  const tip = new THREE.Color('#566433');
   for (let k = 0; k < 4; k += 1) {
     const a = (k / 4) * Math.PI * 2 + 0.3;
     const ca = Math.cos(a);
@@ -137,9 +137,9 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
       matrices.set(m.elements, k * 16);
       const v = 0.8 + rnd() * 0.4;
       const dry = rnd();
-      colors[k * 3] = v * (0.9 + dry * 0.35);
-      colors[k * 3 + 1] = v * (0.95 + dry * 0.1);
-      colors[k * 3 + 2] = v * (1.0 - dry * 0.35);
+      colors[k * 3] = v * (0.92 + dry * 0.22);
+      colors[k * 3 + 1] = v * (0.96 + dry * 0.06);
+      colors[k * 3 + 2] = v * (1.0 - dry * 0.25);
     }
     return { geometry: makeTuftGeometry(), matrices, colors, tile };
   }, [bundle.seed, count, radiusUnits, unitsPerM]);
