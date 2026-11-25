@@ -12,7 +12,7 @@ last_reviewed: 2026-11-26
 
 > **Status: `proposed` (documents only — zero code, zero generator/verifier/tile edits, zero `docs/ai/README.md` edits).**
 > - **Provenance:** Code and doc anchors in this design were verified on `origin/feat/ecological-selection` at `81eb1e8ef39c6811b463d417984e9130ea03a258` (`#290` `C16 SEL2P2-FREEZE`, 2026-11-25), alongside pending decisions in Draft PR `#293` (`cf433685f78b9d596f9dd49bd29f7d33dcc4df1e`, `VERIFIED` at review), `WV2-PHYS3` (`PR #274` / `origin/mac/wv2-phys3`), and `WV2-6` (`Draft PR #291` / `origin/win/wv2-6` @ `cdcab9f0`, explicitly marked where cited).
-> - **Gate authority:** Every new threshold, resolution choice, environment scope choice, or release-order recommendation in this document is **`PROPOSED`** and marked with **`WB-D1..WB-D7`** in [`§8`](#8-open-owner-decisions-wb-d1wb-d7).
+> - **Gate authority:** Every new threshold, resolution choice, environment scope choice, or release-order recommendation in this document is **`PROPOSED`** and marked with **`WB-D1..WB-D8`** in [`§8`](#8-open-owner-decisions-wb-d1wb-d8).
 
 ---
 
@@ -153,6 +153,45 @@ An `81.92 km` square spans less than **`0.74°` of latitude** (`81.92 / 111.32 k
 
 ---
 
+## 4b. Coastal Profile (Mountain -> Plain -> Sea)
+
+Inspecting `C01`'s coast on 2026-11-25 night, the owner directed (`MSG_20261125_162000`):
+
+> *"hình như trong tự nhiên núi xuống đồng bằng mới xuống biển chứ nhỉ"*
+> (In nature, mountains come down to a plain before the sea.)
+
+### 4b.1 Requirement & Geomorphic Targets (`PROPOSED`, `WB-D8`)
+
+1. **Dominant profile (`mountain -> piedmont (alluvial fans) -> coastal/alluvial plain -> beach`):** Most of the `81.92 km` coastline must step down from highland ridges through coalescing alluvial fans (`deposition.rs`) and low-relief passive-margin coastal or alluvial plains before meeting sandy beaches, barrier lagoons, or river deltas.
+2. **Minority steep mountain-to-sea coasts:** Steep coastal escarpments dropping straight into the surf are physically real — specifically `CST-03` (Black Sand Beach / Lost Coast, King Range NCA, California, [`2026-11-20-map-v2-reference-board.md`](2026-11-20-map-v2-reference-board.md#L534-L541)) and **Tayrona** along the northern flank of the Sierra Nevada de Santa Marta (while the rest of Santa Marta's periphery opens onto broad Caribbean coastal lowlands and the Ciénaga Grande / Magdalena delta). Steep/cliffed mountain-to-sea segments must stay a localized minority rather than wrapping most of the landmass.
+
+| Coastal Segment Class | Example Analog (`G-REF`) | `PROPOSED` Coastline Share (`WB-D8`) |
+|---|---|---|
+| **Plain-backed passive-margin / lowland coast** | Broad coastal plain, sandy strandplains (`CST-01`, Ciénaga lowlands) | **`55–65%`** |
+| **Alluvial fan / estuarine delta / mangrove-lagoon coast** | Piedmont fans coalescing to delta plain, Magdalena / Ciénaga mouths (`WET-01..04`, `AER-04,05`) | **`20–30%`** |
+| **Steep / cliffed mountain-to-sea coast** | Lost Coast (`CST-03`), Tayrona headlands (`CST-02,03`) | **`10–20%`** *(strict minority)* |
+
+### 4b.2 Generator Mechanisms That Build the Plain
+
+To produce `75–90%` plain- or fan/delta-backed coastline while retaining a `10–20%` `CST-03`/Tayrona minority:
+- **Sediment deposition (`src-tauri/crates/anima-worldgen/src/deposition.rs`, Stage S4 — tied directly to failing `G-COMP-v2.C4`):** Coalescing piedmont alluvial fans (`fan_slope_drop_ratio = 4.0`), Howard-Knutson lateral meandering floodplains (`meander_max_slope = 0.004`), and `DeltaRCM` prograding coastal deltas (`delta_max_shelf_depth_m = 40.0 m`, scaling `delta_max_mouths` beyond `4` at `81.92 km`) prograde sedimentary aprons across the low-gradient coastal margin once upstream `C4` river discharge/order reaches target.
+- **Passive-margin flank (`tectonic.rs:372-392`):** Broaden the coastal `plain_ramp` (`d_coast`) around passive/lateral flanks of the landmass so a low-elevation continental shelf and `< 100 m` coastal lowland surround the main massif rather than mirroring a single coast-parallel ramp.
+- **Lower uplift away from the massif (`tectonic.rs:288-310`, `generate_uplift_for_target`):** Replace fixed `[0, 1]` offsets (`ridge_center_u = smooth_coast + 0.22`, `piedmont_gate` onset `smooth_d_coast = 0.092`) with spatially varying metre setbacks (`>= 10–18 km` across plain-backed sectors, narrowing to `~1–3 km` only in the `10–20%` `CST-03`/Tayrona cliff arcs), tapering bedrock uplift to near zero across the lowland apron and restricting `coast_cliff_share` (presently `0.28` globally, proposed `~0.14–0.20`) to the headland minority.
+
+### 4b.3 Checkable Metric (`PROPOSED`, `WB-D8`, No Verifier Change) & Current `C01` Status
+
+- **`C5b.CoastalPlainProfile` (`PROPOSED` for `WV2-BIG-2`):**
+  1. Share of coastline cells backed inland by **`>= 5.0 km`** of land below `100 m` elevation (`>= 3.0 km` at `40.96 km`): **`>= 0.60`** (and **`>= 0.75`** backed by `>= 3.0 km` `< 100 m` including fans/deltas).
+  2. Median shortest horizontal coast-to-`1,000 m` elevation distance: **`>= 10.0 km`** at `81.92 km` (with `< 4.0 km` mountain-front segments capped at `10–20%`).
+  3. Existing `C5` immediate shoreline checks (`gentle >= 0.20`, `cliff >= 0.10`, `obstructed == 0`) remain active, with a **`PROPOSED cliff <= 0.25`** ceiling so cliffed headlands stay a minority.
+- **What `C01` (and `WV2-PHYS2`/`WV2-PHYS3`) has today:**
+  - **Committed `C01` ([`artifacts/world-v2/gates.json`](../../../artifacts/world-v2/gates.json#L274-L307), [`2026-11-24-wv2-4.md:106-107`](../planning/2026-11-24-wv2-4.md#L106-L107)):** Immediate 1-cell shoreline `C5` reports `coastline_cells = 4,224`, `gentle_sandy_fraction = 1.0000` (`slope < 0.18`), `steep_cliff_fraction = 0.0000` (**FAIL**, zero coastal cliffs), `obstructed_sightlines = 0`, `D_shore = 0.9872` (**FAIL**); `C4` **FAILS** (`counted_river_surface_fraction = 0.000250`, `omega_max = 3`, `max_path_km = 9.89`, `fan_count = 4`, **`delta_count = 1`**). In [`tectonic.rs:288,304-310`](../../../src-tauri/crates/anima-worldgen/src/tectonic.rs#L288-L310), `ridge_center_u = smooth_coast + 0.22` (`~9.0 km` at `40.96 km`) and `piedmont_gate` begins uplifting the `5,350 m` massif at `smooth_d_coast = 0.092` (`~3.77 km` from `smooth_coast`).
+  - **`WV2-PHYS2` (`S2_1`/`S2_2`) & `WV2-PHYS3` (`S2_6`):** `C5` immediate shoreline passes (`gentle = 0.722..0.775`, `cliff = 0.103..0.153`, `coast_cliff_share = 0.28`) and `C4` produces `26..35` fans / `4` deltas (`hack_consistent` still `false`), using the same `0.092` / `0.22` massif setback.
+  - **Coastline fraction with `>= N km` below `100 m` behind it (`C01` / `PHYS2` / `PHYS3`):** **`to measure`**.
+  - **Median coast-to-`1,000 m` horizontal distance (`C01` / `PHYS2` / `PHYS3`):** **`to measure`**.
+
+---
+
 ## 5. Scale-Dependent Gate Recalibrations (`PROPOSED`, No Verifier Edits Yet)
 
 All proposals below assume **`81,920 m × 81,920 m`** and Option B (**`4096²`, `dx = 20 m`**; parenthetical notes for `8192²`, `dx = 10 m`). Verifier files under `src/verify/**` remain untouched in `WV2-D2`.
@@ -167,7 +206,8 @@ All proposals below assume **`81,920 m × 81,920 m`** and Option B (**`4096²`, 
 | `G-COMP-v2.C1` (`Partition`) | `ocean [0.40, 0.50]`, `wf [20, 80]`, `caves [30, 48]`, `spacing >= 0.01 * extent_m`, `MIN_PATCH_AREA_M2 = 250,000` (`0.25 km²`), `16/16` biomes | Counts & `0.25 km²` patch floor assume `40.96 km` | **`PROPOSED` (`WB-D3`):** `wf` **`[40, 200]`** (scale-proportional `~2–3×`), `caves` **`[60, 140]`**, `spacing >= 400 m` (fixed in metres, not `0.01 * extent_m`), `MIN_PATCH_AREA_M2` **`500,000 m²` (`0.50 km²`, `1,250` cells @ `20 m`)**, `16/16` biomes (keep `Taiga` only if montane band remains in `ZONED_TERRESTRIAL_16`). |
 | `G-COMP-v2.C3` (`Lakes`) | `lake_frac in [0.008, 0.045]`, `large (>0.1 km²) >= 5`, `paramo >= 1`, `caldera >= 1`, `ponds >= 10` | Absolute counts scale sub-linearly/linearly with area | **`PROPOSED` (`WB-D3`):** `lake_frac` **`[0.008, 0.045]`**, `large >= 12`, `paramo >= 2`, `caldera >= 2` (dual massif/rift), `ponds >= 20`. |
 | `G-COMP-v2.C4` (`RiversFansDeltas`) | `river_frac [0.0005, 0.0030]`, `w2 < w3 < w4`, `fans >= 2`, `deltas >= 2` | Absolute counts assume `40.96 km` | **`PROPOSED` (`WB-D3`):** `river_frac [0.0005, 0.0030]`, `fans >= 6`, `deltas >= 4`, plus oxbow/meander presence check. |
-| `G-COMP-v2.C5` (`CoastalSightlines`) | `gentle >= 0.20`, `cliff >= 0.10`, `obstructed == 0` | Rim camera offset `+12_000 m` top view | **Keep `gentle`/`cliff`/`obstructed == 0`**; set top view Z `+24_000 m` when `extent_m >= 80_000` so full `82 km` fits in FOV. |
+| `G-COMP-v2.C5` (`CoastalSightlines`) | `gentle >= 0.20`, `cliff >= 0.10`, `obstructed == 0` | Rim camera offset `+12_000 m` top view | **Keep `gentle`/`cliff`/`obstructed == 0`** (`PROPOSED` `cliff <= 0.25` cap); set top view Z `+24_000 m` when `extent_m >= 80_000` so full `82 km` fits in FOV. |
+| `C5b.CoastalPlainProfile` *(new)* | *(not gated in trunk)* | Plain-backed vs steep mountain-to-sea profile (`§4b`) | **`PROPOSED` (`WB-D8`):** `>= 0.60` coastline with `>= 5.0 km` `< 100 m` (`>= 0.75` @ `>= 3.0 km`); median coast-to-`1,000 m` distance `>= 10.0 km` (`10–20%` steep minority). |
 
 ---
 
@@ -190,8 +230,8 @@ Option (a) honors the single-publication rule (`QD-GATES-1125 (4)` & `QD-WV2-BIG
 
 | Order | Card | Owner / Machine | Scope & Key Surfaces | Est. Size | Mandatory Verification & Negative Control |
 |---|---|---|---|---|---|
-| **1** | **`WV2-BIG-1`** Tectonic & Multi-Environment Refactor | `anima-mac` | Refactor `tectonic.rs` normalized box fractions to metre-based multi-massif, intermontane valley, dry leeward basin, wide piedmont plain, and offshore island/sea-stack placement; `biomes.rs` & `deposition.rs` oxbow/dry-valley hooks; keep `WORLD_EXTENT_M = 40_960.0` defaults untouched (`M2` fault patch green). | `~2–3 d` | Unit tests at `extent_m = 81_920.0` (`4096²`/`1024²`) + negative control asserting `extent_m = 40_960.0` default config stays bit-identical to trunk. |
-| **2** | **`WV2-BIG-2`** Scale-Aware Hydrology, Waterfall `dx` Fix & Verifier Calibration | `anima-mac` | Fix `pipeline.rs:533` & `lakes_falls.rs:80` `dx_m >= 20 m` waterfall window (`run_limit = max(30, 3.65 * dx_m)`), add `81_920 m` / `WB-D3` gate profile in `verify/` (keeping `40.96 km` profile unchanged), calibrate `WV2-PHYS4` physics at `81.92 km`. | `~2–3 d` | `1024²` -> `4096²` Stage-1/Stage-2 parity + negative control confirming an uncalibrated `40.96 km` candidate fails or trips `WB-D3` gates cleanly. |
+| **1** | **`WV2-BIG-1`** Tectonic & Multi-Environment Refactor | `anima-mac` | Refactor `tectonic.rs` normalized box fractions to metre-based multi-massif, intermontane valley, dry leeward basin, wide piedmont/passive-margin coastal plain setback (`§4b`), localized `CST-03`/Tayrona cliff minority, and offshore islands/sea stacks; `biomes.rs` & `deposition.rs` oxbow/fan/delta hooks; keep `WORLD_EXTENT_M = 40_960.0` defaults untouched (`M2` fault patch green). | `~2–3 d` | Unit tests at `extent_m = 81_920.0` (`4096²`/`1024²`) + negative control asserting `extent_m = 40_960.0` default config stays bit-identical to trunk. |
+| **2** | **`WV2-BIG-2`** Scale-Aware Hydrology, Waterfall `dx` Fix & Verifier Calibration | `anima-mac` | Fix `pipeline.rs:533` & `lakes_falls.rs:80` `dx_m >= 20 m` waterfall window (`run_limit = max(30, 3.65 * dx_m)`), add `81_920 m` / `WB-D3` + `C5b` (`WB-D8`) gate profile in `verify/` (keeping `40.96 km` profile unchanged), calibrate `WV2-PHYS4` physics at `81.92 km`. | `~2–3 d` | `1024²` -> `4096²` Stage-1/Stage-2 parity + negative control confirming an uncalibrated `40.96 km` candidate fails or trips `WB-D3`/`WB-D8` gates cleanly. |
 | **3** | **`WV2-BIG-3`** Official `81.92 km` Generation, Bake & Artifact Commit | `anima-mac` (grid if `8192²`) | Generate winning `81.92 km` preset (`4096² @ 20 m` per `WB-D1`), run `anima-bake fields/lighting/pack --verify`, update `artifacts/world-v2/{preset_v2.toml,sim_256.anmw3,index.json,gates.json}` (replaces `C01` once!). Optional 56-B `ANMW v3` header bump (`WB-D6`). | `~1–1.5 d` | `wv2_4_g_shape_comp_tests`, `wv2_5_bake_tests`, `world_v2_sim_gate_tests`, 1-byte tamper negative control, and `WorldIdentity` mismatch test against old `C01` saves. |
 | **4** | **`WV2-BIG-4`** Viewer & Capture Manifest Scale Sync | `anima-case` / `anima-mac` | Update `#291` `worldV2/` items (`FLORA_SECTORS_PER_SIDE` from `index.grid_size / 256`, HUD string `'World v2 C01'` -> dynamic ID, `HEIGHT_RATIO` per `WB-D5`), re-aim `world_v2_manifest.json` canonical poses, stage internal tiles for `test:e2e`. | `~1–1.5 d` | `tests/frontend/worldArtifactV3.test.ts`, `worldV2ManifestEvidence.test.ts`, Playwright `capture:map` (`map_manifest.json` untouched), stale-manifest negative control. |
 | **5** | **`WV2-LOOK`** Realism Shader & Coast Pass (`QD-WV2-LOOK`) | `anima-mac` | Merge trunk (including `WV2-BIG-3/4` & `#291`), promote `mac/wv2-look-proto` (`CST-01..04` foam/wet sand, steep-face triplanar, aerial perspective, real-scale flora), fix `floraClearance` & map-edge side effects. | `~2 d` | `capture:map` before/after, `npm run test:e2e` with staged tiles, `<= 60` draw calls (`rw_budget`). |
@@ -199,7 +239,7 @@ Option (a) honors the single-publication rule (`QD-GATES-1125 (4)` & `QD-WV2-BIG
 
 ---
 
-## 8. Open Owner Decisions (`WB-D1..WB-D7`)
+## 8. Open Owner Decisions (`WB-D1..WB-D8`)
 
 | ID | Decision Question | Options | Recommendation | Fallback if Declined |
 |---|---|---|---|---|
@@ -210,3 +250,4 @@ Option (a) honors the single-publication rule (`QD-GATES-1125 (4)` & `QD-WV2-BIG
 | **`WB-D5`** | Viewer `HEIGHT_RATIO` at `81.92 km` (`RENDER_SIZE = 1200`) | **(a)** Keep `HEIGHT_RATIO = 0.14` (`2×` steeper relief, dramatic peaks)<br>**(b)** Halve to `0.07` (same physical slope ratio as `40.96 km`)<br>**(c)** Compromise `0.10` (`~1.8×` exaggeration, readable silhouettes) | **Option (c) `0.10`** (`to visually verify` on `WV2-BIG-4` `capture:map`), keeping `0.14` untouched for `C01`. | Keep `0.14` (if owner prefers tall stylized peaks) or `0.07` (strict true aspect ratio). |
 | **`WB-D6`** | `ANMW v3` header `extent_m` encoding (`44 B` vs `56 B`) | **(a)** Keep `44`-byte `ANMW v3` header unchanged and read `extent_m` from `index.json` (`0` format break)<br>**(b)** Extend to `56`-byte header (`world_extent_m_bits`, `elev_min_m_bits`, `elev_max_m_bits` per scale research `§9`) | **Option (a)** if staying `4096²` / single `[-1500, +5700] m` range; **Option (b)** if adding a temperate `58°N` preset later. | Option (a) avoids bumping `sim_256.anmw3` codec version during `0.9`. |
 | **`WB-D7`** | Desktop simulation `sim_256` grid (`320 m/cell` at `81.92 km`) | **(a)** Keep `256²` (`MapBounds 200×200`, `320 m/cell`, zero sim cost increase)<br>**(b)** Upgrade desktop sim to `512²` (`4×` field memory/cost) | **Option (a)** — required by `QD-WV2-BIG` (`"Unchanged: ... the 256^2 sim grid and MapBounds 200x200"`). | Revisit `512²` sim only after Stage 4 closes (`WORLD_SCALE_AND_MAP_GENERATION_RESEARCH_2026-11-22.md §1.4`). |
+| **`WB-D8`** | Coastal profile shares & `C5b.CoastalPlainProfile` metric (`§4b`) | Target **`55–65%`** plain-backed, **`20–30%`** fan/delta, **`10–20%`** steep `CST-03`/Tayrona minority; `C5b`: `>= 0.60` @ `>= 5.0 km` `< 100 m`, median coast-to-`1,000 m` `>= 10.0 km`, `C5 cliff <= 0.25` | **Accept `§4b` targets & `C5b` metric** under the `81.92 km` profile (first measure `C01`/`PHYS2`/`PHYS3` baseline during `WV2-BIG-2`). | Keep `C5b` diagnostic-only in `WV2-BIG-2` while still enforcing the passive-margin plain setback in `WV2-BIG-1`. |
