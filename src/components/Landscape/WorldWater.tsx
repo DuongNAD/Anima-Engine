@@ -138,11 +138,13 @@ const fragmentShader = /* glsl */ `
     float v = d * 1.15 + (marble - 0.5) * 0.9;
     float e = 0.06 + aaW * 0.8;
     float cover = smoothstep(0.55 - e, 0.55 + e, v);
-    // Bubble holes inside moderately dense foam (Worley F1 spots), faded out past ~1 cell/pixel.
-    vec2 w = lkWorley(cellP * 1.7 + 3.3);
-    float holeR = 0.30 * (1.0 - smoothstep(0.6, 1.1, d));
-    float holes = 1.0 - smoothstep(holeR - aaW - 0.03, holeR + aaW + 0.03, w.x);
+    // Bubble holes inside moderately dense foam (Worley F1 spots), faded out past ~1 cell/pixel
+    // and not computed at all where they could not be resolved or there is no foam.
     float resolved = 1.0 - smoothstep(0.4, 1.3, aaW);
+    float holeR = 0.30 * (1.0 - smoothstep(0.6, 1.1, d));
+    if (resolved <= 0.0 || cover <= 0.0 || holeR <= 0.0) return cover;
+    vec2 w = lkWorley(cellP * 1.7 + 3.3);
+    float holes = 1.0 - smoothstep(holeR - aaW - 0.03, holeR + aaW + 0.03, w.x);
     return cover * (1.0 - holes * 0.8 * resolved);
   }
 

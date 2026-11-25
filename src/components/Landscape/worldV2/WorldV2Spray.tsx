@@ -33,8 +33,12 @@ const VERT = /* glsl */ `
     float sx = length(instanceMatrix[0].xyz);
     float sy = length(instanceMatrix[1].xyz);
     vec3 toCam = cameraPosition - center;
+    // Cards the camera stands in are fully faded anyway (nearFade): collapse them so their
+    // (large, invisible) quads cost no fill.
+    float camD = length(toCam);
+    float keep = step(1.5, camD);
     vec3 right = normalize(vec3(toCam.z, 0.0, -toCam.x) + vec3(1e-5, 0.0, 0.0));
-    vec3 wp = center + right * position.x * sx + vec3(0.0, position.y * sy, 0.0);
+    vec3 wp = center + (right * position.x * sx + vec3(0.0, position.y * sy, 0.0)) * keep;
     vUv = uv;
     vSeed = aSeed;
     vWp = wp;
