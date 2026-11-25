@@ -82,24 +82,39 @@ varying vec3 vC;
 varying float vR;
 varying float vTopM;
 varying float vSeed;
+varying float vNear;
+varying float vNearG;
+varying float vHaze;
+varying vec3 vHazeC;
 ${ATMOSPHERE_FRAGMENT_PARS}
 void main(){
 float sp=uTile/uN;
 vec2 camM=cameraPosition.xz*uAtmoMPerUnit;
 vec2 p=aCell.xy*uTile+(aCell.zw-0.5)*sp*0.9+uAtmoWind*uAtmoTime;
 p=camM+mod(p-camM+0.5*uTile,uTile)-0.5*uTile;
+gl_Position=vec4(2.0,2.0,2.0,1.0);
 vec2 dom=atmoCloudDom(p);
 float C=atmoCloudC(p,dom.g,atmoCloudRegion(p));
-float top=C<0.03?0.0:atmoCloudTop(p,C,0);
+if(C<0.03)return;
+float top=atmoCloudTop(p,C,0);
 float Hm=uAtmoCloudTop*uAtmoMPerUnitY;
 float rM=(sp*0.95+top*Hm*0.26)*(0.55+0.9*fract(aCell.z*7.13));
 ` +
   // Puffs of one cell sit at different heights between the flat base and the dome top.
   `float cy=uAtmoCloudY+max(rM*0.3,top*Hm*(0.15+0.55*fract(aCell.w*5.31)))/uAtmoMPerUnitY;
-gl_Position=vec4(2.0,2.0,2.0,1.0);
 if(top<0.02||dom.r>cy-0.3*rM/uAtmoMPerUnitY)return;
 vec3 c=vec3(p.x/uAtmoMPerUnit,cy,p.y/uAtmoMPerUnit);
 vR=rM/uAtmoMPerUnit;
+` +
+  // Per puff, not per pixel: gone when the camera is inside or right next to it, its haze, and
+  // whether any terrain within its radius reaches its lower half (else no terrain fade lookup).
+  `vNear=smoothstep(0.7,1.6,length(c-cameraPosition)/vR);
+if(vNear<0.01)return;
+vec3 rc=normalize(c-cameraPosition);
+vHazeC=atmoSkyColor(normalize(vec3(rc.x,abs(rc.y)*0.2,rc.z)));
+vHaze=atmoHazeAmount(cameraPosition,c);
+float gm=max(max(atmoCloudDom(p+vec2(rM,0.0)).r,atmoCloudDom(p-vec2(rM,0.0)).r),max(atmoCloudDom(p+vec2(0.0,rM)).r,atmoCloudDom(p-vec2(0.0,rM)).r));
+vNearG=step(cy-vR,max(gm,dom.r));
 vec4 mv=viewMatrix*vec4(c,1.0);
 mv.xy+=position.xy*vR;
 gl_Position=projectionMatrix*mv;
@@ -116,8 +131,18 @@ varying vec3 vC;
 varying float vR;
 varying float vTopM;
 varying float vSeed;
+varying float vNear;
+varying float vNearG;
+varying float vHaze;
+varying vec3 vHazeC;
 ${ATMOSPHERE_FRAGMENT_PARS}
 void main(){
+vec3 cr=vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]);
+vec3 cu=vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]);
+vec3 cb=vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]);
+vec3 wp=vC+(vUv.x*cr+vUv.y*cu)*vR;
+float dM=length(wp-cameraPosition)*uAtmoMPerUnit;
+if(dM<220.0)discard;
 ` +
   // Four overlapping lobes (a central dome and three around it, their layout from the seed)
   // give each card a cauliflower outline; the nearest lobe's sphere is the surface normal.
@@ -142,12 +167,6 @@ l+=dl*w;
 float r2=-0.12*log(max(ws,1e-6));
 l/=max(ws,1e-6);
 if(r2>=1.0)discard;
-vec3 cr=vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]);
-vec3 cu=vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]);
-vec3 cb=vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]);
-vec3 wp=vC+(vUv.x*cr+vUv.y*cu)*vR;
-float dM=length(wp-cameraPosition)*uAtmoMPerUnit;
-if(dM<220.0)discard;
 vec3 n=normalize(l.x*cr+l.y*cu+sqrt(max(1.0-dot(l,l),0.0))*cb);
 float hB=(wp.y-uAtmoCloudY)*uAtmoMPerUnitY;
 vec3 rd=normalize(wp-cameraPosition);
@@ -161,13 +180,14 @@ vec3 rd=normalize(wp-cameraPosition);
 ` +
   // Soft where the card meets the terrain (the coarse height map stands in for a depth
   // buffer), and gone when the camera is inside or right next to the puff.
-  `a*=smoothstep(0.0,250.0,(wp.y-atmoCloudDom(wp.xz*uAtmoMPerUnit).r)*uAtmoMPerUnitY);
-a*=smoothstep(0.7,1.6,length(vC-cameraPosition)/vR);
+  `if(vNearG>0.5)a*=smoothstep(0.0,250.0,(wp.y-atmoCloudDom(wp.xz*uAtmoMPerUnit).r)*uAtmoMPerUnitY);
+a*=vNear;
+if(a<0.004)discard;
 vec3 sd=normalize(uAtmoSunDir);
 float sunL=clamp(dot(n,sd)*mix(0.3,0.6,side)+mix(0.72,0.45,side),0.0,1.0)*mix(1.0,mix(0.55,1.0,smoothstep(0.0,max(vTopM,300.0)*0.75,hB)),0.3+0.7*side);
 vec3 col=mix(vec3(0.57,0.62,0.71),vec3(1.0,0.985,0.95),sunL)*mix(0.9,1.05,n2);
 col+=vec3(1.0,0.95,0.85)*pow(max(dot(rd,sd),0.0),8.0)*0.35*smoothstep(0.3,1.0,r2);
-col=mix(col,atmoSkyColor(normalize(vec3(rd.x,abs(rd.y)*0.2,rd.z))),atmoHazeAmount(cameraPosition,wp));
+col=mix(col,vHazeC,vHaze);
 gl_FragColor=vec4(min(col,vec3(1.0)),a*0.96);
 }
 `;
@@ -323,7 +343,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   worldScale = 400,
   sunTilt = 0,
   look = false,
-  cloudGrid = 260,
+  cloudGrid = 210,
 }) => {
   const cloudsRef = useRef<THREE.Group>(null);
   const tmpColor = useMemo(() => new THREE.Color(), []);

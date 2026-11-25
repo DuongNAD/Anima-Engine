@@ -638,7 +638,7 @@ export const WorldShowcase: React.FC = () => {
           worldScale={RENDER_SIZE}
           sunTilt={worldV2Bundle ? V2_SUN_TILT : 0}
           look={Boolean(worldV2Bundle)}
-          cloudGrid={effectiveQuality === 'high' ? 260 : effectiveQuality === 'medium' ? 180 : 120}
+          cloudGrid={effectiveQuality === 'high' ? 210 : effectiveQuality === 'medium' ? 160 : 110}
         />
         <WorldWeather
           weather={weather}
