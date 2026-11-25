@@ -1529,13 +1529,14 @@ pub fn serialize_world_state(
     }
 }
 
-/// Recover [`crate::core::agent_systems::NextNodeId`] from a restored save, falling back to
-/// `(max_saved_node_id + 1).max(3)` when loading a pre-F045 save that omitted `next_node_id`.
+/// Recover [`crate::core::agent_systems::NextNodeId`] from a restored save, guaranteed not to
+/// fall behind `state.next_node_id`, `evolution_worker.node_id_counter`, or any saved genotype's
+/// morphology node id (falling back safely for pre-F045 saves as well).
 pub fn restored_next_node_id(state: &SavedSimulationState) -> u32 {
-    if let Some(next_id) = state.next_node_id {
-        return next_id.max(3);
+    let mut next_node_id = state.next_node_id.unwrap_or(3).max(3);
+    if let Some(worker) = state.evolution_worker.as_ref() {
+        next_node_id = next_node_id.max(worker.node_id_counter);
     }
-    let mut next_node_id = 3u32;
     for agent in &state.agents {
         for node in &agent.genotype.nodes {
             next_node_id = next_node_id.max(node.id.saturating_add(1));
@@ -1544,6 +1545,13 @@ pub fn restored_next_node_id(state: &SavedSimulationState) -> u32 {
     for dormant in &state.dormant_agents {
         for node in &dormant.agent.genotype.nodes {
             next_node_id = next_node_id.max(node.id.saturating_add(1));
+        }
+    }
+    for lineage_node in &state.lineage_nodes {
+        if let Some(genotype) = lineage_node.genotype.as_ref() {
+            for node in &genotype.nodes {
+                next_node_id = next_node_id.max(node.id.saturating_add(1));
+            }
         }
     }
     next_node_id

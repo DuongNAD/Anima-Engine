@@ -17,3 +17,4 @@ Mỗi file là kết quả của một thẻ M, ghi đúng như đo được, k�
 | [`scaling.md`](scaling.md) | M3 | Chi phí mỗi tick của lịch trình live thật (`LiveExperimentAdapter` / `build_tick_schedule`) tăng thế nào theo số lượng agent (`10` → `5.000`) ở cấu hình `--release`? |
 | [`eu_residual.md`](eu_residual.md) | M4 | Sổ cái năng lượng đóng (`live.closed_eu_total`) có bảo toàn EU trên mọi tổ hợp cờ chính sách và mọi `InterventionKind` không? |
 | [`incidents.md`](incidents.md) | P1 | Những sự cố nào đã được ghi nhận trong repo khi một gate thoát mã 0 dù có sai sót? (kèm [`incidents.csv`](incidents.csv)) |
+| [`baseline-2026-08-10.txt`](baseline-2026-08-10.txt), [`baseline-2026-08-11.txt`](baseline-2026-08-11.txt) | — | Early code-size baselines written by `just baseline` (lines of code, test count) at `00e96a5` and `3a688a0`; moved here from the repo root on 2026-11-24 |

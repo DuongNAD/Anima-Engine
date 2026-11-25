@@ -80,17 +80,17 @@ At `1a2d1d62`, `CausalLedger::record` (`src-tauri/crates/anima-domain/src/causal
 
 ## 3. Open Owner Decisions (`D-V6-1`–`D-V6-4`)
 
-- **`D-V6-1` (Simulated day -> tick conversion `TICKS_PER_SIM_DAY`):**
+- **`D-V6-1` (Simulated day -> tick conversion `TICKS_PER_SIM_DAY`):** — **DECIDED (2026-11-24, QD-OPENQ): Option A (`TICKS_PER_SIM_DAY = 60` ticks) for the V6–V8 fast science slice profile, alongside `QD-ADR0014`'s 20-minute day (`72,000` ticks) for the shared-island real-time ecology profile — both are declared world-law profiles pinned per manifest.**
   - **Option A (Recommended):** `TICKS_PER_SIM_DAY = 60` ticks (`1` sim day = `1` ecology cycle = `1` sim second at `60 Hz`, matching `SeasonClock` 1 year = `100` sim days = `6,000` ticks at `ecology.rs:261-264`), making `"30 simulated days"` = **`1,800` ticks** — clearly long enough to deplete soil moisture, depress grass, and trigger delayed rabbit/wolf response while finishing cleanly in integration tests and multi-seed `V8` sweeps.
   - **Option B:** `TICKS_PER_SIM_DAY = 600` ticks (`30 days = 18,000` ticks, ~3 seasonal years).
   - **Option C:** Reuse UI visual clock `src/components/Landscape/utils/sceneClock.ts:177` (`36,000` ticks/day -> `30 days = 1,080,000` ticks; impractical per scenario run).
-- **`D-V6-2` (Simple eutrophication model for lake fertilization, §9 `1060`):**
+- **`D-V6-2` (Simple eutrophication model for lake fertilization, §9 `1060`):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (per-cell `algal_bloom` & `dissolved_oxygen`).
   - **Option A (Recommended):** Per-cell `algal_bloom: Vec<f32>` & `dissolved_oxygen: Vec<f32>` on `DynamicFields` (active only on water/lake cells where nutrient runoff enters; excess leached/runoff nitrogen boosts `algal_bloom`, bloom decay draws down `dissolved_oxygen`, feeding aquatic mortality/stress signal cleanly without changing closed terrestrial EU).
   - **Option B:** Track scalar lake nutrient load + NPP/turbidity proxy without adding `algal_bloom` / `dissolved_oxygen` cell arrays. Less direct against §6 table (`683`: `nutrient, NPP, algae, oxygen, population cycles`).
-- **`D-V6-3` (`CausalLedger` noise gating & memory bound):**
+- **`D-V6-3` (`CausalLedger` noise gating & memory bound):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (`ECOLOGY_PERIOD` gating + bounded capacity / ring compaction).
   - **Option A (Recommended):** Record causal mechanism updates on `ECOLOGY_PERIOD` (`60` ticks) when `|delta| >= threshold` **and** cap ledger growth cleanly via bounded capacity / ring compaction (`WORLD_SIMULATION_PLAN.md` §4.2 `:396-399`) so long `V10` soak runs cannot OOM.
   - **Option B:** Append unboundedly when threshold crosses (relying on `V10` run length staying modest).
-- **`D-V6-4` (Default interaction with legacy tests calling `apply_live_interventions_system`):**
+- **`D-V6-4` (Default interaction with legacy tests calling `apply_live_interventions_system`):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (opt-in `live.v6_interventions = 1.0`).
   - **Option A (Recommended):** Gate `V6` field-mediated intervention dispatch + single-shot `RemovePredators` + `Tree` removal behind opt-in `live.v6_interventions = 1.0` (`ANIMA_V6_INTERVENTIONS`) so existing legacy tests (like `src-tauri/tests/ledger_bypass_tests.rs:271` testing trunk `AddNutrient`/`Deforest`/`RemovePredators`) keep running untouched until explicitly migrated.
   - **Option B:** Switch automatically whenever `DynamicFields` is present (`live.dynamic_fields = 1.0`), adding explicit single-shot flag on `RemovePredators`.
 

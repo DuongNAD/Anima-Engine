@@ -13,6 +13,9 @@ import { Map2Biome } from './utils/map2BiomeConfig';
 import { CameraMode } from './utils/map2Physics';
 import { Map2CameraRig, Map2CameraView } from './Map2CameraRig';
 import { Map2HUD } from './Map2HUD';
+import { DECORATION_LEGEND_TEXT } from '../Landscape/utils/simEnvironment';
+
+export const MAP2_DECORATION_LEGEND_TEXT = `${DECORATION_LEGEND_TEXT.split(':')[0]}: wildlife, fantasy crystals`;
 
 export interface Map2ShowcaseProps {
   isStandalone?: boolean;
@@ -320,6 +323,23 @@ export const Map2Showcase: React.FC<Map2ShowcaseProps> = ({
         quality={quality}
         worldSize={200}
       />
+
+      <div
+        data-testid="map2-decoration-legend"
+        style={{
+          position: 'absolute',
+          top: 14,
+          right: 14,
+          zIndex: 45,
+          padding: '6px 10px',
+          borderRadius: 6,
+          background: 'rgba(15, 23, 42, 0.82)',
+          color: '#cbd5e1',
+          fontSize: 11,
+        }}
+      >
+        {MAP2_DECORATION_LEGEND_TEXT}
+      </div>
     </div>
   );
 };
