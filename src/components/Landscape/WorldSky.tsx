@@ -80,7 +80,7 @@ attribute vec4 aCell;
 varying vec2 vUv;
 varying vec3 vC;
 varying float vR;
-varying float vTopM;
+varying float vRy;
 varying float vSeed;
 varying float vNear;
 varying float vNearG;
@@ -98,29 +98,35 @@ float C=atmoCloudC(p,dom.g,atmoCloudRegion(p));
 if(C<0.03)return;
 float top=atmoCloudTop(p,C,0);
 float Hm=uAtmoCloudTop*uAtmoMPerUnitY;
-float rM=(sp*0.95+top*Hm*0.26)*(0.55+0.9*fract(aCell.z*7.13));
 ` +
-  // Puffs of one cell sit at different heights between the flat base and the dome top.
-  `float cy=uAtmoCloudY+max(rM*0.3,top*Hm*(0.15+0.55*fract(aCell.w*5.31)))/uAtmoMPerUnitY;
-if(top<0.02||dom.r>cy-0.3*rM/uAtmoMPerUnitY)return;
+  // Real-size cumulus: ~0.5-1.6 km across over the sea (thin cells), growing to ~3 km and
+  // taller where the cell is thick (the windward bank). Thin ones are 1.6-2.4 times wider than
+  // tall seen from the side; the centre sits low, so the condensation level cuts a flat base,
+  // and in thick cells some puffs ride higher, building the bank upward.
+  `float rM=mix(250.0,2000.0,pow(top,1.5))*(0.75+0.5*fract(aCell.z*7.13));
+float asp=mix(2.0,1.1,top)*(0.8+0.4*fract(aCell.w*5.31));
+vec3 rc=normalize(vec3(p.x/uAtmoMPerUnit,uAtmoCloudY,p.y/uAtmoMPerUnit)-cameraPosition);
+float ryM=rM*mix(1.0,1.0/asp,1.0-smoothstep(0.08,0.4,-rc.y));
+float cy=uAtmoCloudY+(0.3+1.1*top*fract(aCell.z*3.17))*ryM/uAtmoMPerUnitY;
+if(top<0.02||dom.r>cy-0.3*ryM/uAtmoMPerUnitY)return;
 vec3 c=vec3(p.x/uAtmoMPerUnit,cy,p.y/uAtmoMPerUnit);
 vR=rM/uAtmoMPerUnit;
+vRy=ryM/uAtmoMPerUnit;
 ` +
   // Per puff, not per pixel: gone when the camera is inside or right next to it, its haze, and
   // whether any terrain within its radius reaches its lower half (else no terrain fade lookup).
-  `vNear=smoothstep(0.7,1.6,length(c-cameraPosition)/vR);
+  `vNear=smoothstep(1.0,2.4,length(c-cameraPosition)/vR);
 if(vNear<0.01)return;
-vec3 rc=normalize(c-cameraPosition);
+rc=normalize(c-cameraPosition);
 vHazeC=atmoSkyColor(normalize(vec3(rc.x,abs(rc.y)*0.2,rc.z)));
 vHaze=atmoHazeAmount(cameraPosition,c);
 float gm=max(max(atmoCloudDom(p+vec2(rM,0.0)).r,atmoCloudDom(p-vec2(rM,0.0)).r),max(atmoCloudDom(p+vec2(0.0,rM)).r,atmoCloudDom(p-vec2(0.0,rM)).r));
 vNearG=step(cy-vR,max(gm,dom.r));
 vec4 mv=viewMatrix*vec4(c,1.0);
-mv.xy+=position.xy*vR;
+mv.xy+=position.xy*vec2(vR,vRy);
 gl_Position=projectionMatrix*mv;
 vUv=position.xy;
 vC=c;
-vTopM=top*Hm;
 vSeed=aCell.z;
 }
 `;
@@ -129,7 +135,7 @@ precision highp float;
 varying vec2 vUv;
 varying vec3 vC;
 varying float vR;
-varying float vTopM;
+varying float vRy;
 varying float vSeed;
 varying float vNear;
 varying float vNearG;
@@ -141,27 +147,27 @@ if(dot(vUv,vUv)>=1.0)discard;
 vec3 cr=vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]);
 vec3 cu=vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]);
 vec3 cb=vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]);
-vec3 wp=vC+(vUv.x*cr+vUv.y*cu)*vR;
+vec3 wp=vC+vUv.x*vR*cr+vUv.y*vRy*cu;
 float dM=length(wp-cameraPosition)*uAtmoMPerUnit;
-if(dM<220.0)discard;
+if(dM<300.0)discard;
 ` +
   // Four overlapping lobes (a central dome and three around it, their layout from the seed)
   // give each card a cauliflower outline; the nearest lobe's sphere is the surface normal.
-  `float an=vSeed*6.2831;
-vec3 lb[4];
-lb[0]=vec3(0.0,0.12,0.6);
-lb[1]=vec3(0.42*cos(an),0.23*sin(an)-0.08,0.45);
-lb[2]=vec3(0.42*cos(an+2.4),0.23*sin(an+2.4)-0.08,0.42);
-lb[3]=vec3(0.4*cos(an+4.3),0.2*sin(an+4.3)-0.1,0.4);
-vec4 nz=texture2D(uAtmoCloudTex,vUv*0.6+vSeed*3.7);
+  // 2-5 lobes per cloud, their offsets and sizes from the seed, so no two clouds share a shape;
+  // a smooth union (soft minimum) with the normal blended by the same weights: no seams.
+  `vec4 nz=texture2D(uAtmoCloudTex,vUv*0.6+vSeed*3.7);
 float n2=nz.g;
 float wob=0.82+0.3*nz.r+0.12*n2;
-` +
-  // Smooth union of the lobes (soft minimum), normal blended with the same weights: no seams.
-  `float ws=0.0;
+int nl=2+int(fract(vSeed*13.7)*3.99);
+float ws=0.0;
 vec2 l=vec2(0.0);
-for(int k=0;k<4;k++){
-vec2 dl=(vUv-lb[k].xy)/lb[k].z;
+for(int k=0;k<5;k++){
+if(k>=nl)break;
+float fk=float(k);
+vec3 h=fract(vSeed*vec3(17.3+fk*7.1,29.1+fk*3.7,41.7+fk*5.3));
+vec2 o=k==0?vec2(0.0,0.05):vec2((h.x-0.5)*0.84,(h.y-0.3)*0.5);
+float rad=k==0?0.55:0.3+0.22*h.z;
+vec2 dl=(vUv-o)/rad;
 float w=exp(-dot(dl,dl)*wob/0.12);
 ws+=w;
 l+=dl*w;
@@ -178,7 +184,8 @@ vec3 rd=normalize(wp-cameraPosition);
   `float side=1.0-smoothstep(0.08,0.4,-rd.y);
 ` +
   // Soft rim, flat base at the condensation level, thinning near the camera.
-  `float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-80.0,160.0,hB),side)*smoothstep(220.0,900.0,dM);
+  `float ryM=vRy*uAtmoMPerUnit;
+float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-0.08*ryM,0.2*ryM,hB),side)*smoothstep(300.0,1100.0,dM);
 ` +
   // Soft where the card meets the terrain (the coarse height map stands in for a depth
   // buffer), and gone when the camera is inside or right next to the puff.
@@ -186,8 +193,11 @@ vec3 rd=normalize(wp-cameraPosition);
 a*=vNear;
 if(a<0.004)discard;
 vec3 sd=normalize(uAtmoSunDir);
-float sunL=clamp(dot(n,sd)*mix(0.3,0.6,side)+mix(0.72,0.45,side),0.0,1.0)*mix(1.0,mix(0.55,1.0,smoothstep(0.0,max(vTopM,300.0)*0.75,hB)),0.3+0.7*side);
-vec3 col=mix(vec3(0.57,0.62,0.71),vec3(1.0,0.985,0.95),sunL)*mix(0.9,1.05,n2);
+` +
+  // Gentle shading (cumulus are not billiard balls): a little sun on the lit side, a grey
+  // base darkening toward the condensation level when seen from below or the side.
+  `float sunL=clamp(dot(n,sd)*mix(0.25,0.45,side)+mix(0.78,0.58,side),0.0,1.0)*mix(1.0,mix(0.5,1.0,smoothstep(0.0,1.2*ryM,hB)),side);
+vec3 col=mix(vec3(0.60,0.64,0.72),vec3(1.0,0.985,0.95),sunL)*mix(0.93,1.04,n2);
 col+=vec3(1.0,0.95,0.85)*pow(max(dot(rd,sd),0.0),8.0)*0.35*smoothstep(0.3,1.0,r2);
 col=mix(col,vHazeC,vHaze);
 gl_FragColor=vec4(min(col,vec3(1.0)),a*0.96);

@@ -417,8 +417,8 @@ return texture2D(uAtmoGroundTex,pM/(uAtmoMPerUnit*uAtmoRenderSize*2.0)+0.5).rg;
 vec2 q=pM-uAtmoWind*uAtmoTime;
 vec2 w=normalize(uAtmoWind);
 float street=0.5+0.5*cos(dot(q,vec2(-w.y,w.x))*0.0015+region*7.0);
-float sea=smoothstep(0.45,0.8,region)*(0.12+0.26*street);
-return clamp(sea+land*0.5+uAtmoCloudCover,0.0,0.8);
+float sea=smoothstep(0.48,0.8,region)*(0.1+0.24*street);
+return clamp(sea+land*0.6+uAtmoCloudCover,0.0,0.82);
 }
 float atmoCloudRegion(vec2 pM){
 vec4 r=texture2D(uAtmoCloudTex,(pM-uAtmoWind*uAtmoTime)/97000.0+0.53);
