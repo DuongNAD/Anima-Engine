@@ -309,14 +309,14 @@ diffuseColor.rgb=lkGround;
 float lkAoInd=clamp(lkAo,0.35,1.0);
 float lkSunVis=1.0;
 {
-vec4 rivMask=texture2D(uRiverMask,vMapUv);
+vec4 rivMask = texture2D(uRiverMask, vMapUv);
 float riv=rivMask.r;
 if(riv>0.01){
 vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
 float flowLen=length(rawFlow);
 float validFlow=smoothstep(0.35,0.75,rivMask.a)*step(0.2,flowLen);
 vec2 flowDir=flowLen>0.2?(rawFlow/flowLen):vec2(0.0);
-float phaseJitter=texture2D(uDetail,vMapUv*24.0).r;
+float phaseJitter = texture2D(uDetail, vMapUv * 24.0).r;
 float p0=fract(uTime*0.30+phaseJitter);
 float p1=fract(uTime*0.30+phaseJitter+0.5);
 float blend=abs(2.0*p0-1.0);
@@ -643,7 +643,7 @@ wMud/=total;
 #include <map_fragment>
 {
 float dtl=texture2D(uDetail,vMapUv*220.0).r*2.0;
-vec4 rivMask=texture2D(uRiverMask,vMapUv);
+vec4 rivMask = texture2D(uRiverMask, vMapUv);
 float riv=rivMask.r;
 if(uPbrEnabled>0.5){
 float wG,wF,wR,wSa,wSn,wM;
@@ -681,7 +681,7 @@ if(riv>0.01){
 float flowLen=length(rawFlow);
 float validFlow=smoothstep(0.35,0.75,rivMask.a)*step(0.2,flowLen);
 vec2 flowDir=flowLen>0.2?(rawFlow/flowLen):vec2(0.0);
-float phaseJitter=texture2D(uDetail,vMapUv*24.0).r;
+float phaseJitter = texture2D(uDetail, vMapUv * 24.0).r;
 float p0=fract(uTime*0.30+phaseJitter);
 float p1=fract(uTime*0.30+phaseJitter+0.5);
 float blend=abs(2.0*p0-1.0);
@@ -692,7 +692,7 @@ float advected=mix(adv0,adv1,blend);
 float flow1=texture2D(uDetail,vMapUv*260.0+vec2(uTime*0.025,uTime*0.045)).r*2.0;
 float flow2=texture2D(uDetail,vMapUv*140.0-vec2(uTime*0.018,uTime*0.03)).r*2.0;
 float fallbackFlow=flow1*0.55+flow2*0.45;
-float flowMod=mix(fallbackFlow,advected,validFlow);
+float flowMod = mix(fallbackFlow, advected, validFlow);
 diffuseColor.rgb*=mix(1.0,flowMod,riv*0.32);
 }
 if(uUseBakedHorizon>0.5){
