@@ -326,12 +326,12 @@ fn eval_cell_strat_and_envelope(
     let near_rift = (seg1 > 0.26 || seg2 > 0.26) && libm::fabs(rift_u) < 0.075;
 
     // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland).
-    let du_plat = (u - p.plateau_u) / 0.275;
-    let dv_plat = (v - p.plateau_v) / 0.285;
+    let du_plat = (u - p.plateau_u) / 0.268;
+    let dv_plat = (v - p.plateau_v) / 0.278;
     let r_plat = libm::hypot(du_plat, dv_plat);
     let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 16.0));
     let land_gate = 1.0 / (1.0 + libm::exp(-(smooth_d_coast - 0.06) * 35.0));
-    let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_050.0) / 260.0));
+    let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_400.0) / 300.0));
     let plateau_blend = plateau_mask * land_gate * core_gate;
 
     // 5. Volcanic stratocone footprint (`BasaltVolcanic`).
@@ -422,9 +422,7 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
 
     // 6. Compose base surface + monotonically dipped caprock plateau + volcanic cone.
     let base_surface = shelf_and_margin + massif_h;
-    let plateau_subtile = fbm_4(p.seed_u64 ^ 0xCAF0_1234_5678_9ABC, u * 48.0, v * 48.0);
-    let plateau_surface =
-        caprock_target_m + 14.0 * fbm_detail + 14.0 * plateau_subtile + 220.0 * (p.plateau_u - u);
+    let plateau_surface = caprock_target_m + 34.0 * fbm_detail + 220.0 * (p.plateau_u - u);
     let detail_gate = ((d_coast - 0.038) / 0.025).clamp(0.0, 1.0);
     let pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface

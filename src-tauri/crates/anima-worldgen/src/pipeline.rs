@@ -893,11 +893,11 @@ fn apply_late_quaternary_piedmont_subsidence(
     let cell_area_m2 = dx * dx;
     let trunk_cells = ((2.5e6 / cell_area_m2).round() as u32).max(1);
     let b_scale = libm::sqrt(f64::from(basin_amp).clamp(0.5, 2.5));
-    let rx_m = 1_650.0 * b_scale;
-    let ry_m = 2_900.0 * b_scale;
+    let rx_m = 920.0 * b_scale;
+    let ry_m = 1_650.0 * b_scale;
     let margin = lvl / 10;
 
-    let base_vs = [0.10_f64, 0.21, 0.32, 0.44, 0.56, 0.68, 0.79, 0.90];
+    let base_vs = [0.12_f64, 0.27, 0.42, 0.58, 0.73, 0.88];
     let dr_cells = (250.0 / dx).round() as isize;
     let mut centers: Vec<(usize, usize)> = Vec::with_capacity(base_vs.len());
     for (bi, &v0) in base_vs.iter().enumerate() {
@@ -924,7 +924,7 @@ fn apply_late_quaternary_piedmont_subsidence(
             let cc = cands[cands.len() * 3 / 10];
             let too_close = centers.iter().any(|&(pr, pc)| {
                 let dist_m = dx * libm::hypot(rc as f64 - pr as f64, cc as f64 - pc as f64);
-                dist_m < 3_500.0
+                dist_m < 4_500.0
             });
             if !too_close {
                 centers.push((rc, cc));
@@ -1213,9 +1213,9 @@ fn widen_trunk_alluvial_floodplains(
             let ux = (DX8[d] as f32) * inv_dist;
             let uz = (DZ8[d] as f32) * inv_dist;
 
-            if ord >= 4 && z_i < 950.0 && slope < 0.18 {
-                let w_fp = (480.0 + 50.0 * river_w_m[i]).clamp(480.0, 880.0);
-                let r_ref = 90.0_f32.max(1.8 * dx_m);
+            if ord >= 4 && z_i < 800.0 && slope < 0.14 {
+                let w_fp = (280.0 + 40.0 * river_w_m[i]).clamp(280.0, 560.0);
+                let r_ref = 65.0_f32.max(1.5 * dx_m);
                 let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
                 let r_lo = (r as isize - rad).max(1) as usize;
                 let r_hi = (r as isize + rad).min(lvl as isize - 2) as usize;
@@ -1240,8 +1240,8 @@ fn widen_trunk_alluvial_floodplains(
                             continue;
                         }
                         let u_r = (perp / r_ref).max(0.0);
-                        let t_h = z_i + 0.12 * libm::powf(u_r, 2.75);
-                        let t = ((w_fp - perp) / (0.30 * w_fp)).clamp(0.0, 1.0);
+                        let t_h = z_i + 0.36 * libm::powf(u_r, 2.15);
+                        let t = ((w_fp - perp) / (0.38 * w_fp)).clamp(0.0, 1.0);
                         let a = t * t * (3.0 - 2.0 * t) * 0.96;
                         if t_h < fp_target[j] {
                             fp_target[j] = t_h;
