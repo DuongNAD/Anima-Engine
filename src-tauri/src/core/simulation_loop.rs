@@ -271,6 +271,9 @@ pub struct SimulationEngine {
     /// Same handle shape as `lod_focus`, and for the same reason: commands run on their own thread and
     /// cannot reach the world's resources.
     pub observer_actions: crate::core::observer::SharedObserverActions,
+    /// Off-tick shared-island projection stream (`Card I3`). Starts inactive so solo runs pay zero
+    /// serialization/allocation cost and zero ECS perturbation.
+    pub island_stream: crate::core::island::stream::SharedIslandStream,
     /// The in-process tick profiler (`ANIMA_TICK_CAPTURE`, or the capture IPC commands).
     ///
     /// Lives on the engine rather than only in the world for the same reason `lod_focus` does: the
@@ -384,6 +387,7 @@ impl SimulationEngine {
             sharding_config,
             lod_focus: crate::core::simulation_lod::SharedLodFocus::new_disabled(),
             observer_actions: crate::core::observer::SharedObserverActions::new(),
+            island_stream: crate::core::island::stream::SharedIslandStream::new_inactive(),
             tick_capture: crate::core::tick_capture::SharedTickCapture::new(),
             migration_handoff_diagnostics:
                 crate::core::resources::MigrationHandoffDiagnostics::default(),
@@ -2657,6 +2661,8 @@ impl SimulationEngine {
                 active_raycasts: Arc::clone(&self.active_raycasts),
                 combat_events: Arc::clone(&self.combat_events),
                 environmental_state: Arc::clone(&self.environmental_state),
+                island_stream: Some(self.island_stream.clone()),
+                status: Some(Arc::clone(&self.status)),
             },
             app_handle_emit,
             self.supervisor.token(sup::EMIT),

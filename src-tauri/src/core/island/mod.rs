@@ -16,6 +16,8 @@ pub mod inhabit;
 pub use inhabit::*;
 pub mod intents;
 pub use intents::*;
+pub mod stream;
+pub use stream::*;
 
 /// Trial & Milestone 1 shared-island target animal count (`QD-SCALE-TRIAL`: ~100 individual animals).
 pub const DEFAULT_ISLAND_TARGET_ANIMALS: u32 = 100;
