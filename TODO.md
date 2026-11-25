@@ -14,6 +14,15 @@
 
 ---
 
+# 2026-11-25 (Update 2) — `WV2-7` Milestone 1 (`#279`), `I3` (`#276`), `ADR-0017` (`#275`), `P11` (`#280`), `P2` (`#283`) & `P9` (`#282`)
+
+- **World v2 milestone 1 (`#279`, `9931efe8`, [WV2-7 note](docs/ai/planning/2026-11-25-wv2-7.md)):** Desktop simulation boots provisional `C01` (`sim_world_identity cbdd3ba9…` per `MAP-D5`) and refuses old/mismatched saves loudly with `WorldIdentity`; headless science (`Generated`, `LiveExperimentAdapter`, `prereg_*`) is unchanged, and **the screen still draws the v1 map until `WV2-6`**. Trial installer (`QD-TRIAL-V2`), `WV2-6` (public tile release & Iris Xe gate), and cutting `0.9.0-rc.1` remain **owner gates**.
+- **Shared Island `I3` & `D18. SIGNALS-ADR` (`#276`, `2c727ebd`; `#275`, `69f5a0a4`):** `N4. I3` landed off-tick `~20 Hz` interest-area projection & `bincode` `IslandSnapshot`/`IslandDelta` encoder; `D18` landed `proposed` [ADR-0017](docs/decisions/ADR-0017-evolved-communication.md) & [`S1–S8`](docs/ai/planning/2026-11-24-signals-cards.md) (after `r4` `#277` `2e9c4612`).
+- **Hardening `P11`/`P2`/`P9` (`#280`, `1b64fec1`; `#283`, `56b9bbe4`; `#282`, `c758b393`):** `P11` resolved `F-081` (`physics_tests` flake fixed); `P2` baselined live-schedule allocations ([note](docs/ai/planning/2026-11-25-p2-alloc-baseline.md), `F-082` `BrainModel::forward` ~74 allocs/tick **OPEN**, reports without gating); `P9` pinned `scripts/paper/gate_faults/*.patch` to `LF` in `.gitattributes` ([note](docs/ai/planning/2026-11-25-p9-gate-fault-refresh.md), confirming the earlier `"ten rotted patches"` note was a Windows CRLF artifact).
+- **Still open at `9931efe8`:** `#274` (`WV2-PHYS3` draft), `#278` (`WV2-6-PREVIEW` dev preview, never merged), `#281` (research-notes sync, not an agent PR), `#284` (`P10` draft), `#285` (`P1` draft), `#188` (legacy awaiting owner), and the `I3` solo-run stream guard follow-up test. See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+
+---
+
 # 2026-11-25 — `I2` (`#272`), `MAP-D5` (`#273`), `ADR-0016` (`#271`), `WV2-PHYS2` (`#270`) & Open `physics_tests` Allocation Flake (`P11`)
 
 - **`I2`, `MAP-D5` & `ADR-0016` (`#272`, `9a53bad6`; `#273`, `33a4c197`; `#271`, `0e90f0d5`):** `N3. I2` landed host `Inhabit` actuation/release and `WR1`/`WR2` `WorldRecordHeader.island` replay; `MAP-D5` keeps provisional `C01` (`cbdd3ba9...`, `WV2-7` boots on `C01`), opens `WV2-PHYS3`, and notes `#270` provenance gap (`C01` reproduces from `#249` `f195a361`, not trunk `preset_v2.toml`); `D15. WORLD-CHANGE-ADR` merged `proposed` [ADR-0016](docs/decisions/ADR-0016-changing-world-surface.md) & `W1–W7` cards.
