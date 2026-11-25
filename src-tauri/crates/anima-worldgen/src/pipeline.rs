@@ -571,7 +571,13 @@ fn apply_caprock_knickpoint_sapping(
                 }
                 if is_soft_lith(lithology_id[nxt]) {
                     soft_cell = Some((nxt, dist_m));
-                    if dist_m >= 1.5 * dx_m || if is_large_82km { dx_m >= 20.0 } else { dx_m > 20.0 } {
+                    if dist_m >= 1.5 * dx_m
+                        || if is_large_82km {
+                            dx_m >= 20.0
+                        } else {
+                            dx_m > 20.0
+                        }
+                    {
                         break;
                     }
                 }

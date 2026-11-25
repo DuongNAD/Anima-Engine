@@ -943,7 +943,10 @@ fn c5b_coastal_plain_profile_pass_fail_and_low_islet_exclusion() {
     let plain_rep =
         evaluate_c5b_coastal_plain_profile(w, h, dx, 0.0, &plain_h, &plain_wk, &profile);
     assert!(plain_rep.gated);
-    assert!(plain_rep.passed, "expected plain coast to pass: {plain_rep:?}");
+    assert!(
+        plain_rep.passed,
+        "expected plain coast to pass: {plain_rep:?}"
+    );
     assert!((plain_rep.plain_backed_5km_fraction - 1.0).abs() < 1e-9);
     assert!((plain_rep.plain_backed_3km_fraction - 1.0).abs() < 1e-9);
     assert!(plain_rep.median_coast_to_1000m_km >= 12.0);
@@ -967,7 +970,10 @@ fn c5b_coastal_plain_profile_pass_fail_and_low_islet_exclusion() {
     }
     let steep_rep =
         evaluate_c5b_coastal_plain_profile(w, h, dx, 0.0, &steep_h, &steep_wk, &profile);
-    assert!(!steep_rep.passed, "expected steep wall coast to fail: {steep_rep:?}");
+    assert!(
+        !steep_rep.passed,
+        "expected steep wall coast to fail: {steep_rep:?}"
+    );
     assert!((steep_rep.plain_backed_5km_fraction - 0.0).abs() < 1e-9);
     assert!((steep_rep.median_coast_to_1000m_km - 1.0).abs() < 1e-6);
     assert!((steep_rep.steep_mountain_front_fraction - 1.0).abs() < 1e-9);
@@ -1077,8 +1083,16 @@ fn large_82km_profile_boundary_and_negative_control_rejects_40km_candidate() {
         Some(12),
         &large_profile,
     );
-    assert!(summary_ok.c4.passed, "expected 82km C4 pass: {:?}", summary_ok.c4);
-    assert!(summary_ok.c5.passed, "expected 82km C5 pass: {:?}", summary_ok.c5);
+    assert!(
+        summary_ok.c4.passed,
+        "expected 82km C4 pass: {:?}",
+        summary_ok.c4
+    );
+    assert!(
+        summary_ok.c5.passed,
+        "expected 82km C5 pass: {:?}",
+        summary_ok.c5
+    );
     assert!(
         summary_ok.c5b.as_ref().expect("c5b").passed,
         "expected 82km C5b pass: {:?}",
@@ -1204,9 +1218,20 @@ fn large_82km_profile_boundary_and_negative_control_rejects_40km_candidate() {
         summary_ok,
         &large_profile,
     );
-    assert!(rep_ok.c1_partition.passed, "expected 82km C1 pass: {:?}", rep_ok.c1_partition);
-    assert!(rep_ok.c3_lakes.passed, "expected 82km C3 pass: {:?}", rep_ok.c3_lakes);
-    assert!(rep_ok.passed, "expected full 82km G-COMP v2 pass: {rep_ok:?}");
+    assert!(
+        rep_ok.c1_partition.passed,
+        "expected 82km C1 pass: {:?}",
+        rep_ok.c1_partition
+    );
+    assert!(
+        rep_ok.c3_lakes.passed,
+        "expected 82km C3 pass: {:?}",
+        rep_ok.c3_lakes
+    );
+    assert!(
+        rep_ok.passed,
+        "expected full 82km G-COMP v2 pass: {rep_ok:?}"
+    );
 
     // Negative control: 40.96 km-sized metrics evaluated under 81.92 km profile must fail C1, C3, C4, and C5!
     for r in 40..90 {
@@ -1267,7 +1292,10 @@ fn verify_raw_dir_40km_candidate_fails_cleanly_under_82km_profile() {
     run_worldgen_to_dir(&cfg, &raw_dir).expect("generate 256x256 40.96 km world");
 
     let std_rep = verify_raw_dir(&raw_dir, 3, None, None).expect("verify 40km default");
-    assert_eq!(std_rep.verifier_profile, Some(VerifierProfileKind::Standard40Km));
+    assert_eq!(
+        std_rep.verifier_profile,
+        Some(VerifierProfileKind::Standard40Km)
+    );
     assert!(
         !std_rep
             .failed_gates
@@ -1279,7 +1307,10 @@ fn verify_raw_dir_40km_candidate_fails_cleanly_under_82km_profile() {
     let big_rep =
         verify_raw_dir_with_profile(&raw_dir, 3, None, None, &VerifierProfile::large_82km())
             .expect("verify 40km under 81.92km profile");
-    assert_eq!(big_rep.verifier_profile, Some(VerifierProfileKind::Large82Km));
+    assert_eq!(
+        big_rep.verifier_profile,
+        Some(VerifierProfileKind::Large82Km)
+    );
     assert!(!big_rep.overall_pass);
     assert!(big_rep
         .failed_gates

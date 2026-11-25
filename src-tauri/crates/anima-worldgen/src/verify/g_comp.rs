@@ -505,12 +505,7 @@ fn check_canonical_sightlines(
     (views.len(), obstructed)
 }
 
-fn edt_1d_squared(
-    f: &[f32],
-    out: &mut [f32],
-    v: &mut [usize],
-    z: &mut [f64],
-) {
+fn edt_1d_squared(f: &[f32], out: &mut [f32], v: &mut [usize], z: &mut [f64]) {
     let mut has_any = false;
     let mut k = 0_usize;
     for (q, &fq_f32) in f.iter().enumerate() {
@@ -940,10 +935,9 @@ pub fn finalize_g_comp_v2_with_profile(
         min_cave_spacing_m = 0.0;
     }
 
-    let min_patch_cells_required = (libm::round(
-        profile.min_patch_area_m2 / (f64::from(dx_m) * f64::from(dx_m)),
-    ) as usize)
-        .max(1);
+    let min_patch_cells_required =
+        (libm::round(profile.min_patch_area_m2 / (f64::from(dx_m) * f64::from(dx_m))) as usize)
+            .max(1);
     let mut biome_stats = Vec::with_capacity(BiomeId::ZONED_TERRESTRIAL_16.len());
     let mut zoned_passing = 0_usize;
     for b in BiomeId::ZONED_TERRESTRIAL_16 {

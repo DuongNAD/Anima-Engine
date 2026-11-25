@@ -675,7 +675,14 @@ pub fn verify_raw_dir(
     let meta_bytes = fs::read(raw_dir.join("raw_meta.json"))?;
     let meta: RawWorldMeta = serde_json::from_slice(&meta_bytes)?;
     let profile = VerifierProfile::for_extent_m(meta.extent_m);
-    verify_raw_dir_inner(raw_dir, meta, generator_version, out_sim_path, out_index_path, &profile)
+    verify_raw_dir_inner(
+        raw_dir,
+        meta,
+        generator_version,
+        out_sim_path,
+        out_index_path,
+        &profile,
+    )
 }
 
 /// Verifies a full `anima-worldgen generate` output directory against an explicit [`VerifierProfile`].
@@ -688,7 +695,14 @@ pub fn verify_raw_dir_with_profile(
 ) -> Result<VerificationReport, PipelineError> {
     let meta_bytes = fs::read(raw_dir.join("raw_meta.json"))?;
     let meta: RawWorldMeta = serde_json::from_slice(&meta_bytes)?;
-    verify_raw_dir_inner(raw_dir, meta, generator_version, out_sim_path, out_index_path, profile)
+    verify_raw_dir_inner(
+        raw_dir,
+        meta,
+        generator_version,
+        out_sim_path,
+        out_index_path,
+        profile,
+    )
 }
 
 fn verify_raw_dir_inner(
