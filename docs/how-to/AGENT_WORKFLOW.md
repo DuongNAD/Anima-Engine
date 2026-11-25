@@ -516,6 +516,25 @@ QD-GENESIS = first organisms in three phases: G1 fixed, declared founders for th
             modelled. Every run declares its phase in the genesis manifest; experiments never mix phases.
             (Owner in chat, 2026-11-24: "hướng 1 đặt 1 fix cứng để làm được demo đã, tiếp theo sẽ sàng lọc
             1 số để lấy mẫu nâng cấp, cuối cùng làm thật sự sinh vật khởi đầu".)
+QD-PLANT  = ADR-0015 (evolving plants) has its six open gates decided, all as recommended (owner in chat,
+            2026-11-26 night: "Approve as recommended", after asking for plant evolution):
+            D-PLANT-EVO-1 (A): a hybrid of two tiers: individual trees and shrubs, and grass as per-cell
+            populations carrying trait distributions.
+            D-PLANT-EVO-2 (A): the individual tree/shrub cap comes from the P1 BENCH-ENTITIES 60 Hz budget
+            (about 256-500); it overrides the flat max_tree_count of 50 (resources.rs:1217) only when the opt-in law
+            is on.
+            D-PLANT-EVO-3 (A): each grass cell keeps a mean and a bounded genetic variance for quantized
+            life-history traits (growth rate, drought tolerance, defence, palatability, seed dispersal),
+            with fixed memory, strided with REGROWTH_STRIDE.
+            D-PLANT-EVO-4 (A): selfing is allowed with a configurable genetic-load cost in the plant law
+            (for example 30% lower viability or extra embryonic EU per selfed seed), so one seed can found
+            a patch while outcrossed stands outcompete inbred ones.
+            D-PLANT-EVO-5 (A): the grass "patch" inhabit mode waits until after Milestone 1; in M1 only
+            trees and shrubs can be inhabited.
+            D-PLANT-EVO-6 (A): the shared island clock stays fixed whenever any guest is connected,
+            plant or animal; speed-up is only for empty or prehistory islands.
+            ADR-0015 stays proposed until the follow-up that sets it to accepted. The plant law is opt-in;
+            with it off the trunk is bit-identical, and SEL2-P2 and every prereg_* are unchanged.
 MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
             4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
             (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
