@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import WorldTerrain from './WorldTerrain';
@@ -74,6 +74,7 @@ import {
   createSimEnvironmentChannel,
   type SimEnvironmentCounts,
 } from './utils/simEnvironment';
+import { installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
 
 // The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
 // aliased to the names this file already used. It moved because the main app pushes the *same*
@@ -154,6 +155,30 @@ const QualityApplier: React.FC<{ tier: QualityTier; dprOverride?: number }> = ({
     setDpr(resolveDeviceDpr(tier, window.devicePixelRatio || 1, dprOverride));
     applyShadowPass(gl, scene, tierConfig.shadows);
   }, [tier, dprOverride, gl, scene, setDpr]);
+  return null;
+};
+
+/** Publishes `__animaFrameCounters` / `__animaSetCanonicalPose` when World v2 replaces `WorldVegetation`. */
+const WorldV2FrameDiagnostics: React.FC<{ renderSize: number; heightRatio: number }> = ({
+  renderSize,
+  heightRatio,
+}) => {
+  const { gl, scene } = useThree();
+  const handleRef = useRef<FrameCountersHandle | null>(null);
+
+  useLayoutEffect(() => {
+    const handle = installFrameCounters(gl, scene, { renderSize, heightRatio });
+    handleRef.current = handle;
+    return () => {
+      handleRef.current = null;
+      handle.dispose();
+    };
+  }, [gl, scene, renderSize, heightRatio]);
+
+  useFrame((state) => {
+    handleRef.current?.applyPinnedPose(state.camera);
+  });
+
   return null;
 };
 
@@ -632,7 +657,9 @@ export const WorldShowcase: React.FC = () => {
           />
         )}
 
-        {worldV2Bundle ? null : (
+        {worldV2Bundle ? (
+          <WorldV2FrameDiagnostics renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+        ) : (
           <WorldVegetation
             world={world}
             renderSize={RENDER_SIZE}

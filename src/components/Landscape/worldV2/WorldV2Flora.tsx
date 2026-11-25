@@ -6,6 +6,8 @@ import { sampleMeshHeight } from '../utils/worldSample';
 import type { QualityTier } from '../utils/qualityTiers';
 import { getQualityTierConfig } from '../utils/qualityTiers';
 import { VEGETATION_BASE_SIZE } from '../utils/floraClearance';
+import { debugFloraDensityScale } from '../utils/diagnosticsWindow';
+import { CASTS_SHADOW } from '../utils/floraChunks';
 import { FLORA_SECTORS_PER_SIDE, type WorldV2LoadedBundle } from './types';
 import { WV2_SPECIES_TO_FLORA } from './worldV2Adapter';
 
@@ -41,8 +43,10 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   tier = 'high',
 }) => {
   const heightUnits = renderSize * heightRatio;
-  const stride = tier === 'high' ? 1 : tier === 'medium' ? 2 : 4;
-  const castsShadow = getQualityTierConfig(tier).shadows && tier === 'high';
+  const baseStride = tier === 'high' ? 1 : tier === 'medium' ? 2 : 8;
+  // Test-only (RW-C4 negative control); `1` in every production build.
+  const densityScale = useMemo(() => debugFloraDensityScale(), []);
+  const shadowsEnabled = getQualityTierConfig(tier).shadows && tier === 'high';
 
   const material = useMemo(
     () =>
@@ -58,14 +62,18 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
     const perSpecies: Array<Array<{ x: number; y: number; z: number; scale: number; yaw: number }>> =
       Array.from({ length: SPECIES_COUNT }, () => []);
 
+    const rate = densityScale / baseStride;
     let idx = 0;
     for (const sector of bundle.floraSectors) {
       for (const inst of sector.instances) {
-        if (stride > 1 && idx % stride !== 0) {
-          idx += 1;
-          continue;
-        }
+        const copies =
+          densityScale === 1
+            ? baseStride === 1 || idx % baseStride === 0
+              ? 1
+              : 0
+            : Math.ceil((idx + 1) * rate - 1e-9) - Math.ceil(idx * rate - 1e-9);
         idx += 1;
+        if (copies <= 0) continue;
         const sid = inst.species_id < SPECIES_COUNT ? inst.species_id : 7;
         const u = (sector.sectorX + inst.x_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
         const v = (sector.sectorZ + inst.z_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
@@ -74,7 +82,9 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
         const wy = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
         const scale = VEGETATION_BASE_SIZE * (0.45 + (inst.scale_u8 / 255.0) * 1.15);
         const yaw = (inst.yaw_u8 / 255.0) * Math.PI * 2;
-        perSpecies[sid].push({ x: wx, y: wy, z: wz, scale, yaw });
+        for (let c = 0; c < copies; c += 1) {
+          perSpecies[sid].push({ x: wx + c * 0.15, y: wy, z: wz + c * 0.15, scale, yaw });
+        }
       }
     }
 
@@ -103,7 +113,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
       });
     }
     return out;
-  }, [bundle, world, renderSize, heightUnits, meshResolution, stride]);
+  }, [bundle, world, renderSize, heightUnits, meshResolution, baseStride, densityScale]);
 
   useEffect(() => {
     return () => {
@@ -120,12 +130,12 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   if (batches.length === 0) return null;
 
   return (
-    <group name="world-v2-flora" userData={{ decorative: true }}>
+    <group name="world-v2-flora" userData={{ decorative: true, rwLayer: 'flora' }}>
       {batches.map((batch) => (
         <instancedMesh
-          key={batch.speciesId}
+          key={`${batch.speciesId}-${batch.count}`}
           args={[batch.geometry, material, batch.count]}
-          castShadow={castsShadow}
+          castShadow={shadowsEnabled && CASTS_SHADOW.has(batch.floraType)}
           receiveShadow={false}
           name={`world-v2-flora-s${batch.speciesId}`}
           ref={(mesh: THREE.InstancedMesh | null) => {

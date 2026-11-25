@@ -7,6 +7,12 @@ import { clearWorldV2Cache, resolveWorldSourceMode } from '../../src/components/
 import * as worldCache from '../../src/components/Landscape/utils/worldCache';
 import * as worldGen from '../../src/components/Landscape/utils/worldGen';
 import * as worldTerrainTextures from '../../src/components/Landscape/utils/worldTerrainTextures';
+import * as diagnosticsWindow from '../../src/components/Landscape/utils/diagnosticsWindow';
+import * as THREE from 'three';
+import WorldV2Flora from '../../src/components/Landscape/worldV2/WorldV2Flora';
+import { buildWorldFromV2Bundle } from '../../src/components/Landscape/worldV2/worldV2Adapter';
+import { decodeFloraSectorAnmf } from '../../src/components/Landscape/utils/worldArtifactV3';
+import type { WorldV2LoadedBundle } from '../../src/components/Landscape/worldV2/types';
 import {
   ANMF_FLAG_DECORATIVE,
   encodeAnmwV3Sim,
@@ -292,5 +298,126 @@ describe('WorldShowcase World v2 integration (WV2-6)', () => {
     expect(screen.getByTestId('world-v2-load-error').textContent).toContain('SHA-256 mismatch');
     expect(genSpy).not.toHaveBeenCalled();
     expect(v1LoadSpy).not.toHaveBeenCalled();
+  });
+
+  it('installs RW-C4 frame counters in v2 mode and keeps them active across decoration toggle', async () => {
+    const files = buildSyntheticBundleMap();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
+      const hit = files.get(url);
+      if (!hit) return new Response(null, { status: 404 });
+      return new Response(new Uint8Array(hit), { status: 200 });
+    });
+    const handles: Array<{ applyPinnedPose: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }> = [];
+    const countersSpy = vi.spyOn(diagnosticsWindow, 'installFrameCounters').mockImplementation(() => {
+      const h = { applyPinnedPose: vi.fn(), dispose: vi.fn() };
+      handles.push(h);
+      return h;
+    });
+
+    render(React.createElement(WorldShowcase));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('world-v2-identity')).toBeTruthy();
+    });
+
+    expect(countersSpy).toHaveBeenCalled();
+    const lastIdx = countersSpy.mock.calls.length - 1;
+    expect(countersSpy.mock.calls[lastIdx][2]).toEqual({ renderSize: 1200, heightRatio: 0.14 });
+    expect(handles.filter((h) => h.dispose.mock.calls.length === 0).length).toBe(1);
+
+    fireEvent.click(screen.getByTestId('toggle-decoration-btn'));
+    expect(handles.filter((h) => h.dispose.mock.calls.length === 0).length).toBe(1);
+  });
+
+  it('tags WorldV2Flora as rwLayer="flora" and honours ?floraDensityScale at low tier', () => {
+    const floraInstances = Array.from({ length: 16 }, (_, idx) => ({
+      x_local_u16: 4096 + idx * 1024,
+      z_local_u16: 4096 + idx * 1024,
+      species_id: 1,
+      scale_u8: 150,
+      yaw_u8: 40,
+      flags_u8: ANMF_FLAG_DECORATIVE,
+    }));
+    const floraBin = encodeFloraSectorAnmf({
+      sectorX: 8,
+      sectorZ: 8,
+      decorativeOnly: true,
+      instances: floraInstances,
+    });
+    const sector = decodeFloraSectorAnmf(floraBin);
+    const n256 = 256 * 256;
+    const sim: AnmwV3Sim = {
+      width: 256,
+      height: 256,
+      seaLevelNorm: 1500 / 7200,
+      simSeedU32: 42,
+      seedU64: 42n,
+      generatorVersion: 3,
+      worldScale: 200,
+      flags: 0,
+      elevation: new Float32Array(n256).fill(0.45),
+      moisture: new Float32Array(n256).fill(0.5),
+      temperature: new Float32Array(n256).fill(0.55),
+      flow: new Float32Array(n256),
+      slope: new Float32Array(n256).fill(0.05),
+      biome22: new Uint8Array(n256).fill(4),
+      waterKind: new Uint8Array(n256),
+      waterfalls: [],
+      caveEntrances: [],
+    };
+    const cells = TILE_TOTAL_SIZE * TILE_TOTAL_SIZE;
+    const bundle: WorldV2LoadedBundle = {
+      simWorldIdentity: 'a'.repeat(64),
+      bundleIdentity: 'b'.repeat(64),
+      schemaTag: 'anima-world-v2-c01-v1',
+      seed: 42,
+      extentM: 40960,
+      mip: 2,
+      size: 1024,
+      macroAlbedoSize: TILE_TOTAL_SIZE,
+      tileCountVerified: 1,
+      sim,
+      heightM: new Float32Array(cells).fill(420),
+      normalRg: new Uint8Array(cells * 2).fill(128),
+      macroAlbedoRgba: new Uint8Array(cells * 4).fill(128),
+      biomeIdsRgba: new Uint8Array(cells * 4),
+      biomeWeightsRgba: new Uint8Array(cells * 4),
+      lightingRgba: new Uint8Array(cells * 4),
+      horizonRgba: new Uint8Array(cells * 4),
+      hydroFlowRgba: new Uint8Array(cells * 4),
+      shoreSdfRg: new Uint8Array(cells),
+      waterHeightM: new Float32Array(cells),
+      waterKind: new Uint8Array(cells),
+      caveMask: new Uint8Array(cells),
+      caveNetwork: null,
+      floraSectors: [sector],
+    };
+    const world = buildWorldFromV2Bundle(bundle);
+
+    window.history.replaceState({}, '', '?world=v2&quality=low');
+    const baseRender = render(React.createElement(WorldV2Flora, { bundle, world, tier: 'low' }));
+    const groupEl = baseRender.container.querySelector('[name="world-v2-flora"]');
+    expect(groupEl).toBeTruthy();
+    const baseMesh = baseRender.container.querySelector('instancedmesh');
+    const baseArgs = baseMesh?.getAttribute('args') ?? '';
+    expect(baseArgs.endsWith(',2')).toBe(true); // 16 instances / stride 8 = 2
+
+    // Verify diagnostics classifier sees userData.rwLayer = 'flora' on a child mesh inside the group.
+    const grp = new THREE.Group();
+    grp.name = 'world-v2-flora';
+    grp.userData = { decorative: true, rwLayer: 'flora' };
+    const child = new THREE.Mesh();
+    child.name = 'world-v2-flora-s1';
+    grp.add(child);
+    expect(diagnosticsWindow.classifySceneObjectLayer(child)).toBe('flora');
+    baseRender.unmount();
+
+    // Negative-control multiplier (?floraDensityScale=4) scales emitted instances 4x at low tier.
+    window.history.replaceState({}, '', '?world=v2&quality=low&floraDensityScale=4');
+    const scaledRender = render(React.createElement(WorldV2Flora, { bundle, world, tier: 'low' }));
+    const scaledMesh = scaledRender.container.querySelector('instancedmesh');
+    const scaledArgs = scaledMesh?.getAttribute('args') ?? '';
+    expect(scaledArgs.endsWith(',8')).toBe(true); // 16 * (4 / 8) = 8
   });
 });
