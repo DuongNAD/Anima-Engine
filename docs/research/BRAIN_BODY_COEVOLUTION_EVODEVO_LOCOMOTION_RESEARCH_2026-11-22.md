@@ -2,7 +2,7 @@
 title: Đồng tiến hoá não–thân, evo-devo và vận động tiếp đất — đánh giá đề xuất ngoài
 status: proposed
 owner: simulation-architecture
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 review_cycle: quarterly
 ---
 
@@ -37,8 +37,10 @@ review_cycle: quarterly
    cho dị hình giới tính, và luật co giãn cơ sinh học khi lớn lên đều liên quan trực tiếp tới ADR-0001
    và kế hoạch morphogenesis.
 2. **Tiền đề về ADR-0003 trong báo cáo gốc không khớp code.** Báo cáo gốc giả định não xuất lệnh theo
-   từng khớp nên đổi số đốt sẽ làm lệch số chiều. Thực tế não hiện tại xuất **tham số CPG toàn cơ thể**,
-   không phụ thuộc số đốt (§1).
+   từng khớp nên đổi số đốt sẽ làm lệch số chiều. Thực tế số chiều đầu ra của não cố định, không phụ
+   thuộc số đốt (§1). **Đính chính 2026-11-25:** bản đầu của ghi chú này gọi đó là "tham số CPG toàn
+   cơ thể". Câu đó sai: [ADR-0019](../decisions/ADR-0019-brain-body-interface.md) §1.1 cho thấy não chỉ
+   điều biến được **một** khớp con, còn các khớp khác chạy CPG cố định (xem §1.1 bên dưới).
 3. **Đề xuất vật lý là một biến thể chi tiết của Phương án B trong ADR-0006**, vốn đã được nêu và
    hoãn lại. Thực hiện nó cần một ADR mới, đổi `LIVE_MODEL_VERSION`, và xử lý việc báo cáo gốc chuyển
    thế giới 3D (`Vec3`) sang mặt phẳng 2.5D (§3).
@@ -59,8 +61,17 @@ review_cycle: quarterly
   `integrate_physics_system` ([`physics/dynamics.rs`](../../src-tauri/src/physics/dynamics.rs)).
   Não không xuất mô-men từng khớp.
 - Đột biến hình thái có thêm nút ([`mutation.rs`](../../src-tauri/src/evolution/mutation.rs),
-  `mutate_genotype` gọi `add_node`), nhưng vì đầu ra não là tham số CPG chung, **thêm/bớt đốt không
-  làm lệch số chiều của não**.
+  `mutate_genotype` gọi `add_node`), nhưng vì đầu ra não là một mảng tham số CPG cố định, **thêm/bớt
+  đốt không làm lệch số chiều của não**.
+- **Đính chính 2026-11-25 (`Đã kiểm` bởi ADR-0019 §1.1, trunk `facc800c`):** bốn số CPG đó **không**
+  phủ toàn cơ thể. `apply_inertia_to_oscillators` gán cặp `(tần số, biên độ)` theo chỉ số đốt sau khi
+  sắp theo `segment.id`; đốt gốc chiếm chỉ số 0 nhưng không có `CpgOscillator`, nên cặp đầu bị bỏ. Trên
+  founder 3 đốt, chỉ đốt `id = 1` nhận tham số của não; đốt `id = 2` (và mọi đốt từ chỉ số 2 trở đi)
+  chạy mãi `CpgOscillator::new(1.0, 0.5)`. Trên founder 2 đốt, khớp con duy nhất nhận cặp thứ hai, cặp
+  đầu không dùng. Chủ dự án đã chấp nhận [ADR-0019](../decisions/ADR-0019-brain-body-interface.md)
+  (QĐ-BRAINBODY, D1–D5 = A, 2026-11-24): giữ nguyên hình dạng não `15→64→64→8`, thêm điều biến dùng chung
+  hai kênh và một gen di truyền theo cạnh `JointCpgGene`, sau khoá opt-in `live.brain_body_interface`.
+  Khi tắt khoá, trunk giữ nguyên lỗi này từng bit để không đổi quỹ đạo của E3/E3b/SEL2-P2.
 
 ### 1.2 Điều báo cáo gốc nói đúng (`Nguồn ngoài` + `Suy luận`)
 
@@ -123,12 +134,13 @@ Vấn đề thật không phải số chiều mà là **chất lượng điều 
   tốc góc ổn định ở bước 1/60 s. **Chưa đo trong Anima.**
 - Mọi chi phí năng lượng của tăng trưởng phải đi vào `total_cost` trong `metabolic_decay_system`
   (luật cứng của ADR-0003) để chảy qua `respired` vào detritus.
-- **Cập nhật 2026-11-24:** [ADR-0013](../decisions/ADR-0013-live-creature-lifecycle.md) (proposed, chờ
-  chủ dự án quyết D1–D5) đề xuất tuổi theo lịch và giai đoạn sống `Juvenile → Adult → Senescent` opt-in,
-  với chi phí trưởng thành đi qua `total_cost`. Nó **không** cho đổi hình học thân giữa đời: lên `Adult`
-  hay `Senescent` chỉ đổi giai đoạn sinh sản và trao đổi chất, không chạy lại development (Decision
-  Driver 3). Vì vậy câu hỏi tăng trưởng kích thước trong đời ở trên vẫn mở. `Suy luận`: nếu muốn có nó, nên nêu
-  trong lúc chủ dự án quyết ADR-0013, thay vì viết một ADR riêng.
+- **Cập nhật 2026-11-25 — câu hỏi này đã được quyết.** [ADR-0013](../decisions/ADR-0013-live-creature-lifecycle.md)
+  được chấp nhận ngày 2026-11-24 với **D3 = B: tăng trưởng kích thước thật trong đời**, chặn sau
+  ADR-0019 (QĐ-OPENQ; QĐ-LIFE: lớn lên áp dụng cho cả động vật lẫn thực vật). Phương án gốc A (hình học
+  cố định từ lúc sinh) giữ trong ADR làm lịch sử. Chi tiết nằm ở mục "Amendment (2026-11-24): Physical
+  Growth and Biological Sexual Reproduction" của ADR-0013, cùng với D1 = B (sinh sản hữu tính hai giới).
+  `Suy luận`: bảng co giãn ở trên (Hill, Alexander, Biewener) nay là đầu vào cho thẻ hiện thực tăng
+  trưởng, vẫn với nhãn chưa đo trong Anima.
 
 ## 3. Vận động tiếp đất (ADR-0006)
 

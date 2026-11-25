@@ -2,7 +2,7 @@
 title: Nghiên cứu tỉ lệ bản đồ, kích thước sinh vật và kiến trúc tạo thế giới
 status: proposed
 owner: architecture
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 review_cycle: quarterly
 ---
 
@@ -42,7 +42,7 @@ review_cycle: quarterly
 >   (QĐ-E3B D5 và QĐ-SEL2P2 D1 trong [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)). Con số
 >   "founder dài `~2,0–3,0` sim-units" ở kết luận 1 và §1 là của founder mặc định; founder 2 đốt ngắn
 >   hơn khoảng một đốt (`length = 1.0`), nên lệch tỉ lệ khi vẽ giảm nhưng không mất.
-> - **MAP-D4: artifact World v2 đầu tiên chưa qua cổng.** Thẻ WV2-4 (PR #249, lúc viết chưa merge) đo
+> - **MAP-D4: artifact World v2 đầu tiên chưa qua cổng.** Thẻ WV2-4 (PR #249, merge 2026-11-24) đo
 >   ở `4096²` không ứng viên nào qua đủ 15 cổng (C01 qua 2/15). Gốc là mạng kênh bị cụt
 >   (`omega_max = 3`), kéo theo không có thác, diện tích hồ dưới sàn 11–31 lần, bờ biển trơn không
 >   vách và khoảng 4.600 gai nhọn ở 10 m. Chủ dự án quyết dùng tạm C01 với `"status": "provisional"`,
@@ -53,6 +53,13 @@ review_cycle: quarterly
 >   "đảo `4–8 km` vẫn đạt sông bậc Strahler 3–4 và thác ghềnh" ở §2.2 là giả thuyết chưa đo, và generator
 >   hiện tại chưa đạt điều đó ngay ở `40,96 km`. Phần khởi phát kênh của §2.2 và `landlab` làm oracle
 >   (§5, dòng 2 của bảng kho mã) là đầu vào trực tiếp cho WV2-PHYS2.
+> - **Cập nhật 2026-11-25 — WV2-PHYS2 xong, MAP-D5.** WV2-PHYS2 (PR #270) đưa generator mới vào trunk:
+>   ứng viên `S2_1` ở `4096²` qua 9/15 cổng (C01 vẫn 2/15), với ngưỡng khởi phát kênh mặc định
+>   `channel_init = 100` (C01 dùng 500). Chủ dự án quyết **giữ C01** làm thế giới tạm (MAP-D5, mục
+>   `MAP-D5` trong [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)): không sinh lại, `sim_world_identity`
+>   không đổi, WV2-7 khởi động desktop trên C01. Thẻ **WV2-PHYS3** làm tiếp sáu cổng `S2_1` còn trượt,
+>   trong đó có G-SHAPE.4 (R² của định luật Hack) và C3 (tỉ lệ diện tích hồ); thay C01 bằng ứng viên
+>   khác là một quyết định riêng. `Suy luận`: §2.2 (định luật Hack) giờ là đầu vào cho WV2-PHYS3.
 
 ---
 

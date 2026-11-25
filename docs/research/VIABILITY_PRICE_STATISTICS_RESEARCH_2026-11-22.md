@@ -2,7 +2,7 @@
 title: Sinh thái học Khả năng Sống sót, Phương trình Price và Thống kê cho QD-ISLAND
 status: proposed
 owner: architecture
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 review_cycle: quarterly
 ---
 
@@ -274,9 +274,15 @@ Do đó, sau khi VIAB-1 đã hạ được tuyệt chủng xuống mức đo đ�
 >   trước khi đóng băng (QĐ-VIAB2-R).
 > - **Chưa dùng:** cặp $r_c$ + $\hat{\Delta}_{\text{HL}}$ + BCa của §3.3, bộ đo Robertson–Price/MLS1
 >   (gợi ý 2) và việc đo $\hat{\rho}_{\text{CRN}}$ (gợi ý 3).
-> - **Cấu trúc tuổi (§2.1, §2.4):** ADR-0013 (proposed, chờ D1–D5) đề xuất tuổi theo lịch và giai đoạn
->   sống opt-in. Nếu được chấp nhận, đó là nguồn cho phân rã theo tuổi $\sum_a [\Delta c(a,t)]\bar z(a,t)$
->   mà hiện code chưa có (`AgentEvaluation::survival_ticks` không phải tuổi).
+> - **Cấu trúc tuổi (§2.1, §2.4):** [ADR-0013](../decisions/ADR-0013-live-creature-lifecycle.md)
+>   (**accepted** 2026-11-24) thêm tuổi theo lịch và giai đoạn sống opt-in. Khi được hiện thực, đó là
+>   nguồn cho phân rã theo tuổi $\sum_a [\Delta c(a,t)]\bar z(a,t)$ mà hiện code chưa có
+>   (`AgentEvaluation::survival_ticks` không phải tuổi).
+> - **Cập nhật 2026-11-25 — E3b đã có kết quả** ([`RESULT.md`](../../artifacts/experiments/e3b-productivity-gradient-body-mass/RESULT.md),
+>   [tóm tắt](../ai/planning/2026-11-24-e3b-results.md), #252; Chặng 4 qua cổng). 192 lượt, 64/64 cặp đầy đủ
+>   ở cả ba tương phản, không lượt nào tuyệt chủng hay hỏng. H2 (`T / U`) tương đương 0 với đủ lực; H1 và H3 `insufficient_evidence` (khoảng tin cậy quá rộng).
+>   Độ lệch chuẩn giữa các seed của $L_i$ (1,24–1,61) cao hơn giả định lúc lập kế hoạch (0,81). Điều này
+>   ủng hộ gợi ý 3 ở trên: đo các thành phần nhiễu trên seed hiệu chuẩn trước khi chốt $N$.
 
 Quyết định đầy đủ: các mục `QD-E3B`, `QD-SEL2P2-D1..D7` và `QD-VIAB2-R` trong
 [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md).
