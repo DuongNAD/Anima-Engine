@@ -32,8 +32,10 @@ function makeV2CaveMaterial(color: string, vertexColors: boolean): THREE.MeshSta
       'varying vec3 vLkCaveWp;\n' +
       shader.vertexShader.replace(
         '#include <worldpos_vertex>',
-        `#include <worldpos_vertex>
-        vLkCaveWp = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
+        `
+#include <worldpos_vertex>
+vLkCaveWp=(modelMatrix*vec4(transformed,1.0)).xyz;
+`,
       );
     shader.fragmentShader =
       'varying vec3 vLkCaveWp;\n' +
@@ -41,11 +43,13 @@ function makeV2CaveMaterial(color: string, vertexColors: boolean): THREE.MeshSta
       shader.fragmentShader
         .replace(
           '#include <color_fragment>',
-          `#include <color_fragment>
-          {
-            float lkFar = smoothstep(60.0, 420.0, length(vViewPosition));
-            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085, 0.08, 0.072), lkFar * 0.75);
-          }`,
+          `
+#include <color_fragment>
+{
+float lkFar=smoothstep(60.0,420.0,length(vViewPosition));
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.085,0.08,0.072),lkFar*0.75);
+}
+`,
         )
         .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkCaveWp'));
   };

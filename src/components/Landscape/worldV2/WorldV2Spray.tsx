@@ -24,59 +24,62 @@ export interface WorldV2SprayProps {
 }
 
 const VERT = /* glsl */ `
-  attribute vec2 aSeed;
-  varying vec2 vUv;
-  varying vec2 vSeed;
-  varying vec3 vWp;
-  void main() {
-    vec3 center = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    float sx = length(instanceMatrix[0].xyz);
-    float sy = length(instanceMatrix[1].xyz);
-    vec3 toCam = cameraPosition - center;
-    // Cards the camera stands in are fully faded anyway (nearFade): collapse them so their
-    // (large, invisible) quads cost no fill.
-    float camD = length(toCam);
-    float keep = step(1.5, camD);
-    vec3 right = normalize(vec3(toCam.z, 0.0, -toCam.x) + vec3(1e-5, 0.0, 0.0));
-    vec3 wp = center + (right * position.x * sx + vec3(0.0, position.y * sy, 0.0)) * keep;
-    vUv = uv;
-    vSeed = aSeed;
-    vWp = wp;
-    gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
-  }
+attribute vec2 aSeed;
+varying vec2 vUv;
+varying vec2 vSeed;
+varying vec3 vWp;
+void main(){
+vec3 center=(modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0)).xyz;
+float sx=length(instanceMatrix[0].xyz);
+float sy=length(instanceMatrix[1].xyz);
+vec3 toCam=cameraPosition-center;
+` +
+  // Cards the camera stands in are fully faded anyway (nearFade): collapse them so their
+  // (large, invisible) quads cost no fill.
+  `float camD=length(toCam);
+float keep=step(1.5,camD);
+vec3 right=normalize(vec3(toCam.z,0.0,-toCam.x)+vec3(1e-5,0.0,0.0));
+vec3 wp=center+(right*position.x*sx+vec3(0.0,position.y*sy,0.0))*keep;
+vUv=uv;
+vSeed=aSeed;
+vWp=wp;
+gl_Position=projectionMatrix*viewMatrix*vec4(wp,1.0);
+}
 `;
 
 const FRAG = /* glsl */ `
-  precision highp float;
-  uniform float uTime;
-  uniform float uOpacity;
-  varying vec2 vUv;
-  varying vec2 vSeed;
-  varying vec3 vWp;
-  ${ATMOSPHERE_FRAGMENT_PARS}
-  void main() {
-    float x = vUv.x * 2.0 - 1.0;
-    float h = vUv.y;
-    // Soft radial puff that never reaches the card's borders (no straight edge at any distance),
-    // densest just above the water and thinning upward; it also fades into the water line
-    // instead of being cut by it (a depth fade against the sea plane the cards stand on).
-    float r = length(vec2(x, (h - 0.28) * 1.5));
-    float radial = 1.0 - smoothstep(0.15, 0.95, r);
-    radial *= radial;
-    float vertical = exp(-h * 1.6) * smoothstep(0.0, 0.18, h);
-    float side = 1.0;
-    // Each card breathes with the sets of breakers.
-    float pulse = 0.55 + 0.45 * sin(uTime * 0.45 + vSeed.x * 6.2832);
-    float d = distance(cameraPosition, vWp);
-    float nearFade = smoothstep(2.0, 9.0, d);
-    vec3 vdir = normalize(vWp - cameraPosition);
-    float fwd = pow(max(dot(vdir, normalize(uAtmoSunDir)), 0.0), 4.0);
-    vec3 hazeC = atmoSkyColor(normalize(vec3(vdir.x, vdir.y * 0.2, vdir.z)));
-    vec3 col = mix(hazeC, vec3(0.97, 0.98, 1.0), 0.55) * (1.0 + 0.5 * fwd);
-    float a = uOpacity * vSeed.y * radial * vertical * side * pulse * nearFade * (0.75 + 1.1 * fwd);
-    col = mix(col, hazeC, atmoHazeAmount(cameraPosition, vWp));
-    gl_FragColor = vec4(min(col, vec3(1.0)), clamp(a, 0.0, 0.6));
-  }
+precision highp float;
+uniform float uTime;
+uniform float uOpacity;
+varying vec2 vUv;
+varying vec2 vSeed;
+varying vec3 vWp;
+${ATMOSPHERE_FRAGMENT_PARS}
+void main(){
+float x=vUv.x*2.0-1.0;
+float h=vUv.y;
+` +
+  // Soft radial puff that never reaches the card's borders (no straight edge at any distance),
+  // densest just above the water and thinning upward; it also fades into the water line
+  // instead of being cut by it (a depth fade against the sea plane the cards stand on).
+  `float r=length(vec2(x,(h-0.28)*1.5));
+float radial=1.0-smoothstep(0.15,0.95,r);
+radial*=radial;
+float vertical=exp(-h*1.6)*smoothstep(0.0,0.18,h);
+float side=1.0;
+` +
+  // Each card breathes with the sets of breakers.
+  `float pulse=0.55+0.45*sin(uTime*0.45+vSeed.x*6.2832);
+float d=distance(cameraPosition,vWp);
+float nearFade=smoothstep(2.0,9.0,d);
+vec3 vdir=normalize(vWp-cameraPosition);
+float fwd=pow(max(dot(vdir,normalize(uAtmoSunDir)),0.0),4.0);
+vec3 hazeC=atmoSkyColor(normalize(vec3(vdir.x,vdir.y*0.2,vdir.z)));
+vec3 col=mix(hazeC,vec3(0.97,0.98,1.0),0.55)*(1.0+0.5*fwd);
+float a=uOpacity*vSeed.y*radial*vertical*side*pulse*nearFade*(0.75+1.1*fwd);
+col=mix(col,hazeC,atmoHazeAmount(cameraPosition,vWp));
+gl_FragColor=vec4(min(col,vec3(1.0)),clamp(a,0.0,0.6));
+}
 `;
 
 /** Advance the cards' clock (a named operation so the frame loop does not mutate render state inline). */

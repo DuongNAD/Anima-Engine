@@ -95,19 +95,21 @@ function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
       'varying vec3 vLkFloraWp;\nuniform float uFloraFar;\n' +
       shader.vertexShader.replace(
         '#include <project_vertex>',
-        `#ifdef USE_INSTANCING
-        {
-          vec3 lkOrigin = ( modelMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz;
-          float lkKeep = 1.0 - smoothstep( uFloraFar * 0.7, uFloraFar, distance( lkOrigin, cameraPosition ) );
-          transformed *= lkKeep;
-        }
-        #endif
-        #include <project_vertex>
-        vec4 lkFloraWp4 = vec4( transformed, 1.0 );
-        #ifdef USE_INSTANCING
-          lkFloraWp4 = instanceMatrix * lkFloraWp4;
-        #endif
-        vLkFloraWp = ( modelMatrix * lkFloraWp4 ).xyz;`,
+        `
+#ifdef USE_INSTANCING
+{
+vec3 lkOrigin=(modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0)).xyz;
+float lkKeep=1.0-smoothstep(uFloraFar*0.7,uFloraFar,distance(lkOrigin,cameraPosition));
+transformed*=lkKeep;
+}
+#endif
+#include <project_vertex>
+vec4 lkFloraWp4=vec4(transformed,1.0);
+#ifdef USE_INSTANCING
+lkFloraWp4=instanceMatrix*lkFloraWp4;
+#endif
+vLkFloraWp=(modelMatrix*lkFloraWp4).xyz;
+`,
       );
     // Rocks in the swash band are wet: darker (CST-04).
     shader.fragmentShader =
@@ -116,9 +118,11 @@ function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
       shader.fragmentShader
         .replace(
           '#include <color_fragment>',
-          `#include <color_fragment>
-          diffuseColor.rgb *= mix(1.0, 0.55, 1.0 - smoothstep(uAtmoSeaY + 0.01, uAtmoSeaY + 0.07, vLkFloraWp.y));
-          diffuseColor.rgb *= mix(0.6, 1.0, atmoCloudShadow(vLkFloraWp));`,
+          `
+#include <color_fragment>
+diffuseColor.rgb*=mix(1.0,0.55,1.0-smoothstep(uAtmoSeaY+0.01,uAtmoSeaY+0.07,vLkFloraWp.y));
+diffuseColor.rgb*=mix(0.6,1.0,atmoCloudShadow(vLkFloraWp));
+`,
         )
         .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
   };

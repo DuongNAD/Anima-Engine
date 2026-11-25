@@ -287,120 +287,119 @@ uniform float uAtmoTime;
 uniform sampler2D uAtmoCloudTex;
 uniform sampler2D uAtmoGroundTex;
 uniform float uAtmoRenderSize;
-
-// Preetham sky radiance (as three/examples/jsm/objects/Sky.js), tone-mapped with three's ACES fit
-// and sRGB-encoded here, so the dome, the haze and the water's sky reflection share one
-// display-space colour and meet without a seam.
-vec3 atmoAcesFit(vec3 c) {
-  const mat3 inM = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
-  const mat3 outM = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
-  c = inM * c;
-  vec3 a = c * (c + 0.0245786) - 0.000090537;
-  vec3 b = c * (0.983729 * c + 0.4329510) + 0.238081;
-  return clamp(outM * (a / b), 0.0, 1.0);
+` +
+  // Preetham sky radiance (as three/examples/jsm/objects/Sky.js), tone-mapped with three's ACES fit
+  // and sRGB-encoded here, so the dome, the haze and the water's sky reflection share one
+  // display-space colour and meet without a seam.
+  `vec3 atmoAcesFit(vec3 c){
+const mat3 inM=mat3(vec3(0.59719,0.07600,0.02840),vec3(0.35458,0.90834,0.13383),vec3(0.04823,0.01566,0.83777));
+const mat3 outM=mat3(vec3(1.60475,-0.10208,-0.00327),vec3(-0.53108,1.10813,-0.07276),vec3(-0.07367,-0.00605,1.07602));
+c=inM*c;
+vec3 a=c*(c+0.0245786)-0.000090537;
+vec3 b=c*(0.983729*c+0.4329510)+0.238081;
+return clamp(outM*(a/b),0.0,1.0);
 }
-vec3 atmoPreetham(vec3 d) {
-  vec3 sd = normalize(uAtmoSunDir);
-  float za = acos(max(0.0, d.y));
-  float inv = 1.0 / (cos(za) + 0.15 * pow(93.885 - za * 57.29578, -1.253));
-  vec3 fex = exp(-(uAtmoBetaR * 8.4e3 * inv + uAtmoBetaM * 1.25e3 * inv));
-  float ct = dot(d, sd);
-  float rPhase = 0.05968310365946075 * (1.0 + pow(ct * 0.5 + 0.5, 2.0));
-  float g2 = uAtmoMieG * uAtmoMieG;
-  float mPhase = 0.07957747154594767 * (1.0 - g2) / pow(1.0 - 2.0 * uAtmoMieG * ct + g2, 1.5);
-  vec3 ratio = (uAtmoBetaR * rPhase + uAtmoBetaM * mPhase) / (uAtmoBetaR + uAtmoBetaM);
-  vec3 lin = pow(uAtmoSunE * ratio * (1.0 - fex), vec3(1.5));
-  lin *= mix(vec3(1.0), pow(uAtmoSunE * ratio * fex, vec3(0.5)), clamp(pow(1.0 - sd.y, 5.0), 0.0, 1.0));
-  vec3 c = (lin + vec3(0.1) * fex) * 0.04 + vec3(0.0, 0.0003, 0.00075);
-  c = atmoAcesFit(c * uAtmoSkyExposure / 0.6);
-  return pow(c, vec3(1.0 / 2.2));
+vec3 atmoPreetham(vec3 d){
+vec3 sd=normalize(uAtmoSunDir);
+float za=acos(max(0.0,d.y));
+float inv=1.0/(cos(za)+0.15*pow(93.885-za*57.29578,-1.253));
+vec3 fex=exp(-(uAtmoBetaR*8.4e3*inv+uAtmoBetaM*1.25e3*inv));
+float ct=dot(d,sd);
+float rPhase=0.05968310365946075*(1.0+pow(ct*0.5+0.5,2.0));
+float g2=uAtmoMieG*uAtmoMieG;
+float mPhase=0.07957747154594767*(1.0-g2)/pow(1.0-2.0*uAtmoMieG*ct+g2,1.5);
+vec3 ratio=(uAtmoBetaR*rPhase+uAtmoBetaM*mPhase)/(uAtmoBetaR+uAtmoBetaM);
+vec3 lin=pow(uAtmoSunE*ratio*(1.0-fex),vec3(1.5));
+lin*=mix(vec3(1.0),pow(uAtmoSunE*ratio*fex,vec3(0.5)),clamp(pow(1.0-sd.y,5.0),0.0,1.0));
+vec3 c=(lin+vec3(0.1)*fex)*0.04+vec3(0.0,0.0003,0.00075);
+c=atmoAcesFit(c*uAtmoSkyExposure/0.6);
+return pow(c,vec3(1.0/2.2));
 }
-
-// Cumulus coverage at a point (metres, world xz), drifting with the wind. Three octaves of the
-// tileable noise at unrelated scales so the 256-texel tiles do not visibly repeat.
-float atmoCloudCov(vec2 pM) {
-  vec2 q = pM + uAtmoWind * uAtmoTime;
+` +
+  // Cumulus coverage at a point (metres, world xz), drifting with the wind. Three octaves of the
+  // tileable noise at unrelated scales so the 256-texel tiles do not visibly repeat.
+  `float atmoCloudCov(vec2 pM){
+vec2 q=pM+uAtmoWind*uAtmoTime;
+` +
   // A slow ~60 km field groups the cells into cloudier and clearer regions.
-  float region = texture2D(uAtmoCloudTex, q / 61000.0 + 0.53).a;
-  float n = texture2D(uAtmoCloudTex, q / 9100.0 + 0.13).r * 0.55
-          + texture2D(uAtmoCloudTex, q / 3300.0 + 0.71).g * 0.30
-          + texture2D(uAtmoCloudTex, q / 1170.0 + 0.37).b * 0.15;
-  float thr = uAtmoCloudCover + (0.5 - region) * 0.22;
-  float cov = smoothstep(thr, thr + 0.16, n);
+  `float region=texture2D(uAtmoCloudTex,q/61000.0+0.53).a;
+float n=texture2D(uAtmoCloudTex,q/9100.0+0.13).r*0.55
++texture2D(uAtmoCloudTex,q/3300.0+0.71).g*0.30
++texture2D(uAtmoCloudTex,q/1170.0+0.37).b*0.15;
+float thr=uAtmoCloudCover+(0.5-region)*0.22;
+float cov=smoothstep(thr,thr+0.16,n);
+` +
   // Cleared where the ground reaches the cloud base (no layer slicing through the massif).
-  vec2 uvMap = (pM / uAtmoMPerUnit) / uAtmoRenderSize + 0.5;
-  if (uvMap.x > 0.0 && uvMap.x < 1.0 && uvMap.y > 0.0 && uvMap.y < 1.0) {
-    float g = texture2D(uAtmoGroundTex, uvMap).r;
-    cov *= 1.0 - smoothstep(-6.0, -1.0, g - uAtmoCloudY);
-  }
-  return cov;
+  `vec2 uvMap=(pM/uAtmoMPerUnit)/uAtmoRenderSize+0.5;
+if(uvMap.x>0.0&&uvMap.x<1.0&&uvMap.y>0.0&&uvMap.y<1.0){
+float g=texture2D(uAtmoGroundTex,uvMap).r;
+cov*=1.0-smoothstep(-6.0,-1.0,g-uAtmoCloudY);
 }
-// Sun transmittance through the cloud layer for a point on the ground (1 = clear sun). Uses the
-// three coarse octaves only (shadows are soft anyway) and no ground lookup.
-float atmoCloudShadow(vec3 p) {
-  if (uAtmoCloudOn < 0.5) return 1.0;
-  vec3 sd = normalize(uAtmoSunDir);
-  if (sd.y <= 0.02) return 1.0;
-  vec3 c = p + sd * ((uAtmoCloudY - p.y) / sd.y);
-  vec2 q = c.xz * uAtmoMPerUnit + uAtmoWind * uAtmoTime;
-  float region = texture2D(uAtmoCloudTex, q / 61000.0 + 0.53).a;
-  float n = texture2D(uAtmoCloudTex, q / 9100.0 + 0.13).r * 0.55
-          + texture2D(uAtmoCloudTex, q / 3300.0 + 0.71).g * 0.30 + 0.075;
-  float thr = uAtmoCloudCover + (0.5 - region) * 0.22;
-  return 1.0 - 0.62 * smoothstep(thr - 0.02, thr + 0.2, n);
+return cov;
 }
-
-vec3 atmoSkyColorLegacy(vec3 d) {
-  float h = clamp(d.y, 0.0, 1.0);
-  vec3 col = mix(uAtmoHorizon, uAtmoZenith, pow(h, 0.58));
-  float dayMix = smoothstep(0.18, 0.72, max(uAtmoHorizon.r, max(uAtmoHorizon.g, uAtmoHorizon.b)));
-  vec3 hazeBelt = mix(uAtmoHorizon, vec3(0.77, 0.87, 0.94), dayMix * 0.72);
-  col = mix(hazeBelt, col, smoothstep(0.0, 0.16, abs(d.y)));
-  float s = max(dot(d, normalize(uAtmoSunDir)), 0.0);
-  col += uAtmoSunColor * pow(s, 10.0) * 0.16 * uAtmoGlow;
-  return col;
+` +
+  // Sun transmittance through the cloud layer for a point on the ground (1 = clear sun). Uses the
+  // three coarse octaves only (shadows are soft anyway) and no ground lookup.
+  `float atmoCloudShadow(vec3 p){
+if(uAtmoCloudOn<0.5)return 1.0;
+vec3 sd=normalize(uAtmoSunDir);
+if(sd.y<=0.02)return 1.0;
+vec3 c=p+sd*((uAtmoCloudY-p.y)/sd.y);
+vec2 q=c.xz*uAtmoMPerUnit+uAtmoWind*uAtmoTime;
+float region=texture2D(uAtmoCloudTex,q/61000.0+0.53).a;
+float n=texture2D(uAtmoCloudTex,q/9100.0+0.13).r*0.55
++texture2D(uAtmoCloudTex,q/3300.0+0.71).g*0.30+0.075;
+float thr=uAtmoCloudCover+(0.5-region)*0.22;
+return 1.0-0.62*smoothstep(thr-0.02,thr+0.2,n);
 }
-
-// Cheap per-pixel version of the physical sky for haze, reflections and clouds: the horizon
-// colour interpolated by azimuth to the sun between three exact samples, rising to the zenith
-// sample (the Preetham sky reaches its zenith colour within ~30 degrees), plus a Mie glow. The
-// exact model runs only on the dome.
-vec3 atmoSkyFast(vec3 d) {
-  vec2 sh = normalize(uAtmoSunDir.xz + vec2(1e-5));
-  float az = dot(normalize(d.xz + vec2(1e-5)), sh);
-  vec3 hz = az > 0.0 ? mix(uAtmoHzSide, uAtmoHzSun, az * az) : mix(uAtmoHzSide, uAtmoHzAway, az * az);
-  vec3 col = mix(hz, uAtmoZenP, pow(clamp(d.y, 0.0, 1.0), 0.38));
-  float s = max(dot(d, normalize(uAtmoSunDir)), 0.0);
-  return min(col + vec3(0.10, 0.09, 0.07) * pow(s, 24.0), vec3(1.0));
+vec3 atmoSkyColorLegacy(vec3 d){
+float h=clamp(d.y,0.0,1.0);
+vec3 col=mix(uAtmoHorizon,uAtmoZenith,pow(h,0.58));
+float dayMix=smoothstep(0.18,0.72,max(uAtmoHorizon.r,max(uAtmoHorizon.g,uAtmoHorizon.b)));
+vec3 hazeBelt=mix(uAtmoHorizon,vec3(0.77,0.87,0.94),dayMix*0.72);
+col=mix(hazeBelt,col,smoothstep(0.0,0.16,abs(d.y)));
+float s=max(dot(d,normalize(uAtmoSunDir)),0.0);
+col+=uAtmoSunColor*pow(s,10.0)*0.16*uAtmoGlow;
+return col;
 }
-
-vec3 atmoSkyColor(vec3 d) {
-  if (uAtmoPhys <= 0.0) return atmoSkyColorLegacy(d);
-  vec3 p = atmoSkyFast(d);
-  return uAtmoPhys >= 1.0 ? p : mix(atmoSkyColorLegacy(d), p, uAtmoPhys);
+` +
+  // Cheap per-pixel version of the physical sky for haze, reflections and clouds: the horizon
+  // colour interpolated by azimuth to the sun between three exact samples, rising to the zenith
+  // sample (the Preetham sky reaches its zenith colour within ~30 degrees), plus a Mie glow. The
+  // exact model runs only on the dome.
+  `vec3 atmoSkyFast(vec3 d){
+vec2 sh=normalize(uAtmoSunDir.xz+vec2(1e-5));
+float az=dot(normalize(d.xz+vec2(1e-5)),sh);
+vec3 hz=az>0.0?mix(uAtmoHzSide,uAtmoHzSun,az*az):mix(uAtmoHzSide,uAtmoHzAway,az*az);
+vec3 col=mix(hz,uAtmoZenP,pow(clamp(d.y,0.0,1.0),0.38));
+float s=max(dot(d,normalize(uAtmoSunDir)),0.0);
+return min(col+vec3(0.10,0.09,0.07)*pow(s,24.0),vec3(1.0));
 }
-
-// Mean of exp(-y/H) along a straight ray from height y0 to y1 (closed form).
-float atmoLayerMean(float y0, float y1, float H) {
-  float dy = y1 - y0;
-  float e0 = exp(-y0 / H);
-  float e1 = exp(-y1 / H);
-  return abs(dy) > 0.02 * H ? (e0 - e1) * H / dy : e0;
+vec3 atmoSkyColor(vec3 d){
+if(uAtmoPhys<=0.0)return atmoSkyColorLegacy(d);
+vec3 p=atmoSkyFast(d);
+return uAtmoPhys>=1.0?p:mix(atmoSkyColorLegacy(d),p,uAtmoPhys);
 }
-
-float atmoHazeAmount(vec3 camP, vec3 p) {
-  float d = length(p - camP);
-  float y0 = max(camP.y - uAtmoSeaY, 0.0);
-  float y1 = max(p.y - uAtmoSeaY, 0.0);
-  float tau = uAtmoDensity * atmoLayerMean(y0, y1, max(uAtmoScaleH, 1.0))
-            + uAtmoMarineDensity * atmoLayerMean(y0, y1, max(uAtmoMarineH, 0.05));
-  return 1.0 - exp(-d * tau);
+` +
+  // Mean of exp(-y/H) along a straight ray from height y0 to y1 (closed form).
+  `float atmoLayerMean(float y0,float y1,float H){
+float dy=y1-y0;
+float e0=exp(-y0/H);
+float e1=exp(-y1/H);
+return abs(dy)>0.02*H?(e0-e1)*H/dy:e0;
 }
-
-vec3 atmoApply(vec3 col, vec3 p) {
-  vec3 dir = normalize(p - cameraPosition);
-  vec3 hazeCol = atmoSkyColor(normalize(vec3(dir.x, dir.y * 0.2, dir.z)));
-  return mix(col, hazeCol, atmoHazeAmount(cameraPosition, p));
+float atmoHazeAmount(vec3 camP,vec3 p){
+float d=length(p-camP);
+float y0=max(camP.y-uAtmoSeaY,0.0);
+float y1=max(p.y-uAtmoSeaY,0.0);
+float tau=uAtmoDensity*atmoLayerMean(y0,y1,max(uAtmoScaleH,1.0))
++uAtmoMarineDensity*atmoLayerMean(y0,y1,max(uAtmoMarineH,0.05));
+return 1.0-exp(-d*tau);
+}
+vec3 atmoApply(vec3 col,vec3 p){
+vec3 dir=normalize(p-cameraPosition);
+vec3 hazeCol=atmoSkyColor(normalize(vec3(dir.x,dir.y*0.2,dir.z)));
+return mix(col,hazeCol,atmoHazeAmount(cameraPosition,p));
 }
 `;
 

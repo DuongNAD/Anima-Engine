@@ -24,84 +24,84 @@ export interface WorldWaterfallsProps {
 const WATERFALL_NOISE_GLSL = /* glsl */ `
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
 float noise(vec2 p){
-  vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
-  return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),u.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),u.x),u.y);
+vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),u.x),mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),u.x),u.y);
 }
 `;
 
 const CURTAIN_VERTEX = /* glsl */ `
-  varying vec2 vUv;
-  varying vec3 vWorldPos;
-  void main() {
-    vUv = uv;
-    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
-    vWorldPos = world.xyz;
-    gl_Position = projectionMatrix * viewMatrix * world;
-  }
+varying vec2 vUv;
+varying vec3 vWorldPos;
+void main(){
+vUv=uv;
+vec4 world=modelMatrix*instanceMatrix*vec4(position,1.0);
+vWorldPos=world.xyz;
+gl_Position=projectionMatrix*viewMatrix*world;
+}
 `;
 
 const CURTAIN_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec2 vUv;
-  varying vec3 vWorldPos;
-  uniform float uTime;
-  uniform float uTerrainSize;
-  uniform vec3 uFogColor;
-  ${WATERFALL_NOISE_GLSL}
-  void main() {
-    float flow1 = noise(vec2(vUv.x * 7.5, vUv.y * 3.8 + uTime * 2.4));
-    float flow2 = noise(vec2(vUv.x * 14.0 + 2.7, vUv.y * 6.5 + uTime * 3.9));
-    float filaments = smoothstep(0.24, 0.86, flow1 * 0.58 + flow2 * 0.42);
-    float xDist = abs(vUv.x - 0.5) * 2.0;
-    float edgeMask = 0.68 + 0.14 * sin(vUv.y * 10.0 + uTime * 2.8) + 0.14 * (flow1 - 0.5);
-    float side = 1.0 - smoothstep(edgeMask - 0.36, edgeMask, xDist);
-    float vert = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
-    float dist = distance(cameraPosition, vWorldPos);
-    float distFade = 1.0 - smoothstep(uTerrainSize * 0.16, uTerrainSize * 0.46, dist);
-    float sprayBase = smoothstep(0.45, 0.0, vUv.y) * 0.26;
-    float alpha = clamp((0.16 + 0.62 * filaments + sprayBase) * side * vert * distFade, 0.0, 0.82);
-    if (alpha < 0.015) discard;
-    vec3 col = mix(vec3(0.56, 0.78, 0.90), vec3(0.95, 0.98, 1.0), clamp(filaments * 0.8 + sprayBase * 1.4, 0.0, 1.0));
-    col = mix(col, uFogColor, smoothstep(uTerrainSize * 0.5, uTerrainSize * 2.2, dist));
-    gl_FragColor = vec4(col, alpha);
-  }
+precision highp float;
+varying vec2 vUv;
+varying vec3 vWorldPos;
+uniform float uTime;
+uniform float uTerrainSize;
+uniform vec3 uFogColor;
+${WATERFALL_NOISE_GLSL}
+void main(){
+float flow1=noise(vec2(vUv.x*7.5,vUv.y*3.8+uTime*2.4));
+float flow2=noise(vec2(vUv.x*14.0+2.7,vUv.y*6.5+uTime*3.9));
+float filaments=smoothstep(0.24,0.86,flow1*0.58+flow2*0.42);
+float xDist=abs(vUv.x-0.5)*2.0;
+float edgeMask=0.68+0.14*sin(vUv.y*10.0+uTime*2.8)+0.14*(flow1-0.5);
+float side=1.0-smoothstep(edgeMask-0.36,edgeMask,xDist);
+float vert=smoothstep(0.0,0.18,vUv.y)*smoothstep(1.0,0.82,vUv.y);
+float dist=distance(cameraPosition,vWorldPos);
+float distFade=1.0-smoothstep(uTerrainSize*0.16,uTerrainSize*0.46,dist);
+float sprayBase=smoothstep(0.45,0.0,vUv.y)*0.26;
+float alpha=clamp((0.16+0.62*filaments+sprayBase)*side*vert*distFade,0.0,0.82);
+if(alpha<0.015)discard;
+vec3 col=mix(vec3(0.56,0.78,0.90),vec3(0.95,0.98,1.0),clamp(filaments*0.8+sprayBase*1.4,0.0,1.0));
+col=mix(col,uFogColor,smoothstep(uTerrainSize*0.5,uTerrainSize*2.2,dist));
+gl_FragColor=vec4(col,alpha);
+}
 `;
 
 const FOAM_VERTEX = /* glsl */ `
-  varying vec2 vLocalXZ;
-  varying vec3 vWorldPos;
-  void main() {
-    vLocalXZ = position.xz;
-    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
-    vWorldPos = world.xyz;
-    gl_Position = projectionMatrix * viewMatrix * world;
-  }
+varying vec2 vLocalXZ;
+varying vec3 vWorldPos;
+void main(){
+vLocalXZ=position.xz;
+vec4 world=modelMatrix*instanceMatrix*vec4(position,1.0);
+vWorldPos=world.xyz;
+gl_Position=projectionMatrix*viewMatrix*world;
+}
 `;
 
 const FOAM_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec2 vLocalXZ;
-  varying vec3 vWorldPos;
-  uniform float uTime;
-  uniform float uTerrainSize;
-  uniform vec3 uFogColor;
-  ${WATERFALL_NOISE_GLSL}
-  void main() {
-    float r = length(vLocalXZ);
-    float n = noise(vLocalXZ * 3.2 + vec2(uTime * 0.4, -uTime * 0.3));
-    float ripple = 0.5 + 0.5 * sin(r * 13.0 - uTime * 4.2 + n * 4.2);
-    float outerFade = 1.0 - smoothstep(0.18, 0.78 + (n - 0.5) * 0.14, r);
-    float core = 1.0 - smoothstep(0.0, 0.48, r);
-    vec3 viewDir = normalize(cameraPosition - vWorldPos);
-    float grazing = smoothstep(0.06, 0.34, abs(viewDir.y));
-    float dist = distance(cameraPosition, vWorldPos);
-    float distFade = 1.0 - smoothstep(uTerrainSize * 0.16, uTerrainSize * 0.44, dist);
-    float alpha = clamp((core * 0.48 + ripple * 0.30) * outerFade * grazing * distFade, 0.0, 0.68);
-    if (alpha < 0.015) discard;
-    vec3 col = mix(vec3(0.76, 0.90, 0.96), vec3(0.97, 0.99, 1.0), clamp(core + ripple * 0.35, 0.0, 1.0));
-    col = mix(col, uFogColor, smoothstep(uTerrainSize * 0.5, uTerrainSize * 2.2, dist));
-    gl_FragColor = vec4(col, alpha);
-  }
+precision highp float;
+varying vec2 vLocalXZ;
+varying vec3 vWorldPos;
+uniform float uTime;
+uniform float uTerrainSize;
+uniform vec3 uFogColor;
+${WATERFALL_NOISE_GLSL}
+void main(){
+float r=length(vLocalXZ);
+float n=noise(vLocalXZ*3.2+vec2(uTime*0.4,-uTime*0.3));
+float ripple=0.5+0.5*sin(r*13.0-uTime*4.2+n*4.2);
+float outerFade=1.0-smoothstep(0.18,0.78+(n-0.5)*0.14,r);
+float core=1.0-smoothstep(0.0,0.48,r);
+vec3 viewDir=normalize(cameraPosition-vWorldPos);
+float grazing=smoothstep(0.06,0.34,abs(viewDir.y));
+float dist=distance(cameraPosition,vWorldPos);
+float distFade=1.0-smoothstep(uTerrainSize*0.16,uTerrainSize*0.44,dist);
+float alpha=clamp((core*0.48+ripple*0.30)*outerFade*grazing*distFade,0.0,0.68);
+if(alpha<0.015)discard;
+vec3 col=mix(vec3(0.76,0.90,0.96),vec3(0.97,0.99,1.0),clamp(core+ripple*0.35,0.0,1.0));
+col=mix(col,uFogColor,smoothstep(uTerrainSize*0.5,uTerrainSize*2.2,dist));
+gl_FragColor=vec4(col,alpha);
+}
 `;
 
 export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({

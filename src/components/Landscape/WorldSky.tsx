@@ -14,105 +14,110 @@ import { makeSceneRandom, sceneDelta, sceneElapsed } from './utils/sceneClock';
 // A flat single-colour dome is the single biggest "this is a tech demo" tell — the gradient
 // alone makes every frame read as atmosphere.
 const SKY_VERTEX = /* glsl */ `
-  varying vec3 vDir;
-  void main() {
-    vDir = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
+varying vec3 vDir;
+void main(){
+vDir=position;
+gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+}
 `;
 const SKY_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec3 vDir;
-  uniform vec3 uZenith;
-  uniform vec3 uHorizon;
-  uniform vec3 uSunDir;
-  uniform vec3 uSunColor;
-  uniform float uGlow;
-  uniform vec3 uMoonDir;
-  uniform float uMoonGlow;
-  void main() {
-    vec3 d = normalize(vDir);
-    float h = clamp(d.y, 0.0, 1.0);
-    vec3 col = mix(uHorizon, uZenith, pow(h, 0.58));
-    float dayMix = smoothstep(0.18, 0.72, max(uHorizon.r, max(uHorizon.g, uHorizon.b)));
-    vec3 hazeBelt = mix(uHorizon, vec3(0.77, 0.87, 0.94), dayMix * 0.72);
-    col = mix(hazeBelt, col, smoothstep(0.0, 0.16, abs(d.y)));
-    float s = max(dot(d, normalize(uSunDir)), 0.0);
-    col += uSunColor * (pow(s, 300.0) * 0.9 + pow(s, 10.0) * 0.16 * uGlow);
-    // Cold, tighter halo around the moon at night.
-    float m = max(dot(d, normalize(uMoonDir)), 0.0);
-    col += vec3(0.58, 0.66, 0.8) * (pow(m, 700.0) * 0.55 + pow(m, 26.0) * 0.05) * uMoonGlow;
-    gl_FragColor = vec4(col, 1.0);
-  }
+precision highp float;
+varying vec3 vDir;
+uniform vec3 uZenith;
+uniform vec3 uHorizon;
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform float uGlow;
+uniform vec3 uMoonDir;
+uniform float uMoonGlow;
+void main(){
+vec3 d=normalize(vDir);
+float h=clamp(d.y,0.0,1.0);
+vec3 col=mix(uHorizon,uZenith,pow(h,0.58));
+float dayMix=smoothstep(0.18,0.72,max(uHorizon.r,max(uHorizon.g,uHorizon.b)));
+vec3 hazeBelt=mix(uHorizon,vec3(0.77,0.87,0.94),dayMix*0.72);
+col=mix(hazeBelt,col,smoothstep(0.0,0.16,abs(d.y)));
+float s=max(dot(d,normalize(uSunDir)),0.0);
+col+=uSunColor*(pow(s,300.0)*0.9+pow(s,10.0)*0.16*uGlow);
+` +
+  // Cold, tighter halo around the moon at night.
+  `float m=max(dot(d,normalize(uMoonDir)),0.0);
+col+=vec3(0.58,0.66,0.8)*(pow(m,700.0)*0.55+pow(m,26.0)*0.05)*uMoonGlow;
+gl_FragColor=vec4(col,1.0);
+}
 `;
 
 // prototype, to be replaced — WV2-LOOK dome: the shared Preetham sky (atmosphere.ts) plus the
 // moon's halo. The same function colours the haze and the water's sky reflection, so land, sea
 // and sky meet at the horizon without a seam.
 const SKY_LOOK_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec3 vDir;
-  uniform vec3 uMoonDir;
-  uniform float uMoonGlow;
-  ${ATMOSPHERE_FRAGMENT_PARS}
-  void main() {
-    vec3 d = normalize(vDir);
-    vec3 dd = vec3(d.x, max(d.y, 0.0), d.z);
-    vec3 col = uAtmoPhys >= 1.0 ? atmoPreetham(dd)
-      : (uAtmoPhys <= 0.0 ? atmoSkyColorLegacy(dd) : mix(atmoSkyColorLegacy(dd), atmoPreetham(dd), uAtmoPhys));
-    float m = max(dot(d, normalize(uMoonDir)), 0.0);
-    col += vec3(0.58, 0.66, 0.8) * (pow(m, 700.0) * 0.55 + pow(m, 26.0) * 0.05) * uMoonGlow;
-    gl_FragColor = vec4(col, 1.0);
-  }
+precision highp float;
+varying vec3 vDir;
+uniform vec3 uMoonDir;
+uniform float uMoonGlow;
+${ATMOSPHERE_FRAGMENT_PARS}
+void main(){
+vec3 d=normalize(vDir);
+vec3 dd=vec3(d.x,max(d.y,0.0),d.z);
+vec3 col=uAtmoPhys>=1.0?atmoPreetham(dd)
+:(uAtmoPhys<=0.0?atmoSkyColorLegacy(dd):mix(atmoSkyColorLegacy(dd),atmoPreetham(dd),uAtmoPhys));
+float m=max(dot(d,normalize(uMoonDir)),0.0);
+col+=vec3(0.58,0.66,0.8)*(pow(m,700.0)*0.55+pow(m,26.0)*0.05)*uMoonGlow;
+gl_FragColor=vec4(col,1.0);
+}
 `;
 
 // prototype, to be replaced — WV2-LOOK fair-weather cumulus: one horizontal layer at the cloud
 // base (atmosphere.ts sets its height in metres), coverage from the same function that casts the
 // cloud shadows on terrain, sea and flora, so every shadow belongs to a cloud overhead.
 const CLOUD_VERTEX = /* glsl */ `
-  uniform float uAtmoCloudY;
-  varying vec3 vWp;
-  void main() {
-    vec4 wp = modelMatrix * vec4(position, 1.0);
-    wp.y = uAtmoCloudY;
-    vWp = wp.xyz;
-    gl_Position = projectionMatrix * viewMatrix * wp;
-  }
+uniform float uAtmoCloudY;
+varying vec3 vWp;
+void main(){
+vec4 wp=modelMatrix*vec4(position,1.0);
+wp.y=uAtmoCloudY;
+vWp=wp.xyz;
+gl_Position=projectionMatrix*viewMatrix*wp;
+}
 `;
 const CLOUD_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying vec3 vWp;
-  ${ATMOSPHERE_FRAGMENT_PARS}
-  void main() {
-    vec2 pM = vWp.xz * uAtmoMPerUnit;
-    float cov = atmoCloudCov(pM);
-    if (cov <= 0.003) discard;
-    vec3 sd = normalize(uAtmoSunDir);
-    vec3 vdir = normalize(vWp - cameraPosition);
-    float fromAbove = step(vWp.y, cameraPosition.y);
-    // Thin margins are bright and translucent; thick cores are greyer from below.
-    float edge = 1.0 - smoothstep(0.0, 0.7, cov);
-    vec2 q = pM + uAtmoWind * uAtmoTime;
-    float lump = texture2D(uAtmoCloudTex, q / 620.0 + 0.29).a;
-    vec3 lit = vec3(0.97, 0.97, 0.955);
-    vec3 base = vec3(0.66, 0.70, 0.77) * mix(0.92, 1.06, lump);
-    vec3 below = mix(base, lit, edge * 0.75 + 0.1);
-    vec3 above = mix(lit * mix(0.86, 1.0, lump), lit, edge);
-    vec3 col = mix(below, above, fromAbove);
-    // Silver lining when looking toward the sun.
-    float fwd = pow(max(dot(vdir, sd), 0.0), 8.0);
-    col += vec3(1.0, 0.95, 0.85) * fwd * (0.15 + edge * 0.35);
-    float a = cov * 0.93;
-    // Seen edge-on the layer is a sheet: fade it out toward the horizon line.
-    // (From below it also hides layer slivers crossing in front of the massif.)
-    a *= mix(smoothstep(0.10, 0.38, abs(vdir.y)), smoothstep(0.05, 0.26, abs(vdir.y)), fromAbove);
-    // Near the camera the layer thins out (flight-sim practice): a camera flying just above or
-    // below the cloud base sees the ground through it instead of a wall of nearby cloud.
-    a *= smoothstep(220.0, 900.0, length(vWp - cameraPosition) * uAtmoMPerUnit);
-    vec3 hazeC = atmoSkyColor(normalize(vec3(vdir.x, abs(vdir.y) * 0.2, vdir.z)));
-    col = mix(col, hazeC, atmoHazeAmount(cameraPosition, vWp));
-    gl_FragColor = vec4(min(col, vec3(1.0)), a);
-  }
+precision highp float;
+varying vec3 vWp;
+${ATMOSPHERE_FRAGMENT_PARS}
+void main(){
+vec2 pM=vWp.xz*uAtmoMPerUnit;
+float cov=atmoCloudCov(pM);
+if(cov<=0.003)discard;
+vec3 sd=normalize(uAtmoSunDir);
+vec3 vdir=normalize(vWp-cameraPosition);
+float fromAbove=step(vWp.y,cameraPosition.y);
+` +
+  // Thin margins are bright and translucent; thick cores are greyer from below.
+  `float edge=1.0-smoothstep(0.0,0.7,cov);
+vec2 q=pM+uAtmoWind*uAtmoTime;
+float lump=texture2D(uAtmoCloudTex,q/620.0+0.29).a;
+vec3 lit=vec3(0.97,0.97,0.955);
+vec3 base=vec3(0.66,0.70,0.77)*mix(0.92,1.06,lump);
+vec3 below=mix(base,lit,edge*0.75+0.1);
+vec3 above=mix(lit*mix(0.86,1.0,lump),lit,edge);
+vec3 col=mix(below,above,fromAbove);
+` +
+  // Silver lining when looking toward the sun.
+  `float fwd=pow(max(dot(vdir,sd),0.0),8.0);
+col+=vec3(1.0,0.95,0.85)*fwd*(0.15+edge*0.35);
+float a=cov*0.93;
+` +
+  // Seen edge-on the layer is a sheet: fade it out toward the horizon line.
+  // (From below it also hides layer slivers crossing in front of the massif.)
+  `a*=mix(smoothstep(0.10,0.38,abs(vdir.y)),smoothstep(0.05,0.26,abs(vdir.y)),fromAbove);
+` +
+  // Near the camera the layer thins out (flight-sim practice): a camera flying just above or
+  // below the cloud base sees the ground through it instead of a wall of nearby cloud.
+  `a*=smoothstep(220.0,900.0,length(vWp-cameraPosition)*uAtmoMPerUnit);
+vec3 hazeC=atmoSkyColor(normalize(vec3(vdir.x,abs(vdir.y)*0.2,vdir.z)));
+col=mix(col,hazeC,atmoHazeAmount(cameraPosition,vWp));
+gl_FragColor=vec4(min(col,vec3(1.0)),a);
+}
 `;
 
 /** Per-frame inputs of the WV2-LOOK physical sky and clouds (module state, not React state). */

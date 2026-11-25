@@ -167,7 +167,8 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
       bindAtmosphereUniforms(shader.uniforms);
       Object.assign(shader.uniforms, uniforms);
       shader.vertexShader =
-        `uniform sampler2D uGcHeight;
+        `
+uniform sampler2D uGcHeight;
 uniform sampler2D uGcMask;
 uniform float uGcSize;
 uniform float uGcMeshRes;
@@ -176,39 +177,42 @@ uniform float uGcTile;
 uniform float uGcRadius;
 uniform float uAtmoSeaY;
 varying vec3 vLkGcWp;
-float gcH(vec2 uvc) {
-  return texture2D(uGcHeight, (uvc * (uGcSize - 1.0) + 0.5) / uGcSize).r;
+float gcH(vec2 uvc){
+return texture2D(uGcHeight,(uvc*(uGcSize-1.0)+0.5)/uGcSize).r;
 }
 ` +
         shader.vertexShader.replace(
           '#include <project_vertex>',
-          `vec2 gcP0 = instanceMatrix[3].xz;
-          float gcSeed = instanceMatrix[3].y;
-          vec2 gcCam = cameraPosition.xz;
-          vec2 gcPw = gcP0 + uGcTile * floor((gcCam - gcP0) / uGcTile + 0.5);
-          vec2 gcUv = gcPw / uGcRender + 0.5;
-          // Height exactly as the terrain mesh interpolates it (same grid, same diagonal).
-          vec2 gcG = clamp(gcUv, 0.0, 1.0) * uGcMeshRes;
-          vec2 gcI = floor(gcG);
-          vec2 gcF = gcG - gcI;
-          float hA = gcH(gcI / uGcMeshRes);
-          float hB = gcH((gcI + vec2(1.0, 0.0)) / uGcMeshRes);
-          float hC = gcH((gcI + vec2(0.0, 1.0)) / uGcMeshRes);
-          float hD = gcH((gcI + vec2(1.0, 1.0)) / uGcMeshRes);
-          float gcY = (gcF.x + gcF.y < 1.0)
-            ? hA + (hB - hA) * gcF.x + (hC - hA) * gcF.y
-            : hD + (hC - hD) * (1.0 - gcF.x) + (hB - hD) * (1.0 - gcF.y);
-          float gcDens = texture2D(uGcMask, clamp(gcUv, 0.0, 1.0)).r;
-          float gcDist = length(vec3(gcPw.x - gcCam.x, gcY - cameraPosition.y, gcPw.y - gcCam.y));
-          float gcKeep = step(gcSeed, gcDens)
-            * (1.0 - smoothstep(uGcRadius * 0.65, uGcRadius, gcDist))
-            * step(uAtmoSeaY + 0.02, gcY)
-            * step(0.0, gcUv.x) * step(gcUv.x, 1.0) * step(0.0, gcUv.y) * step(gcUv.y, 1.0);
-          vec3 gcLocal = mat3(instanceMatrix) * transformed * gcKeep;
-          vec4 gcWorld = vec4(gcPw.x + gcLocal.x, gcY + gcLocal.y - 0.002, gcPw.y + gcLocal.z, 1.0);
-          vLkGcWp = gcWorld.xyz;
-          vec4 mvPosition = viewMatrix * gcWorld;
-          gl_Position = projectionMatrix * mvPosition;`,
+          `
+vec2 gcP0=instanceMatrix[3].xz;
+float gcSeed=instanceMatrix[3].y;
+vec2 gcCam=cameraPosition.xz;
+vec2 gcPw=gcP0+uGcTile*floor((gcCam-gcP0)/uGcTile+0.5);
+vec2 gcUv=gcPw/uGcRender+0.5;
+` +
+            // Height exactly as the terrain mesh interpolates it (same grid, same diagonal).
+            `vec2 gcG=clamp(gcUv,0.0,1.0)*uGcMeshRes;
+vec2 gcI=floor(gcG);
+vec2 gcF=gcG-gcI;
+float hA=gcH(gcI/uGcMeshRes);
+float hB=gcH((gcI+vec2(1.0,0.0))/uGcMeshRes);
+float hC=gcH((gcI+vec2(0.0,1.0))/uGcMeshRes);
+float hD=gcH((gcI+vec2(1.0,1.0))/uGcMeshRes);
+float gcY=(gcF.x+gcF.y<1.0)
+?hA+(hB-hA)*gcF.x+(hC-hA)*gcF.y
+:hD+(hC-hD)*(1.0-gcF.x)+(hB-hD)*(1.0-gcF.y);
+float gcDens=texture2D(uGcMask,clamp(gcUv,0.0,1.0)).r;
+float gcDist=length(vec3(gcPw.x-gcCam.x,gcY-cameraPosition.y,gcPw.y-gcCam.y));
+float gcKeep=step(gcSeed,gcDens)
+*(1.0-smoothstep(uGcRadius*0.65,uGcRadius,gcDist))
+*step(uAtmoSeaY+0.02,gcY)
+*step(0.0,gcUv.x)*step(gcUv.x,1.0)*step(0.0,gcUv.y)*step(gcUv.y,1.0);
+vec3 gcLocal=mat3(instanceMatrix)*transformed*gcKeep;
+vec4 gcWorld=vec4(gcPw.x+gcLocal.x,gcY+gcLocal.y-0.002,gcPw.y+gcLocal.z,1.0);
+vLkGcWp=gcWorld.xyz;
+vec4 mvPosition=viewMatrix*gcWorld;
+gl_Position=projectionMatrix*mvPosition;
+`,
         );
       shader.fragmentShader =
         'varying vec3 vLkGcWp;\n' +
@@ -216,8 +220,10 @@ float gcH(vec2 uvc) {
         shader.fragmentShader
           .replace(
             '#include <color_fragment>',
-            `#include <color_fragment>
-            diffuseColor.rgb *= mix(0.6, 1.0, atmoCloudShadow(vLkGcWp));`,
+            `
+#include <color_fragment>
+diffuseColor.rgb*=mix(0.6,1.0,atmoCloudShadow(vLkGcWp));
+`,
           )
           .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkGcWp'));
     };
