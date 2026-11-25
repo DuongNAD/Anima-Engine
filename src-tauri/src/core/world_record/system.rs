@@ -31,8 +31,9 @@ use crate::core::world_artifact::{fnv1a_32, WorldIdentity};
 
 use super::ring::{CompactIntervention, InlineStr, RingEntry, RingProducer, INLINE_ID_LEN};
 use super::types::{
-    DeathCauseTag, InputKind, PlatformClass, RecordedEvent, RecordedInput, SegmentBody,
-    SignedSegment, WorldEvent, WorldKeyframe, WorldRecord, WorldRecordError, WorldRecordHeader,
+    DeathCauseTag, InputKind, IslandRecordHeader, PlatformClass, RecordedEvent, RecordedInput,
+    SegmentBody, SignedSegment, WorldEvent, WorldKeyframe, WorldRecord, WorldRecordError,
+    WorldRecordHeader,
 };
 use super::writer::{AsyncWriterHandle, WorldRecordWriterConfig};
 
@@ -103,6 +104,7 @@ pub struct RecordReadParams<'w, 's> {
     combat_events: Option<Res<'w, CombatEvents>>,
     interventions: Option<Res<'w, LiveInterventions>>,
     observer_trace: Option<Res<'w, ObserverTrace>>,
+    island_state: Option<Res<'w, crate::core::island::inhabit::IslandInhabitState>>,
 }
 
 struct InlineSink {
@@ -273,6 +275,64 @@ impl WorldRecordRecorder {
         let mut recorder = Self::with_writer(header, config)?;
         recorder.sync_baseline_from_world(world);
         Ok(recorder)
+    }
+
+    /// Build a [`WorldRecordRecorder`] (inline when `writer` is `None`, WR2 async writer when
+    /// `Some`) using an explicit pre-constructed [`WorldRecordHeader`].
+    pub fn from_world_with_header(
+        world: &mut World,
+        header: WorldRecordHeader,
+        writer: Option<WorldRecordWriterConfig>,
+    ) -> Result<Self, WorldRecordError> {
+        let mut recorder = match writer {
+            Some(config) => Self::with_writer(header, config)?,
+            None => Self::new(header)?,
+        };
+        recorder.sync_baseline_from_world(world);
+        Ok(recorder)
+    }
+
+    /// Resume inline WR1 recording onto an existing verified [`WorldRecord`] immediately after
+    /// `save -> load -> continue`, aligning `next_tick` cleanly with `start_tick`.
+    pub fn resume_inline(
+        world: &mut World,
+        prior_record: WorldRecord,
+        start_tick: u64,
+    ) -> Result<Self, WorldRecordError> {
+        crate::core::world_record::chain::verify_record(&prior_record)?;
+        let expected_start = prior_record
+            .segments
+            .last()
+            .map_or(1, |seg| seg.body.tick_end.saturating_add(1));
+        if start_tick != expected_start {
+            return Err(WorldRecordError::InvalidTickRange {
+                segment_index: prior_record.segments.len(),
+                tick_start: start_tick,
+                tick_end: start_tick,
+                prev_tick_end: prior_record.segments.last().map(|seg| seg.body.tick_end),
+            });
+        }
+        let mut recorder = Self::from_sink(
+            RecorderSink::Inline(InlineSink {
+                record: prior_record,
+                max_inputs_per_segment: DEFAULT_MAX_INPUTS_PER_SEGMENT,
+                max_events_per_segment: DEFAULT_MAX_EVENTS_PER_SEGMENT,
+                pending_inputs: Vec::with_capacity(64),
+                pending_events: Vec::with_capacity(256),
+            }),
+            DEFAULT_AGENT_SCRATCH_CAP,
+            DEFAULT_CHECKSUM_BYTES_CAP,
+        );
+        recorder.next_tick = start_tick;
+        recorder.segment_start_tick = start_tick;
+        recorder.last_recorded_tick = start_tick.checked_sub(1);
+        recorder.sync_baseline_from_world(world);
+        Ok(recorder)
+    }
+
+    /// Next authoritative simulation tick that `record_world_record_tick_system` will stamp.
+    pub const fn next_tick(&self) -> u64 {
+        self.next_tick
     }
 
     fn sync_baseline_from_world(&mut self, world: &mut World) {
@@ -577,7 +637,31 @@ fn build_header_from_world(
         era_index: 0,
         prev_era_tail_hash: None,
         omissions,
+        island: None,
     }
+}
+
+/// Build a shared-island [`WorldRecordHeader`] anchored to `world` with explicit `island`
+/// provenance (`Card I2`).
+pub fn build_island_header_from_world(
+    world: &mut World,
+    seed: u64,
+    segment_ticks: u64,
+    deterministic: bool,
+    initial_conditions: Vec<(String, f64)>,
+    omissions: Vec<String>,
+    island: IslandRecordHeader,
+) -> WorldRecordHeader {
+    let mut header = build_header_from_world(
+        world,
+        seed,
+        segment_ticks,
+        deterministic,
+        initial_conditions,
+        omissions,
+    );
+    header.island = Some(island);
+    header
 }
 
 fn push_f32(b: &mut Vec<u8>, v: f32) {
@@ -937,6 +1021,35 @@ pub fn record_world_record_tick_system(
                 pushed_or_sealed = true;
             }
             recorder.seen_observer_actions = actions.len();
+        }
+    }
+
+    if let Some(ref island_state) = params.island_state {
+        let inputs = island_state.tick_recorded_inputs();
+        if !inputs.is_empty() {
+            for rec in inputs {
+                let recorded_tick = rec.tick;
+                match &recorder.sink {
+                    RecorderSink::Async(_) => {
+                        recorder.push_ring_entry(
+                            true,
+                            RingEntry::InputGuestIntent {
+                                tick: recorded_tick,
+                                cause_id: rec.cause_id,
+                                intent: rec.intent,
+                            },
+                        );
+                    }
+                    RecorderSink::Inline(_) => {
+                        recorder.push_input(RecordedInput {
+                            tick: recorded_tick,
+                            cause_id: rec.cause_id,
+                            kind: InputKind::GuestIntent(rec.intent),
+                        });
+                    }
+                }
+                pushed_or_sealed = true;
+            }
         }
     }
 

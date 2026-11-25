@@ -47,6 +47,7 @@ fn sample_header(deterministic: bool) -> WorldRecordHeader {
         era_index: 0,
         prev_era_tail_hash: None,
         omissions: vec!["gpu_microstate".to_string()],
+        island: None,
     }
 }
 

@@ -232,6 +232,21 @@ pub fn tier_at(position: Vec3, focus: Option<&LodFocus>, bands: Option<&LodBands
     }
 }
 
+/// Effective tier honoring an explicit per-organism LOD exemption (`InhabitedControl` in `ADR-0014`),
+/// pinning inhabited entities to `LodTier::Hot` regardless of camera `LodFocus`.
+pub fn effective_tier(
+    position: Vec3,
+    focus: Option<&LodFocus>,
+    bands: Option<&LodBands>,
+    lod_exempt: bool,
+) -> LodTier {
+    if lod_exempt {
+        LodTier::Hot
+    } else {
+        tier_at(position, focus, bands)
+    }
+}
+
 /// The LOD inputs a system needs, as one parameter.
 ///
 /// Bundled rather than taken as three separate arguments because Bevy caps a system at sixteen
@@ -281,6 +296,21 @@ impl LodSnapshot {
             self.tick,
             self.bands.warm_interval,
         )
+    }
+
+    /// Whether the agent at `position` should think/update when honoring an explicit `lod_exempt`
+    /// lease (`InhabitedControl`).
+    pub fn should_think_with_exemption(
+        &self,
+        position: Vec3,
+        entity_index: u32,
+        lod_exempt: bool,
+    ) -> bool {
+        if lod_exempt {
+            true
+        } else {
+            self.should_think(position, entity_index)
+        }
     }
 }
 
