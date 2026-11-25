@@ -539,6 +539,22 @@ MAP-D5    = after WV2-PHYS2 (PR #270: S2_1 = P01 at 4096^2 passes 9/15 gates, C0
             code and thresholds unchanged, every candidate pre-registered in the note before it is
             measured, artifacts/world-v2/ untouched. Replacing C01 with any candidate is a separate
             owner decision. (Owner in chat, 2026-11-25: "Keep C01, do PHYS3".)
+MAP-D6    = WV2-PHYS3 (PR #274): the Round-6c candidate S2_6 (coast_frac_amp 0.058, 4096^2) passes
+            10/15 gates with zero regressions against PHYS2 S2_1 (9/15), and it removes C01's summit
+            clipping (max 5,667 m, 0 cells >= 5,699 m; C01 has 514 cells at the 5,700 m ceiling). The same
+            code at the default 0.055 (S2_5) passes 8/15 and fails m1 and m2, and S2_6 passes m2 by 0.05
+            (rs 57.32 < ww 57.37). Decision: #274 merges with default_coast_frac_amp raised to 0.058, so
+            the trunk default reproduces S2_6, once (a) a default run reproduces S2_6 bit for bit and is
+            re-verified, and (b) the same check at 0.057 and 0.059 (4096^2) is measured and reported in
+            the note. The neighbours inform; they do not gate the merge. C01 stays under
+            artifacts/world-v2/ (MAP-D5 unchanged). Replacing C01 with S2_6 is decided later, together
+            with WV2-6, and needs the robustness result. (Owner in chat, 2026-11-25, accepting the
+            lead's recommendation: "oke làm theo ý bạn".)
+QD-WV2-6-PREVIEW = a dev-only WV2-6 preview with locally baked tiles (PR #278, titled "[PREVIEW — do not
+            merge]"), so the owner can see World v2 C01 in a viewer before the full card. It is never
+            merged and ships in no build. The full WV2-6 card keeps its two owner gates: the public tile
+            release (~145 MB on GitHub Releases) and the Iris Xe performance gate on the Dell. (Owner in
+            chat, 2026-11-25: "Yes, preview".)
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
