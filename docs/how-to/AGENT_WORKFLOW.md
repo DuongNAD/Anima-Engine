@@ -521,7 +521,7 @@ QD-PLANT  = ADR-0015 (evolving plants) has its six open gates decided, all as re
             D-PLANT-EVO-1 (A): a hybrid of two tiers: individual trees and shrubs, and grass as per-cell
             populations carrying trait distributions.
             D-PLANT-EVO-2 (A): the individual tree/shrub cap comes from the P1 BENCH-ENTITIES 60 Hz budget
-            (about 256-500); it overrides the flat max_tree_count of 50 (resources.rs:1217) only when the opt-in law
+            (about 256-500); it overrides the flat max_tree_count of 50 (resources.rs:1218) only when the opt-in law
             is on.
             D-PLANT-EVO-3 (A): each grass cell keeps a mean and a bounded genetic variance for quantized
             life-history traits (growth rate, drought tolerance, defence, palatability, seed dispersal),
