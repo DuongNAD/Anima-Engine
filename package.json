@@ -26,6 +26,7 @@
     "check:csp": "node scripts/check_csp_compat.mjs",
     "gen:world-manifest": "node scripts/run_ts.mjs scripts/gen_world_manifest.ts",
     "gen:artifact-fixture": "node scripts/run_ts.mjs scripts/gen_artifact_fixture.ts",
+    "fetch:world-v2-tiles": "node scripts/fetch_world_v2_tiles.mjs",
     "check:bundle": "node scripts/check_bundle_budget.mjs",
     "check:notice": "node scripts/gen_notice.mjs --check",
     "check:flora-footprint": "node scripts/check_flora_footprint.mjs",

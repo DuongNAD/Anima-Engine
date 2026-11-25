@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { driveTimeUniform } from './utils/sceneClock';
+import type { WorldV2LoadedBundle } from './worldV2/types';
 
 // ---------------------------------------------------------------------------------------
 // WorldWaterfalls — foam curtains hung over the steep river drops the generator detected
@@ -13,6 +14,7 @@ import { driveTimeUniform } from './utils/sceneClock';
 
 export interface WorldWaterfallsProps {
   world: World;
+  worldV2?: WorldV2LoadedBundle | null;
   renderSize?: number;
   heightRatio?: number;
 }
@@ -104,6 +106,7 @@ const FOAM_FRAGMENT = /* glsl */ `
 
 export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
   world,
+  worldV2 = null,
   renderSize = 400,
   heightRatio = 0.13,
 }) => {
@@ -192,7 +195,9 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       const yaw = world.waterfallYaw[i];
       const dirX = Math.cos(yaw);
       const dirZ = Math.sin(yaw);
-      const width = Math.min(4, 1.2 + dropY * 0.3);
+      const wfDischarge = worldV2?.sim.waterfalls[i]?.discharge_q_m3_s ?? 0;
+      const qBoost = wfDischarge > 0 ? Math.min(1.6, 1.0 + Math.log2(1 + wfDischarge) * 0.08) : 1.0;
+      const width = Math.min(4.8, (1.2 + dropY * 0.3) * qBoost);
 
       // Curtain: hangs from the lip, pushed proud of the rock face so the top edge doesn't
       // knife back into the slope.
@@ -211,7 +216,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     }
     if (curtain.instanceMatrix) curtain.instanceMatrix.needsUpdate = true;
     if (foam.instanceMatrix) foam.instanceMatrix.needsUpdate = true;
-  }, [world, count, renderSize, heightUnits]);
+  }, [world, worldV2, count, renderSize, heightUnits]);
 
   useEffect(() => {
     return () => {

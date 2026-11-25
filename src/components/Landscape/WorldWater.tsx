@@ -5,28 +5,13 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { World } from './utils/worldGen';
 import { sceneElapsed } from './utils/sceneClock';
 import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
-
-// ---------------------------------------------------------------------------------------
-// WorldWater — the ocean and inland lakes for the huge SoA world.
-//
-// Rivers/streams are NOT rendered here: they are baked into the terrain mesh's vertex colours
-// (see WorldTerrain), so they read as a continuous ribbon following the ground instead of a
-// trail of floating quads.
-//
-// Water surfaces are flat, horizontal planes (rotated -90deg about X, so local +z is up). The
-// fragment shader samples a heightmap texture to get the terrain depth under each fragment,
-// grades the colour shallow->deep, draws shoreline foam, and — crucially — fades alpha to 0
-// where the plane sits over dry land. That last part lets each lake be ONE bounding-box plane:
-// it only shows where the terrain is actually below the water level.
-//
-// - Ocean: one big plane at sea level.
-// - Lakes: one plane per basin (World.lakeBasins), each sized to its cell-space bounding box.
-//
-// ShaderMaterials use fog={false} — three only injects fog uniforms for built-in materials.
-// ---------------------------------------------------------------------------------------
+import type { WorldV2LoadedBundle } from './worldV2/types';
 
 export interface WorldWaterProps {
   world: World;
+  worldV2?: WorldV2LoadedBundle | null;
+  /** Decorative inland lakes/ponds (`ADR-0010 §4`). Ocean remains visible when false. */
+  showDecorativeLakes?: boolean;
   renderSize?: number;
   heightRatio?: number;
   /** World-space direction TO the sun (the scene directional light's position direction). */
@@ -84,6 +69,9 @@ const fragmentShader = /* glsl */ `
   // flooded cells.
   uniform sampler2D uLakeMask;
   uniform float uMaskOn;
+  uniform sampler2D uShoreSdf;
+  uniform sampler2D uHydroFlow;
+  uniform float uUseWorldV2Water;
 
   varying vec3 vWorldPos;
 
@@ -175,10 +163,23 @@ const fragmentShader = /* glsl */ `
     float surf = sin(uTime * 0.9 + (vWorldPos.x + vWorldPos.z) * 0.045)
                + 0.5 * sin(uTime * 1.7 - (vWorldPos.x - vWorldPos.z) * 0.06);
     float foamReach = 0.95 + surf * 0.35;
-    float foamBand = (1.0 - smoothstep(0.0, max(0.35, foamReach), depth)) * detail * detail * (1.0 - edgeFade);
+    float waveExposure = 1.0;
+    float sdfFoamBoost = 0.0;
+    if (uUseWorldV2Water > 0.5) {
+      vec4 sdfSample = texture2D(uShoreSdf, clamp(uv, 0.0, 1.0));
+      float sdfM = sdfSample.r * 1000.0 - 500.0;
+      waveExposure = mix(0.45, 1.55, sdfSample.g);
+      float shoreRing = 1.0 - smoothstep(0.0, 95.0, abs(sdfM));
+      sdfFoamBoost = shoreRing * (0.28 + 0.22 * sin(sdfM * 0.18 - uTime * 2.1)) * sdfSample.g;
+      vec4 hydroSample = texture2D(uHydroFlow, clamp(uv, 0.0, 1.0));
+      float estuaryMix = smoothstep(0.15, 0.85, hydroSample.a) * (1.0 - edgeFade) * 0.25;
+      color = mix(color, mix(uShallow, vec3(0.42, 0.68, 0.72), 0.45), estuaryMix);
+    }
+    float foamBand = (1.0 - smoothstep(0.0, max(0.35, foamReach * waveExposure), depth)) * detail * detail * (1.0 - edgeFade);
+    foamBand = clamp(foamBand + sdfFoamBoost * detail * (1.0 - edgeFade), 0.0, 1.0);
     if (foamBand > 0.001) {
       float f = fbm(vWorldPos.xz * 0.55 + vec2(0.0, uTime * 0.55));
-      float foam = smoothstep(0.5, 0.92, f) * foamBand * 0.72;
+      float foam = smoothstep(0.48, 0.90, f) * foamBand * 0.76;
       color = mix(color, vec3(0.96, 0.99, 1.0), foam);
       alpha = mix(alpha, 0.92, foam);
     }
@@ -206,6 +207,9 @@ const fragmentShader = /* glsl */ `
 interface WaterUniformInputs {
   heightTex: THREE.Texture;
   lakeMaskTex: THREE.Texture;
+  shoreSdfTex: THREE.Texture;
+  hydroFlowTex: THREE.Texture;
+  useWorldV2Water: number;
   renderSize: number;
   seaY: number;
   /** Seed only: `useFrame` writes `uSunDir` every frame from the live prop. */
@@ -246,11 +250,16 @@ function makeWaterUniforms(
     uFogFar: { value: inputs.renderSize * 3.2 },
     uLakeMask: { value: inputs.lakeMaskTex },
     uMaskOn: { value: maskOn },
+    uShoreSdf: { value: inputs.shoreSdfTex },
+    uHydroFlow: { value: inputs.hydroFlowTex },
+    uUseWorldV2Water: { value: inputs.useWorldV2Water },
   };
 }
 
 export const WorldWater: React.FC<WorldWaterProps> = ({
   world,
+  worldV2 = null,
+  showDecorativeLakes = true,
   renderSize = 400,
   heightRatio = 0.13,
   sunDir = [1, 1.5, 0.6],
@@ -290,13 +299,60 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world]);
 
+  const { shoreSdfTex, hydroFlowTex } = useMemo(() => {
+    if (worldV2) {
+      const n = worldV2.size * worldV2.size;
+      const sdfRgba = new Uint8Array(n * 4);
+      for (let i = 0; i < n; i += 1) {
+        sdfRgba[i * 4] = worldV2.shoreSdfRg[i * 2];
+        sdfRgba[i * 4 + 1] = worldV2.shoreSdfRg[i * 2 + 1];
+        sdfRgba[i * 4 + 3] = 255;
+      }
+      const sTex = new THREE.DataTexture(sdfRgba, worldV2.size, worldV2.size, THREE.RGBAFormat, THREE.UnsignedByteType);
+      sTex.minFilter = THREE.LinearFilter;
+      sTex.magFilter = THREE.LinearFilter;
+      sTex.wrapS = THREE.ClampToEdgeWrapping;
+      sTex.wrapT = THREE.ClampToEdgeWrapping;
+      sTex.needsUpdate = true;
+
+      const hTex = new THREE.DataTexture(
+        new Uint8Array(worldV2.hydroFlowRgba),
+        worldV2.size,
+        worldV2.size,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+      );
+      hTex.minFilter = THREE.LinearFilter;
+      hTex.magFilter = THREE.LinearFilter;
+      hTex.wrapS = THREE.ClampToEdgeWrapping;
+      hTex.wrapT = THREE.ClampToEdgeWrapping;
+      hTex.needsUpdate = true;
+      return { shoreSdfTex: sTex, hydroFlowTex: hTex };
+    }
+    const empty = new Uint8Array([128, 0, 0, 255]);
+    const sTex = new THREE.DataTexture(empty, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    const hTex = new THREE.DataTexture(new Uint8Array([128, 128, 0, 0]), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+    sTex.needsUpdate = true;
+    hTex.needsUpdate = true;
+    return { shoreSdfTex: sTex, hydroFlowTex: hTex };
+  }, [worldV2]);
+
   // The sun direction the uniform blocks are *seeded* with, captured at mount. `useFrame` writes
   // `uSunDir` from the live prop every frame, so this is an initial condition — pinning it is what
   // lets the two memos below list every value they read instead of suppressing the rule.
   const [uniformInputSunDir] = useState<[number, number, number]>(() => sunDir);
   const uniformInputs = useMemo<WaterUniformInputs>(
-    () => ({ heightTex, lakeMaskTex, renderSize, seaY, sunDir: uniformInputSunDir }),
-    [heightTex, lakeMaskTex, renderSize, seaY, uniformInputSunDir],
+    () => ({
+      heightTex,
+      lakeMaskTex,
+      shoreSdfTex,
+      hydroFlowTex,
+      useWorldV2Water: worldV2 ? 1 : 0,
+      renderSize,
+      seaY,
+      sunDir: uniformInputSunDir,
+    }),
+    [heightTex, lakeMaskTex, shoreSdfTex, hydroFlowTex, worldV2, renderSize, seaY, uniformInputSunDir],
   );
 
   const oceanUniforms = useMemo(
@@ -374,11 +430,13 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return () => {
       heightTex.dispose();
       lakeMaskTex.dispose();
+      shoreSdfTex.dispose();
+      hydroFlowTex.dispose();
       lakeMaterial.dispose();
       lakesGeom?.dispose();
       iceGeom?.dispose();
     };
-  }, [heightTex, lakeMaskTex, lakeMaterial, lakesGeom, iceGeom]);
+  }, [heightTex, lakeMaskTex, shoreSdfTex, hydroFlowTex, lakeMaterial, lakesGeom, iceGeom]);
 
   return (
     <group name="world-water">
@@ -399,15 +457,17 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
         />
       </mesh>
 
-      {/* Every liquid lake & pond in ONE merged mesh (a single draw call). */}
-      {lakesGeom && <mesh geometry={lakesGeom} material={lakeMaterial} name="world-lakes" />}
+      {/* Every liquid lake & pond in ONE merged mesh (a single draw call, §6 decorative gate). */}
+      {showDecorativeLakes && lakesGeom ? (
+        <mesh geometry={lakesGeom} material={lakeMaterial} name="world-lakes" />
+      ) : null}
 
       {/* Frozen lakes: opaque pale ice sheets over cold-climate basins. */}
-      {iceGeom && (
+      {showDecorativeLakes && iceGeom ? (
         <mesh geometry={iceGeom} name="world-lake-ice">
           <meshStandardMaterial color="#d7e9f2" roughness={0.35} metalness={0} />
         </mesh>
-      )}
+      ) : null}
     </group>
   );
 };

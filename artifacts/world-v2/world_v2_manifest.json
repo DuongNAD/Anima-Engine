@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "_generated": {
+    "by": "scripts/gen_world_v2_manifest.ts",
+    "seed": 1465266689,
+    "schemaTag": "ANMW3-SNSM-v1",
+    "gridSize": 4096,
+    "extentM": 40960,
+    "generatorVersion": 3
+  },
+  "identities": {
+    "simWorldIdentity": "cbdd3ba9f57725ada233d1b43f2f5804fe8cb0fe0b098ca5ef8ae0aae5784c4d",
+    "bundleIdentity": "2f002d1bf976131e3034f9d574a3b7089c291a0c6c0803236ee6817c0ab8cafe",
+    "releaseArchive": "v0.9.0-internal/world_v2_cbdd3ba9_tiles.tar.gz",
+    "releaseArchiveSha256": "4fa1c1544147347b161532509cc286ac93bf85b4e92f4ea9630c2c648548e20e",
+    "gatesSha256": "cd27e648b81535c8273f3fe788fb8abe4d384c65bfbcb1d4d60665e63a6ebe02",
+    "presetSha256": "f460fa73b5a9d458d1ce8eeef1ca7be47042ea38fba3162ece3d94ea92fd3f2e"
+  },
+  "simBundle": {
+    "path": "artifacts/world-v2/sim_256.anmw3",
+    "bytes": 1442804,
+    "width": 256,
+    "height": 256,
+    "seaLevelNorm": 0.20833333,
+    "simSeedU32": 1465266689,
+    "waterfallCount": 0,
+    "caveEntranceCount": 40
+  },
+  "indexSummary": {
+    "path": "artifacts/world-v2/index.json",
+    "bytes": 929552,
+    "tileEntryCount": 3792
+  },
+  "coordinateContract": {
+    "extentM": 40960,
+    "elevMinM": -1500,
+    "elevMaxM": 5700,
+    "worldMinXZ": -100,
+    "worldMaxXZ": 100,
+    "worldMinY": 0,
+    "worldMaxY": 10,
+    "simGridDim": 256
+  },
+  "ownerGates": {
+    "publicTileRelease": "open",
+    "irisXeBeforeAfterFps": "open"
+  }
+}
