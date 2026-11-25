@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { World } from './utils/worldGen';
 import { sceneElapsed } from './utils/sceneClock';
 import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
-import type { WorldV2LoadedBundle } from './worldV2/types';
+import { ELEV_SPAN_M, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './worldV2/types';
 import { ATMOSPHERE_FRAGMENT_PARS, atmosphereUniforms } from './materials/atmosphere';
 
 export interface WorldWaterProps {
@@ -73,6 +73,10 @@ const fragmentShader = /* glsl */ `
   uniform sampler2D uShoreSdf;
   uniform sampler2D uHydroFlow;
   uniform float uUseWorldV2Water;
+  // WV2-LOOK (World v2 only): metres per scene unit vertically / horizontally, SDF texel size.
+  uniform float uDepthMPerUnit;
+  uniform float uMPerUnitH;
+  uniform float uSdfTexel;
 
   varying vec3 vWorldPos;
   ${ATMOSPHERE_FRAGMENT_PARS}
@@ -129,27 +133,140 @@ const fragmentShader = /* glsl */ `
     float edgeSoft = smoothstep(0.84, 0.98, boxN + nEdge) * isOcean;
     float edgeHard = smoothstep(-uTerrainSize * 0.04, -uTerrainSize * 0.01, borderDist) * isOcean;
     float edgeFade = max(edgeSoft, edgeHard);
+
     if (uUseWorldV2Water > 0.5) {
-      // WV2-LOOK: a wider, noisier fall-off so the shelf colour does not stop on the map's line.
+      // ---- WV2-LOOK ocean and coast (World v2 only; reference board CST-01..04) -------------
+      // A wider, noisier map-edge fall-off so the shelf colour does not stop on the map's line.
       float nEdge2 = (noise(vWorldPos.xz * 0.004) - 0.5) * 0.10 + (noise(vWorldPos.xz * 0.017) - 0.5) * 0.05;
-      edgeFade = max(edgeFade * 0.0, smoothstep(0.86, 1.02, boxN + nEdge2) * isOcean);
+      float vEdge = smoothstep(0.86, 1.02, boxN + nEdge2) * isOcean;
+      float depthM = depth * uDepthMPerUnit;
+      float camD = distance(cameraPosition, vWorldPos);
+      float det = 1.0 - smoothstep(uTerrainSize * 0.12, uTerrainSize * 0.48, camD);
+
+      // Distance to the shore in metres (shore_sdf: negative under water, clamped at 500 m) and
+      // the bake's wave exposure. Lakes have no ocean surf.
+      vec4 sdfS = texture2D(uShoreSdf, clamp(uv, 0.0, 1.0));
+      float sdfSigned = sdfS.r * 1000.0 - 500.0;           // + on land
+      float offM = max(0.0, -sdfSigned);
+      float expo = sdfS.g;
+      if (uMaskOn > 0.5) { offM = 500.0; expo = 0.0; }
+      // Near the map edge the terrain is sunk under the sea for looks (terrain material) while the
+      // SDF still calls it land: no surf there, and the sea stays opaque over it.
+      float edgeBand = smoothstep(0.86, 0.93, boxN) * isOcean;
+
+      // Depth colour (CST-04): clear and green over the swash and bar, teal over the shelf,
+      // saturated deep blue offshore; the light tint is held to the near-shore band.
+      float nearShore = 1.0 - smoothstep(280.0, 500.0, offM);
+      float dClear = 1.0 - exp(-depthM / 3.0);
+      float dTeal = 1.0 - exp(-depthM / 12.0);
+      float dDeep = max(1.0 - exp(-depthM / 35.0), (1.0 - nearShore) * isOcean);
+      dClear = mix(dClear, 1.0, vEdge);
+      dTeal = mix(dTeal, 1.0, vEdge);
+      dDeep = mix(dDeep, 1.0, vEdge);
+      vec3 wcol = mix(vec3(0.30, 0.56, 0.46), vec3(0.06, 0.32, 0.37), dClear);
+      wcol = mix(wcol, vec3(0.02, 0.11, 0.27), dDeep);
+
+      // Surf zone (CST-01..03): breaker lines parallel to the shore, each a white crest with a
+      // streaky foam trail seaward of it, travelling shoreward; foam thins toward the beach.
+      // Driven by offshore distance from the SDF, so the lines follow the coastline's shape.
+      float surfOuter = mix(170.0, 420.0, expo);
+      float zone = (1.0 - smoothstep(surfOuter * 0.70, surfOuter, offM))
+                 * (1.0 - smoothstep(14.0, 32.0, depthM)) * (1.0 - vEdge) * (1.0 - edgeBand) * isOcean;
+      const float LAMBDA = 62.0;
+      float fwPhase = fwidth(offM) / LAMBDA;                 // uniform control flow
+      float aa = 1.0 - smoothstep(0.08, 0.35, fwPhase);
+      float inner = smoothstep(0.0, surfOuter * 0.55, offM);
+      float spent = mix(0.30, 1.0, inner);
+      float foamAmt = 0.0;
+      if (zone > 0.001) {
+        float tx = uSdfTexel;
+        vec2 g = vec2(
+          texture2D(uShoreSdf, clamp(uv + vec2(tx, 0.0), 0.0, 1.0)).r - texture2D(uShoreSdf, clamp(uv - vec2(tx, 0.0), 0.0, 1.0)).r,
+          texture2D(uShoreSdf, clamp(uv + vec2(0.0, tx), 0.0, 1.0)).r - texture2D(uShoreSdf, clamp(uv - vec2(0.0, tx), 0.0, 1.0)).r);
+        vec2 landward = normalize(g + vec2(1e-6));
+        vec2 tangent = vec2(-landward.y, landward.x);
+        float alongM = dot(vWorldPos.xz, tangent) * uMPerUnitH;
+        float warp = (noise(vec2(alongM * 0.004, 3.1)) - 0.5) * 0.9 + (noise(vec2(alongM * 0.017, 7.7)) - 0.5) * 0.3;
+        float phase = (offM + uTime * 6.0) / LAMBDA + warp;
+        float ph = fract(phase);
+        float waveId = floor(phase);
+        // Only stretches of each crest are breaking at any moment.
+        float section = smoothstep(0.28, 0.60, noise(vec2(alongM * 0.005 + waveId * 3.7, waveId * 1.3)));
+        float crest = smoothstep(0.0, 0.012, ph) * (1.0 - smoothstep(0.05, 0.13, ph));
+        float trail = exp(-ph * 2.0);
+        // Streaks run across the shore (they trail behind the breaker); low enough frequency
+        // not to sparkle at a few hundred metres.
+        float streak = noise(vec2(alongM * 0.05, offM * 0.018 + waveId * 5.3)) * 0.6
+                     + noise(vec2(alongM * 0.13, offM * 0.035 - uTime * 0.3)) * 0.4;
+        float trailFoam = trail * smoothstep(0.15, 0.60, streak + trail * 0.45);
+        // Whitewater between the breakers in the inner surf: a patchy, streaky sheet.
+        float sheet = smoothstep(0.45, 0.80, streak) * 0.35 * (1.0 - inner * 0.6);
+        float bands = (crest + trailFoam + sheet) * section * spent;
+        foamAmt = mix(0.30 * spent, bands, aa) * zone;
+        // Aerated water between the breakers is milkier and greener.
+        wcol = mix(wcol, vec3(0.30, 0.55, 0.52), zone * 0.30);
+        // The steep face just shoreward of a breaking crest is darker.
+        wcol *= 1.0 - smoothstep(0.80, 0.98, ph) * section * zone * aa * 0.25;
+      }
+      // Swash (CST-01): a thin lace of spent foam running up the last metres of the beach.
+      float swashN = noise(vWorldPos.xz * 0.55 + vec2(uTime * 0.12, -uTime * 0.09));
+      float swash = (1.0 - smoothstep(2.0, 16.0 + 8.0 * expo, offM))
+        * mix(0.35, smoothstep(0.42, 0.75, swashN), det) * isOcean * (1.0 - edgeBand);
+      foamAmt = max(foamAmt, swash * 0.85 * (1.0 - vEdge));
+
+      // Ripples, sun glints, sky fresnel.
+      vec3 nrm = vec3(0.0, 1.0, 0.0);
+      if (det > 0.002) {
+        vec2 rw = vWorldPos.xz * 1.1;
+        float r1 = noise(rw + vec2(uTime * 0.35, uTime * 0.21));
+        float r2 = noise(rw * 2.3 - vec2(uTime * 0.27, -uTime * 0.19));
+        float r3 = noise(rw * 0.37 + vec2(-uTime * 0.08, uTime * 0.05));
+        float rx = (r1 - 0.5) * 0.22 + (r2 - 0.5) * 0.12 + (r3 - 0.5) * 0.10;
+        float rz = (noise(rw.yx + 7.3 + uTime * 0.3) - 0.5) * 0.22 + (r2 - 0.5) * 0.08 + (r3 - 0.5) * 0.08;
+        nrm = normalize(vec3(rx * det, 1.0, rz * det));
+      }
+      vec3 vdir = normalize(cameraPosition - vWorldPos);
+      vec3 sdir = normalize(uSunDir);
+      float ndh2 = max(dot(nrm, normalize(sdir + vdir)), 0.0);
+      float spec2 = pow(ndh2, 220.0) * 1.4 * det + pow(ndh2, 24.0) * 0.06;
+      float diff2 = clamp(dot(nrm, sdir) * 0.45 + 0.64, 0.0, 1.0);
+      vec3 c = wcol * diff2 + uSunColor * spec2 * (1.0 - foamAmt);
+      vec3 rn = normalize(vec3(nrm.x * 0.3, 1.0, nrm.z * 0.3));
+      float schlick = 0.02 + 0.98 * pow(1.0 - max(dot(rn, vdir), 0.0), 5.0);
+      vec3 rdir = reflect(-vdir, rn);
+      rdir.y = abs(rdir.y);
+      float refl = clamp(schlick * 1.1 + 0.03, 0.0, 0.8);
+      c = mix(c, atmoSkyColor(normalize(rdir)), refl * (1.0 - foamAmt));
+      // Foam: white, lit by the sun, slightly blue in its own shade.
+      vec3 foamCol = vec3(0.86, 0.90, 0.93) * (0.82 + 0.18 * diff2);
+      c = mix(c, foamCol, clamp(foamAmt, 0.0, 1.0));
+
+      // Clear in the shallows (the bed shows), opaque offshore; reflection and foam are opaque.
+      float a = mix(0.22, 0.97, dTeal);
+      a = max(a, refl);
+      a = mix(a, 0.97, clamp(foamAmt * 1.3, 0.0, 1.0));
+      a *= smoothstep(0.0, 0.8, depthM);
+      // The sea plane is infinite: keep it out of below-sea-level hollows the shore SDF calls land.
+      a *= 1.0 - smoothstep(5.0, 40.0, sdfSigned) * isOcean * (1.0 - edgeBand);
+      a = mix(a, 1.0, vEdge);
+      if (uMaskOn > 0.5) {
+        a *= smoothstep(0.2, 0.55, texture2D(uLakeMask, clamp(uv, 0.0, 1.0)).r);
+      }
+
+      // Spray (CST-01): a faint bright haze over the breaking surf, then the shared aerial
+      // perspective (whose low marine layer softens what lies behind the surf).
+      vec3 hdir = normalize(vWorldPos - cameraPosition);
+      vec3 hazeC = atmoSkyColor(normalize(vec3(hdir.x, hdir.y * 0.2, hdir.z)));
+      c = mix(c, mix(hazeC, vec3(0.92), 0.3), zone * expo * 0.12);
+      float hz = atmoHazeAmount(cameraPosition, vWorldPos);
+      c = mix(c, hazeC, hz);
+      a = mix(a, 1.0, hz * hz);
+      gl_FragColor = vec4(c, a);
+      return;
     }
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
     depthN = mix(depthN, 1.0, edgeFade);
     vec3 color = mix(uShallow, uDeep, depthN);
-    if (uUseWorldV2Water > 0.5) {
-      // WV2-LOOK: absorption-style depth colour — turquoise over the shelf, through teal, to a
-      // deep ocean blue that is not the near-black navy of the legacy palette.
-      float dAbs = 1.0 - exp(-depth / (uSeaY * 0.10 + 0.001));
-      float dDeep = 1.0 - exp(-depth / (uSeaY * 0.55 + 0.001));
-      dAbs = mix(dAbs, 1.0, edgeFade);
-      dDeep = mix(dDeep, 1.0, edgeFade);
-      vec3 wShallow = vec3(0.16, 0.42, 0.40);
-      vec3 wMid = vec3(0.05, 0.24, 0.30);
-      vec3 wDeep = vec3(0.025, 0.11, 0.20);
-      color = mix(mix(wShallow, wMid, dAbs), wDeep, dDeep);
-      depthN = max(dAbs, depthN);
-    }
 
     // Micro-detail dies completely before overview distance (~0.48 * terrainSize) so open ocean
     // never shimmers into white speckle noise.
@@ -157,55 +274,27 @@ const fragmentShader = /* glsl */ `
     float detail = 1.0 - smoothstep(uTerrainSize * 0.12, uTerrainSize * 0.48, camDist);
 
     // Animated micro-normal for soft sun sheen.
-    vec3 normal = vec3(0.0, 1.0, 0.0);
-    if (uUseWorldV2Water < 0.5) {
-      vec2 sw = vWorldPos.xz * 0.22;
-      float n1 = noise(sw + vec2(uTime * 0.20, uTime * 0.13));
-      float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
-      normal = normalize(vec3((n1 - 0.5) * 0.48 * detail, 1.0, (n2 - 0.5) * 0.48 * detail));
-    } else if (detail > 0.002) {
-      // WV2-LOOK: wind ripples at a believable wavelength (~5-40 m), not 150 m blobs that the
-      // broad specular lobe turned into cloud-like patches. Skipped where detail has faded.
-      vec2 rw = vWorldPos.xz * 1.1;
-      float r1 = noise(rw + vec2(uTime * 0.35, uTime * 0.21));
-      float r2 = noise(rw * 2.3 - vec2(uTime * 0.27, -uTime * 0.19));
-      float r3 = noise(rw * 0.37 + vec2(-uTime * 0.08, uTime * 0.05));
-      float rx = (r1 - 0.5) * 0.22 + (r2 - 0.5) * 0.12 + (r3 - 0.5) * 0.10;
-      float rz = (noise(rw.yx + 7.3 + uTime * 0.3) - 0.5) * 0.22 + (r2 - 0.5) * 0.08 + (r3 - 0.5) * 0.08;
-      normal = normalize(vec3(rx * detail, 1.0, rz * detail));
-    }
+    vec2 sw = vWorldPos.xz * 0.22;
+    float n1 = noise(sw + vec2(uTime * 0.20, uTime * 0.13));
+    float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
+    vec3 normal = normalize(vec3((n1 - 0.5) * 0.48 * detail, 1.0, (n2 - 0.5) * 0.48 * detail));
+
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
     vec3 sunDir = normalize(uSunDir);
     vec3 halfDir = normalize(sunDir + viewDir);
     float ndh = max(dot(normal, halfDir), 0.0);
-    float spec = uUseWorldV2Water > 0.5
-      ? pow(ndh, 220.0) * 1.4 * detail + pow(ndh, 24.0) * 0.06
-      : pow(ndh, 28.0) * 0.42 * detail * detail + pow(ndh, 8.0) * 0.12;
+    float spec = pow(ndh, 28.0) * 0.42 * detail * detail + pow(ndh, 8.0) * 0.12;
     float diff = clamp(dot(normal, sunDir) * 0.45 + 0.64, 0.0, 1.0);
     color = color * diff + uSunColor * spec;
 
     // Grazing angles reflect atmospheric horizon tint smoothly.
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
-    if (uUseWorldV2Water > 0.5) {
-      // WV2-LOOK: Schlick fresnel against the sky dome's own gradient (shared uniforms).
-      float ndv = max(dot(normal, viewDir), 0.0);
-      float schlick = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
-      vec3 rn = normalize(vec3(normal.x * 0.3, 1.0, normal.z * 0.3));
-      float ndvR = max(dot(rn, viewDir), 0.0);
-      schlick = 0.02 + 0.98 * pow(1.0 - ndvR, 5.0);
-      vec3 rdir = reflect(-viewDir, rn);
-      rdir.y = abs(rdir.y);
-      vec3 skyR = atmoSkyColor(normalize(rdir));
-      color = mix(color, skyR, clamp(schlick * 1.1 + 0.03, 0.0, 0.8));
-    } else {
-      color = mix(color, uFogColor, clamp(fres * 0.85, 0.0, 0.62));
-    }
+    color = mix(color, uFogColor, clamp(fres * 0.85, 0.0, 0.62));
 
     // Transparent in coastal shallows (showing sandy/coral floor), seamlessly opaque in deep ocean
     // so the end of the terrain mesh at ±renderSize/2 never shows through the water.
     float oceanDeepOpaque = mix(uOpacity, 1.0, smoothstep(0.45, 0.92, depthN) * isOcean);
     float alpha = mix(0.36, 1.0, pow(depthN, 0.78)) * oceanDeepOpaque;
-    if (uUseWorldV2Water > 0.5) alpha = max(alpha, 0.58 + 0.4 * depthN);
 
     // Shoreline foam strictly inside terrain boundaries & close camera range.
     float surf = sin(uTime * 0.9 + (vWorldPos.x + vWorldPos.z) * 0.045)
@@ -244,16 +333,8 @@ const fragmentShader = /* glsl */ `
 
     // Smooth atmospheric fog + horizon melt so the ocean blends cleanly into the sky dome.
     float fogF = smoothstep(uFogNear * 0.72, uFogFar, camDist);
-    if (uUseWorldV2Water > 0.5) {
-      // WV2-LOOK: the same height-attenuated aerial perspective as terrain and flora.
-      float hz = atmoHazeAmount(cameraPosition, vWorldPos);
-      vec3 hdir = normalize(vWorldPos - cameraPosition);
-      color = mix(color, atmoSkyColor(normalize(vec3(hdir.x, hdir.y * 0.2, hdir.z))), hz);
-      alpha = mix(alpha, 1.0, hz * hz);
-    } else {
-      color = mix(color, uFogColor, fogF);
-      alpha = mix(alpha, 1.0, fogF * fogF);
-    }
+    color = mix(color, uFogColor, fogF);
+    alpha = mix(alpha, 1.0, fogF * fogF);
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -268,6 +349,10 @@ interface WaterUniformInputs {
   useWorldV2Water: number;
   renderSize: number;
   seaY: number;
+  /** WV2-LOOK: metres per scene unit, vertical and horizontal; shore-SDF texel size in UV. */
+  depthMPerUnit: number;
+  mPerUnitH: number;
+  sdfTexel: number;
   /** Seed only: `useFrame` writes `uSunDir` every frame from the live prop. */
   sunDir: [number, number, number];
 }
@@ -309,6 +394,9 @@ function makeWaterUniforms(
     uShoreSdf: { value: inputs.shoreSdfTex },
     uHydroFlow: { value: inputs.hydroFlowTex },
     uUseWorldV2Water: { value: inputs.useWorldV2Water },
+    uDepthMPerUnit: { value: inputs.depthMPerUnit },
+    uMPerUnitH: { value: inputs.mPerUnitH },
+    uSdfTexel: { value: inputs.sdfTexel },
     ...atmosphereUniforms,
   };
 }
@@ -407,15 +495,19 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       useWorldV2Water: worldV2 ? 1 : 0,
       renderSize,
       seaY,
+      depthMPerUnit: ELEV_SPAN_M / Math.max(1e-6, heightUnits),
+      mPerUnitH: (worldV2?.extentM ?? WORLD_EXTENT_M) / renderSize,
+      sdfTexel: 1 / Math.max(1, worldV2?.size ?? 1),
       sunDir: uniformInputSunDir,
     }),
-    [heightTex, lakeMaskTex, shoreSdfTex, hydroFlowTex, worldV2, renderSize, seaY, uniformInputSunDir],
+    [heightTex, lakeMaskTex, shoreSdfTex, hydroFlowTex, worldV2, renderSize, seaY, heightUnits, uniformInputSunDir],
   );
 
   const oceanUniforms = useMemo(
     // WV2-LOOK: the swell amplitude was +-1 unit = +-43 m of sea level at World v2 scale, so
-    // the shelf flooded and drained between frames. Keep a few metres.
-    () => makeWaterUniforms(uniformInputs, '#2d99a2', '#103b66', 0.92, uniformInputs.useWorldV2Water ? 0.1 : 0.85),
+    // the shelf flooded and drained between frames. Keep about a metre: the surf bands carry
+    // the wave motion now.
+    () => makeWaterUniforms(uniformInputs, '#2d99a2', '#103b66', 0.92, uniformInputs.useWorldV2Water ? 0.03 : 0.85),
     [uniformInputs],
   );
 

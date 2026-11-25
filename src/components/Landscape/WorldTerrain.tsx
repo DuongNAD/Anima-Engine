@@ -130,6 +130,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         horizonMap: textures.horizonMap,
         lookMaskMap: textures.lookMaskMap,
         lookNoiseMap: textures.lookNoiseMap,
+        lookShoreMap: textures.shoreSdfMap,
         elevMinM: ELEV_MIN_M,
         elevSpanM: ELEV_SPAN_M,
         normalScale: worldV2 ? 0.45 : 1,

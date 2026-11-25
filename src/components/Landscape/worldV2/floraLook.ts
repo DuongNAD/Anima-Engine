@@ -197,8 +197,8 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
       const r = w * 0.5;
       const a = jitter(new THREE.IcosahedronGeometry(r, 0), r * 0.45, 41).scale(1, 0.55, 0.85).translate(0, r * 0.22, 0);
       const b = jitter(new THREE.OctahedronGeometry(r * 0.55, 0), r * 0.3, 42).scale(1, 0.6, 1).translate(r * 0.7, r * 0.1, r * 0.35);
-      const pa = paintGradient(a, '#4a4743', '#77726a', -r * 0.2, r * 0.6);
-      const pb = paintGradient(b, '#45423e', '#6e695f', -r * 0.2, r * 0.4);
+      const pa = paintGradient(a, '#363431', '#5a5650', -r * 0.2, r * 0.6);
+      const pb = paintGradient(b, '#32302d', '#55514b', -r * 0.2, r * 0.4);
       pa.computeVertexNormals();
       pb.computeVertexNormals();
       return finish([pa, pb]);

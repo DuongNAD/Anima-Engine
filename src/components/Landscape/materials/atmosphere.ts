@@ -27,6 +27,9 @@ export interface AtmosphereUniforms {
   uAtmoScaleH: { value: number };
   /** Sea level, scene units (world Y). */
   uAtmoSeaY: { value: number };
+  /** Low marine/spray layer: extinction per unit at sea level, and its scale height (units). */
+  uAtmoMarineDensity: { value: number };
+  uAtmoMarineH: { value: number };
 }
 
 /** One live set, written by `WorldSky`, read by every World v2 material that hazes. */
@@ -39,6 +42,8 @@ export const atmosphereUniforms: AtmosphereUniforms = {
   uAtmoDensity: { value: 0.0011 },
   uAtmoScaleH: { value: 60 },
   uAtmoSeaY: { value: 35 },
+  uAtmoMarineDensity: { value: 0 },
+  uAtmoMarineH: { value: 1 },
 };
 
 /** Configure the haze for a scene of `renderSize` units whose sea surface sits at `seaY`. */
@@ -48,6 +53,11 @@ export function configureAtmosphere(renderSize: number, heightUnits: number, sea
   // Haze scale height ≈ 2.2 km of the 7.2 km elevation span.
   atmosphereUniforms.uAtmoScaleH.value = heightUnits * (2200 / 7200);
   atmosphereUniforms.uAtmoSeaY.value = seaY;
+  // A thin salt-spray/marine layer (~60 m scale height): ~15% extra haze over 2 km at sea
+  // level, so surf-side cliffs and headlands behind the surf lose contrast (CST-01). Cameras
+  // above a few hundred metres look through almost none of it.
+  atmosphereUniforms.uAtmoMarineDensity.value = -Math.log(0.85) / ((2000 / 40960) * renderSize);
+  atmosphereUniforms.uAtmoMarineH.value = heightUnits * (60 / 7200);
 }
 
 /** Attach the shared uniforms to a shader passed through `onBeforeCompile`. */
@@ -64,6 +74,8 @@ uniform float uAtmoGlow;
 uniform float uAtmoDensity;
 uniform float uAtmoScaleH;
 uniform float uAtmoSeaY;
+uniform float uAtmoMarineDensity;
+uniform float uAtmoMarineH;
 
 vec3 atmoSkyColor(vec3 d) {
   float h = clamp(d.y, 0.0, 1.0);
@@ -76,16 +88,21 @@ vec3 atmoSkyColor(vec3 d) {
   return col;
 }
 
-float atmoHazeAmount(vec3 camP, vec3 p) {
-  float d = length(p - camP);
-  float H = max(uAtmoScaleH, 1.0);
-  float y0 = max(camP.y - uAtmoSeaY, 0.0);
-  float y1 = max(p.y - uAtmoSeaY, 0.0);
+// Mean of exp(-y/H) along a straight ray from height y0 to y1 (closed form).
+float atmoLayerMean(float y0, float y1, float H) {
   float dy = y1 - y0;
   float e0 = exp(-y0 / H);
   float e1 = exp(-y1 / H);
-  float k = abs(dy) > 0.05 ? (e0 - e1) * H / dy : e0;
-  return 1.0 - exp(-uAtmoDensity * d * k);
+  return abs(dy) > 0.02 * H ? (e0 - e1) * H / dy : e0;
+}
+
+float atmoHazeAmount(vec3 camP, vec3 p) {
+  float d = length(p - camP);
+  float y0 = max(camP.y - uAtmoSeaY, 0.0);
+  float y1 = max(p.y - uAtmoSeaY, 0.0);
+  float tau = uAtmoDensity * atmoLayerMean(y0, y1, max(uAtmoScaleH, 1.0))
+            + uAtmoMarineDensity * atmoLayerMean(y0, y1, max(uAtmoMarineH, 0.05));
+  return 1.0 - exp(-d * tau);
 }
 
 vec3 atmoApply(vec3 col, vec3 p) {

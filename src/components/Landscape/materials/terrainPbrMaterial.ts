@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import type { TerrainPbrArrays } from '../assets/worldAssets';
-import {
-  ATMOSPHERE_FRAGMENT_PARS,
-  atmosphereFragmentApply,
-  bindAtmosphereUniforms,
-} from './atmosphere';
+import { ATMOSPHERE_FRAGMENT_PARS, bindAtmosphereUniforms } from './atmosphere';
 
 // prototype, to be replaced — W3-lite 6-layer biome/slope/height PBR splat terrain material with seamless procedural fallback.
 
@@ -26,6 +22,8 @@ export interface TerrainPbrMaterialParams {
    */
   lookMaskMap?: THREE.Texture | null;
   lookNoiseMap?: THREE.Texture | null;
+  /** WV2-LOOK coast: baked shore SDF (R = (sdf_m + 500) / 1000, + on land; G = wave exposure). */
+  lookShoreMap?: THREE.Texture | null;
   elevMinM?: number;
   elevSpanM?: number;
 }
@@ -67,6 +65,7 @@ function makeDummyLayerArray(r: number, g: number, b: number, a: number): THREE.
 const WV2_LOOK_PARS = /* glsl */ `
 uniform sampler2D uLookMask;
 uniform sampler2D uLookNoise;
+uniform sampler2D uLookShore;
 uniform float uElevMinM;
 uniform float uElevSpanM;
 `;
@@ -215,6 +214,36 @@ lkGround *= lkDetail;
 // a tangent-space tilt (no derivatives, so no 2x2-pixel blocks; mip-filtered with distance).
 vec2 lkG = (vec2(lkNVHi.g, lkNVHi.b) - 0.5) * (1.0 - lkSnow * 0.7) * 0.9
          + (vec2(lkNHi.b, lkNHi.g) - 0.5) * 0.5;
+// ---- Coast (reference board CST-01, CST-03, CST-04) ------------------------------------------
+vec4 lkShoreS = texture2D(uLookShore, vMapUv);
+float lkShoreM = lkShoreS.r * 1000.0 - 500.0;          // metres from the shore, + on land
+float lkExpo = lkShoreS.g;
+float lkHAbove = (lkWp.y - uAtmoSeaY) * (uElevSpanM / uHeightUnits);   // metres above sea
+float lkCoast = 1.0 - smoothstep(150.0, 320.0, lkShoreM);
+// Sea bed: below the waterline it is sand, silt and rock, never meadow or canopy.
+float lkSeabed = (1.0 - smoothstep(-1.0, 0.6, lkHAbove)) * (1.0 - smoothstep(-10.0, 25.0, lkShoreM));
+vec3 lkBedCol = mix(vec3(0.17, 0.155, 0.12), vec3(0.075, 0.08, 0.075), smoothstep(1.5, 18.0, -lkHAbove))
+  * mix(0.85, 1.12, lkNHi.r);
+lkGround = mix(lkGround, mix(lkBedCol, lkGround, lkRock * 0.5), lkSeabed);
+// Beach (CST-03): a narrow, darker sand strip between the surf and the slope. Beach-class
+// ground higher up becomes dune grass instead of a wide pale band; gentle ground right at the
+// waterline gets a strip of sand/shingle even where the biome is not Beach.
+float lkBeachBand = (1.0 - smoothstep(3.0, 11.0, lkHAbove + (lkNHi.g - 0.5) * 4.0)) * step(-0.5, lkHAbove);
+float lkWaterStrip = (1.0 - smoothstep(1.2, 4.5, lkHAbove)) * step(-0.5, lkHAbove)
+  * (1.0 - smoothstep(0.10, 0.24, lkSlope)) * lkCoast;
+float lkSandW = max(lkMask.a * lkBeachBand, lkWaterStrip) * (1.0 - lkSnow);
+vec3 lkSandCol = mix(vec3(0.075, 0.068, 0.056), vec3(0.12, 0.105, 0.085), lkNMid.g) * mix(0.9, 1.08, lkNVHi.r);
+vec3 lkDuneCol = mix(vec3(0.075, 0.08, 0.045), vec3(0.11, 0.10, 0.065), lkNHi.b);
+lkGround = mix(lkGround, lkDuneCol, lkMask.a * (1.0 - lkBeachBand) * lkCoast * 0.75 * (1.0 - lkRock));
+lkGround = mix(lkGround, lkSandCol, lkSandW * (1.0 - lkRock * 0.7));
+// Swash band (CST-01, CST-04): sand and rock just above the waterline are wet, so darker here
+// and glossier below (roughness hook + sky reflection at the output stage).
+float lkWet = (1.0 - smoothstep(0.6, 2.4 + 2.6 * lkExpo, lkHAbove + (lkNVHi.b - 0.5) * 0.6))
+  * step(-0.4, lkHAbove) * (1.0 - smoothstep(25.0, 70.0, lkShoreM)) * step(-30.0, lkShoreM);
+lkGround *= mix(1.0, 0.45, lkWet);
+// Spray haze over the surf-side ground (applied with the aerial perspective).
+float lkSpray = lkExpo * (1.0 - smoothstep(40.0, 260.0, lkShoreM)) * (1.0 - smoothstep(0.0, 45.0, lkHAbove))
+  * step(-1.0, lkHAbove);
 float lkUnder = clamp((uAtmoSeaY - lkWp.y) / 4.0, 0.0, 1.0);
 lkGround = mix(lkGround, lkGround * vec3(0.42, 0.66, 0.70), lkUnder);
 // Baked cavity: part on albedo, the rest on indirect light (see aomap hook below).
@@ -268,6 +297,25 @@ const WV2_LOOK_NORMAL_FRAGMENT = /* glsl */ `
     mapN.xy += g * 0.16 * rough * lkNf;
     normal = normalize(tbn * mapN);
   }
+}
+`;
+
+// Output stage (after tone mapping, in display space like the sky dome): wet ground mirrors the
+// sky at grazing angles, spray softens surf-side ground, then the shared aerial perspective.
+const WV2_LOOK_OUTPUT = /* glsl */ `
+{
+  vec3 lkV = normalize(cameraPosition - vW3WorldPos);
+  if (lkWet > 0.01) {
+    vec3 lkWn = normalize(vec3(lkBn.x * 0.35, 1.0, lkBn.y * 0.35));
+    float lkF = 0.02 + 0.98 * pow(1.0 - max(dot(lkWn, lkV), 0.0), 5.0);
+    vec3 lkR = reflect(-lkV, lkWn);
+    lkR.y = abs(lkR.y);
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, atmoSkyColor(normalize(lkR)), clamp(lkF * 1.6 + 0.08, 0.0, 0.7) * lkWet);
+  }
+  vec3 lkHd = normalize(vW3WorldPos - cameraPosition);
+  vec3 lkHazeC = atmoSkyColor(normalize(vec3(lkHd.x, lkHd.y * 0.2, lkHd.z)));
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(lkHazeC, vec3(0.9), 0.25), lkSpray * 0.22);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, lkHazeC, atmoHazeAmount(cameraPosition, vW3WorldPos));
 }
 `;
 
@@ -345,7 +393,11 @@ vec4 w3SampleTriplanarRock(sampler2DArray texArr, vec3 wp, vec3 wn) {
         '#include <aomap_fragment>',
         '#include <aomap_fragment>\n\treflectedLight.indirectDiffuse *= lkAoInd;',
       )
-      .replace('#include <fog_fragment>', atmosphereFragmentApply('vW3WorldPos'));
+      .replace(
+        '#include <roughnessmap_fragment>',
+        '#include <roughnessmap_fragment>\n\troughnessFactor = mix(roughnessFactor, 0.16, lkWet);',
+      )
+      .replace('#include <fog_fragment>', WV2_LOOK_OUTPUT);
 }
 
 export function createTerrainPbrMaterial(
@@ -361,6 +413,15 @@ export function createTerrainPbrMaterial(
     THREE.UnsignedByteType,
   );
   dummyHorizon.needsUpdate = true;
+  // Far inland, no exposure: the coast terms vanish when no shore SDF is supplied.
+  const dummyShore = new THREE.DataTexture(
+    new Uint8Array([255, 0, 0, 255]),
+    1,
+    1,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType,
+  );
+  dummyShore.needsUpdate = true;
   const hasHorizon = Boolean(params.horizonMap);
   const look = Boolean(params.lookMaskMap && params.lookNoiseMap);
   const initSun = params.sunDir ?? [0.6, 0.7, 0.35];
@@ -393,6 +454,7 @@ export function createTerrainPbrMaterial(
   const lookUniforms = {
     uLookMask: { value: params.lookMaskMap ?? params.detailMap },
     uLookNoise: { value: params.lookNoiseMap ?? params.detailMap },
+    uLookShore: { value: params.lookShoreMap ?? dummyShore },
     uElevMinM: { value: params.elevMinM ?? -1500 },
     uElevSpanM: { value: params.elevSpanM ?? 7200 },
   };
@@ -423,6 +485,7 @@ export function createTerrainPbrMaterial(
     if (look) {
       shader.uniforms.uLookMask = lookUniforms.uLookMask;
       shader.uniforms.uLookNoise = lookUniforms.uLookNoise;
+      shader.uniforms.uLookShore = lookUniforms.uLookShore;
       shader.uniforms.uElevMinM = lookUniforms.uElevMinM;
       shader.uniforms.uElevSpanM = lookUniforms.uElevSpanM;
       bindAtmosphereUniforms(shader.uniforms);
@@ -613,7 +676,7 @@ void w3ComputeLayerWeights(
   };
 
   material.customProgramCacheKey = () =>
-    look ? 'wv2-look-terrain-v1' : hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
+    look ? 'wv2-look-terrain-v2' : hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
 
   const handle: TerrainPbrShaderHandle = {
     applyPbrArrays(arrays) {
@@ -637,6 +700,7 @@ void w3ComputeLayerWeights(
       dummyAlbedo.dispose();
       dummyNormal.dispose();
       dummyHorizon.dispose();
+      dummyShore.dispose();
       material.dispose();
     },
   };

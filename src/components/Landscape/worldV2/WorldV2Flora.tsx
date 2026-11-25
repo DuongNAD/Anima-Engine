@@ -3,7 +3,13 @@ import * as THREE from 'three';
 import { type World } from '../utils/worldGen';
 import { sampleMeshHeight } from '../utils/worldSample';
 import type { QualityTier } from '../utils/qualityTiers';
-import { FLORA_SECTORS_PER_SIDE, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './types';
+import {
+  ELEV_SPAN_M,
+  FLORA_SECTORS_PER_SIDE,
+  SEA_LEVEL_NORM,
+  WORLD_EXTENT_M,
+  type WorldV2LoadedBundle,
+} from './types';
 import { LOOK_SPECIES, LOOK_SPECIES_SIZE, makeLookFloraGeometry } from './floraLook';
 import {
   ATMOSPHERE_FRAGMENT_PARS,
@@ -103,12 +109,19 @@ function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
         #endif
         vLkFloraWp = ( modelMatrix * lkFloraWp4 ).xyz;`,
       );
+    // Rocks in the swash band are wet: darker (CST-04).
     shader.fragmentShader =
       'varying vec3 vLkFloraWp;\n' +
       ATMOSPHERE_FRAGMENT_PARS +
-      shader.fragmentShader.replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
+      shader.fragmentShader
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          diffuseColor.rgb *= mix(1.0, 0.55, 1.0 - smoothstep(uAtmoSeaY + 0.01, uAtmoSeaY + 0.07, vLkFloraWp.y));`,
+        )
+        .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
   };
-  material.customProgramCacheKey = () => 'wv2-look-flora-v2';
+  material.customProgramCacheKey = () => 'wv2-look-flora-v3';
   return material;
 }
 
@@ -135,6 +148,8 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
 
   const batches = useMemo<SpeciesBatch[]>(() => {
     const unitsPerM = renderSize / (bundle.extentM || WORLD_EXTENT_M);
+    const unitsPerMY = heightUnits / ELEV_SPAN_M;
+    const seaY = SEA_LEVEL_NORM * heightUnits;
     const { size } = bundle;
     const perSpecies: number[][] = Array.from({ length: SPECIES_COUNT }, () => []);
     const perSpeciesColor: number[][] = Array.from({ length: SPECIES_COUNT }, () => []);
@@ -194,7 +209,10 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
             (sizeSpec.maxM - sizeSpec.minM) * Math.min(1, Math.max(0, scale01 * 0.6 + rnd() * 0.55 - 0.1));
           const h = hM * unitsPerM;
           const wJ = 0.85 + rnd() * 0.3;
-          const py = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits - h * 0.03;
+          const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
+          // Nothing grows under the sea; boulders may sit in the swash, half buried.
+          if (sid === LOOK_SPECIES.Rock ? groundY < seaY - 2 * unitsPerMY : groundY < seaY + 0.6 * unitsPerMY) continue;
+          const py = groundY - h * (sid === LOOK_SPECIES.Rock ? 0.3 : 0.03);
           dummy.position.set(px, py, pz);
           dummy.rotation.set((rnd() - 0.5) * 0.08, yaw0 + rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
           dummy.scale.set(h * wJ, h, h * (0.85 + rnd() * 0.3));
