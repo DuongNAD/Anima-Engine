@@ -3,11 +3,13 @@
 use crate::caves::CaveNetwork;
 use crate::lakes_falls::{LakeBasinRecord, WaterfallRecord};
 use crate::verify::g_shape::HackLawReport;
+use crate::verify::VerifierProfile;
 use crate::{BiomeId, WaterKind, BIOME_COUNT};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
-const MIN_PATCH_AREA_M2: f64 = 250_000.0; // 2,500 cells @ 10 m (`4096^2`), 0.25 km^2.
+pub(super) const MIN_PATCH_AREA_M2: f64 = 250_000.0; // 2,500 cells @ 10 m (`4096^2`), 0.25 km^2.
+const EDT_INF_F32: f32 = 1.0e20;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BiomePatchStat {
@@ -74,6 +76,10 @@ pub struct C4RiverProgressionReport {
     pub hack_consistent: bool,
     pub fan_count: usize,
     pub delta_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oxbow_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meander_scroll_cells: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,6 +93,19 @@ pub struct C5CoastalSightlinesReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct C5bCoastalPlainProfileReport {
+    pub gated: bool,
+    pub passed: bool,
+    pub evaluated_coastline_cells: usize,
+    pub total_coastline_cells: usize,
+    pub excluded_low_islet_coast_cells: usize,
+    pub plain_backed_5km_fraction: f64,
+    pub plain_backed_3km_fraction: f64,
+    pub median_coast_to_1000m_km: f64,
+    pub steep_mountain_front_fraction: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GCompV2Report {
     pub passed: bool,
     pub c1_partition: C1PartitionReport,
@@ -94,12 +113,15 @@ pub struct GCompV2Report {
     pub c3_lakes: C3LakeDiversityReport,
     pub c4_rivers_fans_deltas: C4RiverProgressionReport,
     pub c5_coastal_sightlines: C5CoastalSightlinesReport,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub c5b_coastal_plain_profile: Option<C5bCoastalPlainProfileReport>,
 }
 
 /// Phase-A compact terrain/hydrology summary evaluated before elevation buffers are dropped.
 pub struct C4C5TerrainSummary {
     pub c4: C4RiverProgressionReport,
     pub c5: C5CoastalSightlinesReport,
+    pub c5b: Option<C5bCoastalPlainProfileReport>,
     /// Per-cell bitflags: bit 0 = subaerial (`total_h_m > sea_level_m`), bit 1 = water body/strip
     /// (`Ocean | FreshwaterLake | EndorheicLake | DeltaTurbid <= sea_level`), bit 2 = glacier,
     /// bit 3 = non-cliff `water_kind == None && slope <= 0.70`.
@@ -139,7 +161,7 @@ fn biome_display_name(b: BiomeId) -> &'static str {
     }
 }
 
-/// Evaluates `C4`, `C5`, and compact `cell_flags` while terrain/hydrology arrays are resident.
+/// Evaluates `C4`, `C5`, and compact `cell_flags` under the standard `40.96 km` profile.
 #[allow(clippy::too_many_arguments)]
 pub fn evaluate_c4_c5_and_flags(
     width: usize,
@@ -156,6 +178,48 @@ pub fn evaluate_c4_c5_and_flags(
     hack_report: &HackLawReport,
     fan_count: usize,
     delta_count: usize,
+) -> C4C5TerrainSummary {
+    evaluate_c4_c5_and_flags_with_profile(
+        width,
+        height,
+        dx_m,
+        sea_level_m,
+        total_h_m,
+        water_h_m,
+        water_kind,
+        glacier_h_m,
+        river_w_m,
+        is_channel,
+        mean_width_by_order,
+        hack_report,
+        fan_count,
+        delta_count,
+        None,
+        None,
+        &VerifierProfile::standard_40km(),
+    )
+}
+
+/// Evaluates `C4`, `C5`, `C5b`, and compact `cell_flags` using an explicit [`VerifierProfile`].
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_c4_c5_and_flags_with_profile(
+    width: usize,
+    height: usize,
+    dx_m: f32,
+    sea_level_m: f32,
+    total_h_m: &[f32],
+    water_h_m: &[f32],
+    water_kind: &[u8],
+    glacier_h_m: &[f32],
+    river_w_m: &[f32],
+    is_channel: &[bool],
+    mean_width_by_order: &[(u8, usize, f64)],
+    hack_report: &HackLawReport,
+    fan_count: usize,
+    delta_count: usize,
+    oxbow_count: Option<usize>,
+    meander_scroll_cells: Option<usize>,
+    profile: &VerifierProfile,
 ) -> C4C5TerrainSummary {
     let n = width * height;
     let dx = f64::from(dx_m.max(1e-3));
@@ -235,11 +299,17 @@ pub fn evaluate_c4_c5_and_flags(
         && (1.0..=2.0).contains(&hack_report.prefactor_c_km)
         && hack_report.median_mainstem_sinuosity >= 1.05;
 
+    let oxbow_meander_ok = if profile.c4_require_oxbow_meander {
+        oxbow_count.unwrap_or(0) >= 1 || meander_scroll_cells.unwrap_or(0) > 0
+    } else {
+        true
+    };
     let c4_passed = (0.0005..=0.0030).contains(&counted_river_surface_fraction)
         && monotonic_w2_w3_w4
         && hack_consistent
-        && fan_count >= 2
-        && delta_count >= 2;
+        && fan_count >= profile.c4_fan_min
+        && delta_count >= profile.c4_delta_min
+        && oxbow_meander_ok;
 
     let c4 = C4RiverProgressionReport {
         passed: c4_passed,
@@ -250,6 +320,8 @@ pub fn evaluate_c4_c5_and_flags(
         hack_consistent,
         fan_count,
         delta_count,
+        oxbow_count,
+        meander_scroll_cells,
     };
 
     // C5 Coastal slope classification (`< 0.18` gentle sandy >= 20%, `>= 0.35` cliff >= 10%).
@@ -313,12 +385,21 @@ pub fn evaluate_c4_c5_and_flags(
     };
 
     // Check canonical elevated camera viewpoints against terrain/water surface (`C5` sightlines).
-    let (sightline_checks, obstructed_sightlines) =
-        check_canonical_sightlines(width, height, total_h_m, water_h_m);
+    let (sightline_checks, obstructed_sightlines) = check_canonical_sightlines(
+        width,
+        height,
+        total_h_m,
+        water_h_m,
+        profile.c5_top_cam_z_offset_m,
+    );
 
+    let c5_cliff_max_ok = profile
+        .c5_steep_cliff_max
+        .is_none_or(|max_cliff| steep_cliff_fraction <= max_cliff);
     let c5_passed = coast_cells >= 16
         && gentle_sandy_fraction >= 0.20
         && steep_cliff_fraction >= 0.10
+        && c5_cliff_max_ok
         && obstructed_sightlines == 0;
 
     let c5 = C5CoastalSightlinesReport {
@@ -330,7 +411,22 @@ pub fn evaluate_c4_c5_and_flags(
         obstructed_sightlines,
     };
 
-    C4C5TerrainSummary { c4, c5, cell_flags }
+    let c5b = Some(evaluate_c5b_coastal_plain_profile(
+        width,
+        height,
+        dx_m,
+        sea_level_m,
+        total_h_m,
+        water_kind,
+        profile,
+    ));
+
+    C4C5TerrainSummary {
+        c4,
+        c5,
+        c5b,
+        cell_flags,
+    }
 }
 
 fn check_canonical_sightlines(
@@ -338,6 +434,7 @@ fn check_canonical_sightlines(
     height: usize,
     total_h_m: &[f32],
     water_h_m: &[f32],
+    top_cam_z_offset_m: f64,
 ) -> (usize, usize) {
     let mut peak_idx = (height / 2) * width + (width / 2);
     let mut max_surface = f32::NEG_INFINITY;
@@ -363,7 +460,11 @@ fn check_canonical_sightlines(
         (0.50 * wf, 0.96 * hf, f64::from(max_surface) + 2_500.0),
         (0.04 * wf, 0.96 * hf, f64::from(max_surface) + 2_800.0),
         (0.04 * wf, 0.50 * hf, f64::from(max_surface) + 2_500.0),
-        (0.50 * wf, 0.50 * hf, f64::from(max_surface) + 12_000.0),
+        (
+            0.50 * wf,
+            0.50 * hf,
+            f64::from(max_surface) + top_cam_z_offset_m,
+        ),
     ];
 
     let mut obstructed = 0_usize;
@@ -404,7 +505,309 @@ fn check_canonical_sightlines(
     (views.len(), obstructed)
 }
 
-/// Completes `G-COMP v2` (`C1`, `C2`, `C3`) using biome buffers + compact Phase-A summary.
+fn edt_1d_squared(
+    f: &[f32],
+    out: &mut [f32],
+    v: &mut [usize],
+    z: &mut [f64],
+) {
+    let mut has_any = false;
+    let mut k = 0_usize;
+    for (q, &fq_f32) in f.iter().enumerate() {
+        if fq_f32 >= EDT_INF_F32 * 0.5 {
+            continue;
+        }
+        if !has_any {
+            v[0] = q;
+            z[0] = f64::NEG_INFINITY;
+            z[1] = f64::INFINITY;
+            k = 0;
+            has_any = true;
+            continue;
+        }
+        let qf = q as f64;
+        let fq = f64::from(fq_f32);
+        loop {
+            let r = v[k];
+            let rf = r as f64;
+            let fr = f64::from(f[r]);
+            let s = ((fq + qf * qf) - (fr + rf * rf)) / (2.0 * (qf - rf));
+            if s > z[k] {
+                k += 1;
+                v[k] = q;
+                z[k] = s;
+                z[k + 1] = f64::INFINITY;
+                break;
+            }
+            if k == 0 {
+                v[0] = q;
+                z[0] = f64::NEG_INFINITY;
+                z[1] = f64::INFINITY;
+                break;
+            }
+            k -= 1;
+        }
+    }
+    if !has_any {
+        out.fill(EDT_INF_F32);
+        return;
+    }
+    let mut k_scan = 0_usize;
+    for (q, dst) in out.iter_mut().enumerate() {
+        let qf = q as f64;
+        while z[k_scan + 1] < qf {
+            k_scan += 1;
+        }
+        let r = v[k_scan];
+        let d = qf - (r as f64);
+        *dst = (d * d + f64::from(f[r])) as f32;
+    }
+}
+
+fn compute_elev_edt_m_at_indices(
+    width: usize,
+    height: usize,
+    dx_m: f32,
+    total_h_m: &[f32],
+    elev_thresh_m: f32,
+    targets: &[usize],
+    scratch: &mut Vec<f32>,
+) -> Vec<f64> {
+    let n = width * height;
+    scratch.clear();
+    scratch.resize(n, EDT_INF_F32);
+    let mut has_target = false;
+    for (i, &h) in total_h_m.iter().enumerate() {
+        if h >= elev_thresh_m {
+            scratch[i] = 0.0;
+            has_target = true;
+        }
+    }
+    if !has_target {
+        return vec![f64::INFINITY; targets.len()];
+    }
+
+    let max_dim = width.max(height);
+    let mut line_in = vec![0.0_f32; max_dim];
+    let mut line_out = vec![0.0_f32; max_dim];
+    let mut v = vec![0_usize; max_dim];
+    let mut z = vec![0.0_f64; max_dim + 1];
+
+    // Pass 1: transform each column in-place.
+    for c in 0..width {
+        for r in 0..height {
+            line_in[r] = scratch[r * width + c];
+        }
+        edt_1d_squared(&line_in[..height], &mut line_out[..height], &mut v, &mut z);
+        for r in 0..height {
+            scratch[r * width + c] = line_out[r];
+        }
+    }
+
+    // Pass 2: transform each row in-place.
+    for r in 0..height {
+        let row = r * width;
+        line_in[..width].copy_from_slice(&scratch[row..row + width]);
+        edt_1d_squared(&line_in[..width], &mut line_out[..width], &mut v, &mut z);
+        scratch[row..row + width].copy_from_slice(&line_out[..width]);
+    }
+
+    let dx = f64::from(dx_m);
+    targets
+        .iter()
+        .map(|&idx| {
+            let sq = scratch[idx];
+            if sq >= EDT_INF_F32 * 0.5 {
+                f64::INFINITY
+            } else {
+                libm::sqrt(f64::from(sq.max(0.0))) * dx
+            }
+        })
+        .collect()
+}
+
+/// Evaluates `C5b.CoastalPlainProfile` (`WB-D8`) horizontal distance from coastline to `>= 100 m`
+/// plains and `>= 1,000 m` uplands, excluding low offshore islets (`max_h < 100 m`) when at
+/// least one mainland landmass reaches `>= 100 m`.
+#[must_use]
+pub fn evaluate_c5b_coastal_plain_profile(
+    width: usize,
+    height: usize,
+    dx_m: f32,
+    sea_level_m: f32,
+    total_h_m: &[f32],
+    water_kind: &[u8],
+    profile: &VerifierProfile,
+) -> C5bCoastalPlainProfileReport {
+    let n = width * height;
+    let is_ocean_cell = |idx: usize| -> bool {
+        let wk = water_kind[idx];
+        wk == WaterKind::Ocean as u8
+            || (wk == WaterKind::DeltaTurbid as u8 && total_h_m[idx] <= sea_level_m + 0.1)
+            || total_h_m[idx] <= sea_level_m
+    };
+
+    // Label 4-connected subaerial landmasses so low offshore islets (`< 100 m`) do not skew coastal plain metrics.
+    let mut comp_id = vec![0_u32; n];
+    let mut comp_has_100m: Vec<bool> = vec![false]; // index 0 unused
+    let mut queue = VecDeque::new();
+    let mut next_cid = 1_u32;
+    let mut any_mainland = false;
+
+    for i in 0..n {
+        if is_ocean_cell(i) || comp_id[i] != 0 {
+            continue;
+        }
+        let cid = next_cid;
+        next_cid += 1;
+        let mut reaches_100m = false;
+        comp_id[i] = cid;
+        queue.push_back(i);
+        while let Some(u) = queue.pop_front() {
+            if total_h_m[u] >= 100.0 {
+                reaches_100m = true;
+            }
+            let r = u / width;
+            let c = u % width;
+            let nbs = [
+                (r > 0, u.wrapping_sub(width)),
+                (r + 1 < height, u + width),
+                (c > 0, u.wrapping_sub(1)),
+                (c + 1 < width, u + 1),
+            ];
+            for (ok, nb) in nbs {
+                if ok && !is_ocean_cell(nb) && comp_id[nb] == 0 {
+                    comp_id[nb] = cid;
+                    queue.push_back(nb);
+                }
+            }
+        }
+        any_mainland |= reaches_100m;
+        comp_has_100m.push(reaches_100m);
+    }
+
+    let mut total_coastline_cells = 0_usize;
+    let mut excluded_low_islet_coast_cells = 0_usize;
+    let mut eval_coast_indices = Vec::new();
+
+    for r in 0..height {
+        let row = r * width;
+        for c in 0..width {
+            let i = row + c;
+            if is_ocean_cell(i) {
+                continue;
+            }
+            let touches_ocean = [
+                (r > 0, i.wrapping_sub(width)),
+                (r + 1 < height, i + width),
+                (c > 0, i.wrapping_sub(1)),
+                (c + 1 < width, i + 1),
+            ]
+            .iter()
+            .any(|&(ok, nb)| ok && is_ocean_cell(nb));
+            if !touches_ocean {
+                continue;
+            }
+            total_coastline_cells += 1;
+            let cid = comp_id[i] as usize;
+            if any_mainland && !comp_has_100m[cid] {
+                excluded_low_islet_coast_cells += 1;
+                continue;
+            }
+            eval_coast_indices.push(i);
+        }
+    }
+    drop(comp_id);
+
+    if eval_coast_indices.is_empty() {
+        return C5bCoastalPlainProfileReport {
+            gated: profile.c5b_gated,
+            passed: false,
+            evaluated_coastline_cells: 0,
+            total_coastline_cells,
+            excluded_low_islet_coast_cells,
+            plain_backed_5km_fraction: 0.0,
+            plain_backed_3km_fraction: 0.0,
+            median_coast_to_1000m_km: 0.0,
+            steep_mountain_front_fraction: 0.0,
+        };
+    }
+
+    let mut scratch = Vec::new();
+    let d100_m = compute_elev_edt_m_at_indices(
+        width,
+        height,
+        dx_m,
+        total_h_m,
+        100.0,
+        &eval_coast_indices,
+        &mut scratch,
+    );
+    let d1000_m = compute_elev_edt_m_at_indices(
+        width,
+        height,
+        dx_m,
+        total_h_m,
+        1_000.0,
+        &eval_coast_indices,
+        &mut scratch,
+    );
+    drop(scratch);
+
+    let eval_cnt = eval_coast_indices.len();
+    let mut backed_5km = 0_usize;
+    let mut backed_3km = 0_usize;
+    let mut steep_front = 0_usize;
+    let mut d1000_km_sorted = Vec::with_capacity(eval_cnt);
+
+    for (&d100, &d1000) in d100_m.iter().zip(d1000_m.iter()) {
+        if d100 >= 5_000.0 {
+            backed_5km += 1;
+        }
+        if d100 >= 3_000.0 {
+            backed_3km += 1;
+        }
+        if d1000 < 4_000.0 {
+            steep_front += 1;
+        }
+        let km = if d1000.is_finite() {
+            d1000 / 1_000.0
+        } else {
+            f64::from(dx_m) * libm::hypot(width as f64, height as f64) / 1_000.0
+        };
+        d1000_km_sorted.push(km);
+    }
+    d1000_km_sorted.sort_by(f64::total_cmp);
+    let mid = d1000_km_sorted.len() / 2;
+    let median_coast_to_1000m_km = if d1000_km_sorted.len() % 2 == 1 {
+        d1000_km_sorted[mid]
+    } else {
+        0.5 * (d1000_km_sorted[mid - 1] + d1000_km_sorted[mid])
+    };
+
+    let plain_backed_5km_fraction = backed_5km as f64 / eval_cnt as f64;
+    let plain_backed_3km_fraction = backed_3km as f64 / eval_cnt as f64;
+    let steep_mountain_front_fraction = steep_front as f64 / eval_cnt as f64;
+
+    let passed = plain_backed_5km_fraction >= profile.c5b_plain_backed_5km_min
+        && plain_backed_3km_fraction >= profile.c5b_plain_backed_3km_min
+        && median_coast_to_1000m_km >= profile.c5b_median_coast_to_1000m_min_km
+        && steep_mountain_front_fraction <= profile.c5b_steep_mountain_front_max;
+
+    C5bCoastalPlainProfileReport {
+        gated: profile.c5b_gated,
+        passed,
+        evaluated_coastline_cells: eval_cnt,
+        total_coastline_cells,
+        excluded_low_islet_coast_cells,
+        plain_backed_5km_fraction,
+        plain_backed_3km_fraction,
+        median_coast_to_1000m_km,
+        steep_mountain_front_fraction,
+    }
+}
+
+/// Completes `G-COMP v2` (`C1`, `C2`, `C3`) under the standard `40.96 km` profile.
 #[allow(clippy::too_many_arguments)]
 pub fn finalize_g_comp_v2(
     width: usize,
@@ -420,6 +823,42 @@ pub fn finalize_g_comp_v2(
     micro_pond_count: usize,
     cave_network: &CaveNetwork,
     terrain_summary: C4C5TerrainSummary,
+) -> GCompV2Report {
+    finalize_g_comp_v2_with_profile(
+        width,
+        height,
+        dx_m,
+        extent_m,
+        water_kind,
+        dominant_biome,
+        biome_ids,
+        biome_weights,
+        waterfalls,
+        basins,
+        micro_pond_count,
+        cave_network,
+        terrain_summary,
+        &VerifierProfile::standard_40km(),
+    )
+}
+
+/// Completes `G-COMP v2` (`C1..=C5b`) using an explicit [`VerifierProfile`].
+#[allow(clippy::too_many_arguments)]
+pub fn finalize_g_comp_v2_with_profile(
+    width: usize,
+    height: usize,
+    dx_m: f32,
+    extent_m: f32,
+    water_kind: &[u8],
+    dominant_biome: &[u8],
+    biome_ids: &[[u8; 4]],
+    biome_weights: &[[u8; 4]],
+    waterfalls: &[WaterfallRecord],
+    basins: &[LakeBasinRecord],
+    micro_pond_count: usize,
+    cave_network: &CaveNetwork,
+    terrain_summary: C4C5TerrainSummary,
+    profile: &VerifierProfile,
 ) -> GCompV2Report {
     let cell_flags = &terrain_summary.cell_flags;
     let n = width * height;
@@ -479,7 +918,7 @@ pub fn finalize_g_comp_v2(
         }
     }
     let ocean_fraction = ocean_cells as f64 / n.max(1) as f64;
-    let min_req_spacing = 0.01 * f64::from(extent_m);
+    let min_req_spacing = profile.min_cave_spacing_m(extent_m);
     let mut min_cave_spacing_m = f64::INFINITY;
     let mut invalid_cave_placements = 0_usize;
 
@@ -501,8 +940,10 @@ pub fn finalize_g_comp_v2(
         min_cave_spacing_m = 0.0;
     }
 
-    let min_patch_cells_required =
-        (libm::round(MIN_PATCH_AREA_M2 / (f64::from(dx_m) * f64::from(dx_m))) as usize).max(1);
+    let min_patch_cells_required = (libm::round(
+        profile.min_patch_area_m2 / (f64::from(dx_m) * f64::from(dx_m)),
+    ) as usize)
+        .max(1);
     let mut biome_stats = Vec::with_capacity(BiomeId::ZONED_TERRESTRIAL_16.len());
     let mut zoned_passing = 0_usize;
     for b in BiomeId::ZONED_TERRESTRIAL_16 {
@@ -526,8 +967,8 @@ pub fn finalize_g_comp_v2(
     let cave_cnt = cave_network.entrances.len();
 
     let c1_passed = (0.40..=0.50).contains(&ocean_fraction)
-        && (20..=80).contains(&wf_cnt)
-        && (30..=48).contains(&cave_cnt)
+        && (profile.c1_waterfall_min..=profile.c1_waterfall_max).contains(&wf_cnt)
+        && (profile.c1_cave_min..=profile.c1_cave_max).contains(&cave_cnt)
         && min_cave_spacing_m >= min_req_spacing
         && invalid_cave_placements == 0
         && zoned_passing == BiomeId::ZONED_TERRESTRIAL_16.len()
@@ -640,10 +1081,10 @@ pub fn finalize_g_comp_v2(
     let small_paramo_pond_count = micro_pond_count + small_paramo_ponds_from_basins;
 
     let c3_passed = (0.008..=0.045).contains(&lake_surface_fraction)
-        && large_lake_count >= 5
-        && high_paramo_lake_count >= 1
-        && caldera_or_trough_lake_count >= 1
-        && small_paramo_pond_count >= 10;
+        && large_lake_count >= profile.c3_large_lake_min
+        && high_paramo_lake_count >= profile.c3_paramo_lake_min
+        && caldera_or_trough_lake_count >= profile.c3_caldera_lake_min
+        && small_paramo_pond_count >= profile.c3_small_paramo_pond_min;
 
     let c3_lakes = C3LakeDiversityReport {
         passed: c3_passed,
@@ -657,7 +1098,9 @@ pub fn finalize_g_comp_v2(
 
     let c4 = terrain_summary.c4;
     let c5 = terrain_summary.c5;
-    let passed = c1_passed && c2_passed && c3_passed && c4.passed && c5.passed;
+    let c5b = terrain_summary.c5b;
+    let c5b_ok = c5b.as_ref().is_none_or(|r| !r.gated || r.passed);
+    let passed = c1_passed && c2_passed && c3_passed && c4.passed && c5.passed && c5b_ok;
 
     GCompV2Report {
         passed,
@@ -666,5 +1109,6 @@ pub fn finalize_g_comp_v2(
         c3_lakes,
         c4_rivers_fans_deltas: c4,
         c5_coastal_sightlines: c5,
+        c5b_coastal_plain_profile: c5b,
     }
 }
