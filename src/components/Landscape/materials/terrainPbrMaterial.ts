@@ -94,27 +94,42 @@ float lkSteepW = smoothstep(0.10, 0.30, lkGSlope);
 float lkAxX = abs(lkGn.x) / max(abs(lkGn.x) + abs(lkGn.z), 1e-3);
 vec2 lkSA = vec2(lkWp.z, lkWp.y * 1.2);
 vec2 lkSB = vec2(lkWp.x, lkWp.y * 1.2);
+float lkCamDist = length(vViewPosition);
 vec4 lkNLo = texture2D(uLookNoise, lkP * 0.0019);
 vec4 lkNMid = texture2D(uLookNoise, lkP * 0.0105 + vec2(0.31, 0.17));
 vec4 lkNHi = texture2D(uLookNoise, lkP * 0.071 + vec2(0.13, 0.57));
-vec4 lkNVHi = texture2D(uLookNoise, lkP * 0.53 + vec2(0.71, 0.29));
+// The finest octave only matters within ~300 units (it mips to flat grey beyond), so it is
+// fetched only there. Explicit gradients keep mip selection valid inside the branches.
+vec3 lkWdx = dFdx(lkWp);
+vec3 lkWdy = dFdy(lkWp);
+float lkVhiW = 1.0 - smoothstep(230.0, 300.0, lkCamDist);
+vec4 lkNVHi = vec4(0.5);
+if (lkVhiW > 0.0) {
+  lkNVHi = mix(vec4(0.5),
+    textureGrad(uLookNoise, lkP * 0.53 + vec2(0.71, 0.29), lkWdx.xz * 0.53, lkWdy.xz * 0.53), lkVhiW);
+}
 if (lkSteepW > 0.01) {
   // Side planes: x-y for faces looking along +-z, z-y for faces looking along +-x.
-  vec4 midS = mix(texture2D(uLookNoise, lkSB * 0.03 + vec2(0.31, 0.17)),
-                  texture2D(uLookNoise, lkSA * 0.03 + vec2(0.77, 0.43)), lkAxX);
-  vec4 hiS = mix(texture2D(uLookNoise, lkSB * 0.071 + vec2(0.13, 0.57)),
-                 texture2D(uLookNoise, lkSA * 0.071 + vec2(0.53, 0.21)), lkAxX);
-  vec4 vhiS = mix(texture2D(uLookNoise, lkSB * 0.53 + vec2(0.71, 0.29)),
-                  texture2D(uLookNoise, lkSA * 0.53 + vec2(0.27, 0.61)), lkAxX);
+  vec2 dA = vec2(lkWdx.z, lkWdx.y * 1.2);
+  vec2 dAy = vec2(lkWdy.z, lkWdy.y * 1.2);
+  vec2 dB = vec2(lkWdx.x, lkWdx.y * 1.2);
+  vec2 dBy = vec2(lkWdy.x, lkWdy.y * 1.2);
+  vec4 midS = mix(textureGrad(uLookNoise, lkSB * 0.03 + vec2(0.31, 0.17), dB * 0.03, dBy * 0.03),
+                  textureGrad(uLookNoise, lkSA * 0.03 + vec2(0.77, 0.43), dA * 0.03, dAy * 0.03), lkAxX);
+  vec4 hiS = mix(textureGrad(uLookNoise, lkSB * 0.071 + vec2(0.13, 0.57), dB * 0.071, dBy * 0.071),
+                 textureGrad(uLookNoise, lkSA * 0.071 + vec2(0.53, 0.21), dA * 0.071, dAy * 0.071), lkAxX);
   lkNMid = mix(lkNMid, midS, lkSteepW);
   lkNHi = mix(lkNHi, hiS, lkSteepW);
-  lkNVHi = mix(lkNVHi, vhiS, lkSteepW);
+  if (lkVhiW > 0.0) {
+    vec4 vhiS = mix(textureGrad(uLookNoise, lkSB * 0.53 + vec2(0.71, 0.29), dB * 0.53, dBy * 0.53),
+                    textureGrad(uLookNoise, lkSA * 0.53 + vec2(0.27, 0.61), dA * 0.53, dAy * 0.53), lkAxX);
+    lkNVHi = mix(lkNVHi, mix(vec4(0.5), vhiS, lkVhiW), lkSteepW);
+  }
 }
 // Damp the stretched data on steep faces: slope leans on the geometric normal, AO is
 // re-broken with isotropic noise.
 lkSlope = mix(lkSlope, lkGSlope * 1.15 + (lkNHi.a - 0.5) * 0.12, lkStretch * 0.75);
 lkAo = mix(lkAo, 0.80 + 0.28 * lkNHi.r, lkStretch * 0.7);
-float lkCamDist = length(vViewPosition);
 float lkNear = 1.0 - smoothstep(40.0, 200.0, lkCamDist);
 
 vec3 lkMacro = diffuseColor.rgb;
@@ -129,13 +144,18 @@ vec3 lkGround = lkMacro
 float lkGLum = dot(lkGround, vec3(0.2126, 0.7152, 0.0722));
 // Bright meadow greens desaturate more than dark ones (the lime swatches read as lawn).
 lkGround = mix(vec3(lkGLum), lkGround, mix(0.70, 0.52, smoothstep(0.08, 0.20, lkGLum))) * 0.82;
+// ...and lose some value too: sunlit pale meadow was the brightest, flattest thing in frame.
+lkGround *= mix(1.0, 0.84, smoothstep(0.05, 0.14, lkGLum));
 // Meadows: mottled, slightly dry tufts so open grass does not read as smooth plastic.
 lkGround *= mix(0.86, 1.10, lkNHi.r) * mix(0.92, 1.06, lkNVHi.a);
 lkGround = mix(lkGround, lkGround * vec3(1.12, 1.0, 0.72), smoothstep(0.55, 0.85, lkNHi.g) * 0.45);
 // Closed canopy where the baked trees are (lookMask B is built from the flora points): dark
 // crown texture with sunlit tops and shadowed gaps, ragged at the edge. The 3D trees stand on it.
-float lkCanopy = smoothstep(0.22, 0.70, lkMask.b + (lkNHi.g - 0.5) * 0.35 + (lkNVHi.r - 0.5) * 0.12);
-float lkCrown = smoothstep(0.30, 0.78, lkNVHi.g * 0.7 + lkNHi.b * 0.3);
+// Wide, noise-driven transition: a sharp threshold on the bilinear 20 m mask shows its texels.
+float lkCanopy = smoothstep(0.20, 0.85, pow(lkMask.b, 1.4) * 1.15 + (lkNHi.g - 0.5) * 0.45 + (lkNMid.b - 0.5) * 0.2);
+// Near the camera the 3D trees are the crowns; the painted crown pattern flattens into a
+// shadowed forest floor there instead of a second, camouflage-like layer of crowns.
+float lkCrown = mix(0.42, smoothstep(0.30, 0.78, lkNVHi.g * 0.6 + lkNHi.b * 0.4), smoothstep(25.0, 110.0, lkCamDist));
 vec3 lkCanopyCol = mix(vec3(0.016, 0.030, 0.014), vec3(0.055, 0.092, 0.032), lkCrown);
 lkCanopyCol *= mix(vec3(0.85, 1.0, 1.08), vec3(1.15, 1.04, 0.85), lkDry) * mix(0.85, 1.15, lkNMid.g);
 lkGround = mix(lkGround, lkCanopyCol, lkCanopy * (1.0 - lkMask.g));

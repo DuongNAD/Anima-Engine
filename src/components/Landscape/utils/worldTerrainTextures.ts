@@ -899,12 +899,12 @@ function boxBlur(src: Float32Array, tmp: Float32Array, size: number, r: number):
 /**
  * WV2-LOOK tree-canopy cover in [0, 1] from the baked flora points themselves, so the terrain
  * shader can paint a closed canopy exactly where the trees are (and not on biome swatches with
- * no trees). Trees count 1, shrub thicket 0.55, open savanna crowns (acacia, palm) 0.45, rocks/cacti 0.
+ * no trees). Trees count 1, shrub thicket 0.8, open savanna crowns (acacia, palm) 0.45, rocks/cacti 0.
  */
 function buildCanopyCover(bundle: WorldV2LoadedBundle): Float32Array {
   const { size } = bundle;
   const dens = new Float32Array(size * size);
-  const speciesWeight = [1, 1, 1, 0, 0, 0.45, 0.45, 0.55];
+  const speciesWeight = [1, 1, 1, 0, 0, 0.45, 0.45, 0.8];
   for (const sec of bundle.floraSectors) {
     for (const inst of sec.instances) {
       const w = speciesWeight[inst.species_id] ?? 0;
