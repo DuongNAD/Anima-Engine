@@ -14,6 +14,22 @@
 
 ---
 
+# 2026-11-25 — `WV2-PHYS2` (`#270`) & Open `physics_tests` Allocation Flake (`P11`)
+
+- **World v2 physics rework (`#270`, `a146d2f2`, [note](docs/ai/planning/2026-11-24-wv2-phys2.md)):** Reworked `anima-worldgen` generator physics leaving `src/verify/**`, thresholds, and `artifacts/world-v2/` untouched; `S2_1 = P01` at `4096²` passed `9/15` gates (`0` spikes, `30` waterfalls, `40` caves, `16/16` zoned biomes) vs provisional `C01` `2/15`.
+- **Open CI flake & pending decisions:** `test_spatial_grid_zero_allocation` (`src-tauri/tests/physics_tests.rs:532`) flaked on attempt 1 of CI run [45516447719](https://github.com/DuongNAD/Anima-Engine/actions/runs/45516447719) (`1` allocation; Card `P11` with `anima-case`). Open PRs at `a146d2f2` include `#271` (`ADR-0016`), `#272` (`I2`), `#273` (`MAP-D5`: keep `C01`, open `WV2-PHYS3`, note `#270` provenance gap from `f195a361`), `#274` (`WV2-PHYS3`), and `#275` (`D18` `ADR-0017`). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+
+---
+
+# 2026-11-24 (Update 3) — Stage 4 Passed (`E3b` `#252`), Island `I1` (`#266`), ADRs (`#256`/`#259`/`#262`/`#263`/`#268`), `WV2-3..5` (`#242`/`#249`/`#265`), `HOTLOOP-PERSIST` (`#264`) & `HONEST-UI` (`#269`)
+
+- **Stage 4 passed & science pipeline (`#245`, `#252`, `#253`, `#247`, `#258`, `#260`):** `C3. E3B-RUN` (`#245`, `4a5ee26a`, `192` confirmation runs on Windows 1) and `C4. E3B-RESULT` (`#252`, `6d0fdeb2`, [`RESULT.md`](artifacts/experiments/e3b-productivity-gradient-body-mass/RESULT.md), [summary](docs/ai/planning/2026-11-24-e3b-results.md)) passed Stage 4 (`H1`/`H3` `insufficient_evidence`, `H2` `equivalent_to_zero`); `C5` + `C5b. SEL2P2-VIAB2` (`#247`, `#258`, `fce7b981`, `12/12` survival, [VIAB-2 results](docs/ai/planning/2026-11-24-sel2-p2-viab2-results.md)); `C6. LAW1-DRAFT` (`#253`, `902e505d`); `C12. E3B-PIN` (`#260`, `7e383b8b`, pinned `31` `LIVE_KEYS` & `28` observables).
+- **World Record `WR2`, Shared Island `I1` & Core/UI Fixes (`#246`, `#254`, `#256`, `#266`, `#264`, `#269`, `#261`):** `C9. WR2` (`#246`, `a0f2a2da`) + `#254` (`facc800c`); `D12. ISLAND-ADR` (`#256`, `9b3131a0`, accepted [ADR-0014](docs/decisions/ADR-0014-shared-island-host-and-guests.md) & [`I1–I11`](docs/ai/planning/2026-11-24-island-cards.md)) + `N2. I1` (`#266`, `65632382`, guest policy, reserved `CauseId` band, zero-alloc `SharedGuestIntents` ingress); `C15. HOTLOOP-PERSIST` (`#264`, `a0522af5`, fixed `F-067` & `F-068`); `C14. HONEST-UI` (`#269`, `617fb1c0`, disabled `GeneticInjection` `F-071` & Map2 decoration labels); root allowlist cleanup (`#261`, `1803aa85`).
+- **ADRs, v1.0 Specs, Decisions & Docs (`#244`, `#248`, `#250`, `#251`, `#255`, `#257`, `#259`, `#262`, `#263`, `#267`, `#268`, `#243`):** `D8. V-SPECS-2` (`#244`, `cf3fb24a`, `V7–V11` & `H10/H11`); `D9. FINDINGS-SYNC` (`#250`, `071ef259`); `D10. DOC-REVIEW` (`#251`, `186a60e7`); `D20. AUDIT-FINDINGS` (`#257`, `6e2324d2`, `F-069..F-080`); `D22. ADR-STATUS` (`#262`, `1991d924`, accepted `ADR-0009` & `ADR-0013`); `D19. ECOSYSTEM-ADR` (`#263`, `42ccaec8`, `proposed` `ADR-0018` & `E1–E7`); `C13. BRAIN-BODY-ADR` (`#259`, `1bd2483d`, `accepted` `ADR-0019`); `D14. PLANT-EVO-ADR` (`#268`, `01b24c37`, `proposed` `ADR-0015` & `P1–P8`); `decisions-1124b/c` (`#248`, `#255`, `QD-SCALE-TRIAL` `~100` animals, `QD-REL09`, `QD-OPENQ`/`QD-OPENC`, `QD-SHAREDISLAND`, `QD-PLAYRULES`); `D21. DOCS-CLEANUP` (`#267`, `40776625`); `D1. STATE-SYNC r3` (`#243`, `92bf0df0`).
+- **Map v2 (`#242`, `#249`, `#265`):** `WV2-3` (`#242`, `21abdfba`, `ANMW v3` reader & `G-SIM`), `WV2-4` (`#249`, `f195a361`, provisional `C01` `2/15` gates), and `WV2-5` (`#265`, `e7b99745`, offline bake engine & `QD-WV25`).
+
+---
+
 # 2026-11-24 (Update 2) — E3B-SMOKE (`#240`), WR1 (`#236`), Release 0.9 CI/Docs (`#233`/`#237`/`#238`) & V-ADR/V-SPECS (`#235`/`#239`)
 
 - **Science & World Record (`#240`, `9eeb3130`; `#236`, `ee4fc287`):** `C2. E3B-SMOKE` passed all blind `WP-2` gates on Windows 1 (`seed = 999953`, `b1 = -0.4862814293602915`, `b2 = -0.005175446571556897`, `max_abs_eu_drift <= 4.5547494664788246e-8`, `0` `trait_mass` substrings, [smoke results](docs/ai/planning/2026-11-24-e3b-smoke-results.md)), unblocking `C3. E3B-RUN` (`192` confirmation runs); `C8. WR1` landed `ADR-0008` H1 segmented SHA-256 World Record v1 & zero-feedback end-of-tick recorder ([WR1 spec](docs/ai/planning/2026-11-24-wr1-world-record-format.md), `LIVE_KEYS` `31`).
