@@ -12,6 +12,8 @@ use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod inhabit;
+pub use inhabit::*;
 pub mod intents;
 pub use intents::*;
 
