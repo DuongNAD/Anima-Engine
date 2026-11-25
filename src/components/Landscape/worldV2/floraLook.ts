@@ -141,33 +141,52 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
       return finish([trunk(0.12, 0.035, '#3b2b1e'), ...parts]);
     }
     case LOOK_SPECIES.Broadleaf: {
+      // Multi-lobe crown: one main mass and three smaller lobes at different
+      // heights and azimuths, so the silhouette is irregular from every side (instances are
+      // also yawed and stretched independently).
       const r = w * 0.5;
-      const main = jitter(new THREE.IcosahedronGeometry(r, 0), r * 0.28, 11)
-        .scale(1, 0.78, 1)
-        .translate(0, 0.62, 0);
-      const side = jitter(new THREE.OctahedronGeometry(r * 0.62, 0), r * 0.2, 12).translate(r * 0.45, 0.48, r * 0.2);
-      const a = paintGradient(main, '#16290f', '#304a1d', 0.3, 1.0);
-      const b = paintGradient(side, '#142610', '#2a421a', 0.25, 0.8);
-      crownNormals(a, 0, 0.55, 0);
-      crownNormals(b, r * 0.45, 0.45, r * 0.2);
-      return finish([trunk(0.4, 0.04, '#3e2e20'), a, b]);
+      const main = jitter(new THREE.IcosahedronGeometry(r * 0.78, 0), r * 0.26, 11).scale(1, 0.8, 1).translate(-r * 0.08, 0.64, 0.02);
+      const l1 = jitter(new THREE.OctahedronGeometry(r * 0.52, 0), r * 0.18, 12).scale(1, 0.85, 1).translate(r * 0.5, 0.5, r * 0.18);
+      const l2 = jitter(new THREE.OctahedronGeometry(r * 0.46, 0), r * 0.16, 13).scale(1, 0.8, 1).translate(-r * 0.42, 0.46, -r * 0.34);
+      const l3 = jitter(new THREE.OctahedronGeometry(r * 0.4, 0), r * 0.14, 14).translate(r * 0.12, 0.86, -r * 0.2);
+      const lobes = [
+        [main, '#16290f', '#304a1d', 0.3, 1.0, -r * 0.08, 0.6, 0.02],
+        [l1, '#132510', '#2b441b', 0.3, 0.8, r * 0.5, 0.48, r * 0.18],
+        [l2, '#142710', '#2e471c', 0.28, 0.75, -r * 0.42, 0.44, -r * 0.34],
+        [l3, '#1a2e12', '#36521f', 0.6, 1.0, r * 0.12, 0.84, -r * 0.2],
+      ] as const;
+      const parts = lobes.map(([g, lo, hi, y0, y1, cx, cy, cz]) => {
+        const p = paintGradient(g, lo, hi, y0, y1);
+        crownNormals(p, cx, cy, cz);
+        return p;
+      });
+      return finish([trunk(0.42, 0.04, '#3e2e20'), ...parts]);
     }
     case LOOK_SPECIES.Jungle: {
       const r = w * 0.5;
       const top = jitter(new THREE.IcosahedronGeometry(r, 0), r * 0.25, 21).scale(1, 0.45, 1).translate(0, 0.84, 0);
       const mid = jitter(new THREE.OctahedronGeometry(r * 0.7, 0), r * 0.2, 22).scale(1, 0.55, 1).translate(-r * 0.4, 0.62, r * 0.25);
+      const low = jitter(new THREE.OctahedronGeometry(r * 0.55, 0), r * 0.18, 23).scale(1, 0.5, 1).translate(r * 0.45, 0.55, -r * 0.3);
       const a = paintGradient(top, '#0f2612', '#26461d', 0.65, 1.0);
       const b = paintGradient(mid, '#0d2010', '#1d3a18', 0.45, 0.8);
+      const c = paintGradient(low, '#0e2211', '#20401a', 0.4, 0.7);
       crownNormals(a, 0, 0.75, 0);
       crownNormals(b, -r * 0.4, 0.55, r * 0.25);
-      return finish([trunk(0.75, 0.035, '#4a3826'), a, b]);
+      crownNormals(c, r * 0.45, 0.5, -r * 0.3);
+      return finish([trunk(0.75, 0.035, '#4a3826'), a, b, c]);
     }
     case LOOK_SPECIES.Acacia: {
+      // Umbrella of three flattened lobes, not a single disc.
       const r = w * 0.5;
-      const crown = jitter(new THREE.IcosahedronGeometry(r, 0), r * 0.22, 31).scale(1, 0.3, 1).translate(0, 0.86, 0);
-      const a = paintGradient(crown, '#2c3616', '#4c5826', 0.74, 1.0);
-      crownNormals(a, 0, 0.7, 0, 0.8);
-      return finish([trunk(0.78, 0.035, '#4a3a2a'), a]);
+      const a0 = jitter(new THREE.OctahedronGeometry(r * 0.7, 0), r * 0.15, 31).scale(1, 0.32, 1).translate(r * 0.1, 0.88, 0);
+      const a1 = jitter(new THREE.OctahedronGeometry(r * 0.5, 0), r * 0.12, 32).scale(1, 0.3, 1).translate(-r * 0.45, 0.82, r * 0.3);
+      const a2 = jitter(new THREE.OctahedronGeometry(r * 0.45, 0), r * 0.12, 33).scale(1, 0.3, 1).translate(r * 0.35, 0.8, -r * 0.42);
+      const parts = [a0, a1, a2].map((g, k) => {
+        const p = paintGradient(g, '#2c3616', k === 0 ? '#4c5826' : '#45512a', 0.74, 1.0);
+        crownNormals(p, 0, 0.7, 0, 0.8);
+        return p;
+      });
+      return finish([trunk(0.8, 0.035, '#4a3a2a'), ...parts]);
     }
     case LOOK_SPECIES.Palm: {
       const parts: THREE.BufferGeometry[] = [trunk(0.88, 0.03, '#6b5a44')];

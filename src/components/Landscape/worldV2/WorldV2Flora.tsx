@@ -197,11 +197,21 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
         const scale01 = inst.scale_u8 / 255;
         const radius = STAND_RADIUS_M[sid] * unitsPerM;
         const yaw0 = (inst.yaw_u8 / 255) * Math.PI * 2;
+        // Clumped, not evenly spread: members gather around one or two sub-centres inside the
+        // stand, leaving gaps (natural regeneration patches), and the whole stand is nudged.
+        const subN = k > 2 && rnd() < 0.6 ? 2 : 1;
+        const subs: Array<[number, number]> = [];
+        for (let q = 0; q < subN; q += 1) {
+          const sa = rnd() * Math.PI * 2;
+          const sr = Math.sqrt(rnd()) * radius * 0.75;
+          subs.push([wx0 + Math.cos(sa) * sr, wz0 + Math.sin(sa) * sr]);
+        }
         for (let m = 0; m < k; m += 1) {
           const a = rnd() * Math.PI * 2;
-          const r = m === 0 ? rnd() * radius * 0.3 : Math.sqrt(rnd()) * radius;
-          const px = wx0 + Math.cos(a) * r;
-          const pz = wz0 + Math.sin(a) * r;
+          const sc = subs[m % subN];
+          const r = Math.pow(rnd(), 0.8) * radius * 0.55;
+          const px = sc[0] + Math.cos(a) * r;
+          const pz = sc[1] + Math.sin(a) * r;
           const pu = px / renderSize + 0.5;
           const pv = pz / renderSize + 0.5;
           if (pu < 0 || pu > 1 || pv < 0 || pv > 1) continue;
@@ -209,14 +219,14 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
             sizeSpec.minM +
             (sizeSpec.maxM - sizeSpec.minM) * Math.min(1, Math.max(0, scale01 * 0.6 + rnd() * 0.55 - 0.1));
           const h = hM * unitsPerM;
-          const wJ = 0.85 + rnd() * 0.3;
+          const wJ = 0.72 + rnd() * 0.6;
           const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
           // Nothing grows under the sea; boulders may sit in the swash, half buried.
           if (sid === LOOK_SPECIES.Rock ? groundY < seaY - 2 * unitsPerMY : groundY < seaY + 0.6 * unitsPerMY) continue;
           const py = groundY - h * (sid === LOOK_SPECIES.Rock ? 0.3 : 0.03);
           dummy.position.set(px, py, pz);
           dummy.rotation.set((rnd() - 0.5) * 0.08, yaw0 + rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
-          dummy.scale.set(h * wJ, h, h * (0.85 + rnd() * 0.3));
+          dummy.scale.set(h * wJ, h * (0.88 + rnd() * 0.3), h * (0.72 + rnd() * 0.6));
           dummy.updateMatrix();
           const e = dummy.matrix.elements;
           const list = perSpecies[sid];
@@ -265,7 +275,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   if (batches.length === 0) return null;
 
   return (
-    <group name="world-v2-flora" userData={{ decorative: true }}>
+    <group name="world-v2-flora" userData={{ decorative: true, rwLayer: 'flora' }}>
       {batches.map((batch) => (
         <instancedMesh
           key={batch.speciesId}

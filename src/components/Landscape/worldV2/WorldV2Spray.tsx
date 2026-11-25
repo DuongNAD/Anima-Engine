@@ -57,9 +57,14 @@ const FRAG = /* glsl */ `
   void main() {
     float x = vUv.x * 2.0 - 1.0;
     float h = vUv.y;
-    // Densest at the water, thinning upward; soft sides.
-    float vertical = exp(-h * 2.4) * smoothstep(0.0, 0.04, h);
-    float side = 1.0 - smoothstep(0.35, 1.0, abs(x));
+    // Soft radial puff that never reaches the card's borders (no straight edge at any distance),
+    // densest just above the water and thinning upward; it also fades into the water line
+    // instead of being cut by it (a depth fade against the sea plane the cards stand on).
+    float r = length(vec2(x, (h - 0.28) * 1.5));
+    float radial = 1.0 - smoothstep(0.15, 0.95, r);
+    radial *= radial;
+    float vertical = exp(-h * 1.6) * smoothstep(0.0, 0.18, h);
+    float side = 1.0;
     // Each card breathes with the sets of breakers.
     float pulse = 0.55 + 0.45 * sin(uTime * 0.45 + vSeed.x * 6.2832);
     float d = distance(cameraPosition, vWp);
@@ -68,7 +73,7 @@ const FRAG = /* glsl */ `
     float fwd = pow(max(dot(vdir, normalize(uAtmoSunDir)), 0.0), 4.0);
     vec3 hazeC = atmoSkyColor(normalize(vec3(vdir.x, vdir.y * 0.2, vdir.z)));
     vec3 col = mix(hazeC, vec3(0.97, 0.98, 1.0), 0.55) * (1.0 + 0.5 * fwd);
-    float a = uOpacity * vSeed.y * vertical * side * pulse * nearFade * (0.75 + 1.1 * fwd);
+    float a = uOpacity * vSeed.y * radial * vertical * side * pulse * nearFade * (0.75 + 1.1 * fwd);
     col = mix(col, hazeC, atmoHazeAmount(cameraPosition, vWp));
     gl_FragColor = vec4(min(col, vec3(1.0)), clamp(a, 0.0, 0.6));
   }
@@ -153,7 +158,7 @@ export const WorldV2Spray: React.FC<WorldV2SprayProps> = ({
         fragmentShader: FRAG,
         uniforms: {
           uTime: { value: 0 },
-          uOpacity: { value: 0.75 },
+          uOpacity: { value: 1.0 },
           ...atmosphereUniforms,
         },
         transparent: true,

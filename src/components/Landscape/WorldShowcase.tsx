@@ -26,6 +26,7 @@ import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adap
 import type { WorldV2LoadedBundle } from './worldV2/types';
 import WorldV2Flora from './worldV2/WorldV2Flora';
 import WorldV2Spray from './worldV2/WorldV2Spray';
+import WorldV2GroundCover from './worldV2/WorldV2GroundCover';
 import WorldV2ErrorPanel from './worldV2/WorldV2ErrorPanel';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
@@ -704,14 +705,24 @@ export const WorldShowcase: React.FC = () => {
         {capture !== null || showDecoration ? (
           <>
             {worldV2Bundle ? (
-              <WorldV2Flora
-                bundle={worldV2Bundle}
-                world={world}
-                renderSize={RENDER_SIZE}
-                heightRatio={HEIGHT_RATIO}
-                meshResolution={MESH_RES}
-                tier={effectiveQuality}
-              />
+              <>
+                <WorldV2Flora
+                  bundle={worldV2Bundle}
+                  world={world}
+                  renderSize={RENDER_SIZE}
+                  heightRatio={HEIGHT_RATIO}
+                  meshResolution={MESH_RES}
+                  tier={effectiveQuality}
+                />
+                <WorldV2GroundCover
+                  bundle={worldV2Bundle}
+                  world={world}
+                  renderSize={RENDER_SIZE}
+                  heightRatio={HEIGHT_RATIO}
+                  meshResolution={MESH_RES}
+                  tier={effectiveQuality}
+                />
+              </>
             ) : null}
             <WorldCaves
               world={world}
