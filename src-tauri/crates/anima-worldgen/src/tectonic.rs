@@ -172,6 +172,34 @@ fn fbm_4(seed: u64, x: f64, z: f64) -> f64 {
 }
 
 #[inline]
+fn fbm_coast_fractal(seed: u64, x: f64, z: f64) -> f64 {
+    let mut sum = 0.0;
+    let mut amp = 0.44;
+    let mut freq = 1.0;
+    for octave in 0..7u64 {
+        let s = seed.wrapping_add(octave.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        sum += amp * value_noise(s, x * freq, z * freq);
+        freq *= 2.05;
+        amp *= 0.66;
+    }
+    sum
+}
+
+#[inline]
+fn fbm_coast_fractal_2d(seed: u64, x: f64, z: f64) -> f64 {
+    let mut sum = 0.0;
+    let mut amp = 0.45;
+    let mut freq = 1.0;
+    for octave in 0..8u64 {
+        let s = seed.wrapping_add(octave.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        sum += amp * value_noise(s, x * freq, z * freq);
+        freq *= 2.04;
+        amp *= 0.72;
+    }
+    sum
+}
+
+#[inline]
 fn sech2(t: f64) -> f64 {
     let clamped = t.clamp(-12.0, 12.0);
     let c = libm::coshf(clamped as f32) as f64;
@@ -191,8 +219,13 @@ struct CellStratGeom {
     in_volcano: bool,
     in_plateau: bool,
     near_rift: bool,
+    in_lake_sill: bool,
     ridge_core_dist: f64,
     coast_dist: f64,
+    coast_cliff: f64,
+    ridge_u: f64,
+    u_rot: f64,
+    v_rot: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -219,25 +252,56 @@ fn eval_cell_strat_and_envelope(
     let u_rot = cu * cos_r + cv * sin_r + 0.5;
     let v_rot = -cu * sin_r + cv * cos_r + 0.5;
 
-    // 1. Curved windward coastline (`u` oceanward on the west/left side -> ~45% ocean).
-    let coast_line = 0.45
+    // 1. Multi-octave fractal windward coastline (`u` oceanward west -> ~45% ocean) + rocky headlands.
+    let smooth_coast = 0.45
         + p.coast_shift_u
-        + 0.045 * libm::sin(v_rot * TAU * 0.8 + p.phase_z)
-        + 0.03 * fbm_broad;
-    let d_coast = u_rot - coast_line;
+        + 0.024 * libm::sin(v_rot * TAU * 0.8 + p.phase_z)
+        + 0.022 * fbm_broad;
+    let smooth_d_coast = u_rot - smooth_coast;
+    let coast_scale = (f64::from(cfg.coast_frac_amp) / 0.055).clamp(0.0, 1.5);
+    let dw_u = 0.036
+        * coast_scale
+        * fbm_coast_fractal(p.seed_u64 ^ 0xC0A5_1111_2222_3333, u_rot * 5.0, v_rot * 5.0);
+    let dw_v = 0.036
+        * coast_scale
+        * fbm_coast_fractal(p.seed_u64 ^ 0xC0A5_4444_5555_6666, u_rot * 5.0, v_rot * 5.0);
+    let u_c = u_rot + dw_u;
+    let v_c = v_rot + dw_v;
+    let coast_warp = (f64::from(cfg.coast_frac_amp)
+        * 1.8
+        * fbm_coast_fractal(p.seed_u64 ^ 0xC0A5_7F12_3456_789A, u_c * 5.0, v_c * 5.0))
+    .clamp(-0.060, 0.060);
+    let coast_line = (smooth_coast + coast_warp).clamp(0.35, 0.56);
+    let d_coast = u_c - coast_line;
+    let in_lake_sill = false;
 
-    // 2. Active coastal mountain spine (`sech^2` with steep oceanward flank, peaking > 5,200 m).
-    let ridge_center_u = coast_line + 0.22 + p.ridge_bend * libm::cos(v_rot * 3.1 + p.phase_x);
+    let c_share = f64::from(cfg.coast_cliff_share).clamp(0.0, 0.70);
+    let coast_cliff = if c_share <= 0.01 {
+        0.0
+    } else {
+        let cliff_n = value_noise(p.seed_u64 ^ 0xC11F_F001, u_rot * 3.8, v_rot * 10.5);
+        let thr = 0.58 * (1.0 - 2.0 * c_share);
+        ((cliff_n - thr) / 0.14).clamp(0.0, 1.0)
+    };
+
+    // 2. Active coastal mountain spine (`sech^2` anchored on smooth coast axis, peaking > 5,200 m).
+    let ridge_center_u = smooth_coast + 0.22 + p.ridge_bend * libm::cos(v_rot * 3.1 + p.phase_x);
     let dv_ridge = (v_rot - 0.52) / 0.34;
     let along_crest_envelope = libm::exp(-0.55 * dv_ridge * dv_ridge);
     let d_ridge = u_rot - ridge_center_u - 0.025 * fbm_broad;
 
-    let width_asym = if d_ridge < 0.0 { 0.095 } else { 0.115 };
-    let massif_uplift = sech2(d_ridge / width_asym)
+    let spur_fbm = fbm_4(p.seed_u64 ^ 0x5902_1122_3344_5566, u_rot * 4.8, v_rot * 5.2);
+    let spur_wave =
+        0.55 * spur_fbm + 0.45 * libm::sin(v_rot * TAU * 3.5 + p.phase_z + 2.2 * fbm_broad);
+    let flank_w = (1.0 - sech2(d_ridge / 0.085)).clamp(0.0, 1.0);
+    let d_ridge_warped = d_ridge + 0.028 * spur_wave * flank_w;
+    let width_asym = if d_ridge_warped < 0.0 { 0.098 } else { 0.115 };
+    let flank_spur = flank_w * 0.28 * spur_wave;
+    let massif_uplift = sech2(d_ridge_warped / width_asym)
         * (0.74 + 0.26 * along_crest_envelope)
-        * (1.0 + 0.20 * fbm_broad.max(-0.15));
+        * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur).max(0.45);
     let crest_spine = sech2(d_ridge / 0.055) * along_crest_envelope;
-    let t_pied = ((d_coast - 0.040) / 0.026).clamp(0.0, 1.0);
+    let t_pied = ((smooth_d_coast - 0.092) / 0.032).clamp(0.0, 1.0);
     let piedmont_gate = t_pied * t_pied * (3.0 - 2.0 * t_pied);
 
     let massif_h = piedmont_gate
@@ -252,33 +316,40 @@ fn eval_cell_strat_and_envelope(
     let rift_v = -(u - p.rift_offset_u) * libm::sin(p.rift_angle_rad)
         + (v - 0.48) * libm::cos(p.rift_angle_rad);
     let l_seg_norm = RIFT_SEGMENT_LEN_M / f64::from(cfg.extent_m).max(1.0);
-    let inv_half_w = 1.0 / (0.36 * l_seg_norm);
+    let b_amp = f64::from(cfg.basin_amp).clamp(0.5, 3.0);
+    let seg_w = 0.032 * (0.95 + 0.45 * b_amp);
+    let inv_half_w = 1.0 / (0.48 * l_seg_norm);
     let dv_seg1 = (rift_v + 0.5 * l_seg_norm) * inv_half_w;
     let dv_seg2 = (rift_v - 0.5 * l_seg_norm) * inv_half_w;
-    let seg1 = sech2((rift_u + 0.012) / 0.032) * libm::exp(-(dv_seg1 * dv_seg1));
-    let seg2 = sech2((rift_u - 0.012) / 0.032) * libm::exp(-(dv_seg2 * dv_seg2));
-    let near_rift = (seg1 > 0.30 || seg2 > 0.30) && libm::fabs(rift_u) < 0.055;
+    let seg1 = sech2((rift_u + 0.012) / seg_w) * libm::exp(-(dv_seg1 * dv_seg1));
+    let seg2 = sech2((rift_u - 0.012) / seg_w) * libm::exp(-(dv_seg2 * dv_seg2));
+    let near_rift = (seg1 > 0.26 || seg2 > 0.26) && libm::fabs(rift_u) < 0.075;
 
     // 4. Horizontal resistant sandstone caprock plateau (~15-20 km leeward tableland).
     let du_plat = (u - p.plateau_u) / 0.268;
     let dv_plat = (v - p.plateau_v) / 0.278;
     let r_plat = libm::hypot(du_plat, dv_plat);
     let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 16.0));
-    let land_gate = 1.0 / (1.0 + libm::exp(-(d_coast - 0.06) * 35.0));
+    let land_gate = 1.0 / (1.0 + libm::exp(-(smooth_d_coast - 0.06) * 35.0));
     let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_400.0) / 300.0));
     let plateau_blend = plateau_mask * land_gate * core_gate;
 
     // 5. Volcanic stratocone footprint (`BasaltVolcanic`).
     let r_volc = libm::hypot(u - p.volcano_u, v - p.volcano_v);
-    let in_volcano = r_volc < 0.085;
+    let in_volcano = r_volc < 0.095;
 
     let strat = CellStratGeom {
         fbm_broad,
         in_volcano,
         in_plateau: plateau_blend > 0.35 && !in_volcano,
         near_rift,
+        in_lake_sill,
         ridge_core_dist: libm::fabs(d_ridge),
         coast_dist: d_coast,
+        coast_cliff,
+        ridge_u: ridge_center_u,
+        u_rot,
+        v_rot,
     };
     (
         strat,
@@ -296,68 +367,89 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
         eval_cell_strat_and_envelope(u, v, p, cfg);
     let d_coast = strat.coast_dist;
     let fbm_detail = fbm_4(p.seed_u64 ^ 0xA5A5_5A5A_1234_ABCD, u * 14.0, v * 14.0);
+    let b_amp = f64::from(cfg.basin_amp).clamp(0.5, 3.0);
 
     // Asymmetric continental margin: shallow coastal shelf (`0..-22 m` for DeltaRCM delta progradation)
-    // dropping to abyssal depths offshore; flat coastal floodplain (`slope ~ 0.0023 < 0.004`,
-    // `0..+4.3 m` preserving Beach + S4 meanders) on `d_coast in 0..0.045`, then smooth inland ramp.
+    // dropping to abyssal depths offshore, modulated by a 2D band-limited fractal ria field.
+    let t_ria = d_coast / 0.055;
+    let ria_amp = 260.0 + 620.0 * strat.coast_cliff;
+    let coast_ria_2d = f64::from(cfg.coast_frac_amp)
+        * ria_amp
+        * fbm_coast_fractal_2d(
+            p.seed_u64 ^ 0xC0A5_72D0_9876_5432,
+            strat.u_rot * 10.5,
+            strat.v_rot * 10.5,
+        )
+        * libm::exp(-(t_ria * t_ria));
     let shelf_and_margin = if d_coast < 0.0 {
-        let shelf_drop = 1_400.0 * d_coast.max(-0.015);
-        let slope_drop = -1_420.0 * libm::tanh((-d_coast - 0.010).max(0.0) / 0.14);
-        shelf_drop + slope_drop
+        let shelf_drop = 420.0 * d_coast.max(-0.035);
+        let slope_drop = -1_420.0 * libm::tanh((-d_coast - 0.030).max(0.0) / 0.14);
+        shelf_drop + slope_drop + coast_ria_2d
     } else {
-        let plain_ramp = 95.0 * d_coast.min(0.045);
-        let inland_ramp = 260.0 * libm::tanh((d_coast - 0.042).max(0.0) / 0.16);
-        plain_ramp + inland_ramp
+        let plain_ramp = 90.0 * d_coast.min(0.045);
+        let inland_ramp = 250.0 * libm::tanh((d_coast - 0.042).max(0.0) / 0.16);
+        plain_ramp + inland_ramp + coast_ria_2d
     };
 
-    // Segmented normal-fault grabens + relay-ramp horst sill (`L_seg = 15.0 km`).
+    // Segmented normal-fault grabens + relay-ramp horst sill (`L_seg = 15.0 km`), plus 3 broad
+    // low-slope humid windward piedmont / back-barrier sag basins below `2,000 m` (`endo_humid == 0`,
+    // zero glacial moraine disturbance).
     let l_seg_norm = RIFT_SEGMENT_LEN_M / f64::from(cfg.extent_m).max(1.0);
-    let inv_half_w = 1.0 / (0.36 * l_seg_norm);
+    let seg_w = 0.032;
+    let inv_half_w = 1.0 / (0.40 * l_seg_norm);
     let dv_seg1 = (rift_v + 0.5 * l_seg_norm) * inv_half_w;
     let dv_seg2 = (rift_v - 0.5 * l_seg_norm) * inv_half_w;
-    let seg1 = sech2((rift_u + 0.012) / 0.032) * libm::exp(-(dv_seg1 * dv_seg1));
-    let seg2 = sech2((rift_u - 0.012) / 0.032) * libm::exp(-(dv_seg2 * dv_seg2));
+    let seg1 = sech2((rift_u + 0.012) / seg_w) * libm::exp(-(dv_seg1 * dv_seg1));
+    let seg2 = sech2((rift_u - 0.012) / seg_w) * libm::exp(-(dv_seg2 * dv_seg2));
     let t_relay = rift_v / 0.055;
     let t_tip_pos = (rift_v - l_seg_norm) / 0.055;
     let t_tip_neg = (rift_v + l_seg_norm) / 0.055;
-    let relay_sill = 145.0
+    let relay_sill = (165.0 * libm::sqrt(b_amp))
         * sech2(rift_u / 0.058)
         * (libm::exp(-(t_relay * t_relay))
             + libm::exp(-(t_tip_pos * t_tip_pos))
             + libm::exp(-(t_tip_neg * t_tip_neg)));
-    let rift_drop = if d_coast > 0.08 {
-        -380.0 * (seg1 + seg2) + relay_sill
-    } else {
-        0.0
-    };
+    let humid_basin_gate = 1.0 / (1.0 + libm::exp((strat.u_rot - (strat.ridge_u + 0.025)) / 0.018));
 
     let caprock_target_m = 0.52 * f64::from(cfg.caprock_min_m + cfg.caprock_max_m) + 120.0;
 
-    // 5. Volcanic stratocone & collapsed caldera crater rim (`BasaltVolcanic`).
-    let t_cone = r_volc / 0.068;
-    let t_cald = r_volc / 0.018;
+    // 5. Volcanic stratocone & wider collapsed caldera crater rim (`BasaltVolcanic`).
+    let t_cone = r_volc / 0.072;
+    let t_cald = r_volc / 0.030;
     let cone = f64::from(cfg.volcano_relief_m) * libm::exp(-(t_cone * t_cone));
-    let caldera = -460.0 * libm::exp(-(t_cald * t_cald));
+    let caldera = -(520.0 * libm::sqrt(b_amp)) * libm::exp(-(t_cald * t_cald));
     let volcano_h = cone + caldera;
 
-    // 6. Compose base surface + plateau + volcanic cone without hand-placed lakes or staircases.
+    // 6. Compose base surface + monotonically dipped caprock plateau + volcanic cone.
     let base_surface = shelf_and_margin + massif_h;
-    let plateau_surface = caprock_target_m + 35.0 * fbm_detail + 120.0 * (p.plateau_u - u);
+    let plateau_surface = caprock_target_m + 34.0 * fbm_detail + 220.0 * (p.plateau_u - u);
     let detail_gate = ((d_coast - 0.038) / 0.025).clamp(0.0, 1.0);
     let pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface
         + volcano_h
-        + 95.0 * fbm_detail * detail_gate * libm::exp(-0.3 * d_coast * d_coast);
+        + 95.0
+            * fbm_detail
+            * detail_gate
+            * (1.0 - 0.88 * plateau_blend)
+            * libm::exp(-0.3 * d_coast * d_coast);
 
-    // Gate rift drop safely above sea level so no freshwater depression floods into ocean.
-    let land_headroom = ((pre_basin_h - 480.0) / 220.0).clamp(0.0, 1.0);
-    let basin_mods = land_headroom * rift_drop;
+    // Gate rift drop safely below 2,000 m and above sea level so no depression floods into ocean or disturbs glaciers.
+    let low_elev_gate = 1.0 / (1.0 + libm::exp((pre_basin_h - 2_000.0) / 250.0));
+    let land_headroom = ((pre_basin_h - 460.0) / 220.0).clamp(0.0, 1.0);
+    let rift_mod = if d_coast > 0.075 {
+        land_headroom
+            * humid_basin_gate
+            * low_elev_gate
+            * (-(380.0 * libm::sqrt(b_amp)) * (seg1 + seg2) + relay_sill)
+    } else {
+        0.0
+    };
 
-    let mut raw_h_m = pre_basin_h + basin_mods;
-    if d_coast > 0.015 {
-        let floor_m = pre_basin_h.min(360.0);
-        if raw_h_m < floor_m {
-            raw_h_m = floor_m;
+    let mut raw_h_m = pre_basin_h + rift_mod;
+    if d_coast > 0.065 {
+        let rift_floor = pre_basin_h.min(240.0);
+        if raw_h_m < rift_floor {
+            raw_h_m = rift_floor;
         }
     }
 
@@ -385,6 +477,12 @@ fn assign_lithology_advected(
 ) -> LithologyClass {
     if geom.in_volcano && h_m > 300.0 {
         return LithologyClass::BasaltVolcanic;
+    }
+    if geom.coast_cliff > 0.36 && (-95.0..=165.0).contains(&f64::from(h_m)) {
+        return LithologyClass::GraniteCrystalline;
+    }
+    if geom.in_lake_sill && h_m > 2.0 && h_m < 450.0 {
+        return LithologyClass::GraniteCrystalline;
     }
     if h_m < 140.0 || geom.coast_dist < 0.02 || (geom.near_rift && h_m < 420.0) {
         return LithologyClass::UnconsolidatedAlluvium;
@@ -512,7 +610,21 @@ pub fn generate_uplift_for_target(
             for col in 0..w {
                 let u = col as f64 / denom_x;
                 let ev = eval_cell_raw(u, v, &params, cfg);
-                let elev = soft_bound_elevation(ev.raw_h_m + shift, cfg.elev_min_m, cfg.elev_max_m);
+                let base_elev =
+                    soft_bound_elevation(ev.raw_h_m + shift, cfg.elev_min_m, cfg.elev_max_m);
+                let elev =
+                    if ev.strat.coast_cliff > 0.01 && libm::fabs(f64::from(base_elev)) < 260.0 {
+                        let e = f64::from(base_elev);
+                        let cc = ev.strat.coast_cliff;
+                        let boost = if e > 0.0 {
+                            138.0 * cc * libm::tanh(e / 14.0) * libm::exp(-e / 140.0)
+                        } else {
+                            -105.0 * cc * libm::tanh((-e) / 14.0) * libm::exp(-(-e) / 140.0)
+                        };
+                        soft_bound_elevation(e + boost, cfg.elev_min_m, cfg.elev_max_m)
+                    } else {
+                        base_elev
+                    };
                 let class = assign_lithology_advected(elev, &ev.strat, 0.0, 0.0, extent_m);
                 bh[col] = elev;
                 uu[col] = ev.uplift as f32;

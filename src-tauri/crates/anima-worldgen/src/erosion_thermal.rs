@@ -243,6 +243,14 @@ pub fn relax_thermal_and_hillslope_with_scratch(
         f64::from(lithology_repose_deg(5, false)),
     ];
     let alpha_scree_deg = f64::from(lithology_repose_deg(0, true));
+    let bedrock_creep_at = |idx: usize| -> f64 {
+        if lithology_id[idx] == 1 {
+            let cover = 1.0 - libm::exp(-f64::from(sed_init[idx]).max(0.0) / COVER_H_STAR_M);
+            0.55 + 0.45 * cover
+        } else {
+            1.0
+        }
+    };
     let repose_at = |idx: usize| -> f64 {
         let lith_idx = (lithology_id[idx] as usize).min(5);
         let h_sed = f64::from(sed_init[idx]).max(0.0);
@@ -310,6 +318,7 @@ pub fn relax_thermal_and_hillslope_with_scratch(
                     let i = global_row_base + c;
                     let h_i = curr_row[c];
                     let rep_i = repose_at(i);
+                    let creep_w_i = bedrock_creep_at(i);
                     let mut d = 0.0_f64;
 
                     // Fixed 8-neighbor order with strictly anti-symmetric IEEE-754 edge flux.
@@ -342,8 +351,9 @@ pub fn relax_thermal_and_hillslope_with_scratch(
                         let s_mag = abs_dh / dist;
                         let ratio = (s_mag / sc).min(0.92);
                         let nl_factor = 1.0 / (1.0 - ratio * ratio);
-                        let creep_dh =
-                            (diff_coeff * dh * nl_factor).clamp(-0.08 * abs_dh, 0.08 * abs_dh);
+                        let creep_pair_w = 0.5 * (creep_w_i + bedrock_creep_at(j));
+                        let creep_dh = (diff_coeff * dh * nl_factor * creep_pair_w)
+                            .clamp(-0.08 * abs_dh, 0.08 * abs_dh);
 
                         let rep_hi = if dh >= 0.0 { rep_i } else { repose_at(j) };
                         let excess = (abs_dh - rep_hi * dist).max(0.0);

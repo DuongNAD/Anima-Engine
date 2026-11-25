@@ -14,9 +14,9 @@ pub const NO_RECEIVER: u32 = u32::MAX;
 /// Seconds per Julian year used to convert `m^3/yr` catchment runoff to `m^3/s`.
 pub const SECONDS_PER_YEAR: f64 = 31_557_600.0;
 
-const DX8: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
-const DZ8: [isize; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
-const DIST8: [f64; 8] = [
+pub(crate) const DX8: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
+pub(crate) const DZ8: [isize; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
+pub(crate) const DIST8: [f64; 8] = [
     1.0,
     std::f64::consts::SQRT_2,
     1.0,
@@ -548,6 +548,11 @@ pub struct HydrologyConfig {
     pub k_d: f32,
     /// Leopold & Maddock depth exponent `f_d` (`0.40`).
     pub f_d: f32,
+    /// Opt-in seasonal convective storm-runoff fraction (`0.0` preserves strict `(P - PET).max(0)`).
+    pub seasonal_storm_runoff_coeff: f32,
+    /// Multiplier converting mean-annual discharge `Q_ma` into bankfull channel-forming discharge
+    /// (`1.0` preserves unit test semantics).
+    pub bankfull_q_mult: f32,
 }
 
 impl Default for HydrologyConfig {
@@ -564,7 +569,30 @@ impl Default for HydrologyConfig {
             b_w: 0.50,
             k_d: 0.25,
             f_d: 0.40,
+            seasonal_storm_runoff_coeff: 0.0,
+            bankfull_q_mult: 1.0,
         }
+    }
+}
+
+/// Computes local surface runoff rate (`m/yr`) combining continuous `(P - PET).max(0)` excess
+/// with opt-in seasonal convective storm yield in semi-arid/sub-humid zones.
+#[inline]
+fn cell_runoff_m_yr(precip_m_yr: f32, pet_m_yr: f32, seasonal_storm_runoff_coeff: f32) -> f64 {
+    let p = f64::from(precip_m_yr.max(0.0));
+    let pet = f64::from(pet_m_yr);
+    let base = (p - pet).max(0.0);
+    let storm_c = f64::from(seasonal_storm_runoff_coeff.clamp(0.0, 0.50));
+    if storm_c <= 0.0 || p <= 0.0 {
+        base
+    } else {
+        let deficit = (pet - p).max(0.0);
+        let horton_storm = if deficit > 0.0 {
+            storm_c * (2.6 * libm::pow(p, 0.25)) * (deficit / (deficit + 0.25))
+        } else {
+            0.0
+        };
+        base + storm_c * 0.4 * p + horton_storm
     }
 }
 
@@ -616,8 +644,8 @@ pub fn route_hybrid_mfd_d8(
     for i in 0..n {
         let p = f64::from(precip_m_yr[i].max(cfg.min_precip_m_yr));
         weighted_area_m2.push((p / nu_ref) * cell_area);
-        // Net runoff rate `R = max(0, P - PET)` in `m/yr`; cell volume `q_cell = R * dx^2`.
-        let r_m_yr = f64::from((precip_m_yr[i] - pet_m_yr[i]).max(0.0));
+        // Net runoff rate `R = max(0, P - PET) + optional seasonal stormflow` in `m/yr`.
+        let r_m_yr = cell_runoff_m_yr(precip_m_yr[i], pet_m_yr[i], cfg.seasonal_storm_runoff_coeff);
         runoff_m3_yr.push(r_m_yr * cell_area);
     }
 
@@ -771,8 +799,9 @@ pub fn route_hybrid_mfd_d8(
     let mut river_d_m = vec![0.0_f32; n];
     let mut water_h_m = filled_h.to_vec();
 
+    let bf_mult = cfg.bankfull_q_mult.max(0.1);
     for i in 0..n {
-        let q = (runoff_m3_yr[i] / SECONDS_PER_YEAR) as f32;
+        let q = (runoff_m3_yr[i] / SECONDS_PER_YEAR) as f32 * bf_mult;
         discharge_q_m3_s[i] = q;
         if is_channel[i] && q > 0.0 && cfg.sea_level_m.is_none_or(|sl| filled_h[i] > sl) {
             let w = cfg.k_w * libm::powf(q, cfg.b_w);
@@ -855,7 +884,7 @@ pub fn route_hybrid_mfd_d8_lean_halves(
     let mut runoff_lo = Vec::with_capacity(half);
     let mut runoff_hi = Vec::with_capacity(n - half);
     for (i, (&p, &pet)) in precip_m_yr.iter().zip(pet_m_yr.iter()).enumerate() {
-        let val = f64::from((p - pet).max(0.0)) * cell_area;
+        let val = cell_runoff_m_yr(p, pet, cfg.seasonal_storm_runoff_coeff) * cell_area;
         if i < half {
             runoff_lo.push(val);
         } else {
@@ -1022,12 +1051,13 @@ pub fn route_hybrid_mfd_d8_lean_halves(
     drop(in_deg);
     drop(queue);
 
+    let bf_mult = cfg.bankfull_q_mult.max(0.1);
     let mut discharge_q_m3_s = vec![0.0_f32; n];
     for (q_out, &r_yr) in discharge_q_m3_s[..half].iter_mut().zip(runoff_lo.iter()) {
-        *q_out = (r_yr / SECONDS_PER_YEAR) as f32;
+        *q_out = (r_yr / SECONDS_PER_YEAR) as f32 * bf_mult;
     }
     for (q_out, &r_yr) in discharge_q_m3_s[half..].iter_mut().zip(runoff_hi.iter()) {
-        *q_out = (r_yr / SECONDS_PER_YEAR) as f32;
+        *q_out = (r_yr / SECONDS_PER_YEAR) as f32 * bf_mult;
     }
     drop(runoff_lo);
     drop(runoff_hi);
