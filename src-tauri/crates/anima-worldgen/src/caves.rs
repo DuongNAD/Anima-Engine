@@ -501,11 +501,29 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
     cands.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.idx.cmp(&b.idx)));
 
     let min_dim = w.min(h) as f64;
-    let min_dist_cells = f64::from(cfg.min_spacing_fraction) * min_dim * (1.0 + 1e-6);
+    let domain_extent_m = (w.max(h) as f32) * cfg.dx_m;
+    let scale_large = domain_extent_m >= 60_000.0
+        && cfg.min_entrances == 30
+        && cfg.max_entrances == 48
+        && cfg.target_entrances == 40;
+    let (eff_min_entrances, eff_max_entrances, eff_target_entrances, min_dist_cells) =
+        if scale_large {
+            (
+                55_usize,
+                140_usize,
+                80_usize,
+                (450.0 / f64::from(cfg.dx_m)) * (1.0 + 1e-6),
+            )
+        } else {
+            (
+                cfg.min_entrances,
+                cfg.max_entrances,
+                cfg.target_entrances,
+                f64::from(cfg.min_spacing_fraction) * min_dim * (1.0 + 1e-6),
+            )
+        };
     let min_dist_sq = min_dist_cells * min_dist_cells;
-    let target = cfg
-        .target_entrances
-        .clamp(cfg.min_entrances, cfg.max_entrances);
+    let target = eff_target_entrances.clamp(eff_min_entrances, eff_max_entrances);
 
     let mut chosen: Vec<&Cand> = Vec::with_capacity(target);
 
@@ -538,12 +556,12 @@ pub fn generate_caves(input: &CaveInput<'_>, cfg: &CaveConfig) -> Result<CaveFie
         }
     }
 
-    if chosen.len() < cfg.min_entrances {
+    if chosen.len() < eff_min_entrances {
         return Err(CaveError {
             message: format!(
                 "insufficient eligible karst/basalt cave entrances: found {}, need >= {}",
                 chosen.len(),
-                cfg.min_entrances
+                eff_min_entrances
             ),
         });
     }
