@@ -527,6 +527,18 @@ MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candid
             rework (channel initiation and runoff, knickpoint waterfalls, lakes, coastal cliffs, spike
             smoothing) is a later card WV2-PHYS2. (Owner in chat, 2026-11-24: "Tạm dùng C01 + sửa vật
             lý sau".)
+MAP-D5    = after WV2-PHYS2 (PR #270: S2_1 = P01 at 4096^2 passes 9/15 gates, C01 2/15), the
+            provisional C01 stays the world under artifacts/world-v2/ (Option B of the WV2-PHYS2 note):
+            no regeneration, no new preset, sim_world_identity stays cbdd3ba9..., and WV2-7 boots the
+            desktop on C01. The PHYS2 generator is on the trunk; its new WorldV2Config fields default
+            to the PHYS2 values (channel_init 100 where C01 used 500), so preset_v2.toml no longer
+            regenerates C01 from the trunk generator; C01 is reproduced from the #249 merge commit
+            f195a361. A focused card WV2-PHYS3 works on the six gates S2_1 still fails (G-SHAPE.3
+            caprock CV, G-SHAPE.4 Hack R^2, G-SHAPE.5 b_down/vf_down, G-SHAPE.4_2 D_shore, C3 lake
+            area over total map area, C4 through its Hack term) under the WV2-PHYS2 rules: verifier
+            code and thresholds unchanged, every candidate pre-registered in the note before it is
+            measured, artifacts/world-v2/ untouched. Replacing C01 with any candidate is a separate
+            owner decision. (Owner in chat, 2026-11-25: "Keep C01, do PHYS3".)
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
