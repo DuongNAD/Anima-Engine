@@ -555,6 +555,26 @@ QD-WV2-6-PREVIEW = a dev-only WV2-6 preview with locally baked tiles (PR #278, t
             merged and ships in no build. The full WV2-6 card keeps its two owner gates: the public tile
             release (~145 MB on GitHub Releases) and the Iris Xe performance gate on the Dell. (Owner in
             chat, 2026-11-25: "Yes, preview".)
+QD-GATES-1125 = the owner delegated the open release and world gates to the lead's plan (owner in chat,
+            2026-11-25 evening: "đồng ý theo suggest của bạn"). The plan:
+            (1) #188 is closed as superseded by #196 (anima-dell's assessment); its branch is kept.
+            (2) MAP-D7: C01 is replaced once, not now. After #274 merges (MAP-D6) and WV2-PHYS4 has had
+            two nights, the best Stage-2 candidate with zero regressions against S2_6 and a reported
+            neighbour check replaces C01 under artifacts/world-v2/, with a re-bake of the tile pack, so
+            the tiles are baked and published only for the final world. A new sim_world_identity means
+            old saves are refused, as WV2-7 already does.
+            (3) QD-TRIAL-V3: the owner's hands-on trial uses an internal Windows test installer built by
+            anima-case from the WV2-6 branch with locally staged tiles, shared through the hub and never
+            published. The same build serves as the "after" side of the Iris Xe gate, which the owner
+            runs on the Dell from anima-dell's runbook.
+            (4) The tile pack is published once, for the final world, as a GitHub Release asset before
+            v0.9.0-rc.1 is built, because the release-build workflow must fetch it. This moves the
+            publication date in QD-WV25 (b) earlier. The lead asks the owner for a final yes, naming the
+            asset and its size, before anything is uploaded. The rc is then cut per QD-REL09 after WV2-6
+            merges; the owner pushes main and the tag (G4).
+            (5) C16 SEL2P2-FREEZE: anima-case opens the win/sel2p2-freeze draft PR, a peer verifies that
+            it freezes exactly QD-SEL2P2-D1..D7 and the VIAB-2 settings, and the lead merges it when it
+            is VERIFIED at the head and green. That merge is the preregistration freeze.
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
