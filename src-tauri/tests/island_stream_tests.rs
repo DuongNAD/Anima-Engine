@@ -13,17 +13,22 @@
 //! 6. Card `I3` DONE WHEN #1 + Mandatory Negative Control #1: `host_with_spectate_guests_matches_solo`
 //!    matches Solo bit-for-bit across `1,800` ticks while moving guest cameras and projecting off-tick
 //!    at `~20 Hz`, whereas leaking a spectator camera into `SharedLodFocus` diverges `world_checksum`.
+//! 7. I3 Follow-up (`emit.rs:251` / `verdicts/I3_3fb23527_lead.md` Drill 2): `spawn_emit_thread` skips
+//!    island projection whenever `has_active_guests()` is `false` (both inactive and empty-hub solo
+//!    runs), while actively projecting snapshots once a guest registers.
 
 use anima_engine_lib::ai::pheromone::{PheromoneGrid, PheromoneGridState, CELL_COUNT, GRID_SIZE};
 use anima_engine_lib::core::components::{
     AgentBrain, AgentType, CombatEvent, EnvironmentalElement, EnvironmentalState,
 };
+use anima_engine_lib::core::emit::{spawn_emit_thread, EmitChannels};
 use anima_engine_lib::core::experiment::{InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
 use anima_engine_lib::core::island::stream::{
     decode_stream_frame_bincode, encode_stream_frame_bincode, GuestInterestWindow,
     IslandJoinSnapshot, IslandStreamError, IslandStreamFrame, IslandStreamHub,
-    IslandStreamReconstructor, MAX_ISLAND_STREAM_FRAME_BYTES, WHOLE_ISLAND_BROADCAST_AGENT_LIMIT,
+    IslandStreamReconstructor, SharedIslandStream, MAX_ISLAND_STREAM_FRAME_BYTES,
+    WHOLE_ISLAND_BROADCAST_AGENT_LIMIT,
 };
 use anima_engine_lib::core::island::{
     GenesisPhase, GuestId, GuestRole, IslandId, DEFAULT_ISLAND_MAX_GUESTS,
@@ -38,11 +43,14 @@ use anima_engine_lib::core::observer::ObserverPolicy;
 use anima_engine_lib::core::simulation_lod::{LodBands, LodFocus, SharedLodFocus};
 use anima_engine_lib::core::simulation_state::{
     extract_environmental_state_from_world, extract_segment_states_from_world, ChronicleEvent,
-    SegmentState, SimulationTickPayload,
+    SegmentState, SimulationStatus, SimulationTickPayload,
 };
+use anima_engine_lib::core::thread_supervisor::{ThreadSupervisor, EMIT};
 use anima_engine_lib::evolution::brain_genotype::{ArchSpec, BrainGenotype};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 const C11_JSON_BASELINE_BYTES_PER_TICK: usize = 1_209_987;
 
@@ -802,4 +810,180 @@ fn host_with_spectate_guests_matches_solo() {
         solo_checks[3], leaked_end,
         "negative control failed: routing spectator camera into SharedLodFocus did not perturb world_checksum"
     );
+}
+
+#[test]
+fn solo_headless_emit_loop_skips_island_projection_without_active_guests() {
+    fn wait_until_drained(combat: &Arc<RwLock<Vec<CombatEvent>>>, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if combat.read().unwrap().is_empty() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        combat.read().unwrap().is_empty()
+    }
+
+    fn run_solo_probe(stream: SharedIslandStream) -> (bool, bool, Vec<&'static str>) {
+        let running = Arc::new(AtomicBool::new(true));
+        let agent_states = Arc::new(RwLock::new(vec![make_segment(
+            1,
+            0,
+            None,
+            [1.0, 0.0, 2.0],
+            0.0,
+            40.0,
+            AgentType::Prey,
+        )]));
+        let pheromone_grid = Arc::new(RwLock::new(PheromoneGridState {
+            grid: vec![0.0; CELL_COUNT],
+            width: GRID_SIZE as u32,
+            height: GRID_SIZE as u32,
+        }));
+        let active_raycasts = Arc::new(RwLock::new(Vec::new()));
+        let combat_events = Arc::new(RwLock::new(vec![CombatEvent {
+            predator_id: 1,
+            prey_id: 2,
+            damage: 1.0,
+            energy_transferred: 0.5,
+        }]));
+        let environmental_state = Arc::new(RwLock::new(make_sample_env(2, 1, 1.0)));
+        let status = Arc::new(Mutex::new(SimulationStatus {
+            running: true,
+            tick_count: 42,
+            avg_tick_time_ms: 1.0,
+            fps: 60.0,
+        }));
+        let supervisor = ThreadSupervisor::new();
+
+        // Holding `agent_states.write()` blocks `emit.rs:262` (`agent_states.read()`) if the loop
+        // enters island projection (`if true` Drill 2 mutant), stalling iteration 2 and exit.
+        let agent_write_guard = agent_states.write().unwrap();
+        let channels = EmitChannels {
+            running: Arc::clone(&running),
+            agent_states: Arc::clone(&agent_states),
+            pheromone_grid,
+            active_raycasts,
+            combat_events: Arc::clone(&combat_events),
+            environmental_state,
+            island_stream: Some(stream),
+            status: Some(status),
+        };
+        let handle =
+            spawn_emit_thread::<tauri::test::MockRuntime>(channels, None, supervisor.token(EMIT));
+
+        let first_drained = wait_until_drained(&combat_events, Duration::from_millis(500));
+        let second_drained = if first_drained {
+            combat_events.write().unwrap().push(CombatEvent {
+                predator_id: 1,
+                prey_id: 2,
+                damage: 2.0,
+                energy_transferred: 1.0,
+            });
+            wait_until_drained(&combat_events, Duration::from_millis(500))
+        } else {
+            false
+        };
+
+        running.store(false, Ordering::SeqCst);
+        let hung = supervisor.wait_for_exit(Duration::from_millis(500));
+        drop(agent_write_guard);
+        handle.join().expect("emit thread panicked");
+        (first_drained, second_drained, hung)
+    }
+
+    // 1. Inactive shared stream (`SharedIslandStream::new_inactive()`).
+    let inactive = SharedIslandStream::new_inactive();
+    assert!(!inactive.has_active_guests());
+    let (d1, d2, hung_inactive) = run_solo_probe(inactive);
+    assert!(
+        d1 && d2,
+        "solo inactive emit loop must never touch agent_states"
+    );
+    assert!(
+        hung_inactive.is_empty(),
+        "solo inactive emit thread hung: {hung_inactive:?}"
+    );
+
+    // 2. Attached hub with 0 registered guests (`has_active_guests() == false`, Drill 2 target).
+    let attached_empty =
+        SharedIslandStream::from_hub(IslandStreamHub::with_defaults(IslandId::new(1).unwrap()));
+    assert!(!attached_empty.has_active_guests());
+    let (e1, e2, hung_empty) = run_solo_probe(attached_empty.clone());
+    assert!(
+        e1 && e2,
+        "attached empty-hub emit loop must skip island projection when has_active_guests() is false (emit.rs:251)"
+    );
+    assert!(
+        hung_empty.is_empty(),
+        "attached empty-hub emit thread blocked on agent_states during solo run: {hung_empty:?}"
+    );
+
+    // 3. Positive control: once a guest registers (`has_active_guests() == true`), the same emit loop
+    //    projects encoded IslandSnapshot frames off-tick.
+    let guest_id = GuestId::new(7).unwrap();
+    attached_empty
+        .register_guest(
+            GuestInterestWindow::new(guest_id, GuestRole::Spectate, 0.0, 0.0, 120.0).unwrap(),
+        )
+        .unwrap();
+    assert!(attached_empty.has_active_guests());
+
+    let running = Arc::new(AtomicBool::new(true));
+    let supervisor = ThreadSupervisor::new();
+    let channels = EmitChannels {
+        running: Arc::clone(&running),
+        agent_states: Arc::new(RwLock::new(vec![make_segment(
+            1,
+            0,
+            None,
+            [2.0, 0.0, 3.0],
+            0.0,
+            45.0,
+            AgentType::Prey,
+        )])),
+        pheromone_grid: Arc::new(RwLock::new(PheromoneGridState {
+            grid: vec![0.0; CELL_COUNT],
+            width: GRID_SIZE as u32,
+            height: GRID_SIZE as u32,
+        })),
+        active_raycasts: Arc::new(RwLock::new(Vec::new())),
+        combat_events: Arc::new(RwLock::new(Vec::new())),
+        environmental_state: Arc::new(RwLock::new(make_sample_env(2, 1, 1.0))),
+        island_stream: Some(attached_empty.clone()),
+        status: Some(Arc::new(Mutex::new(SimulationStatus {
+            running: true,
+            tick_count: 77,
+            avg_tick_time_ms: 1.0,
+            fps: 60.0,
+        }))),
+    };
+    let handle =
+        spawn_emit_thread::<tauri::test::MockRuntime>(channels, None, supervisor.token(EMIT));
+    let mut received = None;
+    let deadline = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < deadline {
+        if let Some(pkt) = attached_empty.pop_guest_frame(guest_id).unwrap() {
+            received = Some(pkt);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    running.store(false, Ordering::SeqCst);
+    let hung_active = supervisor.wait_for_exit(Duration::from_millis(500));
+    handle.join().expect("active emit thread panicked");
+    assert!(
+        hung_active.is_empty(),
+        "active emit thread hung: {hung_active:?}"
+    );
+
+    let pkt = received.expect("registered Spectate guest must receive an emitted frame");
+    let frame = decode_stream_frame_bincode(&pkt.bytes).expect("decode emitted bincode frame");
+    assert!(
+        matches!(frame, IslandStreamFrame::Snapshot(ref s) if s.tick == 77),
+        "expected IslandStreamFrame::Snapshot at tick 77, got {frame:?}"
+    );
+    assert!(attached_empty.unregister_guest(guest_id).unwrap());
+    assert!(!attached_empty.has_active_guests());
 }
