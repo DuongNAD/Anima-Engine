@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { type World } from '../utils/worldGen';
 import { sampleMeshHeight } from '../utils/worldSample';
 import type { QualityTier } from '../utils/qualityTiers';
-import { getQualityTierConfig } from '../utils/qualityTiers';
 import { FLORA_SECTORS_PER_SIDE, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './types';
 import { LOOK_SPECIES, LOOK_SPECIES_SIZE, makeLookFloraGeometry } from './floraLook';
 import {
@@ -73,19 +72,31 @@ function seeded(seed: number): () => number {
   };
 }
 
-function makeFloraLookMaterial(): THREE.MeshStandardMaterial {
+function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.92,
     metalness: 0.0,
   });
+  const uFloraFar = { value: farUnits };
   material.onBeforeCompile = (shader) => {
     bindAtmosphereUniforms(shader.uniforms);
+    shader.uniforms.uFloraFar = uFloraFar;
+    // Past ~14 km a plant is under a pixel and the terrain's canopy layer already carries the
+    // forest; shrink instances to their origin over the last 30% of the range so the GPU
+    // rasterises nothing for them (degenerate triangles), with no visible pop.
     shader.vertexShader =
-      'varying vec3 vLkFloraWp;\n' +
+      'varying vec3 vLkFloraWp;\nuniform float uFloraFar;\n' +
       shader.vertexShader.replace(
         '#include <project_vertex>',
-        `#include <project_vertex>
+        `#ifdef USE_INSTANCING
+        {
+          vec3 lkOrigin = ( modelMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).xyz;
+          float lkKeep = 1.0 - smoothstep( uFloraFar * 0.7, uFloraFar, distance( lkOrigin, cameraPosition ) );
+          transformed *= lkKeep;
+        }
+        #endif
+        #include <project_vertex>
         vec4 lkFloraWp4 = vec4( transformed, 1.0 );
         #ifdef USE_INSTANCING
           lkFloraWp4 = instanceMatrix * lkFloraWp4;
@@ -97,7 +108,7 @@ function makeFloraLookMaterial(): THREE.MeshStandardMaterial {
       ATMOSPHERE_FRAGMENT_PARS +
       shader.fragmentShader.replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
   };
-  material.customProgramCacheKey = () => 'wv2-look-flora-v1';
+  material.customProgramCacheKey = () => 'wv2-look-flora-v2';
   return material;
 }
 
@@ -116,9 +127,11 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   const heightUnits = renderSize * heightRatio;
   const stride = tier === 'high' ? 1 : tier === 'medium' ? 2 : 4;
   const standScale = tier === 'high' ? 1 : tier === 'medium' ? 0.8 : 0.7;
-  const castsShadow = getQualityTierConfig(tier).shadows && tier === 'high';
+  // WV2-LOOK: at real-world size a tree is under one texel of the 2048 shadow map spread over
+  // the whole map, so its cast shadow was aliased noise that cost ~25-35% of the high-tier
+  // frame. The canopy layer in the terrain shader carries the dark gaps instead.
 
-  const material = useMemo(() => makeFloraLookMaterial(), []);
+  const material = useMemo(() => makeFloraLookMaterial(renderSize * 0.35), [renderSize]);
 
   const batches = useMemo<SpeciesBatch[]>(() => {
     const unitsPerM = renderSize / (bundle.extentM || WORLD_EXTENT_M);
@@ -238,7 +251,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
         <instancedMesh
           key={batch.speciesId}
           args={[batch.geometry, material, batch.count]}
-          castShadow={castsShadow}
+          castShadow={false}
           receiveShadow={false}
           name={`world-v2-flora-s${batch.speciesId}`}
           ref={(mesh: THREE.InstancedMesh | null) => {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // prototype, to be replaced — WV2-LOOK flora shapes for World v2 decorative flora.
 //
@@ -115,7 +115,12 @@ function finish(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   }
   const merged = mergeGeometries(parts, false) ?? parts[0];
   for (const p of parts) if (p !== merged) p.dispose();
-  return merged;
+  // Re-index: the parts are flattened for per-vertex colour, which left every triangle with
+  // three private vertices. Shared corners (same position, normal, colour) collapse again, so
+  // ~100k instanced plants run the vertex shader 2-4x less often.
+  const indexed = mergeVertices(merged, 1e-4);
+  if (indexed !== merged) merged.dispose();
+  return indexed;
 }
 
 /** Unit-height (y 0..1) plant geometry, canopy radius ~0.5 * widthRatio, for bake species id. */
