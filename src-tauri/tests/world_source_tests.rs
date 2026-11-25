@@ -232,24 +232,48 @@ fn headless_live_world_ignores_env_and_temp_artifacts_while_app_init_world_reads
         run_temp_artifact.provenance.world_identity
     );
 
-    // (b) Positive control: the app's init_world() DOES switch terrain when an artifact is present.
+    // (b) Positive control (WV2-7 desktop switchover):
+    // - Clean init_world() (ANIMA_WORLD_ARTIFACT unset) boots C01 sim_256.anmw3 with
+    //   sim_world_sha256 == Some(<index.json sim_world_identity>), distinct from Generated;
+    // - Explicit ANIMA_WORLD_ARTIFACT loads that legacy .anmw file (sim_world_sha256 == None);
+    // - <temp_dir>/anima_world_artifact.anmw is retired and ignored when ANIMA_WORLD_ARTIFACT is unset.
+    let expected_c01_sha = {
+        let idx_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("CARGO_MANIFEST_DIR has repo parent")
+            .join("artifacts/world-v2/index.json");
+        let raw_idx =
+            std::fs::read_to_string(&idx_path).expect("read artifacts/world-v2/index.json");
+        let parsed: serde_json::Value = serde_json::from_str(&raw_idx).expect("parse index.json");
+        let hex = parsed["sim_world_identity"]
+            .as_str()
+            .expect("sim_world_identity hex");
+        anima_worldgen::anmw_v3::sha256_from_hex(hex).expect("valid sha256 hex")
+    };
+    assert_eq!(
+        app_clean_id.sim_world_sha256,
+        Some(expected_c01_sha),
+        "clean init_world() must boot bundled C01 sim_256.anmw3 with verified sim_world_sha256"
+    );
     assert_ne!(
         app_env_id, app_clean_id,
-        "positive control: init_world() must read ANIMA_WORLD_ARTIFACT when set"
+        "positive control: init_world() must read explicit ANIMA_WORLD_ARTIFACT when set"
+    );
+    assert_eq!(
+        app_env_id.sim_world_sha256, None,
+        "legacy v2 ANIMA_WORLD_ARTIFACT keeps sim_world_sha256 = None"
     );
     assert_ne!(
         app_env_terrain.biomes, app_clean_terrain.biomes,
-        "positive control: artifact terrain biomes must differ from MapSettings::default()"
+        "positive control: legacy ANIMA_WORLD_ARTIFACT biomes must differ from C01 sim_256.anmw3"
     );
     assert_eq!(
-        app_env_id, app_temp_id,
-        "temp-dir anima_world_artifact.anmw and ANIMA_WORLD_ARTIFACT must load the same world"
+        app_temp_id, app_clean_id,
+        "WV2-7 retires <temp_dir>/anima_world_artifact.anmw on the desktop path"
     );
-    assert_eq!(app_env_terrain.biomes, app_temp_terrain.biomes);
     assert_eq!(
-        run_clean.provenance.world_identity,
-        Some(app_clean_id),
-        "clean headless run must match MapSettings::default() clean init_world()"
+        app_temp_terrain.biomes, app_clean_terrain.biomes,
+        "retired <temp_dir>/anima_world_artifact.anmw must not alter desktop terrain"
     );
     let default_settings = MapSettings::default();
     let default_generated =
@@ -258,6 +282,10 @@ fn headless_live_world_ignores_env_and_temp_artifacts_while_app_init_world_reads
         &default_generated,
         default_settings.seed,
         WORLD_CACHE_VERSION,
+    );
+    assert_ne!(
+        app_clean_id, default_expected_id,
+        "switched-over C01 desktop world differs from procedural MapSettings::default()"
     );
     assert_eq!(
         run_clean.provenance.world_identity,
@@ -370,7 +398,10 @@ fn world_source_child_entry_point() {
 
     match mode.as_str() {
         "seed_app_cache" => {
-            let _ = init_world();
+            let cache_dir = std::env::var_os("ANIMA_CACHE_DIR")
+                .map(PathBuf::from)
+                .expect("ANIMA_CACHE_DIR set for seed_app_cache");
+            let _ = TerrainMap::load_or_generate(&MapSettings::default(), &cache_dir);
         }
         "headless_only" => {
             let registry = ObservableRegistry::live_default();
@@ -555,7 +586,9 @@ fn generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes()
         "Generated must never create <temp_dir>/anima_world_cache"
     );
 
-    // 3. Poisoned ANIMA_CACHE_DIR: headless ignores it; positive control init_world() loads poison.
+    let expected_c01_checksum = app_world_fingerprint().0.checksum;
+
+    // 3. Poisoned ANIMA_CACHE_DIR: headless ignores it; desktop init_world() boots C01 cleanly.
     let env_poison_res = run_child_probe(
         "headless_then_app",
         &empty_cwd,
@@ -575,12 +608,12 @@ fn generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes()
     );
     assert_eq!(
         env_poison_res.app_world_id_checksum,
-        Some(poisoned_id.checksum),
-        "positive control: init_world() must read poisoned ANIMA_CACHE_DIR"
+        Some(expected_c01_checksum),
+        "WV2-7 desktop init_world() must ignore poisoned ANIMA_CACHE_DIR and boot C01"
     );
 
     // 4. Poisoned <temp_dir>/anima_world_cache (with ANIMA_CACHE_DIR unset): headless ignores it;
-    //    positive control init_world() loads poison.
+    //    desktop init_world() boots C01 cleanly.
     let temp_poison_res = run_child_probe(
         "headless_then_app",
         &empty_cwd,
@@ -600,12 +633,12 @@ fn generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes()
     );
     assert_eq!(
         temp_poison_res.app_world_id_checksum,
-        Some(poisoned_id.checksum),
-        "positive control: init_world() must read poisoned <temp_dir>/anima_world_cache"
+        Some(expected_c01_checksum),
+        "WV2-7 desktop init_world() must ignore poisoned <temp_dir>/anima_world_cache and boot C01"
     );
 
-    // 5. Modified map_config.json in scratch working directory: headless ignores it; positive
-    //    control init_world() reads it and produces modified_id.
+    // 5. Modified map_config.json in scratch working directory: headless ignores it; desktop
+    //    init_world() boots C01 cleanly without reading CWD map_config.json.
     let map_cfg_res = run_child_probe(
         "headless_then_app",
         &empty_cwd,
@@ -625,8 +658,8 @@ fn generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes()
     );
     assert_eq!(
         map_cfg_res.app_world_id_checksum,
-        Some(modified_id.checksum),
-        "positive control: init_world() must read modified CWD map_config.json"
+        Some(expected_c01_checksum),
+        "WV2-7 desktop init_world() must ignore CWD map_config.json and boot C01"
     );
 
     let _ = std::fs::remove_dir_all(&scratch_root);

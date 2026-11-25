@@ -17,7 +17,9 @@ use bevy_ecs::schedule::Schedule;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use anima_engine_lib::core::ecs::{init_world, FoodSpawnSettings, Position};
+use anima_engine_lib::core::ecs::{
+    init_world, init_world_with, FoodSpawnSettings, Position, TerrainSource,
+};
 
 /// Băm trạng thái quan sát được của thế giới.
 ///
@@ -43,8 +45,7 @@ fn world_hash(world: &mut World) -> u64 {
     h.finish()
 }
 
-fn run_ticks(ticks: usize) -> u64 {
-    let mut world = init_world();
+fn run_ticks_on(mut world: World, ticks: usize) -> u64 {
     // init_world() KHONG chen FoodSpawnSettings — no duoc chen o
     // simulation_lifecycle. Xem F-002 trong FINDINGS.md: khong co mot duong
     // dung World chuan duy nhat, moi noi tu lap mot tap resource rieng.
@@ -72,12 +73,24 @@ fn run_ticks(ticks: usize) -> u64 {
     world_hash(&mut world)
 }
 
+fn run_ticks_from(source: TerrainSource, ticks: usize) -> u64 {
+    run_ticks_on(init_world_with(source), ticks)
+}
+
 #[test]
 fn determinism_200_ticks() {
-    let hashes: Vec<u64> = (0..5).map(|_| run_ticks(200)).collect();
+    let default_hashes: Vec<u64> = (0..5).map(|_| run_ticks_on(init_world(), 200)).collect();
     assert!(
-        hashes.windows(2).all(|p| p[0] == p[1]),
-        "sim phi tat dinh sau 200 tick: {hashes:?}"
+        default_hashes.windows(2).all(|p| p[0] == p[1]),
+        "default desktop boot (C01) phi tat dinh sau 200 tick: {default_hashes:?}"
+    );
+
+    let generated_hashes: Vec<u64> = (0..5)
+        .map(|_| run_ticks_from(TerrainSource::Generated, 200))
+        .collect();
+    assert!(
+        generated_hashes.windows(2).all(|p| p[0] == p[1]),
+        "generated terrain phi tat dinh sau 200 tick: {generated_hashes:?}"
     );
 }
 
@@ -86,8 +99,8 @@ fn world_hash_bat_duoc_thay_doi_that() {
     // Nếu hash không đổi khi thế giới đổi thì golden test ở trên vô nghĩa —
     // nó sẽ "pass" kể cả khi sim hỏng hoàn toàn.
     assert_ne!(
-        run_ticks(1),
-        run_ticks(60),
+        run_ticks_on(init_world(), 1),
+        run_ticks_on(init_world(), 60),
         "world_hash khong phan biet duoc hai trang thai khac nhau"
     );
 }
@@ -104,8 +117,12 @@ fn world_hash_bat_duoc_thay_doi_that() {
 #[test]
 fn determinism_hash_ghim() {
     const GOLDEN: u64 = 192458580480519260;
+    // Pin the cross-process golden to fixed v1 `TerrainSource::Generated` terrain:
+    // - guards cross-process determinism of this system subset on fixed v1 terrain;
+    // - isolates the golden from `artifacts/world-v2/sim_256.anmw3` (which MAP-D5 may replace after WV2-PHYS3);
+    // - matches `tests/start_from_manifest_tests.rs` in using `TerrainSource::Generated` explicitly.
     assert_eq!(
-        run_ticks(200),
+        run_ticks_from(TerrainSource::Generated, 200),
         GOLDEN,
         "world_hash doi -> sim mat tinh tat dinh hoac hanh vi da doi"
     );

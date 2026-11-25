@@ -30,6 +30,19 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-082 — Shared `BrainModel::forward` hot path performs ~74 heap allocations/tick across `ai/model.rs:349-354`
+- **Ngày:** 2026-11-25
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/ai/model.rs:349-354`: inside the live shared inference pass (`batch_size > 0`), every tick executes `scratch.inputs.clone()`, `TensorData::new(...)`, `Tensor::<2>::from_data(data, device)`, and `actor_out.into_data().try_into_vec::<f32>()`.
+- **Phát hiện bởi:** `alloc_baseline_tests::measure_live_schedule_allocations_shared_vs_evolved_brains` (`P2 ALLOC-BASELINE`, `common/allocator.rs` process-wide `TrackingAllocator`)
+- **Triệu chứng:** Violates the hot-path zero-allocation rule (`SIMULATION_RULES.md`): even after a `60`-tick warm-up on `LiveExperimentAdapter` (`100` agents, `predator_fraction = 0.30`, `mortality = 0.0`, `reproduction = 0.0`), the live tick schedule allocates a median of **`17,683` heap blocks over `120` ticks (`147.36` allocs/tick)** when running shared `BrainModel` inference (`live.evolved_brains = 0.0`).
+  - **Negative control (`live.evolved_brains = 1.0`, every agent carries an `AgentBrain` so `batch_size == 0` skips lines 344-354):** median drops to **`8,803` heap blocks over `120` ticks (`73.36` allocs/tick)** — a drop of **`8,880` allocations (`74.00` allocs/tick, `50.2%`)**.
+  - **Measurement caveat:** Because the live Bevy schedule can involve worker threads, `alloc_baseline_tests` keeps process-wide `ALLOCATOR.start_tracking()` in a single `#[test]` (`common/allocator.rs`); process-wide counts can therefore include a few allocations from libtest's main thread handling harness events, though the `8,880`-allocation drop is orders of magnitude above that noise.
+- **Tái hiện:** `cargo test --manifest-path src-tauri/Cargo.toml --test alloc_baseline_tests -- --nocapture` (`5`-run median: shared `17,683` vs evolved negative control `8,803`)
+- **Test khoá lại:** `src-tauri/tests/alloc_baseline_tests.rs::measure_live_schedule_allocations_shared_vs_evolved_brains` (pins negative-control drop; intentionally does not gate on the shared baseline count)
+- **Trạng thái:** OPEN (measurement & finding only in `P2 ALLOC-BASELINE`, pending next-card hot-path fix)
+
 ### F-081 — `physics_tests::test_spatial_grid_zero_allocation` process-wide tracking flake + `TEST_LOCK` `PoisonError` cascade
 - **Ngày:** 2026-11-25
 - **Loại:** BUG

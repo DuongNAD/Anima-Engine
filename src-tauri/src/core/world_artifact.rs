@@ -33,7 +33,7 @@
 //! with a clear "regenerate the world" message (scenario S09); there is no in-place migration
 //! because worlds are cheap to regenerate from their seed.
 
-use crate::core::terrain::TerrainMap;
+use crate::core::terrain::{MapSettings, TerrainMap};
 use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -611,65 +611,286 @@ pub fn terrain_map_from_v3_sim(
     Ok((terrain, identity))
 }
 
-/// Canonical on-disk location of the shared World Artifact: the frontend writes it here during world
-/// generation and the simulation reads it at `init_world`. Overridable via `ANIMA_WORLD_ARTIFACT`;
-/// defaults to a stable temp path that both the writer (main thread) and the sim thread derive
-/// identically without needing a Tauri app handle.
+/// Decoded desktop simulation world ready for [`crate::core::ecs::init_world_from_loaded`].
+#[derive(Clone, Debug)]
+pub struct LoadedDesktopWorld {
+    pub terrain: TerrainMap,
+    pub identity: WorldIdentity,
+    /// Present only when booted from an `ANMW v3` simulation bundle; absent for legacy v2 and
+    /// procedural `Generated` worlds.
+    pub v3_sea_level_norm: Option<f32>,
+}
+
+/// Canonical on-disk location of the shared World Artifact (`save_world_artifact` / explicit
+/// `ANIMA_WORLD_ARTIFACT` env override). Under `WV2-7`, `<temp_dir>/anima_world_artifact.anmw`
+/// is no longer read in desktop mode unless explicitly pointed to via `ANIMA_WORLD_ARTIFACT`.
 pub fn default_artifact_path() -> PathBuf {
     std::env::var_os("ANIMA_WORLD_ARTIFACT")
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("anima_world_artifact.anmw"))
 }
 
-/// Fallible counterpart to [`world_seed_from_disk`] that explicitly rejects `ANMW v3` headers
-/// before desktop switchover (`WV2-7`) instead of silently falling back to the default seed.
-pub fn try_world_seed_from_disk() -> Result<u32, String> {
-    let path = default_artifact_path();
-    let bytes = match std::fs::read(&path) {
-        Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(crate::core::terrain::MapSettings::default().seed);
-        }
-        Err(e) => {
-            return Err(format!(
-                "failed to read world artifact at {}: {e}",
-                path.display()
-            ));
-        }
-    };
-    if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
-        return Err(format!(
-            "refusing to read seed from ANMW v3 world artifact at {} before WV2-7 desktop switchover",
-            path.display()
-        ));
-    }
-    WorldArtifact::peek_seed(&bytes)
+fn read_expected_sim_world_identity(index_path: &Path) -> Result<[u8; 32], String> {
+    let raw = std::fs::read_to_string(index_path).map_err(|e| {
+        format!(
+            "failed to read ANMW v3 world index at {}: {e}",
+            index_path.display()
+        )
+    })?;
+    let val: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+        format!(
+            "invalid ANMW v3 world index JSON at {}: {e}",
+            index_path.display()
+        )
+    })?;
+    let hex = val
+        .get("sim_world_identity")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            format!(
+                "missing string `sim_world_identity` in ANMW v3 world index {}",
+                index_path.display()
+            )
+        })?;
+    anima_worldgen::anmw_v3::sha256_from_hex(hex).map_err(|e| {
+        format!(
+            "invalid `sim_world_identity` in ANMW v3 world index {}: {e}",
+            index_path.display()
+        )
+    })
 }
 
-/// The world's seed as it can be determined **before** the ECS world is built.
-///
-/// Mirrors the branch `core::ecs::init_world` takes: a shared artifact on disk supplies the seed,
-/// otherwise the local generator's `MapSettings::default().seed` does. Callers that already have a
-/// [`WorldIdentity`] must read `identity.seed` instead — this is only for code that runs earlier,
-/// such as the evolution thread, which is spawned before the world exists.
-///
-/// Pre-switchover guard (`WV2-3`): an `ANMW v3` header on disk **panics loudly** instead of
-/// silently falling back to the default local seed.
-pub fn world_seed_from_disk() -> u32 {
-    let path = default_artifact_path();
-    match std::fs::read(&path) {
-        Ok(bytes) => {
-            if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
-                panic!(
-                    "refusing to read seed from ANMW v3 world artifact at {} before WV2-7 desktop switchover (pre-switchover loud rejection)",
-                    path.display()
-                );
-            }
-            WorldArtifact::peek_seed(&bytes)
-                .unwrap_or_else(|_| crate::core::terrain::MapSettings::default().seed)
-        }
-        Err(_) => crate::core::terrain::MapSettings::default().seed,
+/// Locates the committed dev/repo `artifacts/world-v2/sim_256.anmw3` when both it and sibling
+/// `index.json` exist on disk.
+pub fn resolve_dev_world_v2_sim_path() -> Option<PathBuf> {
+    let mut candidates = Vec::with_capacity(8);
+    if let Some(workspace_root) = Path::new(env!("CARGO_MANIFEST_DIR")).parent() {
+        candidates.push(workspace_root.join("artifacts/world-v2/sim_256.anmw3"));
     }
+    candidates.push(PathBuf::from("artifacts/world-v2/sim_256.anmw3"));
+    candidates.push(PathBuf::from("../artifacts/world-v2/sim_256.anmw3"));
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().skip(1) {
+            candidates.push(ancestor.join("artifacts/world-v2/sim_256.anmw3"));
+            candidates.push(ancestor.join("world-v2/sim_256.anmw3"));
+        }
+    }
+    candidates.into_iter().find(|p| {
+        p.is_file()
+            && p.parent()
+                .map(|dir| dir.join("index.json").is_file())
+                .unwrap_or(false)
+    })
+}
+
+fn resolve_v3_index_path_for(sim_path: &Path, bundled_sim_path: Option<&Path>) -> Option<PathBuf> {
+    if let Some(sibling) = sim_path.parent().map(|dir| dir.join("index.json")) {
+        if sibling.is_file() {
+            return Some(sibling);
+        }
+    }
+    if let Some(bundled_idx) = bundled_sim_path
+        .and_then(|p| p.parent())
+        .map(|dir| dir.join("index.json"))
+    {
+        if bundled_idx.is_file() {
+            return Some(bundled_idx);
+        }
+    }
+    resolve_dev_world_v2_sim_path()
+        .and_then(|dev_sim| dev_sim.parent().map(|dir| dir.join("index.json")))
+        .filter(|p| p.is_file())
+}
+
+fn load_verified_v3_sim_bytes(
+    sim_path: &Path,
+    bytes: &[u8],
+    index_path: &Path,
+) -> Result<LoadedDesktopWorld, String> {
+    if !anima_worldgen::anmw_v3::is_anmw_v3_header(bytes) {
+        return Err(format!(
+            "expected ANMW v3 world bundle at {}, got invalid header",
+            sim_path.display()
+        ));
+    }
+    let expected_sha = read_expected_sim_world_identity(index_path)?;
+    anima_worldgen::anmw_v3::verify_sim_world_identity(bytes, &expected_sha).map_err(|e| {
+        format!(
+            "ANMW v3 world integrity check failed for {} against {}: {e}",
+            sim_path.display(),
+            index_path.display()
+        )
+    })?;
+    let sim = anima_worldgen::anmw_v3::AnmwV3Sim::from_bytes(bytes).map_err(|e| {
+        format!(
+            "corrupt ANMW v3 world bundle at {}: {e}",
+            sim_path.display()
+        )
+    })?;
+    let (terrain, identity) = terrain_map_from_v3_sim(&sim, bytes)?;
+    Ok(LoadedDesktopWorld {
+        terrain,
+        identity,
+        v3_sea_level_norm: Some(sim.sea_level_norm),
+    })
+}
+
+/// Reads and verifies an `ANMW v3` simulation bundle (`sim_256.anmw3`) against its `index.json`
+/// `sim_world_identity` SHA-256 without any fallback.
+pub fn load_verified_v3_sim_from_paths(
+    sim_path: &Path,
+    index_path: &Path,
+) -> Result<LoadedDesktopWorld, String> {
+    let bytes = std::fs::read(sim_path).map_err(|e| {
+        format!(
+            "failed to read ANMW v3 world bundle at {}: {e}",
+            sim_path.display()
+        )
+    })?;
+    load_verified_v3_sim_bytes(sim_path, &bytes, index_path)
+}
+
+/// Loads the desktop simulation world (`WV2-7`) without any procedural noise fallback:
+/// 1. `ANIMA_WORLD_ARTIFACT` if set (verified against `index.json` if `ANMW v3`; decoded via
+///    [`WorldArtifact::from_bytes`] if legacy v2 `.anmw`);
+/// 2. `bundled_sim_path` if `Some` and present on disk (verified against sibling `index.json`);
+/// 3. committed dev `artifacts/world-v2/sim_256.anmw3` (verified against sibling `index.json`).
+///
+/// Legacy `<temp_dir>/anima_world_artifact.anmw` is never read unless explicitly named by
+/// `ANIMA_WORLD_ARTIFACT`.
+pub fn load_desktop_world_with_bundled_path(
+    bundled_sim_path: Option<&Path>,
+    settings: &MapSettings,
+) -> Result<LoadedDesktopWorld, String> {
+    if let Some(env_path) = std::env::var_os("ANIMA_WORLD_ARTIFACT")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+    {
+        let bytes = std::fs::read(&env_path).map_err(|e| {
+            format!(
+                "failed to read ANIMA_WORLD_ARTIFACT at {}: {e}",
+                env_path.display()
+            )
+        })?;
+        if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
+            let index_path =
+                resolve_v3_index_path_for(&env_path, bundled_sim_path).ok_or_else(|| {
+                    format!(
+                        "missing index.json to verify ANMW v3 ANIMA_WORLD_ARTIFACT at {}",
+                        env_path.display()
+                    )
+                })?;
+            return load_verified_v3_sim_bytes(&env_path, &bytes, &index_path);
+        }
+        let artifact = WorldArtifact::from_bytes(&bytes).map_err(|e| {
+            format!(
+                "invalid legacy world artifact at ANIMA_WORLD_ARTIFACT {}: {e}",
+                env_path.display()
+            )
+        })?;
+        let terrain = artifact.to_terrain_map(settings.width, settings.height);
+        let identity =
+            WorldIdentity::from_terrain(&terrain, artifact.seed, artifact.generator_version);
+        return Ok(LoadedDesktopWorld {
+            terrain,
+            identity,
+            v3_sea_level_norm: None,
+        });
+    }
+
+    if let Some(bundled) = bundled_sim_path {
+        if bundled.exists() {
+            let index_path = bundled
+                .parent()
+                .map(|dir| dir.join("index.json"))
+                .ok_or_else(|| {
+                    format!(
+                        "bundled ANMW v3 world path {} has no parent directory for index.json",
+                        bundled.display()
+                    )
+                })?;
+            return load_verified_v3_sim_from_paths(bundled, &index_path);
+        }
+    }
+
+    let dev_sim = resolve_dev_world_v2_sim_path().ok_or_else(|| {
+        "missing ANMW v3 desktop world bundle: neither bundled world-v2/sim_256.anmw3 nor dev artifacts/world-v2/sim_256.anmw3 found (no procedural fallback)"
+            .to_string()
+    })?;
+    let dev_index = dev_sim
+        .parent()
+        .map(|dir| dir.join("index.json"))
+        .ok_or_else(|| "dev sim_256.anmw3 has no parent directory".to_string())?;
+    load_verified_v3_sim_from_paths(&dev_sim, &dev_index)
+}
+
+/// Resolves the active desktop [`WorldIdentity`] using the same `WV2-7` precedence and SHA-256
+/// verification as world boot.
+pub fn active_desktop_world_identity(
+    bundled_sim_path: Option<&Path>,
+) -> Result<WorldIdentity, String> {
+    load_desktop_world_with_bundled_path(bundled_sim_path, &MapSettings::default())
+        .map(|loaded| loaded.identity)
+}
+
+/// Fallible counterpart to [`world_seed_from_disk`] supporting an optional bundled `sim_256.anmw3`
+/// path resolved on the Tauri main thread (`WV2-7`).
+pub fn try_world_seed_from_disk_with_bundled_path(
+    bundled_sim_path: Option<&Path>,
+) -> Result<u32, String> {
+    if let Some(env_path) = std::env::var_os("ANIMA_WORLD_ARTIFACT")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+    {
+        let bytes = std::fs::read(&env_path).map_err(|e| {
+            format!(
+                "failed to read ANIMA_WORLD_ARTIFACT at {}: {e}",
+                env_path.display()
+            )
+        })?;
+        if anima_worldgen::anmw_v3::is_anmw_v3_header(&bytes) {
+            let index_path =
+                resolve_v3_index_path_for(&env_path, bundled_sim_path).ok_or_else(|| {
+                    format!(
+                        "missing index.json to verify ANMW v3 ANIMA_WORLD_ARTIFACT at {}",
+                        env_path.display()
+                    )
+                })?;
+            let expected_sha = read_expected_sim_world_identity(&index_path)?;
+            anima_worldgen::anmw_v3::verify_sim_world_identity(&bytes, &expected_sha).map_err(
+                |e| {
+                    format!(
+                        "ANMW v3 world integrity check failed for {}: {e}",
+                        env_path.display()
+                    )
+                },
+            )?;
+            return anima_worldgen::anmw_v3::AnmwV3Sim::peek_seed(&bytes).map_err(|e| {
+                format!(
+                    "failed to peek seed from ANMW v3 {}: {e}",
+                    env_path.display()
+                )
+            });
+        }
+        return WorldArtifact::peek_seed(&bytes);
+    }
+
+    let loaded = load_desktop_world_with_bundled_path(bundled_sim_path, &MapSettings::default())?;
+    Ok(loaded.identity.seed)
+}
+
+/// Fallible counterpart to [`world_seed_from_disk`] resolving the switched-over desktop world
+/// (`ANIMA_WORLD_ARTIFACT` -> dev `artifacts/world-v2/sim_256.anmw3`) with loud errors on any
+/// missing, corrupt, or SHA-mismatched artifact.
+pub fn try_world_seed_from_disk() -> Result<u32, String> {
+    try_world_seed_from_disk_with_bundled_path(None)
+}
+
+/// The desktop world's seed as determined **before** the ECS world is built (`WV2-7`), failing
+/// loudly if the verified desktop world cannot be loaded instead of falling back to local noise.
+pub fn world_seed_from_disk() -> u32 {
+    try_world_seed_from_disk()
+        .unwrap_or_else(|e| panic!("failed to resolve desktop world seed: {e}"))
 }
 
 /// Persist artifact bytes to `path`, creating the parent directory. The payload is validated first so

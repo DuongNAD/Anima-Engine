@@ -20,7 +20,7 @@ use anima_engine_lib::commands::{
 use anima_engine_lib::core::agent_systems::{AgentGenotype, AgentLineageId};
 use anima_engine_lib::core::components::{Agent, Lake, Position, Predator, Prey, Tree};
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
-use anima_engine_lib::core::ecs::{init_world, FoodSpawnSettings, MapBounds};
+use anima_engine_lib::core::ecs::{init_world_with, FoodSpawnSettings, MapBounds, TerrainSource};
 use anima_engine_lib::core::exotic_energy::{
     ExoticEnergyLaw, ExoticIntervention, ExoticInterventionKind,
 };
@@ -370,7 +370,7 @@ fn app_world_matches_live_adapter_at_tick_zero_for_sel2p_and_full_policy_manifes
 
         // Simulate SimulationEngine::start()'s ambient resource inserts before calling the shared
         // genesis+policy helper, proving the manifest helper overrides env-based defaults.
-        let mut app_world = init_world();
+        let mut app_world = init_world_with(TerrainSource::Generated);
         app_world.insert_resource(MortalityPolicy::from_env());
         app_world.insert_resource(FitnessRuleSetting::from_env());
         let bounds = MapBounds::default();
