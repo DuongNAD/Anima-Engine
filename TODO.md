@@ -14,6 +14,15 @@
 
 ---
 
+# 2026-11-26 (Update 2) — `WV2-BIG-2` (`#308`), `WV2-D2` Accepted (`#294`/`#295`/`#309`), `QD-WCHG`/`QD-PLANT` (`#296`/`#305`), Night Design/Research Suite & `STATE-SYNC r7`
+
+- **World v2 `WV2-BIG-2` (`#308`, `3b78b4b8`, [note](docs/ai/planning/2026-11-26-wv2-big-2.md)):** Merged scale-aware hydrology and the `81.92 km` verifier profile (`C5b.CoastalPlainProfile`), with `4096²` `40.96 km @ 10 m` `C01` and `S2_6` bit-identity proven on `macOS arm64` (`verdicts/WV2-BIG-2_3936ce3b.md`, `verdicts/WV2-BIG-2_23dd1304.md`). **Combined `81.92 km` measurement pending** (`BIG-COMBO` not in yet); provisional `C01` (`cbdd3ba9…`) remains active until `WV2-BIG-3` replaces it once, later.
+- **Scale-up design accepted & owner decision blocks (`#294` `8ae6e83d`, `#295` `dcaf6e7a`, `#309` `55e3ea30`, `#296` `bbf05631`, `#305` `31a45f9f`, `#297` `d87756ca`):** Merged `WV2-D2` (`status: accepted` in [2026-11-26-world-v2-scale-up-design.md](docs/ai/design/2026-11-26-world-v2-scale-up-design.md)), `QD-WV2-D2`, `QD-WCHG`, `QD-PLANT`, and `D1. STATE-SYNC r6`.
+- **Night design & gap research suite (`#298` `adaa7d42`, `#299` `357fa8b1`, `#300` `ed851bd9`, `#301` `bdc383ad`, `#302` `6333fe61`, `#303` `7465a81f`, `#304` `55a4a9ef`, `#306` `5573dcaa`, `#310` `c0e43e99`):** Merged opt-in `proposed` designs (`RESP-D`, `INVERT-D`, `AERO-D`, `AQUA-D`, `FOSS-D`, `WX-D`, `PATHO-D`, `MICRO-D`) and the real-world gap note ([REAL_WORLD_GAP_ANALYSIS_2026-11-26.md](docs/research/REAL_WORLD_GAP_ANALYSIS_2026-11-26.md)).
+- **Still open at `3b78b4b8`:** `#311` (`WV2-BIG-1`, `VERIFIED` at `11e3b669` per `verdicts/WV2-BIG-1_843769b8.md` & `verdicts/WV2-BIG-1_11e3b669.md`), `#307` (`REVERSE-EVO`, `VERIFIED` at `8f6ee7f2`), `#312` (`ADR-ACCEPT`, `63b37c95`, `ADR-0015`/`ADR-0016` -> `accepted`), `#291` (`WV2-6`, internal under `QD-TRIAL-V3`), `#278` (`WV2-6-PREVIEW`, never merged), `#281`, and `D16` (`REL09-RC`, branch-only). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+
+---
+
 # 2026-11-26 — `SEL2-P2` Freeze (`#290`), `WV2-PHYS3` (`#274`), `QD-WV2-LOOK`/`QD-WV2-BIG`/`QD-WV2-D2` (`#288`/`#292`/`#293`), `WV2-BIG-1/2` Start & Hardening (`#284`/`#285`/`#287`/`#289`)
 
 - **`SEL2-P2` preregistration freeze (`#290`, `81eb1e8e`, [prereg](docs/ai/planning/2026-11-24-sel2-p2-preregistration.md)):** `C16 SEL2P2-FREEZE` froze the `SEL2-P2` preregistration manifests (`src-tauri/tests/fixtures/experiments_sel2p2/`), `src-tauri/tests/prereg_sel2p2_manifest_tests.rs`, and `scripts/verify_sel2p2_artifacts.mjs` (`QD-GATES-1125 (5)`).
