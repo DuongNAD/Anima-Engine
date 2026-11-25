@@ -96,8 +96,8 @@ gl_Position=vec4(2.0,2.0,2.0,1.0);
 vec2 dom=atmoCloudDom(p);
 float C=atmoCloudC(p,dom.g,atmoCloudRegion(p));
 if(C<0.03)return;
-float top=atmoCloudTop(p,C,0);
-float Hm=uAtmoCloudTop*uAtmoMPerUnitY;
+float top=atmoCloudTop(p,C);
+vec2 pu=p/uAtmoMPerUnit;
 ` +
   // Real-size cumulus: ~0.5-1.6 km across over the sea (thin cells), growing to ~3 km and
   // taller where the cell is thick (the windward bank). Thin ones are 1.6-2.4 times wider than
@@ -106,19 +106,19 @@ float Hm=uAtmoCloudTop*uAtmoMPerUnitY;
   // low) grow their clouds a little so the bank does not fall apart into separate puffs.
   `float rM=mix(250.0,2000.0,pow(top,1.5))*(0.75+0.5*fract(aCell.z*7.13))*sqrt(clamp(sp/1000.0,1.0,4.0));
 float asp=mix(2.0,1.1,top)*(0.8+0.4*fract(aCell.w*5.31));
-vec3 rc=normalize(vec3(p.x/uAtmoMPerUnit,uAtmoCloudY,p.y/uAtmoMPerUnit)-cameraPosition);
+vec3 rc=normalize(vec3(pu.x,uAtmoCloudY,pu.y)-cameraPosition);
 float ryM=rM*mix(1.0,1.0/asp,1.0-smoothstep(0.08,0.4,-rc.y));
 float cy=uAtmoCloudY+(0.3+1.1*top*fract(aCell.z*3.17))*ryM/uAtmoMPerUnitY;
 if(top<0.02||dom.r>cy-0.3*ryM/uAtmoMPerUnitY)return;
-vec3 c=vec3(p.x/uAtmoMPerUnit,cy,p.y/uAtmoMPerUnit);
+vec3 c=vec3(pu.x,cy,pu.y);
 vR=rM/uAtmoMPerUnit;
 vRy=ryM/uAtmoMPerUnit;
 ` +
-  // Per puff, not per pixel: gone when the camera is inside or right next to it, its haze, and
-  // whether any terrain within its radius reaches its lower half (else no terrain fade lookup).
+  // Per puff, not per pixel: gone when the camera is inside or right next to it, its haze (along
+  // the direction to its base), and whether any terrain within its radius reaches its lower
+  // half (else no terrain fade lookup).
   `vNear=smoothstep(1.0,2.4,length(c-cameraPosition)/vR);
 if(vNear<0.01)return;
-rc=normalize(c-cameraPosition);
 vHazeC=atmoSkyColor(normalize(vec3(rc.x,abs(rc.y)*0.2,rc.z)));
 vHaze=atmoHazeAmount(cameraPosition,c);
 float gm=max(max(atmoCloudDom(p+vec2(rM,0.0)).r,atmoCloudDom(p-vec2(rM,0.0)).r),max(atmoCloudDom(p+vec2(0.0,rM)).r,atmoCloudDom(p-vec2(0.0,rM)).r));
@@ -157,8 +157,7 @@ if(dM<300.0)discard;
   // 2-5 lobes per cloud, their offsets and sizes from the seed, so no two clouds share a shape;
   // a smooth union (soft minimum) with the normal blended by the same weights: no seams.
   `vec4 nz=texture2D(uAtmoCloudTex,vUv*0.6+vSeed*3.7);
-float n2=nz.g;
-float wob=0.82+0.3*nz.r+0.12*n2;
+float wob=0.82+0.3*nz.r+0.12*nz.g;
 int nl=2+int(fract(vSeed*13.7)*3.99);
 float ws=0.0;
 vec2 l=vec2(0.0);
@@ -192,13 +191,12 @@ float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-0.08*ryM,0.2*ryM,hB),s
   // buffer), and gone when the camera is inside or right next to the puff.
   `if(vNearG>0.5)a*=smoothstep(0.0,700.0,(wp.y-atmoCloudDom(wp.xz*uAtmoMPerUnit).r)*uAtmoMPerUnitY);
 a*=vNear;
-if(a<0.004)discard;
 vec3 sd=normalize(uAtmoSunDir);
 ` +
   // Gentle shading (cumulus are not billiard balls): a little sun on the lit side, a grey
   // base darkening toward the condensation level when seen from below or the side.
   `float sunL=clamp(dot(n,sd)*mix(0.25,0.45,side)+mix(0.78,0.58,side),0.0,1.0)*mix(1.0,mix(0.5,1.0,smoothstep(0.0,1.2*ryM,hB)),side);
-vec3 col=mix(vec3(0.60,0.64,0.72),vec3(1.0,0.985,0.95),sunL)*mix(0.93,1.04,n2);
+vec3 col=mix(vec3(0.60,0.64,0.72),vec3(1.0,0.985,0.95),sunL)*mix(0.93,1.04,nz.g);
 col+=vec3(1.0,0.95,0.85)*pow(max(dot(rd,sd),0.0),8.0)*0.35*smoothstep(0.3,1.0,r2);
 col=mix(col,vHazeC,vHaze);
 gl_FragColor=vec4(min(col,vec3(1.0)),a*0.96);

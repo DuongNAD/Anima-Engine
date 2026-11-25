@@ -44,11 +44,10 @@ export interface AtmosphereUniforms {
   uAtmoHzSide: { value: THREE.Color };
   uAtmoHzAway: { value: THREE.Color };
   /**
-   * Cumulus slab: 0 = off; global cloudiness offset; base height and depth (units); metres per
+   * Cumulus slab: 0 = off; base height and depth (units); metres per
    * unit horizontally and vertically; wind (m/s).
    */
   uAtmoCloudOn: { value: number };
-  uAtmoCloudCover: { value: number };
   uAtmoCloudY: { value: number };
   uAtmoCloudTop: { value: number };
   uAtmoMPerUnit: { value: number };
@@ -87,7 +86,6 @@ export const atmosphereUniforms: AtmosphereUniforms = {
   uAtmoHzSide: { value: new THREE.Color(0.91, 0.93, 0.94) },
   uAtmoHzAway: { value: new THREE.Color(0.88, 0.9, 0.91) },
   uAtmoCloudOn: { value: 0 },
-  uAtmoCloudCover: { value: 0 },
   uAtmoCloudY: { value: 120 },
   uAtmoCloudTop: { value: 50 },
   uAtmoMPerUnit: { value: 34 },
@@ -365,7 +363,6 @@ uniform vec3 uAtmoHzSun;
 uniform vec3 uAtmoHzSide;
 uniform vec3 uAtmoHzAway;
 uniform float uAtmoCloudOn;
-uniform float uAtmoCloudCover;
 uniform float uAtmoCloudY;
 uniform float uAtmoCloudTop;
 uniform float uAtmoMPerUnit;
@@ -418,7 +415,7 @@ vec2 q=pM-uAtmoWind*uAtmoTime;
 vec2 w=normalize(uAtmoWind);
 float street=0.5+0.5*cos(dot(q,vec2(-w.y,w.x))*0.0015+region*7.0);
 float sea=smoothstep(0.48,0.8,region)*(0.1+0.24*street);
-return clamp(sea+land*0.6+uAtmoCloudCover,0.0,0.82);
+return clamp(sea+land*0.6,0.0,0.82);
 }
 float atmoCloudRegion(vec2 pM){
 vec4 r=texture2D(uAtmoCloudTex,(pM-uAtmoWind*uAtmoTime)/97000.0+0.53);
@@ -429,12 +426,11 @@ return r.a*0.7+r.b*0.3;
   // wind-aligned coordinates (cells stretched along the wind) is thresholded at 1 - C, so a
   // cloudy region merges into wide fields and a clear one keeps a few small cells; inside a cell
   // the top rises like a dome, higher where it is cloudier.
-  `float atmoCloudTop(vec2 pM,float C,int oct){
+  `float atmoCloudTop(vec2 pM,float C){
 vec2 q=pM-uAtmoWind*uAtmoTime;
 vec2 w=normalize(uAtmoWind);
 vec2 a=vec2(dot(q,w)*0.62,dot(q,vec2(-w.y,w.x)));
 float n=texture2D(uAtmoCloudTex,a/7200.0+0.13).r*0.6+texture2D(uAtmoCloudTex,a/2600.0+0.71).g*0.4;
-if(oct>0)n+=(texture2D(uAtmoCloudTex,a/900.0+0.37).b-0.5)*0.22;
 n=0.5+(n-0.5)*1.45;
 float x=(n-(1.0-C))/max(C,0.05);
 return x<=0.0?0.0:sqrt(min(x*1.8,1.0))*mix(0.25,1.0,C);
@@ -454,7 +450,7 @@ vec3 c=p+sd*((lvl-p.y)/sd.y);
 vec2 pM=c.xz*uAtmoMPerUnit;
 vec2 dom=atmoCloudDom(pM);
 float C=atmoCloudC(pM,dom.g,atmoCloudRegion(pM));
-return 1.0-0.58*smoothstep(0.0,0.45,atmoCloudTop(pM,C,0))*(1.0-smoothstep(lvl-8.0,lvl,dom.r));
+return 1.0-0.58*smoothstep(0.0,0.45,atmoCloudTop(pM,C))*(1.0-smoothstep(lvl-8.0,lvl,dom.r));
 }
 vec3 atmoSkyColorLegacy(vec3 d){
 float h=clamp(d.y,0.0,1.0);
