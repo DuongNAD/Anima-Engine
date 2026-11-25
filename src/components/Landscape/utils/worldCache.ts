@@ -1,9 +1,6 @@
 import { generateWorld, WORLD_GEN_VERSION } from './worldGen';
 import type { World, WorldGenOptions } from './worldGen';
 import { worldToArtifact } from './worldArtifact';
-import { loadWorldV2Bundle, type LoadWorldV2BundleOptions } from '../worldV2/tileLoader';
-import { buildWorldFromV2Bundle } from '../worldV2/worldV2Adapter';
-import type { WorldV2LoadedBundle } from '../worldV2/types';
 
 // Resolution of the shared World Artifact handed to the sim backend (the render world is far larger;
 // the sim only needs a modest grid, and downsampling keeps the IPC payload small).
@@ -237,52 +234,4 @@ export function clearWorldCache(): Promise<void> {
     req.onerror = () => resolve();
     req.onblocked = () => resolve();
   });
-}
-
-export interface WorldV2CachedResult {
-  bundle: WorldV2LoadedBundle;
-  world: World;
-}
-
-const v2Memo = new Map<string, Promise<WorldV2CachedResult>>();
-
-function v2KeyFor(options: LoadWorldV2BundleOptions): string {
-  return [
-    options.indexUrl ?? '/world-v2/index.json',
-    options.tilesBaseUrl ?? '/world-v2',
-    String(options.mip ?? 2),
-    String(options.includeFlora ?? true),
-    String(options.includeCaveNetwork ?? true),
-  ].join('|');
-}
-
-/**
- * Loads and caches a SHA-256 verified World v2 tile bundle + adapted `World` view.
- * Never spawns `worldGen.worker.ts`, never calls `generateWorld`, and never calls `save_world_artifact`.
- * Rejects loudly on missing or corrupted assets (`TileIntegrityError` / `WorldV2LoadError`).
- */
-export function loadWorldV2Cached(
-  options: LoadWorldV2BundleOptions = {},
-): Promise<WorldV2CachedResult> {
-  const canMemo = !options.fetcher && !options.signal && !options.onProgress;
-  const key = v2KeyFor(options);
-  if (canMemo) {
-    const hit = v2Memo.get(key);
-    if (hit) return hit;
-  }
-  const promise = loadWorldV2Bundle(options)
-    .then((bundle) => ({
-      bundle,
-      world: buildWorldFromV2Bundle(bundle),
-    }))
-    .catch((err: unknown) => {
-      if (canMemo) v2Memo.delete(key);
-      throw err;
-    });
-  if (canMemo) v2Memo.set(key, promise);
-  return promise;
-}
-
-export function clearWorldV2Cache(): void {
-  v2Memo.clear();
 }

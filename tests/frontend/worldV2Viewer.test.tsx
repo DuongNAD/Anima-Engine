@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorldShowcase } from '../../src/components/Landscape/WorldShowcase';
-import { resolveWorldSourceMode } from '../../src/components/Landscape/worldV2/tileLoader';
+import { clearWorldV2Cache, resolveWorldSourceMode } from '../../src/components/Landscape/worldV2/tileLoader';
 import * as worldCache from '../../src/components/Landscape/utils/worldCache';
 import * as worldGen from '../../src/components/Landscape/utils/worldGen';
 import * as worldTerrainTextures from '../../src/components/Landscape/utils/worldTerrainTextures';
@@ -208,7 +208,7 @@ function buildSyntheticBundleMap(): Map<string, Uint8Array> {
 
 describe('WorldShowcase World v2 integration (WV2-6)', () => {
   beforeEach(() => {
-    worldCache.clearWorldV2Cache();
+    clearWorldV2Cache();
     window.history.replaceState({}, '', '?world=v2&wv2Mip=2');
   });
 

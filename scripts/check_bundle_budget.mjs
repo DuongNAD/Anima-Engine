@@ -77,10 +77,11 @@ const CHUNK_BUDGET_KIB = {
   // and 155 -> 175 KiB (2026-11-19, reason: 'prototype' — W3-lite CC0 PBR terrain splatting &
   // instanced flora wind `terrainPbrMaterial.ts`, `floraWindMaterial.ts`, `worldAssets.ts`;
   // lazy-loaded only on 3D routes).
-  // Raised 175 -> 200 KiB (2026-11-26, reason: 'prototype, WV2-6' — measured 183.0 KiB; adds
-  // SHA-256 verified C01 KTX2/BC5/R16/ANMC/ANMF World v2 viewer pipeline and WorldV2ErrorPanel
-  // lazy-loaded only behind the 3D scene).
-  WorldShowcase: 200,
+  // Raised 175 -> 225 KiB (2026-11-26, reason: 'prototype, WV2-6' — measured 206.7 KiB after
+  // moving `loadWorldV2Cached` out of `worldCache.ts` into `worldV2/tileLoader.ts`, which
+  // keeps `sharedWorld` at trunk size 28.3 KiB and puts all SHA-256/KTX2/ANMC/ANMF viewer
+  // code exclusively behind the lazy 3D route).
+  WorldShowcase: 225,
   Map2Showcase: 130,
   map2: 120,
   // The interactive research dashboard suite (Features 14-19 & DataExportDialog).
