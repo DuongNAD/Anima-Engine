@@ -519,7 +519,9 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       ) : null}
 
       {/* Frozen lakes: opaque pale ice sheets over cold-climate basins. */}
-      {showDecorativeLakes && iceGeom ? (
+      {/* WV2-LOOK prototype: World v2 skips the frozen-lake bbox quads. On the clipped 5,700 m
+          summit plateau they read as pale squares on the snow; the snow shading covers them. */}
+      {showDecorativeLakes && iceGeom && !worldV2 ? (
         <mesh geometry={iceGeom} name="world-lake-ice">
           <meshStandardMaterial color="#d7e9f2" roughness={0.35} metalness={0} />
         </mesh>

@@ -199,8 +199,11 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   // WV2-LOOK key/fill balance: sun carries the modelling, sky fill is dimmer and the ground
   // bounce is warm earth instead of near-black navy. Exposure is raised in WorldShowcase.
   const sunLightIntensity = look ? lightRig.sunIntensity * 2.1 : lightRig.sunIntensity;
-  const hemiLightIntensity = look ? lightRig.hemiIntensity * 1.7 : lightRig.hemiIntensity;
-  const ambientLightIntensity = look ? lightRig.ambientIntensity * 0.45 : lightRig.ambientIntensity;
+  const hemiLightIntensity = look ? lightRig.hemiIntensity * 1.8 : lightRig.hemiIntensity;
+  const ambientLightIntensity = look ? lightRig.ambientIntensity * 0.5 : lightRig.ambientIntensity;
+  // The legacy sky colour has almost no red, which turned every shadow cyan; skylight is blue
+  // but broad-band.
+  const hemiSky = look ? '#a9c8e6' : params.hemiSkyColor;
   const hemiGround = look ? '#5a4a36' : params.hemiGroundColor;
   const sunLightColor = look ? warmSun(params.sunColor) : params.sunColor;
   const showStars = params.starOpacity > 0;
@@ -325,7 +328,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
           minimap. The sun provides most of the directional shading. */}
       <hemisphereLight
         name="world-hemi-light"
-        color={params.hemiSkyColor}
+        color={hemiSky}
         groundColor={hemiGround}
         intensity={hemiLightIntensity}
       />

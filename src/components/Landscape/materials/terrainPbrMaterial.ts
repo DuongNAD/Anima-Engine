@@ -112,7 +112,9 @@ vec3 lkGround = lkMacro
   * mix(0.88, 1.10, lkNHi.b);
 // Distant vegetation reads olive, not lawn: pull saturation and value down a little, and give
 // dense canopy biomes a dappled crown texture so the ground between trunks is not bare paint.
-lkGround = mix(vec3(dot(lkGround, vec3(0.2126, 0.7152, 0.0722))), lkGround, 0.66) * 0.82;
+float lkGLum = dot(lkGround, vec3(0.2126, 0.7152, 0.0722));
+// Bright meadow greens desaturate more than dark ones (the lime swatches read as lawn).
+lkGround = mix(vec3(lkGLum), lkGround, mix(0.70, 0.52, smoothstep(0.08, 0.20, lkGLum))) * 0.82;
 float lkCanopy = smoothstep(0.55, 0.95, lkMask.b);
 lkGround *= mix(1.0, (0.50 + 0.30 * lkNVHi.g) * mix(0.85, 1.1, lkNHi.r), lkCanopy);
 // Soil showing through on moderately steep vegetated ground.
@@ -143,8 +145,9 @@ float lkSnowLine = 3500.0 + (lkNLo.a - 0.5) * 900.0 + (lkNMid.a - 0.5) * 380.0;
 float lkSnowRaw = max(smoothstep(lkSnowLine - 140.0, lkSnowLine + 280.0, lkHm), lkMask.g);
 float lkShed = 1.0 - smoothstep(0.24, 0.46, lkSlope + (lkNHi.b - 0.5) * 0.14);
 float lkSnow = smoothstep(0.30, 0.62, lkSnowRaw * lkShed + (lkNHi.b - 0.5) * 0.30);
-vec3 lkSnowCol = vec3(0.80, 0.83, 0.88)
-  * mix(0.90, 1.02, lkNHi.r)
+vec3 lkSnowCol = vec3(0.70, 0.73, 0.78)
+  * mix(0.92, 1.05, lkNMid.b)
+  * mix(0.92, 1.02, lkNHi.r)
   * mix(0.95, 1.01, lkNVHi.a);
 lkGround = mix(lkGround, lkSnowCol, lkSnow);
 

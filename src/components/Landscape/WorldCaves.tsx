@@ -90,6 +90,9 @@ export const WorldCaves: React.FC<WorldCavesProps> = ({
         <mesh geometry={geom} name="world-caves" receiveShadow frustumCulled={false}>
           <meshStandardMaterial
             vertexColors
+            // WV2-LOOK prototype: the World v2 scene runs at a higher exposure; keep the cave
+            // mouths' rock as dark as the surrounding cliff instead of pale grey boxes.
+            color={worldV2 ? '#5c5650' : '#ffffff'}
             roughness={0.94}
             metalness={0}
             flatShading
