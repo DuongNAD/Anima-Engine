@@ -83,6 +83,7 @@ fn sample_header(seed: u64, segment_ticks: u64) -> WorldRecordHeader {
         era_index: 0,
         prev_era_tail_hash: None,
         omissions: vec![],
+        island: None,
     }
 }
 

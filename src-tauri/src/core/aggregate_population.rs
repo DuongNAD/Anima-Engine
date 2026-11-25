@@ -1278,7 +1278,10 @@ pub fn dehydrate_cold_agents_system(
             &crate::core::components::Position,
             Option<&mut DormancyWatch>,
         ),
-        With<crate::core::components::Agent>,
+        (
+            With<crate::core::components::Agent>,
+            Without<crate::core::island::inhabit::InhabitedControl>,
+        ),
     >,
 ) {
     let Some(cohorts) = cohorts else {
