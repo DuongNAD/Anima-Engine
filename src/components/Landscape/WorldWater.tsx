@@ -94,6 +94,57 @@ const fragmentShader = /* glsl */ `
     for (int k = 0; k < 4; k++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
     return v;
   }
+  // WV2-LOOK foam lace: sin-free hash and a 3x3 Worley (F1, F2) for cellular foam.
+  vec2 lkHash22(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.xx + p3.yz) * p3.zy);
+  }
+  // Sin-free value noise: the sin() hash turns into straight-line patterns once its argument
+  // reaches ~1e5 (metre-scale coordinates on a 41 km map do).
+  float lkNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    float a = lkHash22(i).x;
+    float b = lkHash22(i + vec2(1.0, 0.0)).x;
+    float c = lkHash22(i + vec2(0.0, 1.0)).x;
+    float d = lkHash22(i + vec2(1.0, 1.0)).x;
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  }
+  vec2 lkWorley(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float d1 = 8.0;
+    float d2 = 8.0;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 g = vec2(float(x), float(y));
+        vec2 r = g + lkHash22(i + g) - f;
+        float d = dot(r, r);
+        if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+      }
+    }
+    return sqrt(vec2(d1, d2));
+  }
+  // Foam from a density field: a Worley web whose strands widen with density until they
+  // flood the cells (dense crest), thin to lace behind it, and vanish at zero. aaW is the
+  // pixel footprint in cell units; past one cell per pixel the expected coverage is used.
+  float lkFoamLace(vec2 cellP, float dens, float aaW) {
+    float d = clamp(dens, 0.0, 1.3);
+    // Marbled coverage: density plus a two-octave marble, thresholded with an edge as wide as
+    // the pixel footprint, so foam edges are soft at every distance and never Voronoi-straight.
+    float marble = lkNoise(cellP) * 0.6 + lkNoise(cellP * 2.3 + 7.1) * 0.4;
+    float v = d * 1.15 + (marble - 0.5) * 0.9;
+    float e = 0.06 + aaW * 0.8;
+    float cover = smoothstep(0.55 - e, 0.55 + e, v);
+    // Bubble holes inside moderately dense foam (Worley F1 spots), faded out past ~1 cell/pixel.
+    vec2 w = lkWorley(cellP * 1.7 + 3.3);
+    float holeR = 0.30 * (1.0 - smoothstep(0.6, 1.1, d));
+    float holes = 1.0 - smoothstep(holeR - aaW - 0.03, holeR + aaW + 0.03, w.x);
+    float resolved = 1.0 - smoothstep(0.4, 1.3, aaW);
+    return cover * (1.0 - holes * 0.8 * resolved);
+  }
 
   void main() {
     // Terrain world-Y under this fragment (heightmap stores world height directly).
@@ -129,15 +180,15 @@ const fragmentShader = /* glsl */ `
     // shoals dissolve organically instead of forming a straight square perimeter or glacier sky cutout.
     float isOcean = 1.0 - step(0.5, uMaskOn);
     float boxN = max(abs(vWorldPos.x), abs(vWorldPos.z)) / (uTerrainSize * 0.5);
-    float nEdge = (noise(vWorldPos.xz * 0.009) - 0.5) * 0.06;
-    float edgeSoft = smoothstep(0.84, 0.98, boxN + nEdge) * isOcean;
-    float edgeHard = smoothstep(-uTerrainSize * 0.04, -uTerrainSize * 0.01, borderDist) * isOcean;
-    float edgeFade = max(edgeSoft, edgeHard);
 
     if (uUseWorldV2Water > 0.5) {
       // ---- WV2-LOOK ocean and coast (World v2 only; reference board CST-01..04) -------------
       // A wider, noisier map-edge fall-off so the shelf colour does not stop on the map's line.
-      float nEdge2 = (noise(vWorldPos.xz * 0.004) - 0.5) * 0.10 + (noise(vWorldPos.xz * 0.017) - 0.5) * 0.05;
+      // (Only near the map edge: the legacy edge noise above is no longer paid on every pixel.)
+      float nEdge2 = 0.0;
+      if (boxN > 0.78) {
+        nEdge2 = (noise(vWorldPos.xz * 0.004) - 0.5) * 0.10 + (noise(vWorldPos.xz * 0.017) - 0.5) * 0.05;
+      }
       float vEdge = smoothstep(0.86, 1.02, boxN + nEdge2) * isOcean;
       float depthM = depth * uDepthMPerUnit;
       float camD = distance(cameraPosition, vWorldPos);
@@ -173,48 +224,84 @@ const fragmentShader = /* glsl */ `
       float zone = (1.0 - smoothstep(surfOuter * 0.70, surfOuter, offM))
                  * (1.0 - smoothstep(14.0, 32.0, depthM)) * (1.0 - vEdge) * (1.0 - edgeBand) * isOcean;
       const float LAMBDA = 62.0;
-      float fwPhase = fwidth(offM) / LAMBDA;                 // uniform control flow
+      float fwM = fwidth(offM);                              // across-shore metres per pixel
+      // Full pixel footprint in metres (looking along a shore, offM barely changes per pixel).
+      vec2 lkFw = fwidth(vWorldPos.xz);
+      float fpM = max(lkFw.x, lkFw.y) * uMPerUnitH;
+      float fwPhase = fwM / LAMBDA;
       float aa = 1.0 - smoothstep(0.08, 0.35, fwPhase);
       float inner = smoothstep(0.0, surfOuter * 0.55, offM);
-      float spent = mix(0.30, 1.0, inner);
+      float spent = mix(0.45, 1.0, inner);
       float foamAmt = 0.0;
+      float faceW = 0.0;
+      vec2 waveTilt = vec2(0.0);
       if (zone > 0.001) {
-        float tx = uSdfTexel;
+        // Landward direction from the SDF over a +-3 texel (~120 m) baseline: the 8-bit field is
+        // flat between neighbouring texels, so a 1-texel difference flickered per pixel.
+        float tx = uSdfTexel * 3.0;
         vec2 g = vec2(
           texture2D(uShoreSdf, clamp(uv + vec2(tx, 0.0), 0.0, 1.0)).r - texture2D(uShoreSdf, clamp(uv - vec2(tx, 0.0), 0.0, 1.0)).r,
           texture2D(uShoreSdf, clamp(uv + vec2(0.0, tx), 0.0, 1.0)).r - texture2D(uShoreSdf, clamp(uv - vec2(0.0, tx), 0.0, 1.0)).r);
-        vec2 landward = normalize(g + vec2(1e-6));
-        vec2 tangent = vec2(-landward.y, landward.x);
-        float alongM = dot(vWorldPos.xz, tangent) * uMPerUnitH;
-        float warp = (noise(vec2(alongM * 0.004, 3.1)) - 0.5) * 0.9 + (noise(vec2(alongM * 0.017, 7.7)) - 0.5) * 0.3;
+        vec2 landward = normalize(g + vec2(1e-5));
+        // World metres, and a coordinate squashed across the shore (it moves only 20% as fast
+        // as the position when you walk seaward) for streaks and cells that trail behind the
+        // breakers. The direction only ever multiplies offM (<= 500 m), never absolute position,
+        // so a small wobble in it cannot shear the pattern.
+        vec2 pM = vWorldPos.xz * uMPerUnitH;
+        vec2 pAcross = pM + landward * offM * 0.8;
+        float warp = (lkNoise(pM * 0.0045 + 3.1) - 0.5) * 0.9 + (lkNoise(pM * 0.017 + 7.7) - 0.5) * 0.3
+                   + (lkNoise(pM * 0.08 + vec2(2.3, uTime * 0.2)) - 0.5) * 0.05;
         float phase = (offM + uTime * 6.0) / LAMBDA + warp;
         float ph = fract(phase);
         float waveId = floor(phase);
-        // Only stretches of each crest are breaking at any moment.
-        float section = smoothstep(0.28, 0.60, noise(vec2(alongM * 0.005 + waveId * 3.7, waveId * 1.3)));
-        float crest = smoothstep(0.0, 0.012, ph) * (1.0 - smoothstep(0.05, 0.13, ph));
-        float trail = exp(-ph * 2.0);
-        // Streaks run across the shore (they trail behind the breaker); low enough frequency
-        // not to sparkle at a few hundred metres.
-        float streak = noise(vec2(alongM * 0.05, offM * 0.018 + waveId * 5.3)) * 0.6
-                     + noise(vec2(alongM * 0.13, offM * 0.035 - uTime * 0.3)) * 0.4;
-        float trailFoam = trail * smoothstep(0.15, 0.60, streak + trail * 0.45);
-        // Whitewater between the breakers in the inner surf: a patchy, streaky sheet.
-        float sheet = smoothstep(0.45, 0.80, streak) * 0.35 * (1.0 - inner * 0.6);
-        float bands = (crest + trailFoam + sheet) * section * spent;
-        foamAmt = mix(0.30 * spent, bands, aa) * zone;
+        // Breaking sections: each crest breaks along stretches, with density varying along it.
+        float section = (0.15 + 0.85 * smoothstep(0.22, 0.62, lkNoise(pAcross * 0.005 + waveId * 3.7)))
+                      * mix(0.55, 1.0, lkNoise(pAcross * 0.03 + waveId * 1.9));
+        // Edge widths from the pixel footprint (in phase units), so every threshold stays soft.
+        float wPh = max(fpM / LAMBDA * 2.5, 0.005);
+        float crest = smoothstep(0.0, wPh, ph) * (1.0 - smoothstep(0.06, 0.17 + wPh, ph));
+        float trail = exp(-ph * 2.6);
+        // Streaks run across the shore, trailing behind (seaward of) the breaker.
+        float streak = lkNoise(pAcross * 0.05 + waveId * 5.3) * 0.6
+                     + lkNoise(pAcross * 0.13 + vec2(0.0, uTime * 0.3)) * 0.4;
+        float trailD = trail * smoothstep(0.30, 0.62, streak + trail * 0.30);
+        // Whitewater between breakers in the inner surf: patches that thin shoreward.
+        float sheet = smoothstep(0.58, 0.82, streak) * 0.45 * (1.0 - inner * 0.6);
+        float dens = (crest * 1.7 + trailD * 1.15 + sheet) * section * spent;
+        // Cellular lace: ~5 m cells, elongated across the shore, drifting shoreward.
+        vec2 cellP = (pAcross - landward * mod(uTime, 120.0) * 1.5) / 5.0;
+        float lace = lkFoamLace(cellP, dens, fpM / 5.0 + 0.02);
+        // Thresholding a steep density ramp re-sharpens the crest's leading edge, so the edge is
+        // softened again after the threshold, over a few pixels.
+        lace *= mix(smoothstep(0.0, wPh * 1.6, ph), 1.0, smoothstep(0.12, 0.25, ph));
+        // Far away the band is soft and broken, not dashed.
+        float farBand = (0.18 + 0.32 * section) * spent;
+        foamAmt = mix(farBand, lace, aa) * zone;
+        // Rolling face just shoreward of each crest: darker, thinner (more transparent) water.
+        faceW = smoothstep(0.80, 0.985 - wPh, ph) * (1.0 - smoothstep(1.0 - wPh * 1.5, 1.0, ph)) * section * zone * aa;
+        // Wave relief through the normal only (the sea mesh is far too coarse to displace):
+        // a gentle back sloping seaward from the crest and a steep face toward the shore,
+        // continuous through the wrap at the crest.
+        float dhdp = -2.6 * exp(-ph * 2.6) * smoothstep(0.0, 0.04 + wPh, ph)
+                   + smoothstep(0.80, 1.0, ph) * 6.0 * (1.0 - smoothstep(0.96 - wPh, 1.0, ph));
+        float slope = dhdp * 1.4 / LAMBDA * section * zone * aa;   // ~1.4 m breakers
+        waveTilt = landward * slope * 4.0;   // normal tilts toward the beach on the face
         // Aerated water between the breakers is milkier and greener.
         wcol = mix(wcol, vec3(0.30, 0.55, 0.52), zone * 0.30);
-        // The steep face just shoreward of a breaking crest is darker.
-        wcol *= 1.0 - smoothstep(0.80, 0.98, ph) * section * zone * aa * 0.25;
+        wcol = mix(wcol, vec3(0.05, 0.30, 0.33), faceW * 0.45);
       }
-      // Swash (CST-01): a thin lace of spent foam running up the last metres of the beach.
+      // Swash (CST-01): spent foam running up the last metres of the beach as thin lace.
       float swash = (1.0 - smoothstep(2.0, 16.0 + 8.0 * expo, offM)) * isOcean * (1.0 - edgeBand);
       if (swash > 0.001) {
-        float swashN = noise(vWorldPos.xz * 0.55 + vec2(uTime * 0.12, -uTime * 0.09));
-        swash *= mix(0.35, smoothstep(0.42, 0.75, swashN), det);
+        // Marbled, not cellular: two octaves of value noise, thresholded with a footprint-wide
+        // edge so it never sparkles.
+        vec2 sp = vWorldPos.xz * uMPerUnitH / 6.0 + vec2(mod(uTime, 200.0) * 0.12, -mod(uTime, 200.0) * 0.09);
+        float m = lkNoise(sp) * 0.65 + lkNoise(sp * 2.7 + 5.1) * 0.35;
+        float sw = fpM / 6.0 * 0.6 + 0.02;
+        float swashD = swash * (0.45 + 0.4 * lkNoise(sp * 0.13 + 2.0));
+        swash = smoothstep(0.62 - swashD * 0.3 - sw, 0.62 - swashD * 0.3 + sw, m) * swashD * 1.4 * mix(0.6, 1.0, det);
       }
-      foamAmt = max(foamAmt, swash * 0.85 * (1.0 - vEdge));
+      foamAmt = max(foamAmt, swash * (1.0 - vEdge));
 
       // Ripples, sun glints, sky fresnel.
       vec3 nrm = vec3(0.0, 1.0, 0.0);
@@ -227,6 +314,7 @@ const fragmentShader = /* glsl */ `
         float rz = (noise(rw.yx + 7.3 + uTime * 0.3) - 0.5) * 0.22 + (r2 - 0.5) * 0.08 + (r3 - 0.5) * 0.08;
         nrm = normalize(vec3(rx * det, 1.0, rz * det));
       }
+      nrm = normalize(nrm + vec3(waveTilt.x, 0.0, waveTilt.y));
       vec3 vdir = normalize(cameraPosition - vWorldPos);
       vec3 sdir = normalize(uSunDir);
       float ndh2 = max(dot(nrm, normalize(sdir + vdir)), 0.0);
@@ -239,7 +327,7 @@ const fragmentShader = /* glsl */ `
       float refl = clamp(schlick * 1.1 + 0.03, 0.0, 0.8);
       // Reflection over transmission: absorb is how much of the bed the water column hides.
       // Very shallow water is mostly the (wet) bed plus sky sheen, not a green film.
-      float absorb = mix(0.10, 0.97, dTeal);
+      float absorb = mix(0.10, 0.97, dTeal) * (1.0 - 0.35 * faceW);
       vec3 body = wcol * diff2;
       float a = refl + (1.0 - refl) * absorb;
       vec3 c = (refl * atmoSkyColor(normalize(rdir)) + (1.0 - refl) * absorb * body) / max(a, 1e-3);
@@ -260,13 +348,19 @@ const fragmentShader = /* glsl */ `
       // perspective (whose low marine layer softens what lies behind the surf).
       vec3 hdir = normalize(vWorldPos - cameraPosition);
       vec3 hazeC = atmoSkyColor(normalize(vec3(hdir.x, hdir.y * 0.2, hdir.z)));
-      c = mix(c, mix(hazeC, vec3(0.92), 0.3), zone * expo * 0.12);
+      float fwdSun = pow(max(dot(hdir, normalize(uSunDir)), 0.0), 6.0);
+      c = mix(c, mix(hazeC, vec3(0.95), 0.4), zone * (0.08 + 0.12 * expo) * (1.0 + 1.5 * fwdSun) * (0.6 + 0.4 * clamp(foamAmt * 2.0, 0.0, 1.0)));
       float hz = atmoHazeAmount(cameraPosition, vWorldPos);
       c = mix(c, hazeC, hz);
       a = mix(a, 1.0, hz * hz);
       gl_FragColor = vec4(c, a);
       return;
     }
+
+    float nEdge = (noise(vWorldPos.xz * 0.009) - 0.5) * 0.06;
+    float edgeSoft = smoothstep(0.84, 0.98, boxN + nEdge) * isOcean;
+    float edgeHard = smoothstep(-uTerrainSize * 0.04, -uTerrainSize * 0.01, borderDist) * isOcean;
+    float edgeFade = max(edgeSoft, edgeHard);
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
     depthN = mix(depthN, 1.0, edgeFade);
     vec3 color = mix(uShallow, uDeep, depthN);

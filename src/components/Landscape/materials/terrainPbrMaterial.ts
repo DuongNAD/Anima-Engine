@@ -222,7 +222,7 @@ vec2 lkUvDx = dFdx(vMapUv);
 vec2 lkUvDy = dFdy(vMapUv);
 float lkWet = 0.0;
 float lkSpray = 0.0;
-if (lkHAbove < 60.0) {
+if (lkHAbove < 60.0 && lkHAbove > -45.0) {   // deeper bed is hidden by near-opaque water
   vec4 lkShoreS = textureGrad(uLookShore, vMapUv, lkUvDx, lkUvDy);
   float lkShoreM = lkShoreS.r * 1000.0 - 500.0;        // metres from the shore, + on land
   float lkExpo = lkShoreS.g;
@@ -324,7 +324,7 @@ const WV2_LOOK_OUTPUT = /* glsl */ `
   }
   vec3 lkHd = normalize(vW3WorldPos - cameraPosition);
   vec3 lkHazeC = atmoSkyColor(normalize(vec3(lkHd.x, lkHd.y * 0.2, lkHd.z)));
-  if (lkSpray > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(lkHazeC, vec3(0.9), 0.25), lkSpray * 0.22);
+  if (lkSpray > 0.0) gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(lkHazeC, vec3(0.92), 0.35), lkSpray * 0.32);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, lkHazeC, atmoHazeAmount(cameraPosition, vW3WorldPos));
 }
 `;

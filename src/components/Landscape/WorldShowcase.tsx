@@ -25,6 +25,7 @@ import { loadWorldV2Cached, resolveWorldSourceMode, resolveWorldV2Mip } from './
 import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adapter';
 import type { WorldV2LoadedBundle } from './worldV2/types';
 import WorldV2Flora from './worldV2/WorldV2Flora';
+import WorldV2Spray from './worldV2/WorldV2Spray';
 import WorldV2ErrorPanel from './worldV2/WorldV2ErrorPanel';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
@@ -673,6 +674,14 @@ export const WorldShowcase: React.FC = () => {
           heightRatio={HEIGHT_RATIO}
           sunDir={sunDir}
         />
+        {worldV2Bundle ? (
+          <WorldV2Spray
+            bundle={worldV2Bundle}
+            renderSize={RENDER_SIZE}
+            heightRatio={HEIGHT_RATIO}
+            tier={effectiveQuality}
+          />
+        ) : null}
         <WorldWaterfalls
           world={world}
           worldV2={worldV2Bundle}
