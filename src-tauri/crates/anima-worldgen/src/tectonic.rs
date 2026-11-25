@@ -292,14 +292,14 @@ fn eval_cell_strat_and_envelope(
 
     let spur_fbm = fbm_4(p.seed_u64 ^ 0x5902_1122_3344_5566, u_rot * 4.8, v_rot * 5.2);
     let spur_wave =
-        0.55 * spur_fbm + 0.45 * libm::sin(v_rot * TAU * 3.5 + p.phase_z + 2.2 * fbm_broad);
+        0.50 * spur_fbm + 0.50 * libm::sin(v_rot * TAU * 5.0 + p.phase_z + 2.2 * fbm_broad);
     let flank_w = (1.0 - sech2(d_ridge / 0.085)).clamp(0.0, 1.0);
-    let d_ridge_warped = d_ridge + 0.028 * spur_wave * flank_w;
+    let d_ridge_warped = d_ridge + 0.040 * spur_wave * flank_w;
     let width_asym = if d_ridge_warped < 0.0 { 0.098 } else { 0.115 };
-    let flank_spur = flank_w * 0.28 * spur_wave;
+    let flank_spur = flank_w * 0.40 * spur_wave;
     let massif_uplift = sech2(d_ridge_warped / width_asym)
         * (0.74 + 0.26 * along_crest_envelope)
-        * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur).max(0.45);
+        * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur).max(0.42);
     let crest_spine = sech2(d_ridge / 0.055) * along_crest_envelope;
     let t_pied = ((smooth_d_coast - 0.092) / 0.032).clamp(0.0, 1.0);
     let piedmont_gate = t_pied * t_pied * (3.0 - 2.0 * t_pied);
@@ -331,7 +331,7 @@ fn eval_cell_strat_and_envelope(
     let r_plat = libm::hypot(du_plat, dv_plat);
     let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 16.0));
     let land_gate = 1.0 / (1.0 + libm::exp(-(smooth_d_coast - 0.06) * 35.0));
-    let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_400.0) / 300.0));
+    let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 1_750.0) / 220.0));
     let plateau_blend = plateau_mask * land_gate * core_gate;
 
     // 5. Volcanic stratocone footprint (`BasaltVolcanic`).
@@ -422,7 +422,11 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
 
     // 6. Compose base surface + monotonically dipped caprock plateau + volcanic cone.
     let base_surface = shelf_and_margin + massif_h;
-    let plateau_surface = caprock_target_m + 34.0 * fbm_detail + 220.0 * (p.plateau_u - u);
+    let plateau_subtile = fbm_4(p.seed_u64 ^ 0xCAF0_1234_5678_9ABC, u * 48.0, v * 48.0);
+    let plateau_surface = caprock_target_m
+        + 12.0 * fbm_detail
+        + 14.0 * plateau_subtile
+        + 280.0 * (p.plateau_u - u);
     let detail_gate = ((d_coast - 0.038) / 0.025).clamp(0.0, 1.0);
     let pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface
@@ -540,7 +544,7 @@ fn soft_bound_elevation(h_m: f64, elev_min_m: f32, elev_max_m: f32) -> f32 {
     let hi_knee = 0.72 * max_b;
 
     let mapped = if h_m > hi_knee {
-        let span = 0.995 * (max_b - hi_knee);
+        let span = 0.935 * (max_b - hi_knee);
         hi_knee + span * libm::tanh((h_m - hi_knee) / span)
     } else if h_m < lo_knee {
         let span = 0.995 * (lo_knee - min_b);
