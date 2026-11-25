@@ -143,8 +143,10 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   tier = 'high',
 }) => {
   const heightUnits = renderSize * heightRatio;
-  const stride = tier === 'high' ? 1 : tier === 'medium' ? 2 : 4;
-  const standScale = tier === 'high' ? 1 : tier === 'medium' ? 0.8 : 0.7;
+  // Low keeps every other stand (was one in four) with lite crowns: a forest, not dots.
+  const stride = tier === 'high' ? 1 : 2;
+  const standScale = tier === 'high' ? 1 : tier === 'medium' ? 0.8 : 0.65;
+  const lite = tier === 'low';
   // WV2-LOOK: at real-world size a tree is under one texel of the 2048 shadow map spread over
   // the whole map, so its cast shadow was aliased noise that cost ~25-35% of the high-tier
   // frame. The canopy layer in the terrain shader carries the dark gaps instead.
@@ -255,14 +257,14 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
       if (list.length === 0) continue;
       out.push({
         speciesId: sid,
-        geometry: makeLookFloraGeometry(sid),
+        geometry: makeLookFloraGeometry(sid, lite),
         matrices: new Float32Array(list),
         colors: new Float32Array(perSpeciesColor[sid]),
         count: list.length / 16,
       });
     }
     return out;
-  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale]);
+  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale, lite]);
 
   useEffect(() => {
     return () => {

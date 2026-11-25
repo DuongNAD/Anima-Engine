@@ -123,9 +123,18 @@ function finish(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return indexed;
 }
 
-/** Unit-height (y 0..1) plant geometry, canopy radius ~0.5 * widthRatio, for bake species id. */
-export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
+/**
+ * Unit-height (y 0..1) plant geometry, canopy radius ~0.5 * widthRatio, for bake species id.
+ * `lite` (low tier): trunk plus the main crown mass only (palms keep three fronds), so the low
+ * tier can afford twice the trees for about the same triangles.
+ */
+export function makeLookFloraGeometry(speciesId: number, lite = false): THREE.BufferGeometry {
   const w = LOOK_SPECIES_SIZE[speciesId]?.widthRatio ?? 0.8;
+  const pick = (parts: THREE.BufferGeometry[], keep: number) => {
+    if (!lite) return finish(parts);
+    for (const g of parts.slice(keep)) g.dispose();
+    return finish(parts.slice(0, keep));
+  };
   switch (speciesId) {
     case LOOK_SPECIES.Pine: {
       // Layered spire: three open cones, slightly offset, dark at the skirt.
@@ -138,7 +147,7 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
         crownNormals(p, 0, 0.45, 0, 0.6);
         return p;
       });
-      return finish([trunk(0.12, 0.035, '#3b2b1e'), ...parts]);
+      return pick([trunk(0.12, 0.035, '#3b2b1e'), ...parts], 2);
     }
     case LOOK_SPECIES.Broadleaf: {
       // Multi-lobe crown: one main mass and two smaller lobes at different
@@ -158,7 +167,7 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
         crownNormals(p, cx, cy, cz);
         return p;
       });
-      return finish([trunk(0.42, 0.04, '#3e2e20'), ...parts]);
+      return pick([trunk(0.42, 0.04, '#3e2e20'), ...parts], 2);
     }
     case LOOK_SPECIES.Jungle: {
       const r = w * 0.5;
@@ -171,7 +180,7 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
       crownNormals(a, 0, 0.75, 0);
       crownNormals(b, -r * 0.4, 0.55, r * 0.25);
       crownNormals(c, r * 0.45, 0.5, -r * 0.3);
-      return finish([trunk(0.75, 0.035, '#4a3826'), a, b, c]);
+      return pick([trunk(0.75, 0.035, '#4a3826'), a, b, c], 2);
     }
     case LOOK_SPECIES.Acacia: {
       // Umbrella of three flattened lobes, not a single disc.
@@ -184,7 +193,7 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
         crownNormals(p, 0, 0.7, 0, 0.8);
         return p;
       });
-      return finish([trunk(0.8, 0.035, '#4a3a2a'), ...parts]);
+      return pick([trunk(0.8, 0.035, '#4a3a2a'), ...parts], 2);
     }
     case LOOK_SPECIES.Palm: {
       const parts: THREE.BufferGeometry[] = [trunk(0.88, 0.03, '#6b5a44')];
@@ -199,7 +208,7 @@ export function makeLookFloraGeometry(speciesId: number): THREE.BufferGeometry {
         crownNormals(p, 0, 0.7, 0, 1.0);
         parts.push(p);
       }
-      return finish(parts);
+      return pick(parts, 4);
     }
     case LOOK_SPECIES.Cactus: {
       const body = new THREE.CylinderGeometry(0.07, 0.08, 1, 5, 1, true).translate(0, 0.5, 0);
