@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import type { World } from './worldGen';
 import { Biome, BIOME_COUNT, BIOME_RGB } from './worldGen';
 import { sampleElevation, sampleMeshHeight } from './worldSample';
-import type { WorldV2LoadedBundle } from '../worldV2/types';
+import { FLORA_SECTORS_PER_SIDE, type WorldV2LoadedBundle } from '../worldV2/types';
 
 /**
  * Enhanced display palette for the 22 biomes (`AMEND W3-lite`) — tuned so every adjacent
@@ -840,7 +840,7 @@ export interface WorldV2TerrainTextures {
   horizonMap: THREE.DataTexture;
   shoreSdfMap: THREE.DataTexture;
   hydroFlowMap: THREE.DataTexture;
-  /** WV2-LOOK: R = rock-biome, G = snow/ice-biome, B = vegetation density, A = sand/beach. */
+  /** WV2-LOOK: R = rock-biome, G = snow/ice-biome, B = tree-canopy cover, A = sand/beach. */
   lookMaskMap: THREE.DataTexture;
   /** WV2-LOOK: tileable 4-channel value noise (independent octaves per channel). */
   lookNoiseMap: THREE.DataTexture;
@@ -874,10 +874,82 @@ const WV2_LOOK_BIOME_CLASS: ReadonlyArray<readonly [number, number, number, numb
   [0.0, 0.0, 0.5, 0.0], // 21 Bog
 ];
 
+/** Separable box blur (in place via `tmp`), radius `r` texels, clamped at the borders. */
+function boxBlur(src: Float32Array, tmp: Float32Array, size: number, r: number): void {
+  const inv = 1 / (2 * r + 1);
+  for (let y = 0; y < size; y += 1) {
+    const row = y * size;
+    let acc = 0;
+    for (let k = -r; k <= r; k += 1) acc += src[row + Math.min(size - 1, Math.max(0, k))];
+    for (let x = 0; x < size; x += 1) {
+      tmp[row + x] = acc * inv;
+      acc += src[row + Math.min(size - 1, x + r + 1)] - src[row + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < size; x += 1) {
+    let acc = 0;
+    for (let k = -r; k <= r; k += 1) acc += tmp[Math.min(size - 1, Math.max(0, k)) * size + x];
+    for (let y = 0; y < size; y += 1) {
+      src[y * size + x] = acc * inv;
+      acc += tmp[Math.min(size - 1, y + r + 1) * size + x] - tmp[Math.max(0, y - r) * size + x];
+    }
+  }
+}
+
+/**
+ * WV2-LOOK tree-canopy cover in [0, 1] from the baked flora points themselves, so the terrain
+ * shader can paint a closed canopy exactly where the trees are (and not on biome swatches with
+ * no trees). Trees count 1, shrub thicket 0.55, open savanna crowns (acacia, palm) 0.45, rocks/cacti 0.
+ */
+function buildCanopyCover(bundle: WorldV2LoadedBundle): Float32Array {
+  const { size } = bundle;
+  const dens = new Float32Array(size * size);
+  const speciesWeight = [1, 1, 1, 0, 0, 0.45, 0.45, 0.55];
+  for (const sec of bundle.floraSectors) {
+    for (const inst of sec.instances) {
+      const w = speciesWeight[inst.species_id] ?? 0;
+      if (w === 0) continue;
+      const u = (sec.sectorX + inst.x_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
+      const v = (sec.sectorZ + inst.z_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
+      const x = Math.min(size - 1, Math.max(0, Math.floor(u * size)));
+      const y = Math.min(size - 1, Math.max(0, Math.floor(v * size)));
+      dens[y * size + x] += w;
+    }
+  }
+  const tmp = new Float32Array(size * size);
+  const r = Math.max(2, Math.round(size / 512));
+  boxBlur(dens, tmp, size, r);
+  boxBlur(dens, tmp, size, r);
+  // Normalise by a robust high percentile of the non-empty texels.
+  const hist = new Uint32Array(1024);
+  let maxD = 0;
+  for (let i = 0; i < dens.length; i += 1) if (dens[i] > maxD) maxD = dens[i];
+  if (maxD <= 0) return dens;
+  let nonZero = 0;
+  for (let i = 0; i < dens.length; i += 1) {
+    if (dens[i] <= 0) continue;
+    hist[Math.min(1023, Math.floor((dens[i] / maxD) * 1023))] += 1;
+    nonZero += 1;
+  }
+  let cum = 0;
+  let p90 = maxD;
+  for (let b = 0; b < 1024; b += 1) {
+    cum += hist[b];
+    if (cum >= nonZero * 0.9) {
+      p90 = ((b + 1) / 1024) * maxD;
+      break;
+    }
+  }
+  const inv = 1 / Math.max(1e-6, p90);
+  for (let i = 0; i < dens.length; i += 1) dens[i] = Math.min(1, dens[i] * inv);
+  return dens;
+}
+
 function buildWorldV2LookMask(bundle: WorldV2LoadedBundle): THREE.DataTexture {
   const { size } = bundle;
   const count = size * size;
   const data = new Uint8Array(count * 4);
+  const canopy = buildCanopyCover(bundle);
   for (let i = 0; i < count; i += 1) {
     const o4 = i * 4;
     let r = 0;
@@ -905,7 +977,8 @@ function buildWorldV2LookMask(bundle: WorldV2LoadedBundle): THREE.DataTexture {
     }
     data[o4] = Math.round((r / wSum) * 255);
     data[o4 + 1] = Math.round((g / wSum) * 255);
-    data[o4 + 2] = Math.round((b / wSum) * 255);
+    // B: tree-canopy cover from the flora points, damped where the biome is not woody.
+    data[o4 + 2] = Math.round(canopy[i] * Math.min(1, 0.35 + (b / wSum) * 0.9) * 255);
     data[o4 + 3] = Math.round((a / wSum) * 255);
   }
   return createRgbaTex(data, size, THREE.NoColorSpace, true);

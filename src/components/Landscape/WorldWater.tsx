@@ -413,7 +413,9 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   );
 
   const oceanUniforms = useMemo(
-    () => makeWaterUniforms(uniformInputs, '#2d99a2', '#103b66', 0.92, 0.85),
+    // WV2-LOOK: the swell amplitude was +-1 unit = +-43 m of sea level at World v2 scale, so
+    // the shelf flooded and drained between frames. Keep a few metres.
+    () => makeWaterUniforms(uniformInputs, '#2d99a2', '#103b66', 0.92, uniformInputs.useWorldV2Water ? 0.1 : 0.85),
     [uniformInputs],
   );
 

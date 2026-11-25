@@ -74,7 +74,16 @@ export function buildCavesGeometry(
   renderSize: number,
   heightUnits: number,
   meshRes: number,
+  /**
+   * prototype, to be replaced — WV2-LOOK: `scale` shrinks every mouth (the defaults were sized
+   * for the small v1 map; on the 41 km World v2 map they were 60-90 m black tubes) and `sink`
+   * pushes it into the hillside by that fraction of its radius so only the opening shows.
+   * Defaults (1, 0) reproduce the original geometry exactly.
+   */
+  opts: { scale?: number; sink?: number } = {},
 ): THREE.BufferGeometry | null {
+  const k = opts.scale ?? 1;
+  const sinkF = opts.sink ?? 0;
   const count = world.caveCount ?? 0;
   if (count === 0 || !world.caveX) return null;
 
@@ -90,9 +99,9 @@ export function buildCavesGeometry(
     const cellX = world.caveX[c];
     const cellZ = world.caveZ[c];
     const yaw = world.caveYaw[c];
-    const depth = 1.9 + hash(c, 1, 0) * 1.1;
-    const mouthR = 1.65 + hash(c, 2, 0) * 0.85;
-    const sag = 0.22 + hash(c, 3, 0) * 0.25;
+    const depth = (1.9 + hash(c, 1, 0) * 1.1) * k;
+    const mouthR = (1.65 + hash(c, 2, 0) * 0.85) * k;
+    const sag = (0.22 + hash(c, 3, 0) * 0.25) * k;
 
     // Outward (downhill) bearing — the mouth faces out of the hill.
     const ox = Math.cos(yaw);
@@ -100,13 +109,17 @@ export function buildCavesGeometry(
     // Centred cell coords -> normalized UV [0, 1] matching terrain & flora.
     const u = Math.min(1, Math.max(0, (cellX + world.size * 0.5) / world.size));
     const v = Math.min(1, Math.max(0, (cellZ + world.size * 0.5) / world.size));
-    const surfY = sampleMeshHeight(world, u, v, meshRes) * heightUnits;
-    const sx = (u - 0.5) * renderSize;
-    const sz = (v - 0.5) * renderSize;
+    const surfY = sampleMeshHeight(world, u, v, meshRes) * heightUnits - mouthR * sinkF * 0.35;
+    const sx = (u - 0.5) * renderSize - ox * mouthR * sinkF;
+    const sz = (v - 0.5) * renderSize - oz * mouthR * sinkF;
 
     // Seat pocket downhill/above surfY so uphill terrain never pokes through the dark throat.
-    const tip = [sx + ox * 0.35, surfY + mouthR * 0.45, sz + oz * 0.35];
-    const mouth = [sx + ox * (0.35 + depth * 0.82), surfY + mouthR * 0.56, sz + oz * (0.35 + depth * 0.82)];
+    const tip = [sx + ox * 0.35 * k, surfY + mouthR * 0.45, sz + oz * 0.35 * k];
+    const mouth = [
+      sx + ox * (0.35 * k + depth * 0.82),
+      surfY + mouthR * 0.56,
+      sz + oz * (0.35 * k + depth * 0.82),
+    ];
     let axx = mouth[0] - tip[0];
     let axy = mouth[1] - tip[1];
     let axz = mouth[2] - tip[2];
@@ -172,7 +185,7 @@ export function buildCavesGeometry(
     // Tight weathered stone collar framing the arch and anchoring cleanly into the cliff.
     for (let ck = 1; ck <= COLLAR_RINGS; ck++) {
       const flare = ck === 1 ? 1.14 : 1.26;
-      const setback = ck === 1 ? 0.15 : -(depth + 0.9);
+      const setback = ck === 1 ? 0.15 * k : -(depth + 0.9 * k);
       const tone = ck === 1 ? 0.92 : 0.72;
       addArchRing(
         positions,

@@ -81,11 +81,17 @@ vec4 lkMask = texture2D(uLookMask, vMapUv);
 vec3 lkBn = texture2D(normalMap, vMapUv).xyz * 2.0 - 1.0;
 float lkSlope = 1.0 - clamp(lkBn.z, 0.0, 1.0);
 float lkHm = (lkWp.y / uHeightUnits) * uElevSpanM + uElevMinM;
-// Large-scale noise is planar (xz). Fine noise is biplanar on steep ground: a top-down
-// projection is constant down a cliff face and smears into vertical streaks there.
+// Steep faces: every baked layer (slope, AO, horizon, albedo) is a heightfield texel stretched
+// down the face, which reads as long vertical streaks. The projection weights and the
+// "how steep" decisions therefore come from the smooth GEOMETRIC normal, steep faces take
+// biplanar procedural noise (side planes, blended by the normal), and the stretched layers
+// are damped there (lkStretch) and re-broken with isotropic noise.
+vec3 lkGn = normalize(vW3WorldNormal);
+float lkGSlope = 1.0 - clamp(lkGn.y, 0.0, 1.0);
+float lkStretch = smoothstep(0.20, 0.45, lkGSlope);
 vec2 lkP = lkWp.xz;
-float lkSteepW = smoothstep(0.10, 0.30, lkSlope);
-float lkAxX = abs(lkBn.x) / max(abs(lkBn.x) + abs(lkBn.y), 1e-3);
+float lkSteepW = smoothstep(0.10, 0.30, lkGSlope);
+float lkAxX = abs(lkGn.x) / max(abs(lkGn.x) + abs(lkGn.z), 1e-3);
 vec2 lkSA = vec2(lkWp.z, lkWp.y * 1.2);
 vec2 lkSB = vec2(lkWp.x, lkWp.y * 1.2);
 vec4 lkNLo = texture2D(uLookNoise, lkP * 0.0019);
@@ -93,13 +99,21 @@ vec4 lkNMid = texture2D(uLookNoise, lkP * 0.0105 + vec2(0.31, 0.17));
 vec4 lkNHi = texture2D(uLookNoise, lkP * 0.071 + vec2(0.13, 0.57));
 vec4 lkNVHi = texture2D(uLookNoise, lkP * 0.53 + vec2(0.71, 0.29));
 if (lkSteepW > 0.01) {
+  // Side planes: x-y for faces looking along +-z, z-y for faces looking along +-x.
+  vec4 midS = mix(texture2D(uLookNoise, lkSB * 0.03 + vec2(0.31, 0.17)),
+                  texture2D(uLookNoise, lkSA * 0.03 + vec2(0.77, 0.43)), lkAxX);
   vec4 hiS = mix(texture2D(uLookNoise, lkSB * 0.071 + vec2(0.13, 0.57)),
                  texture2D(uLookNoise, lkSA * 0.071 + vec2(0.53, 0.21)), lkAxX);
   vec4 vhiS = mix(texture2D(uLookNoise, lkSB * 0.53 + vec2(0.71, 0.29)),
                   texture2D(uLookNoise, lkSA * 0.53 + vec2(0.27, 0.61)), lkAxX);
+  lkNMid = mix(lkNMid, midS, lkSteepW);
   lkNHi = mix(lkNHi, hiS, lkSteepW);
   lkNVHi = mix(lkNVHi, vhiS, lkSteepW);
 }
+// Damp the stretched data on steep faces: slope leans on the geometric normal, AO is
+// re-broken with isotropic noise.
+lkSlope = mix(lkSlope, lkGSlope * 1.15 + (lkNHi.a - 0.5) * 0.12, lkStretch * 0.75);
+lkAo = mix(lkAo, 0.80 + 0.28 * lkNHi.r, lkStretch * 0.7);
 float lkCamDist = length(vViewPosition);
 float lkNear = 1.0 - smoothstep(40.0, 200.0, lkCamDist);
 
@@ -115,8 +129,16 @@ vec3 lkGround = lkMacro
 float lkGLum = dot(lkGround, vec3(0.2126, 0.7152, 0.0722));
 // Bright meadow greens desaturate more than dark ones (the lime swatches read as lawn).
 lkGround = mix(vec3(lkGLum), lkGround, mix(0.70, 0.52, smoothstep(0.08, 0.20, lkGLum))) * 0.82;
-float lkCanopy = smoothstep(0.55, 0.95, lkMask.b);
-lkGround *= mix(1.0, (0.50 + 0.30 * lkNVHi.g) * mix(0.85, 1.1, lkNHi.r), lkCanopy);
+// Meadows: mottled, slightly dry tufts so open grass does not read as smooth plastic.
+lkGround *= mix(0.86, 1.10, lkNHi.r) * mix(0.92, 1.06, lkNVHi.a);
+lkGround = mix(lkGround, lkGround * vec3(1.12, 1.0, 0.72), smoothstep(0.55, 0.85, lkNHi.g) * 0.45);
+// Closed canopy where the baked trees are (lookMask B is built from the flora points): dark
+// crown texture with sunlit tops and shadowed gaps, ragged at the edge. The 3D trees stand on it.
+float lkCanopy = smoothstep(0.22, 0.70, lkMask.b + (lkNHi.g - 0.5) * 0.35 + (lkNVHi.r - 0.5) * 0.12);
+float lkCrown = smoothstep(0.30, 0.78, lkNVHi.g * 0.7 + lkNHi.b * 0.3);
+vec3 lkCanopyCol = mix(vec3(0.016, 0.030, 0.014), vec3(0.055, 0.092, 0.032), lkCrown);
+lkCanopyCol *= mix(vec3(0.85, 1.0, 1.08), vec3(1.15, 1.04, 0.85), lkDry) * mix(0.85, 1.15, lkNMid.g);
+lkGround = mix(lkGround, lkCanopyCol, lkCanopy * (1.0 - lkMask.g));
 // Soil showing through on moderately steep vegetated ground.
 float lkSoil = smoothstep(0.09, 0.24, lkSlope + (lkNMid.b - 0.5) * 0.14)
   * (1.0 - lkMask.g) * (1.0 - lkMask.a * 0.8);
@@ -144,12 +166,19 @@ lkGround = mix(lkGround, lkRockCol, lkRock);
 float lkSnowLine = 3500.0 + (lkNLo.a - 0.5) * 900.0 + (lkNMid.a - 0.5) * 380.0;
 float lkSnowRaw = max(smoothstep(lkSnowLine - 140.0, lkSnowLine + 280.0, lkHm), lkMask.g);
 float lkShed = 1.0 - smoothstep(0.24, 0.46, lkSlope + (lkNHi.b - 0.5) * 0.14);
-float lkSnow = smoothstep(0.30, 0.62, lkSnowRaw * lkShed + (lkNHi.b - 0.5) * 0.30);
+// On steep faces snow survives on ledges and in patches (isotropic), not in fall-line strips.
+float lkLedge = smoothstep(0.35, 0.85, sin(lkWp.y * 1.6 + (lkNMid.r - 0.5) * 6.0) * 0.5 + 0.5)
+  * smoothstep(0.40, 0.70, lkNMid.g);
+lkShed = mix(lkShed, max(lkShed, lkLedge * 0.85), lkStretch);
+float lkSnow = smoothstep(0.30, 0.62, lkSnowRaw * lkShed
+  + (lkNHi.b - 0.5) * mix(0.30, 0.22, lkStretch) + (lkNMid.b - 0.5) * 0.45 * lkStretch);
 vec3 lkSnowCol = vec3(0.70, 0.73, 0.78)
   * mix(0.92, 1.05, lkNMid.b)
   * mix(0.92, 1.02, lkNHi.r)
   * mix(0.95, 1.01, lkNVHi.a);
 lkGround = mix(lkGround, lkSnowCol, lkSnow);
+// Snow fills the baked rills: their AO / cast-shadow texels must not paint fall-line stripes.
+lkAo = mix(lkAo, 0.92 + 0.08 * lkNHi.r, lkSnow * 0.75);
 
 // Close-range grain. Procedural only: the CC0 photo layers tile every ~12 units (~400 m),
 // so at this world scale their pebbles read as boulder-sized camouflage.
@@ -194,6 +223,9 @@ float lkSunVis = 1.0;
     float thetaH = dot(hzn, azW) / wSum;
     float sunElev = asin(clamp(sd.y, -1.0, 1.0));
     lkSunVis = smoothstep(thetaH - 0.14, thetaH + 0.22, sunElev);
+    // The horizon texels are stretched down cliffs too: soften and re-break them there.
+    lkSunVis = mix(lkSunVis, clamp(lkSunVis * 0.45 + 0.30 + 0.35 * lkNHi.g, 0.0, 1.0),
+                   max(lkStretch * 0.8, lkSnow * 0.6));
   }
 }
 `;
@@ -201,8 +233,8 @@ float lkSunVis = 1.0;
 const WV2_LOOK_NORMAL_FRAGMENT = /* glsl */ `
 #include <normal_fragment_maps>
 {
-  // Snow buries micro relief: flatten the baked fine normals under it.
-  mapN.xy *= mix(1.0, 0.4, lkSnow);
+  // Snow buries micro relief; on steep faces the baked fine normals are stretched texels.
+  mapN.xy *= mix(1.0, 0.25, lkSnow) * mix(1.0, 0.4, lkStretch);
   normal = normalize(tbn * mapN);
   float lkNf = 1.0 - smoothstep(15.0, 140.0, lkCamDist);
   if (lkNf > 0.01) {
