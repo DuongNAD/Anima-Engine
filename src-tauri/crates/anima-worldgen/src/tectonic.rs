@@ -292,11 +292,11 @@ fn eval_cell_strat_and_envelope(
 
     let spur_fbm = fbm_4(p.seed_u64 ^ 0x5902_1122_3344_5566, u_rot * 4.8, v_rot * 5.2);
     let spur_wave =
-        0.50 * spur_fbm + 0.50 * libm::sin(v_rot * TAU * 4.2 + p.phase_z + 2.2 * fbm_broad);
+        0.55 * spur_fbm + 0.45 * libm::sin(v_rot * TAU * 3.5 + p.phase_z + 2.2 * fbm_broad);
     let flank_w = (1.0 - sech2(d_ridge / 0.085)).clamp(0.0, 1.0);
-    let d_ridge_warped = d_ridge + 0.032 * spur_wave * flank_w;
+    let d_ridge_warped = d_ridge + 0.028 * spur_wave * flank_w;
     let width_asym = if d_ridge_warped < 0.0 { 0.098 } else { 0.115 };
-    let flank_spur = flank_w * 0.30 * spur_wave;
+    let flank_spur = flank_w * 0.28 * spur_wave;
     let massif_uplift = sech2(d_ridge_warped / width_asym)
         * (0.74 + 0.26 * along_crest_envelope)
         * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur).max(0.45);
@@ -423,12 +423,8 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     // 6. Compose base surface + monotonically dipped caprock plateau + volcanic cone.
     let base_surface = shelf_and_margin + massif_h;
     let plateau_subtile = fbm_4(p.seed_u64 ^ 0xCAF0_1234_5678_9ABC, u * 48.0, v * 48.0);
-    let plateau_trough = 42.0 * libm::cos(v * TAU * 3.0 + p.phase_z);
-    let plateau_surface = caprock_target_m
-        + 12.0 * fbm_detail
-        + 14.0 * plateau_subtile
-        + plateau_trough
-        + 300.0 * (p.plateau_u - u);
+    let plateau_surface =
+        caprock_target_m + 14.0 * fbm_detail + 14.0 * plateau_subtile + 220.0 * (p.plateau_u - u);
     let detail_gate = ((d_coast - 0.038) / 0.025).clamp(0.0, 1.0);
     let pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface

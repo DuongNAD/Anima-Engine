@@ -142,7 +142,7 @@ pub fn compute_multigrid_schedule(target_size: u32) -> Vec<(u32, usize)> {
         return vec![(target_size, 80)];
     }
     let mut levels = Vec::new();
-    for &(sz, steps) in &[(512_u32, 100_usize), (1024, 35), (2048, 20), (4096, 30)] {
+    for &(sz, steps) in &[(512_u32, 65_usize), (1024, 35), (2048, 20), (4096, 30)] {
         if sz < target_size {
             levels.push((sz, steps));
         }
@@ -448,7 +448,7 @@ fn worldgen_hydro_config(cfg: &WorldV2Config, dx_m: f32) -> HydrologyConfig {
         mfd_exponent_p: f64::from(cfg.mfd_p),
         channel_init_threshold: f64::from(cfg.channel_init),
         seasonal_storm_runoff_coeff: cfg.storm_runoff,
-        bankfull_q_mult: 6.5,
+        bankfull_q_mult: 5.5,
         ..HydrologyConfig::default()
     }
 }
@@ -892,10 +892,9 @@ fn apply_late_quaternary_piedmont_subsidence(
     let dx = f64::from(dx_m);
     let cell_area_m2 = dx * dx;
     let trunk_cells = ((2.5e6 / cell_area_m2).round() as u32).max(1);
-    let min_inflow_cells = ((1.5e5 / cell_area_m2).round() as u32).max(1);
     let b_scale = libm::sqrt(f64::from(basin_amp).clamp(0.5, 2.5));
-    let rx_m = 1_680.0 * b_scale;
-    let ry_m = 2_950.0 * b_scale;
+    let rx_m = 1_650.0 * b_scale;
+    let ry_m = 2_900.0 * b_scale;
     let margin = lvl / 10;
 
     let base_vs = [0.10_f64, 0.21, 0.32, 0.44, 0.56, 0.68, 0.79, 0.90];
@@ -913,8 +912,7 @@ fn apply_late_quaternary_piedmont_subsidence(
                 let i = row + c;
                 let h = bedrock_h[i] + sediment_s[i];
                 if (35.0..=145.0).contains(&h)
-                    && precip_m_yr[i] >= 1.65
-                    && acc_cells[i] >= min_inflow_cells
+                    && precip_m_yr[i] >= 1.45
                     && acc_cells[i] < trunk_cells
                 {
                     cands.push(c);
@@ -1215,9 +1213,9 @@ fn widen_trunk_alluvial_floodplains(
             let ux = (DX8[d] as f32) * inv_dist;
             let uz = (DZ8[d] as f32) * inv_dist;
 
-            if ord >= 4 && z_i < 1_300.0 && slope < 0.25 {
-                let w_fp = (640.0 + 60.0 * river_w_m[i]).clamp(640.0, 1_150.0);
-                let r_ref = 95.0_f32.max(2.0 * dx_m);
+            if ord >= 4 && z_i < 950.0 && slope < 0.18 {
+                let w_fp = (480.0 + 50.0 * river_w_m[i]).clamp(480.0, 880.0);
+                let r_ref = 90.0_f32.max(1.8 * dx_m);
                 let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
                 let r_lo = (r as isize - rad).max(1) as usize;
                 let r_hi = (r as isize + rad).min(lvl as isize - 2) as usize;
@@ -1242,8 +1240,8 @@ fn widen_trunk_alluvial_floodplains(
                             continue;
                         }
                         let u_r = (perp / r_ref).max(0.0);
-                        let t_h = z_i + 0.06 * libm::powf(u_r, 3.25);
-                        let t = ((w_fp - perp) / (0.20 * w_fp)).clamp(0.0, 1.0);
+                        let t_h = z_i + 0.12 * libm::powf(u_r, 2.75);
+                        let t = ((w_fp - perp) / (0.30 * w_fp)).clamp(0.0, 1.0);
                         let a = t * t * (3.0 - 2.0 * t) * 0.96;
                         if t_h < fp_target[j] {
                             fp_target[j] = t_h;
@@ -1278,11 +1276,11 @@ fn widen_trunk_alluvial_floodplains(
                     }
                     let z_j1 = bedrock_h[j1] + sediment_s[j1];
                     let z_j2 = bedrock_h[j2] + sediment_s[j2];
-                    if z_j1 > 0.5 && z_j2 > z_i + 4.0 && z_j1 > z_i + 0.65 * (z_j2 - z_i) {
-                        let th = z_i + 0.52 * (z_j2 - z_i);
+                    if z_j1 > 0.5 && z_j2 > z_i + 4.0 && z_j1 > z_i + 0.58 * (z_j2 - z_i) {
+                        let th = z_i + 0.50 * (z_j2 - z_i);
                         if z_j1 - th <= 45.0 && th < fp_target[j1] {
                             fp_target[j1] = th;
-                            fp_alpha[j1] = fp_alpha[j1].max(0.35);
+                            fp_alpha[j1] = fp_alpha[j1].max(0.50);
                         }
                     }
                 }
@@ -1297,8 +1295,8 @@ fn widen_trunk_alluvial_floodplains(
         }
         let z_j = bedrock_h[j] + sediment_s[j];
         let diff = z_j - th;
-        if diff > 0.0 && z_j > 0.5 && diff < 150.0 {
-            let cut_fade = ((150.0 - diff) / 45.0).clamp(0.0, 1.0);
+        if diff > 0.0 && z_j > 0.5 && diff < 75.0 {
+            let cut_fade = ((75.0 - diff) / 30.0).clamp(0.0, 1.0);
             let new_z = (z_j - fp_alpha[j] * cut_fade * diff).max(0.5);
             sediment_s[j] = sediment_s[j].max(1.2);
             bedrock_h[j] = new_z - sediment_s[j];
