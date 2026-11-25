@@ -92,13 +92,13 @@ Storing every carcass as a Bevy ECS entity with dynamic `Commands::spawn` inside
 
 ## 3. Open Owner Decisions (`D-V4-1`–`D-V4-3`)
 
-- **`D-V4-1` (`EcosystemBiomass` compartment extension vs census folding):**
+- **`D-V4-1` (`EcosystemBiomass` compartment extension vs census folding):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (`EcosystemBiomass::carcasses` + `Compartment::Carcass`).
   - **Option A (Recommended):** Add `#[serde(default)] pub carcasses: f64` on `EcosystemBiomass` (`src-tauri/crates/anima-domain/src/energy.rs:19`) and `Compartment::Carcass` (`:49`), add a sibling `closed_total_eu_with_carcasses(..., carcasses)` helper (keeping 4-argument `closed_total_eu` at `:375` unchanged for legacy callers), handle `carcasses` cleanly in `generate_energy_flux_report` (`src-tauri/src/core/telemetry_export.rs:331-404`, preserving 3 nodes when `carcasses == 0.0` so legacy report assertions hold), and update `e3_smoke.rs:768` + the `15` `src-tauri/tests/` `EcosystemBiomass { ... }` literals cleanly with `carcasses: 0.0`. Keeps carcass biomass clearly separated from mineralized `detritus` available for plant regrowth (preventing instant dead-body -> grass conversion!).
   - **Option B:** Keep `EcosystemBiomass` 4-field unchanged (`15` test files + `e3_smoke.rs` untouched) and fold `CarcassPool::total_eu()` into a separate ledger observation (`observe_carcasses`) or temporary `pool.detritus` offset inside `ecosystem_census_system`. Less clear in telemetry exports (`EnergyFluxReport`) and mixes un-decomposed corpses into mineralized detritus capacity.
-- **`D-V4-2` (Decomposition schedule cadence):**
+- **`D-V4-2` (Decomposition schedule cadence):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (`PLANT_PERIOD = 300`).
   - **Option A (Recommended):** Step decomposition on `PLANT_PERIOD = 300` (`0.2 Hz`, matching `src-tauri/crates/anima-domain/src/sim_clock.rs:21`'s explicit comment `"// 0.2 Hz — plant growth, decomposition"`!).
   - **Option B:** Step on `ECOLOGY_PERIOD = 60` (`1 Hz`) for finer-grained carcass decay curves over short `< 5s` test runs.
-- **`D-V4-3` (Does `RemovePredators` culling intervention leave carcasses?):**
+- **`D-V4-3` (Does `RemovePredators` culling intervention leave carcasses?):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (`RemovePredators` culling leaves no carcasses; natural mortality leaves carcasses).
   - **Option A (Recommended):** `RemovePredators` culling (`V6`) removes targeted predators **without** leaving decaying carcasses in the world (`leave_carcass = false`, via `ReclaimAndDespawnNoCarcassCommand` at `live_experiment.rs:1266` returning debited reserve directly to `detritus`) so the V6 wolf-removal experiment tests trophic release cleanly without a confounding carcass fertilization spike at the moment of culling; natural `mortality_system` deaths use `ReclaimAndDespawnAgentCommand` (`leave_carcass = true`).
   - **Option B:** All `ReclaimAndDespawnAgentCommand` calls leave carcasses indiscriminately whenever `CarcassPolicy.enabled`.
 

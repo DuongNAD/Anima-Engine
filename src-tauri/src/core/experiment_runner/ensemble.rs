@@ -215,6 +215,26 @@ pub fn run_paired_ensemble<M: ExperimentModel>(
 /// intervention), since [`ExperimentManifest::control_variant`] only strips the exotic law and its
 /// forcings. The two manifests must declare the **same seeds in the same order** — that is what makes
 /// the deltas paired — and a mismatch is a structured error, never silently re-ordered or truncated.
+/// Reject experiment pairs or ensembles that mix organism genesis phases (`QD-GENESIS`, ADR-0014).
+pub fn validate_uniform_genesis_phase(
+    manifests: &[&ExperimentManifest],
+) -> Result<Option<crate::core::island::GenesisPhase>, ExperimentError> {
+    let Some((&first, rest)) = manifests.split_first() else {
+        return Ok(None);
+    };
+    let expected = crate::core::island::effective_genesis_phase(first);
+    for m in rest {
+        let actual = crate::core::island::effective_genesis_phase(m);
+        if actual != expected {
+            return Err(ExperimentError::MixedGenesisPhase {
+                control: expected,
+                treatment: actual,
+            });
+        }
+    }
+    Ok(expected)
+}
+
 pub fn run_paired_ensemble_with_control<M: ExperimentModel>(
     control: &ExperimentManifest,
     treatment: &ExperimentManifest,
@@ -224,6 +244,7 @@ pub fn run_paired_ensemble_with_control<M: ExperimentModel>(
     registry.validate()?;
     treatment.validate(registry)?;
     control.validate(registry)?;
+    validate_uniform_genesis_phase(&[control, treatment])?;
     let declared_factors = allowed.validate(control, treatment)?;
 
     // Pairing requires the identical ordered seed set (not merely the same set).

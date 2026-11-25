@@ -33,6 +33,7 @@ pub fn ae210_reference_manifests() -> Vec<(&'static str, ExperimentManifest)> {
         experiment_id: "exp-1".into(),
         name: "baseline".into(),
         observer: ObserverPolicy::default(),
+        island: None,
         world_identity: WorldIdentity {
             seed: 1337,
             generator_version: 20,
@@ -40,6 +41,7 @@ pub fn ae210_reference_manifests() -> Vec<(&'static str, ExperimentManifest)> {
             height: 128,
             checksum: 0xDEAD_BEEF,
             sim_world_sha256: None,
+            genesis_phase: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![
@@ -130,6 +132,12 @@ pub struct ExperimentManifest {
     /// version it does not equal, so a bump would turn an additive field into a breaking change.
     #[serde(default)]
     pub observer: ObserverPolicy,
+    /// Optional shared-island host declaration (`ADR-0014` / `QD-SHAREDISLAND`): guest session
+    /// switch, real-time ecology profile, and `QD-GENESIS` phase. Omitted when `None` so every
+    /// pre-existing JSON fixture and legacy fingerprint stays byte-identical (`MANIFEST_SCHEMA_VERSION`
+    /// is intentionally unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub island: Option<IslandManifest>,
 }
 
 impl ExperimentManifest {
@@ -294,15 +302,23 @@ impl ExperimentManifest {
             .map(|cmd| cmd.cause_id)
             .chain(self.exotic_interventions.iter().map(|f| f.cause_id))
         {
-            if cause_id == anima_domain::causal::CAUSE_OBSERVER {
+            if cause_id == anima_domain::causal::CAUSE_OBSERVER
+                || anima_domain::causal::is_island_guest_cause(cause_id)
+            {
                 return Err(ExperimentError::InvalidObserverPolicy {
                     reason: format!(
                         "a manifest-declared intervention claims cause id {cause_id}, reserved for \
-                         the live observer (ADR-0004); declared input cannot have been caused by a \
-                         human acting during the run — pick an id of your own"
+                         the live observer or shared-island guests (ADR-0004 / ADR-0014); declared \
+                         input cannot have been caused during the run — pick an id of your own"
                     ),
                 });
             }
+        }
+
+        if let Some(island) = &self.island {
+            island
+                .validate(self.observer, &self.world_identity)
+                .map_err(|reason| ExperimentError::InvalidIslandConfig { reason })?;
         }
 
         // Observables: bounded, unique, all present in the registry.
@@ -462,6 +478,9 @@ impl ExperimentManifest {
                 c.u64(u64::from_le_bytes(*chunk));
             }
         }
+        if let Some(phase) = self.world_identity.genesis_phase {
+            c.tag(0xFA).tag(phase.canon_tag());
+        }
 
         // Laws + initial conditions (each self-canonicalizing).
         self.laws.canonicalize(&mut c);
@@ -522,6 +541,9 @@ impl ExperimentManifest {
             ObserverPolicy::Inhabit { cause_id } => {
                 c.tag(0x62).u32(cause_id);
             }
+        }
+        if let Some(island) = &self.island {
+            island.canonicalize(&mut c);
         }
         c.hash()
     }

@@ -106,10 +106,10 @@ Create `src-tauri/src/evolution/ecomorph.rs` and export `pub mod ecomorph;` in `
 
 ## 4. Open Owner Decisions
 
-- **`D-V0-1` (Snapshot schema bump vs additive under schema 8):**
+- **`D-V0-1` (Snapshot schema bump vs additive under schema 8):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (keep `SCHEMA_VERSION = 8` with additive `Option<DevelopedPhenotype>`).
   - **Option A (Recommended):** Keep `SCHEMA_VERSION = 8` (`src-tauri/src/core/snapshot.rs:58`) during P1–P2 and carry `#[serde(default, skip_serializing_if = "Option::is_none")] pub phenotype: Option<DevelopedPhenotype>` additively (exact precedent: `live_lineage` at `simulation_state.rs:589-594` and `live_id` at `:143-144`). Zero breakage of existing schema 6/7/8 tests (`MIN_SUPPORTED_SCHEMA = 6`), while unknown future `phenotype.version` fails validation loudly.
   - **Option B:** Bump `SCHEMA_VERSION` from `8` to `9` (`MIN_SUPPORTED_SCHEMA` rises to `7`, dropping schema-6 backward support). Only choose if policy mandates a schema bump whenever any field is added to `SerializedAgent`.
-- **`D-V0-2` (Frozen E3b `LIVE_KEYS` partition handling when `LIVE_KEYS.len()` becomes `32`):**
+- **`D-V0-2` (Frozen E3b `LIVE_KEYS` partition handling when `LIVE_KEYS.len()` becomes `32`):** — **DECIDED (2026-11-24, QD-OPENQ / QD-BIO-D2): Option B** (pin 31 freeze-time keys & 28 observables; frozen E3b manifests stay untouched).
   - **Option A (Recommended):** Add `"live.morphogenesis": 0` to `default_keys_left_absent` in `src-tauri/tests/fixtures/experiments_e3b/e3b-preregistration.json` (explicitly permitted by `scripts/verify_e3b_artifacts.mjs:1104-1118` `diffPreregAgainstHeadAllowingAddedDefaultZeros`) and update `src-tauri/tests/prereg_e3b_manifest_tests.rs:417-426`.
   - **Option B:** Narrow `src-tauri/tests/prereg_e3b_manifest_tests.rs:212-217, 417-426` to assert the `31` freeze-time keys so frozen `experiments_e3b/` stays byte-untouched while E3b runs.
 

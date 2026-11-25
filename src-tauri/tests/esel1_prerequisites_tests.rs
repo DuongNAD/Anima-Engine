@@ -227,6 +227,7 @@ fn manifest(id: &str, seeds: &[u64], cond: &[(&str, f64)]) -> ExperimentManifest
             .collect(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

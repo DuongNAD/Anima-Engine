@@ -5,7 +5,7 @@ title: Evolved Communication & Local Perceptual Channels Implementation Cards (S
 description: Sequenced implementation cards S1 through S8 covering evolved SIGNAL output capture, opt-in pheromone/olfactory wiring with total_cost accounting, local target perception in sensory_system and hrrl_learning_system, offline output-distance causal signal auditor, Baldwin telemetry, predator confusion, and Phase-2 acoustic/visual/plant-volatile channels
 status: proposed
 owner: anima-dell
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 ---
 
 # Evolved Communication — Implementation Cards (`S1`–`S8`)
@@ -16,7 +16,7 @@ last_reviewed: 2026-11-24
 > respect `RESEARCH_REVIEW_2026-11-24_modern_biology.md` Topic 5 (`S1`–`S6`) & §3 rejections, `QD-SIGNALS`,
 > `QD-SCALE-TRIAL` (`N = 100` trial / `N = 1,000` design target), and any card adding new post-freeze `live.*`
 > manifest keys or observables must obey merged `C12 E3B-PIN` (`#260`, `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 753-760`, `QD-BIO-D2`, and coordinate any fixed `LIVE_KEYS.len() == 31` assertions). Code anchors verified on
-> `origin/feat/ecological-selection` at `e7b99745c59d7da35e884dd9414122b1d24fc648`.
+> `origin/feat/ecological-selection` at `a146d2f2aaa6625d1aeae8bb8ab5e94c07f4231a`.
 
 ---
 
@@ -181,7 +181,7 @@ S5 (Read-Only Baldwin Telemetry: AgentBrain.genotype vs AgentBrain.learned probe
 - **Scope:** Add fast, range-limited, directional acoustic signaling channel and wire `ObserverPolicy::Inhabit`
   guest signaling inputs identically to AI organism actuators (same `total_cost`, same eavesdropping,
   human guest chat kept strictly out-of-world). Add dedicated `acoustic_system` slot cleanly inside
-  `build_tick_schedule` (`simulation_schedule.rs:121-203`) with `0` ambiguous pairs and `0` tick allocations.
+  `build_tick_schedule` (`simulation_schedule.rs:121-207`) with `0` ambiguous pairs and `0` tick allocations.
 - **`DONE WHEN`:**
   - `schedule_ambiguity_tests` passes `0` ambiguous pairs; acoustic emission adds metabolic cost inside
     `total_cost`; distant/out-of-range calls read `0.0`; predators eavesdrop identically on acoustic calls;

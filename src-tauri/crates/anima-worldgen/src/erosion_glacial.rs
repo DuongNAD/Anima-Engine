@@ -4,6 +4,8 @@
 //! Runs strictly on coarse multigrid levels (`512^2`, `1024^2`) so `2048^2` and `4096^2` incur
 //! `0 MiB` extra memory overhead. Uses `libm` exclusively and deterministic D8 topological order.
 
+use std::collections::VecDeque;
+
 use crate::hydrology::{priority_flood_d8_lean_into, NO_DIR};
 
 const DX8: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
@@ -24,6 +26,78 @@ fn dir_neighbor(idx: usize, dir: u8, width: usize) -> usize {
     let r = (idx / width) as isize + DZ8[dir as usize];
     let c = (idx % width) as isize + DX8[dir as usize];
     r as usize * width + c as usize
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spread_excess_bfs(
+    src: usize,
+    vol_m3: f64,
+    cap_m: f64,
+    skip_src: bool,
+    width: usize,
+    height: usize,
+    dx2: f64,
+    sea_level_m: Option<f32>,
+    total_h: &[f32],
+    glacial_added: &[f64],
+    moraine_delta: &mut [f64],
+    visited_stamp: &mut [u32],
+    bfs_stamp: &mut u32,
+    bfs_queue: &mut VecDeque<usize>,
+) {
+    let mut rem = vol_m3;
+    if rem <= 1e-9 {
+        return;
+    }
+    if *bfs_stamp == u32::MAX {
+        visited_stamp.fill(0);
+        *bfs_stamp = 1;
+    } else {
+        *bfs_stamp += 1;
+    }
+    let stamp = *bfs_stamp;
+    bfs_queue.clear();
+    visited_stamp[src] = stamp;
+    bfs_queue.push_back(src);
+    let mut popped = 0_usize;
+    while let Some(u) = bfs_queue.pop_front() {
+        popped += 1;
+        if !skip_src || u != src {
+            let hr = (cap_m - (glacial_added[u] + moraine_delta[u])).max(0.0);
+            if hr > 0.0 {
+                let dep = rem.min(hr * dx2);
+                moraine_delta[u] += dep / dx2;
+                rem -= dep;
+                if rem <= 1e-9 {
+                    return;
+                }
+            }
+        }
+        if popped >= 4096 {
+            break;
+        }
+        let r = u / width;
+        let c = u % width;
+        for dir in 0..8 {
+            let nr = r as isize + DZ8[dir];
+            let nc = c as isize + DX8[dir];
+            if nr < 0 || nc < 0 || nr >= height as isize || nc >= width as isize {
+                continue;
+            }
+            let nb = nr as usize * width + nc as usize;
+            if visited_stamp[nb] == stamp {
+                continue;
+            }
+            if sea_level_m.is_some_and(|sl| total_h[nb] <= sl) {
+                continue;
+            }
+            visited_stamp[nb] = stamp;
+            bfs_queue.push_back(nb);
+        }
+    }
+    if rem > 1e-9 {
+        moraine_delta[src] += rem / dx2;
+    }
 }
 
 /// Physical parameters for the `S2b` LGM paleo-glacial cirque abrasion & moraine pass.
@@ -122,6 +196,11 @@ pub fn run_paleo_glacial_pass(
     let mut q_ice = vec![0.0_f64; n];
     let mut a_glac = vec![0.0_f64; n];
     let mut phi_till = vec![0.0_f64; n];
+    let mut glacial_added = vec![0.0_f64; n];
+    let max_hops = ((8_000.0 / dx) as usize).clamp(32, 200);
+    let mut visited_stamp = vec![0_u32; n];
+    let mut bfs_stamp = 0_u32;
+    let mut bfs_queue: VecDeque<usize> = VecDeque::with_capacity(256);
 
     let mut glaciated_cells_peak = 0_usize;
     let mut eroded_volume_m3 = 0.0_f64;
@@ -284,6 +363,7 @@ pub fn run_paleo_glacial_pass(
                     let sed_cut = remaining.min(sed_avail);
                     if sed_cut > 0.0 {
                         sediment_s[i] = (sed_avail - sed_cut) as f32;
+                        glacial_added[i] = (glacial_added[i] - sed_cut).max(0.0);
                         remaining -= sed_cut;
                     }
                     if remaining > 0.0 {
@@ -299,34 +379,101 @@ pub fn run_paleo_glacial_pass(
                 continue;
             }
 
-            // Deposit arcuate moraine ridges across the snout & valley cross-section (center +
-            // non-valley-wall lateral/downhill neighbors) while capping extreme single-cell buildup.
+            // Deposit arcuate moraine ridges across the snout & prograde proglacial outwash aprons
+            // down-valley along D8 drainage when local till thickness reaches 30 m.
+            let cap_m = 30.0_f64;
             let mut deposit_spread = |center: usize, vol_m3: f64| {
-                let r = center / width;
-                let c = center % width;
-                let h_c = f64::from(total_h[center]);
-                let mut ring = [center; 9];
-                let mut count = 1_usize;
-                for dir in 0..8 {
-                    let nr = r as isize + DZ8[dir];
-                    let nc = c as isize + DX8[dir];
-                    if nr >= 0 && nc >= 0 && nr < height as isize && nc < width as isize {
-                        let nb = nr as usize * width + nc as usize;
-                        if f64::from(total_h[nb]) <= h_c + 12.0
-                            && f64::from(total_h[nb]) > params.min_bed_elev_m - 200.0
-                        {
-                            ring[count] = nb;
-                            count += 1;
+                let mut cur = center;
+                let mut rem_vol = vol_m3;
+                for hop in 0..max_hops {
+                    if rem_vol <= 1e-9 {
+                        break;
+                    }
+                    let r = cur / width;
+                    let c = cur % width;
+                    let h_c = f64::from(total_h[cur]);
+                    let mut ring = [cur; 9];
+                    let mut count = 1_usize;
+                    for dir in 0..8 {
+                        let nr = r as isize + DZ8[dir];
+                        let nc = c as isize + DX8[dir];
+                        if nr >= 0 && nc >= 0 && nr < height as isize && nc < width as isize {
+                            let nb = nr as usize * width + nc as usize;
+                            let h_nb = f64::from(total_h[nb]);
+                            let elev_ok = if hop == 0 {
+                                h_nb <= h_c + 12.0 && h_nb > params.min_bed_elev_m - 200.0
+                            } else {
+                                h_nb <= h_c + 16.0
+                            };
+                            if elev_ok && params.sea_level_m.is_none_or(|sl| total_h[nb] > sl) {
+                                ring[count] = nb;
+                                count += 1;
+                            }
                         }
                     }
-                }
-                let center_vol = if count == 1 { vol_m3 } else { 0.45 * vol_m3 };
-                moraine_delta[center] += center_vol / dx2;
-                if count > 1 {
-                    let nb_share = (vol_m3 - center_vol) / ((count - 1) as f64 * dx2);
-                    for &nb in &ring[1..count] {
-                        moraine_delta[nb] += nb_share;
+                    let mut hr = [0.0_f64; 9];
+                    for (hr_slot, &cell) in hr[..count].iter_mut().zip(ring[..count].iter()) {
+                        *hr_slot = (cap_m - (glacial_added[cell] + moraine_delta[cell])).max(0.0);
                     }
+                    let want_c = if count == 1 { rem_vol } else { 0.45 * rem_vol };
+                    let dep_c = want_c.min(hr[0] * dx2);
+                    if dep_c > 0.0 {
+                        moraine_delta[ring[0]] += dep_c / dx2;
+                        rem_vol -= dep_c;
+                    }
+                    if count > 1 && rem_vol > 1e-9 {
+                        let sum_nb_hr: f64 = hr[1..count].iter().sum();
+                        if sum_nb_hr > 0.0 {
+                            let mut used_nb = 0.0_f64;
+                            let rem_before_nb = rem_vol;
+                            for (&nb, &hr_k) in ring[1..count].iter().zip(hr[1..count].iter()) {
+                                let dep_k = (rem_before_nb * (hr_k / sum_nb_hr)).min(hr_k * dx2);
+                                if dep_k > 0.0 {
+                                    moraine_delta[nb] += dep_k / dx2;
+                                    used_nb += dep_k;
+                                }
+                            }
+                            rem_vol = (rem_vol - used_nb).max(0.0);
+                        }
+                    }
+                    if rem_vol > 1e-9 {
+                        let extra_c_cap = (hr[0] * dx2 - dep_c).max(0.0);
+                        let extra_c = rem_vol.min(extra_c_cap);
+                        if extra_c > 0.0 {
+                            moraine_delta[ring[0]] += extra_c / dx2;
+                            rem_vol -= extra_c;
+                        }
+                    }
+                    if rem_vol <= 1e-9 {
+                        break;
+                    }
+                    let d_cur = d8_dir[cur];
+                    if d_cur >= NO_DIR {
+                        break;
+                    }
+                    let next = dir_neighbor(cur, d_cur, width);
+                    if params.sea_level_m.is_some_and(|sl| total_h[next] <= sl) {
+                        break;
+                    }
+                    cur = next;
+                }
+                if rem_vol > 1e-9 {
+                    spread_excess_bfs(
+                        cur,
+                        rem_vol,
+                        cap_m,
+                        false,
+                        width,
+                        height,
+                        dx2,
+                        params.sea_level_m,
+                        &total_h,
+                        &glacial_added,
+                        &mut moraine_delta,
+                        &mut visited_stamp,
+                        &mut bfs_stamp,
+                        &mut bfs_queue,
+                    );
                 }
             };
 
@@ -352,8 +499,7 @@ pub fn run_paleo_glacial_pass(
             }
         }
 
-        // Conservatively relax fresh moraines (`<= 34 deg` scree angle, dispersing mounds > 35 m
-        // into lower-sediment neighbors) over 16 substeps so moraine ridges stay realistic (`<= 55 m`).
+        // Conservatively relax fresh moraines (`<= 34 deg` scree angle) over 16 substeps.
         let repose_moraine_tan = libm::tan(34.0 * (std::f64::consts::PI / 180.0));
         for _relax in 0..16 {
             for r in 0..height {
@@ -362,9 +508,7 @@ pub fn run_paleo_glacial_pass(
                     if moraine_delta[i] <= 0.05 {
                         continue;
                     }
-                    let h_i = f64::from(bedrock_h[i] + sediment_s[i]) + moraine_delta[i];
-                    let tot_s_i = f64::from(sediment_s[i]) + moraine_delta[i];
-                    let thick_excess = (tot_s_i - 35.0).max(0.0);
+                    let h_i = f64::from(bedrock_h[i]) + f64::from(sediment_s[i]) + moraine_delta[i];
                     let mut total_w = 0.0_f64;
                     let mut nbs = [(0_usize, 0.0_f64); 8];
                     let mut nb_cnt = 0_usize;
@@ -375,40 +519,98 @@ pub fn run_paleo_glacial_pass(
                             continue;
                         }
                         let nb = nr as usize * width + nc as usize;
-                        let tot_s_nb = f64::from(sediment_s[nb]) + moraine_delta[nb];
-                        let h_nb = f64::from(bedrock_h[nb]) + tot_s_nb;
+                        let h_nb = f64::from(bedrock_h[nb])
+                            + f64::from(sediment_s[nb])
+                            + moraine_delta[nb];
                         let dist = dx * DIST8[dir];
                         let slope_ex = (h_i - h_nb - repose_moraine_tan * dist).max(0.0);
-                        let cap_ex = if thick_excess > 0.0 && h_nb <= h_i + 25.0 {
-                            (38.0 - tot_s_nb).max(0.25)
-                        } else {
-                            0.0
-                        };
-                        let w = slope_ex.max(cap_ex);
-                        if w > 0.0 {
-                            nbs[nb_cnt] = (nb, w);
+                        if slope_ex > 0.0 {
+                            nbs[nb_cnt] = (nb, slope_ex);
                             nb_cnt += 1;
-                            total_w += w;
+                            total_w += slope_ex;
                         }
                     }
                     if total_w > 0.0 {
-                        let out_amt = if thick_excess > 0.0 {
-                            thick_excess.min(0.90 * moraine_delta[i])
-                        } else {
-                            (0.40 * moraine_delta[i]).min(0.18 * total_w)
-                        };
-                        let scale = out_amt / total_w;
-                        moraine_delta[i] -= out_amt;
-                        for &(nb, w) in &nbs[..nb_cnt] {
-                            moraine_delta[nb] += w * scale;
+                        let out_amt = (0.40 * moraine_delta[i]).min(0.18 * total_w);
+                        if out_amt > 0.0 {
+                            let scale = out_amt / total_w;
+                            moraine_delta[i] -= out_amt;
+                            for &(nb, w) in &nbs[..nb_cnt] {
+                                moraine_delta[nb] += w * scale;
+                            }
                         }
                     }
                 }
             }
         }
-        for (s_slot, &dm) in sediment_s.iter_mut().zip(moraine_delta.iter()) {
+
+        // Proglacial outwash cap-spill in strict upstream->downstream topological order so no
+        // steep gorge pocket or caldera floor accumulates unphysical > 42 m till stacks while
+        // conserving total deposited mass to machine precision.
+        let spill_cap_m = 42.0_f64;
+        for &node_u in order.iter().rev() {
+            let i = node_u as usize;
+            let dm = moraine_delta[i];
+            if dm <= 0.0 {
+                continue;
+            }
+            let excess = (glacial_added[i] + dm - spill_cap_m).max(0.0).min(dm);
+            if excess <= 0.0 {
+                continue;
+            }
+            let d_i = d8_dir[i];
+            if d_i < NO_DIR {
+                let rec = dir_neighbor(i, d_i, width);
+                if params.sea_level_m.is_none_or(|sl| total_h[rec] > sl) {
+                    moraine_delta[i] -= excess;
+                    moraine_delta[rec] += excess;
+                } else {
+                    moraine_delta[i] -= excess;
+                    spread_excess_bfs(
+                        i,
+                        excess * dx2,
+                        spill_cap_m,
+                        true,
+                        width,
+                        height,
+                        dx2,
+                        params.sea_level_m,
+                        &total_h,
+                        &glacial_added,
+                        &mut moraine_delta,
+                        &mut visited_stamp,
+                        &mut bfs_stamp,
+                        &mut bfs_queue,
+                    );
+                }
+            } else {
+                moraine_delta[i] -= excess;
+                spread_excess_bfs(
+                    i,
+                    excess * dx2,
+                    spill_cap_m,
+                    true,
+                    width,
+                    height,
+                    dx2,
+                    params.sea_level_m,
+                    &total_h,
+                    &glacial_added,
+                    &mut moraine_delta,
+                    &mut visited_stamp,
+                    &mut bfs_stamp,
+                    &mut bfs_queue,
+                );
+            }
+        }
+        for ((s_slot, g_slot), &dm) in sediment_s
+            .iter_mut()
+            .zip(glacial_added.iter_mut())
+            .zip(moraine_delta.iter())
+        {
             if dm > 0.0 {
                 *s_slot += dm as f32;
+                *g_slot += dm;
             }
         }
 

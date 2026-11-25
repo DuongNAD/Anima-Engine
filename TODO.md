@@ -113,6 +113,7 @@ Chỉ tài liệu; không build, không chạy test nào. Hai PR vào thân cây
   QĐ-P2; T3 có cần sống lại khi `main` đã được bảo vệ; ADR vòng đời mà thẻ V3 cần; `review_cycle: weekly`
   của kế hoạch tách crate trong khi nó hoãn tới sau 1.0; dòng trạng thái đầu ADR-0005 còn ghi "đề xuất";
   `CLAUDE.md` còn ghi "Two Rust advisories are ignored" trong khi `audit.toml` nay có nhiều hơn.
+  - *Ghi chú 2026-11-24:* `QĐ-P2` được làm rõ thêm bởi `QD-OPENC` (hình vẽ là dữ liệu trong repo công khai, bản nháp văn bản để ở repo riêng tư); `T3` đã thay bằng fast-forward `main` (`AGENT_WORKFLOW.md:153`, `QD-REL09` `G4`); ADR vòng đời cho `V3` (`ADR-0013`) đã merge ở `#235` và được duyệt `accepted` theo `QD-OPENQ` (`D22` `PR #262`); tách crate xác nhận làm sau `v1.0` (`QD-M2` trong `QD-OPENQ`); frontmatter `ADR-0005` là `accepted` (dòng prose banner `:13` được ghi nhận riêng ngoài phạm vi `D21`); `CLAUDE.md` do lead giữ; xem [`AGENT_WORKFLOW.md` §4](docs/how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0) (`PR #255`).
 
 # ⏪ Rà soát tiến độ, lộ trình và tài liệu (2026-11-17)
 
@@ -855,6 +856,7 @@ tài liệu**, không phải hướng đi.
   `fix/temp-path-collisions` — nhánh có PR #6 mở với tiêu đề chỉ nói về temp path. Cần tách sang
   nhánh docs riêng trước khi push. Chưa tự commit vì đụng công việc chưa commit của phiên khác.
 - **ADR-0004 chờ quyết định.** Chưa đem hệ quả của nó vào contract nào, đúng kỷ luật `proposed`.
+- *Ghi chú 2026-11-24:* Cả hai mục 2026-07-26 trên đều đã đóng — `PR #6` đã xử lý trong đợt dọn bàn làm việc 2026-11-17, và [ADR-0004](docs/decisions/ADR-0004-observer-as-declared-intervention.md) đã `accepted` từ 2026-07-26 (xem [`STATE_OF_THE_PROJECT.md` §3.8](docs/planning/STATE_OF_THE_PROJECT.md#38-hai-adr-đang-ở-trạng-thái-proposed-và-cả-hai-đều-đang-đỡ-tải)).
 
 ---
 

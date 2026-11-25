@@ -2,7 +2,7 @@
 title: ADR-0017 — Evolved Communication & Local Perceptual Channels (Chemical, Acoustic, Visual; Evidence-Gated Language Claims)
 status: proposed
 owner: simulation-architecture
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 decision_date: pending
 supersedes: none
 superseded_by: none
@@ -19,17 +19,17 @@ superseded_by: none
 > fixed `LIVE_KEYS.len() == 31` test assertions).
 > Initiated per owner decision **`QD-SIGNALS`** (`MSG_20261124_150000`, `RESEARCH_REVIEW` §3 & §4 Topic 5,
 > `QD-SCALE-TRIAL` `154500`). Code anchors verified on `origin/feat/ecological-selection` at
-> `e7b99745c59d7da35e884dd9414122b1d24fc648`.
+> `a146d2f2aaa6625d1aeae8bb8ab5e94c07f4231a` (shifted from initial `e7b99745` baseline).
 
 ---
 
-## 1. Context & Verified Baseline (`e7b99745`)
+## 1. Context & Verified Baseline (`a146d2f2`)
 
 Under [`ADR-0003`](ADR-0003-evolved-per-agent-brains.md), Anima moved from one shared neural policy
 to per-agent heritable brains (`BrainGenotype`) with an explicit placeholder output slot for signaling,
-yet six structural gaps make creatures functionally mute and perceptually omniscient at `e7b99745`:
+yet six structural gaps make creatures functionally mute and perceptually omniscient at `a146d2f2`:
 
-1. **Pheromone subsystem is scheduled but unattached (`pheromone.rs`, `simulation_schedule.rs:167-169`):**
+1. **Pheromone subsystem is scheduled but unattached (`pheromone.rs`, `simulation_schedule.rs:171-173`):**
    - `PheromoneGrid` (`src-tauri/src/ai/pheromone.rs:5-126`, `GRID_SIZE = 128`, `CELL_COUNT = 16384`,
      `MAX_CONCENTRATION = 10.0`, bilinear sampling `sample_bilinear` at `:75-125`, diffusion/decay
      `update_pheromone_grid_system` at `:185-220`, and telemetry `PheromoneGridState` at `:240-244`
@@ -37,7 +37,7 @@ yet six structural gaps make creatures functionally mute and perceptually omnisc
      saved in `SerializedPheromoneGrid` (`src-tauri/src/core/simulation_state.rs:318-322`,
      `serialize_world_state` `:1247-1260`, restored in `simulation_loop.rs:1101-1110`)) is live in the tick schedule via `agent_release_pheromone_system`
      (`pheromone.rs:161-182`), `update_pheromone_grid_system`, and `agent_read_pheromone_system`
-     (`pheromone.rs:223-235`) in `build_tick_schedule` (`src-tauri/src/core/simulation_schedule.rs:167-169`).
+     (`pheromone.rs:223-235`) in `build_tick_schedule` (`src-tauri/src/core/simulation_schedule.rs:171-173`).
    - However, **zero** production spawn/birth/restore/migration call sites attach
      `OlfactorySensors` (`pheromone.rs:130-146`) or `PheromoneReleaser` (`pheromone.rs:150-158`): neither
      `spawn.rs:139-143`, `SimulationEngine::start` (`simulation_loop.rs:1680-1706`),
@@ -234,6 +234,6 @@ Implementation proceeds strictly through cards **`S1`–`S8`** in
 
 ## 7. Related Documents
 
-- Core brain, lifecycle, island, ecosystem & determinism ADRs: [`ADR-0001`](ADR-0001-creature-development-lifecycle.md), [`ADR-0003`](ADR-0003-evolved-per-agent-brains.md), [`ADR-0004`](ADR-0004-observer-as-declared-intervention.md), [`ADR-0008`](ADR-0008-world-past-and-time.md), [`ADR-0012`](ADR-0012-ui-free-simulation-core.md), [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) (`accepted`, `#262`, `QD-PLAYRULES` #2 two-sex mate-finding & homologous crossover), [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) (`accepted`, `#256`, shared islands & guest rules), [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263`, `OpenEnergyFlowLaw` & `RespiredHeatLoss`), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), [`scaling.md`](../paper/data/scaling.md)
-- Implementation cards: [`2026-11-24-signals-cards.md`](../ai/planning/2026-11-24-signals-cards.md), [`2026-11-24-island-cards.md`](../ai/planning/2026-11-24-island-cards.md), [`2026-11-24-ecosystem-cards.md`](../ai/planning/2026-11-24-ecosystem-cards.md)
-- Unmerged parallel ADR references (cited strictly in backticks until merged): `ADR-0015` (draft `#268`, evolving plants & herbivory wound volatiles), `ADR-0016` (local `D15`, changing world surface / geographic divergence), `ADR-0019` (`QD-BRAINBODY`, unmerged `PR #259`, brain-body interface).
+- Core brain, lifecycle, island, ecosystem & determinism ADRs: [`ADR-0001`](ADR-0001-creature-development-lifecycle.md), [`ADR-0003`](ADR-0003-evolved-per-agent-brains.md), [`ADR-0004`](ADR-0004-observer-as-declared-intervention.md), [`ADR-0008`](ADR-0008-world-past-and-time.md), [`ADR-0012`](ADR-0012-ui-free-simulation-core.md), [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) (`accepted`, `#262`, `QD-PLAYRULES` #2 two-sex mate-finding & homologous crossover), [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) (`accepted`, `#256`, shared islands & guest rules), [`ADR-0015`](ADR-0015-evolving-plants.md) (`proposed`, `#268`, evolving plants & herbivory wound volatiles), [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) (`proposed`, `#263`, `OpenEnergyFlowLaw` & `RespiredHeatLoss`), [`ADR-0019`](ADR-0019-brain-body-interface.md) (`accepted`, `#259`, `QD-BRAINBODY`, brain-body interface), [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), [`scaling.md`](../paper/data/scaling.md)
+- Implementation cards: [`2026-11-24-signals-cards.md`](../ai/planning/2026-11-24-signals-cards.md), [`2026-11-24-island-cards.md`](../ai/planning/2026-11-24-island-cards.md), [`2026-11-24-ecosystem-cards.md`](../ai/planning/2026-11-24-ecosystem-cards.md), [`2026-11-24-plant-cards.md`](../ai/planning/2026-11-24-plant-cards.md)
+- Unmerged parallel ADR references (cited strictly in backticks until `#271` merges): `ADR-0016` (draft `#271`, changing world surface / geographic divergence).

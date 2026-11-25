@@ -132,7 +132,11 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             (
                 crate::core::simulation_lod::sync_lod_focus_system,
                 crate::core::observer::record_observer_trace_system,
-                crate::core::observer::drain_observer_actions_system,
+                (
+                    crate::core::observer::drain_observer_actions_system,
+                    crate::core::island::drain_guest_intents_system,
+                )
+                    .chain(),
                 crate::core::live_experiment::apply_live_interventions_system,
                 sensory_system,
                 crate::core::live_experiment::live_inference_pump_system,

@@ -102,6 +102,7 @@ fn live_manifest(
         observable_ids: shared_observable_ids(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 
