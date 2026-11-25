@@ -550,6 +550,17 @@ MAP-D6    = WV2-PHYS3 (PR #274): the Round-6c candidate S2_6 (coast_frac_amp 0.0
             artifacts/world-v2/ (MAP-D5 unchanged). Replacing C01 with S2_6 is decided later, together
             with WV2-6, and needs the robustness result. (Owner in chat, 2026-11-25, accepting the
             lead's recommendation: "oke làm theo ý bạn".)
+MAP-D6a   = amends MAP-D6 after WV2-PHYS3-FINISH Round 7 (anima-mac, BLOCKED of 2026-11-25). Three
+            findings: S2_6 sets two keys, fluvial_k_mult 2.40 and coast_frac_amp 0.058, so raising one
+            default cannot reproduce it (the zero-preset default run at 0.058 passes 8/15); a 0.058
+            default fails a crate test that does not use the 0.055 literal (biomes.rs:1498, seed 10009,
+            Mangrove 32 < 40); and both neighbours regress one gate each (0.057 G-SHAPE.1, 0.059
+            G-SHAPE.2), so S2_6 sits on a knife edge. Decision: the config.rs defaults stay at 0.055 and
+            1.65; #274 merges with exactly pipeline.rs and its note, and condition (a) of MAP-D6 is met
+            by S2_6's explicit parameter set, written complete in the note, reproducing S2_6 bit for bit
+            on the same platform. No test is edited or loosened. A PHYS4 candidate is likewise a
+            parameter set. (Lead ruling LR-PHYS3-1; owner in chat, 2026-11-25 evening: "Agree, keep
+            defaults".)
 QD-WV2-6-PREVIEW = a dev-only WV2-6 preview with locally baked tiles (PR #278, titled "[PREVIEW — do not
             merge]"), so the owner can see World v2 C01 in a viewer before the full card. It is never
             merged and ships in no build. The full WV2-6 card keeps its two owner gates: the public tile
