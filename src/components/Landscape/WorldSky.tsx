@@ -182,7 +182,7 @@ vec3 rd=normalize(wp-cameraPosition);
 ` +
   // Soft where the card meets the terrain (the coarse height map stands in for a depth
   // buffer), and gone when the camera is inside or right next to the puff.
-  `if(vNearG>0.5)a*=smoothstep(0.0,250.0,(wp.y-atmoCloudDom(wp.xz*uAtmoMPerUnit).r)*uAtmoMPerUnitY);
+  `if(vNearG>0.5)a*=smoothstep(0.0,700.0,(wp.y-atmoCloudDom(wp.xz*uAtmoMPerUnit).r)*uAtmoMPerUnitY);
 a*=vNear;
 if(a<0.004)discard;
 vec3 sd=normalize(uAtmoSunDir);

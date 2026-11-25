@@ -446,10 +446,15 @@ return x<=0.0?0.0:sqrt(min(x*1.8,1.0))*mix(0.25,1.0,C);
 if(uAtmoCloudOn<0.5)return 1.0;
 vec3 sd=normalize(uAtmoSunDir);
 if(sd.y<=0.02)return 1.0;
-vec3 c=p+sd*((uAtmoCloudY+0.2*uAtmoCloudTop-p.y)/sd.y);
+float lvl=uAtmoCloudY+0.2*uAtmoCloudTop;
+` +
+  // Ground at or above the cloud level has no cumulus over it (the puffs clear the massif).
+  `if(p.y>=lvl)return 1.0;
+vec3 c=p+sd*((lvl-p.y)/sd.y);
 vec2 pM=c.xz*uAtmoMPerUnit;
-float C=atmoCloudC(pM,atmoCloudDom(pM).g,atmoCloudRegion(pM));
-return 1.0-0.62*smoothstep(0.0,0.3,atmoCloudTop(pM,C,0));
+vec2 dom=atmoCloudDom(pM);
+float C=atmoCloudC(pM,dom.g,atmoCloudRegion(pM));
+return 1.0-0.58*smoothstep(0.0,0.45,atmoCloudTop(pM,C,0))*(1.0-smoothstep(lvl-8.0,lvl,dom.r));
 }
 vec3 atmoSkyColorLegacy(vec3 d){
 float h=clamp(d.y,0.0,1.0);
