@@ -13,7 +13,7 @@ import { ELEV_SPAN_M, SEA_LEVEL_NORM, WORLD_EXTENT_M, type WorldV2LoadedBundle }
 // bright veil, densest at the water and fading upward, so it softens the beach and land just
 // behind the breakers. It brightens when you look toward the sun (forward scattering) and
 // shares the aerial perspective, so distant spray melts into the haze like everything else.
-// High tier: up to 1400 cards; medium: 700; low: off (no draw call). Exposed coasts get more
+// High tier: up to 900 cards; medium: 450; low: off (no draw call). Exposed coasts get more
 // and denser cards than sheltered ones.
 
 export interface WorldV2SprayProps {
@@ -93,7 +93,7 @@ export const WorldV2Spray: React.FC<WorldV2SprayProps> = ({
   heightRatio = 0.14,
   tier = 'high',
 }) => {
-  const maxCards = tier === 'high' ? 1400 : tier === 'medium' ? 700 : 0;
+  const maxCards = tier === 'high' ? 900 : tier === 'medium' ? 450 : 0;
   const heightUnits = renderSize * heightRatio;
 
   const cards = useMemo(() => {
@@ -103,7 +103,7 @@ export const WorldV2Spray: React.FC<WorldV2SprayProps> = ({
     const unitsPerMY = heightUnits / ELEV_SPAN_M;
     const seaY = SEA_LEVEL_NORM * heightUnits;
     const rnd = seeded(bundle.seed ^ 0x5a7a);
-    const step = Math.max(2, Math.round(size / 512));
+    const step = Math.max(2, Math.round(size / 340));
     const picks: Array<{ x: number; z: number; w: number; h: number; seed: number; expo: number }> = [];
     for (let gy = 0; gy < size; gy += step) {
       for (let gx = 0; gx < size; gx += step) {
@@ -153,7 +153,7 @@ export const WorldV2Spray: React.FC<WorldV2SprayProps> = ({
         fragmentShader: FRAG,
         uniforms: {
           uTime: { value: 0 },
-          uOpacity: { value: 0.6 },
+          uOpacity: { value: 0.75 },
           ...atmosphereUniforms,
         },
         transparent: true,
