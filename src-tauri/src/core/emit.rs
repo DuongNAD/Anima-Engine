@@ -16,9 +16,10 @@
 
 use crate::ai::pheromone::PheromoneGridState;
 use crate::core::components::{CombatEvent, EnvironmentalState, RaycastTelemetry};
-use crate::core::simulation_state::{SegmentState, SimulationTickPayload};
+use crate::core::island::stream::{SharedIslandStream, DEFAULT_ISLAND_STREAM_INTERVAL};
+use crate::core::simulation_state::{SegmentState, SimulationStatus, SimulationTickPayload};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -188,6 +189,8 @@ pub struct EmitChannels {
     pub active_raycasts: Arc<RwLock<Vec<RaycastTelemetry>>>,
     pub combat_events: Arc<RwLock<Vec<CombatEvent>>>,
     pub environmental_state: Arc<RwLock<EnvironmentalState>>,
+    pub island_stream: Option<SharedIslandStream>,
+    pub status: Option<Arc<Mutex<SimulationStatus>>>,
 }
 
 /// Spawn the thread that publishes simulation state to the frontend over Tauri events.
@@ -210,6 +213,8 @@ pub fn spawn_emit_thread<R: tauri::Runtime>(
             active_raycasts,
             combat_events,
             environmental_state,
+            island_stream,
+            status,
         } = channels;
 
         // One payload, reused for the life of the thread — see `refresh_tick_payload`.
@@ -226,6 +231,9 @@ pub fn spawn_emit_thread<R: tauri::Runtime>(
         );
         let mut local_raycasts = Vec::with_capacity(1000);
         let mut local_combat = Vec::with_capacity(100);
+        let mut local_island_segments = Vec::new();
+        let mut local_island_env = EnvironmentalState::default();
+        let mut last_island_emit_at: Option<Instant> = None;
 
         while running.load(Ordering::SeqCst) {
             thread::sleep(EMIT_INTERVAL);
@@ -237,6 +245,41 @@ pub fn spawn_emit_thread<R: tauri::Runtime>(
             {
                 let mut shared = combat_events.write().unwrap_or_else(|e| e.into_inner());
                 std::mem::swap(&mut *shared, &mut local_combat);
+            }
+
+            if let Some(ref stream) = island_stream {
+                if stream.has_active_guests() {
+                    let now = Instant::now();
+                    let due = last_island_emit_at.is_none_or(|prev| {
+                        now.duration_since(prev) >= DEFAULT_ISLAND_STREAM_INTERVAL
+                    });
+                    if due {
+                        let tick = status
+                            .as_ref()
+                            .map(|s| s.lock().unwrap_or_else(|e| e.into_inner()).tick_count)
+                            .unwrap_or(0);
+                        {
+                            let states = agent_states.read().unwrap_or_else(|e| e.into_inner());
+                            local_island_segments.clear();
+                            local_island_segments.extend_from_slice(&states);
+                        }
+                        {
+                            let env = environmental_state
+                                .read()
+                                .unwrap_or_else(|e| e.into_inner());
+                            copy_environmental_state(&mut local_island_env, &env);
+                        }
+                        let phero_guard = pheromone_grid.read().unwrap_or_else(|e| e.into_inner());
+                        let _ = stream.project_tick(
+                            tick,
+                            &local_island_segments,
+                            &local_island_env,
+                            Some(&phero_guard),
+                            &local_combat,
+                        );
+                        last_island_emit_at = Some(now);
+                    }
+                }
             }
 
             let Some(ref handle) = app_handle else {
@@ -299,6 +342,8 @@ mod tests {
                 active_raycasts: Arc::new(RwLock::new(Vec::new())),
                 combat_events: Arc::clone(&combat_events),
                 environmental_state: Arc::new(RwLock::new(EnvironmentalState::default())),
+                island_stream: None,
+                status: None,
             },
             None,
             supervisor.token(crate::core::thread_supervisor::EMIT),
@@ -630,5 +675,69 @@ mod tests {
         shared.grid[3] = 0.0;
         assert!(gate.poll(&shared, &mut out, start + Duration::from_millis(300)));
         assert_eq!(out.grid[3], 0.0);
+    }
+
+    #[test]
+    fn headless_emitter_projects_island_frames_when_guests_active() {
+        use crate::core::island::stream::{
+            decode_stream_frame_bincode, GuestInterestWindow, IslandStreamFrame, IslandStreamHub,
+        };
+        use crate::core::island::{GuestId, GuestRole, IslandId};
+
+        let running = Arc::new(AtomicBool::new(true));
+        let status = Arc::new(Mutex::new(SimulationStatus {
+            running: true,
+            tick_count: 42,
+            avg_tick_time_ms: 1.0,
+            fps: 60.0,
+        }));
+        let guest_id = GuestId::new(7).unwrap();
+        let mut hub = IslandStreamHub::with_defaults(IslandId::new(99).unwrap());
+        hub.register_guest(
+            GuestInterestWindow::new(guest_id, GuestRole::Spectate, 0.0, 0.0, 50.0).unwrap(),
+        )
+        .unwrap();
+        let island_stream = SharedIslandStream::from_hub(hub);
+        let agent_states = Arc::new(RwLock::new(vec![segment(1, 0, None)]));
+
+        let supervisor = crate::core::thread_supervisor::ThreadSupervisor::new();
+        let handle = spawn_emit_thread::<tauri::test::MockRuntime>(
+            EmitChannels {
+                running: Arc::clone(&running),
+                agent_states,
+                pheromone_grid: Arc::new(RwLock::new(empty_grid())),
+                active_raycasts: Arc::new(RwLock::new(Vec::new())),
+                combat_events: Arc::new(RwLock::new(Vec::new())),
+                environmental_state: Arc::new(RwLock::new(EnvironmentalState::default())),
+                island_stream: Some(island_stream.clone()),
+                status: Some(status),
+            },
+            None,
+            supervisor.token(crate::core::thread_supervisor::EMIT),
+        );
+
+        let deadline = Instant::now() + Duration::from_millis(400);
+        let frame = loop {
+            if let Some(encoded) = island_stream.pop_guest_frame(guest_id).unwrap() {
+                break encoded;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for off-tick island frame"
+            );
+            thread::sleep(Duration::from_millis(5));
+        };
+        running.store(false, Ordering::SeqCst);
+        handle.join().expect("headless island emitter exits");
+
+        let decoded = decode_stream_frame_bincode(&frame.bytes).expect("valid bincode frame");
+        match decoded {
+            IslandStreamFrame::Snapshot(snap) => {
+                assert_eq!(snap.tick, 42);
+                assert_eq!(snap.segments.len(), 1);
+                assert_eq!(snap.segments[0].agent_id, 1);
+            }
+            other => panic!("expected Snapshot keyframe, got {other:?}"),
+        }
     }
 }
