@@ -9,7 +9,7 @@ use anima_engine_lib::core::ecs::{
 };
 use anima_engine_lib::core::simulation_loop::{is_non_land_nav_lake_candidate, SimulationEngine};
 use anima_engine_lib::core::snapshot::{read_with_warnings, SnapshotEnvelope};
-use anima_engine_lib::core::terrain::{MapSettings, TerrainMap};
+use anima_engine_lib::core::terrain::MapSettings;
 use anima_engine_lib::core::world_artifact::{
     active_desktop_world_identity, load_desktop_world_with_bundled_path,
     load_verified_v3_sim_from_paths, terrain_map_from_v3_sim, try_world_seed_from_disk,
