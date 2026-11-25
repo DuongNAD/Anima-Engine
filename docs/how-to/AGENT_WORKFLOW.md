@@ -616,6 +616,25 @@ QD-WV2-BIG = World v2 grows. The owner, offered "keep 40.96 km and fix how it re
             Unchanged: LD-1 creature scale, the 256^2 sim grid and MapBounds 200x200 (Stage 4 science
             does not use C01), C01 as the provisional world until the new one passes its gates, and
             the tile pack published once, for the final world.
+QD-WV2-D2 = the owner accepted every recommendation of design card WV2-D2 (PR #294,
+            docs/ai/design/2026-11-26-world-v2-scale-up-design.md, section 8) (owner in chat,
+            2026-11-25 night: "Approve as recommended"):
+            WB-D1 (B): 81.92 km at 4096^2 and 20 m cells for v0.9.0; 8192^2 at 10 m waits for P2/P3.
+            WB-D2 (a): one coherent ~11 N tropical world with environments E1-E9; boreal, arctic and
+            temperate-autumn environments wait for a second regional preset after 0.9.
+            WB-D3: a separate 81.92 km verifier profile with the section 5 ranges; the 40.96 km
+            profile and its tests stay unchanged.
+            WB-D4 (a): the public tile release and v0.9.0-rc.1 wait for the 81.92 km world; #291 stays
+            internal under QD-TRIAL-V3.
+            WB-D5 (c): viewer HEIGHT_RATIO 0.10 at 81.92 km, confirmed by eye in WV2-BIG-4; C01 keeps
+            0.14.
+            WB-D6 (a): the 44-byte ANMW v3 header stays; extent_m is read from index.json.
+            WB-D7 (a): the desktop sim stays 256^2 with MapBounds 200x200 (320 m per cell).
+            WB-D8: coastline shares of 55-65% plain-backed, 20-30% fan, delta or mangrove, and a
+            10-20% steep minority, checked by C5b.CoastalPlainProfile in the 81.92 km profile, with
+            the C01, PHYS2 and PHYS3 baselines measured first in WV2-BIG-2.
+            The work follows the design's cards WV2-BIG-1..WV2-BIG-5 plus WV2-LOOK. WV2-BIG-3 replaces
+            C01 once, which supersedes MAP-D7 (suspended by QD-WV2-BIG).
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's
