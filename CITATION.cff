@@ -16,7 +16,7 @@ repository-code: "https://github.com/DuongNAD/Anima-Engine"
 license:
   - MIT
   - Apache-2.0
-version: "0.1.0"
+version: "0.9.0-rc.1"
 keywords:
   - artificial life
   - evolution

@@ -2,13 +2,13 @@
 title: Release Checklist (0.9)
 status: active
 owner: maintainers
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 review_cycle: per-release
 ---
 
-# Release Checklist (`0.9`)
+# Release Checklist (`0.9` / RC `0.9.0-rc.1`)
 
-Every technical gate, compliance verification, installer build check, and human release step required before cutting a `v0.9.0` tag or shipping trial installers. Every npm script below maps directly to [`package.json`](../../package.json); authoritative gate status lives in [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+Every technical gate, compliance verification, installer build check, and human release step required before cutting a `v0.9.0-rc.1` / `v0.9.0` tag or shipping trial installers. Root/crate manifests (`package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, and `CITATION.cff`) are staged at `0.9.0-rc.1` (`sbom.cdx.json` regeneration via `npm run gen:sbom` runs on a `cargo`-enabled Windows host). Every npm script below maps directly to [`package.json`](../../package.json); authoritative gate status lives in [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ---
 
