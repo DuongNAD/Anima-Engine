@@ -67,58 +67,135 @@ gl_FragColor=vec4(col,1.0);
 }
 `;
 
-// prototype, to be replaced — WV2-LOOK fair-weather cumulus: one horizontal layer at the cloud
-// base (atmosphere.ts sets its height in metres), coverage from the same function that casts the
-// cloud shadows on terrain, sea and flora, so every shadow belongs to a cloud overhead.
+// prototype, to be replaced — WV2-LOOK trade cumulus as lit impostors, one instanced draw.
+// A grid of candidate puffs (N^2 over a tile ~5 map extents wide, re-centred on the camera)
+// drifts with the wind; each puff asks the cloud field (atmosphere.ts) how thick the cumulus is
+// where it now floats, so cells grow over the windward slopes and fade downwind, and the
+// terrain and sea shadows come from the same field. A puff is a lumpy sphere impostor: lit
+// from its own normal, its flat base cut at the condensation level, softened at the rim.
 const CLOUD_VERTEX = /* glsl */ `
-uniform float uAtmoCloudY;
-varying vec3 vWp;
+uniform float uTile;
+uniform float uN;
+attribute vec4 aCell;
+varying vec2 vUv;
+varying vec3 vC;
+varying float vR;
+varying float vTopM;
+varying float vSeed;
+${ATMOSPHERE_FRAGMENT_PARS}
 void main(){
-vec4 wp=modelMatrix*vec4(position,1.0);
-wp.y=uAtmoCloudY;
-vWp=wp.xyz;
-gl_Position=projectionMatrix*viewMatrix*wp;
+float sp=uTile/uN;
+vec2 camM=cameraPosition.xz*uAtmoMPerUnit;
+vec2 p=aCell.xy*uTile+(aCell.zw-0.5)*sp*0.9+uAtmoWind*uAtmoTime;
+p=camM+mod(p-camM+0.5*uTile,uTile)-0.5*uTile;
+vec2 dom=atmoCloudDom(p);
+float C=atmoCloudC(p,dom.g,atmoCloudRegion(p));
+float top=C<0.03?0.0:atmoCloudTop(p,C,0);
+float Hm=uAtmoCloudTop*uAtmoMPerUnitY;
+float rM=(sp*0.95+top*Hm*0.26)*(0.55+0.9*fract(aCell.z*7.13));
+` +
+  // Puffs of one cell sit at different heights between the flat base and the dome top.
+  `float cy=uAtmoCloudY+max(rM*0.3,top*Hm*(0.15+0.55*fract(aCell.w*5.31)))/uAtmoMPerUnitY;
+gl_Position=vec4(2.0,2.0,2.0,1.0);
+if(top<0.02||dom.r>cy-0.3*rM/uAtmoMPerUnitY)return;
+vec3 c=vec3(p.x/uAtmoMPerUnit,cy,p.y/uAtmoMPerUnit);
+vR=rM/uAtmoMPerUnit;
+vec4 mv=viewMatrix*vec4(c,1.0);
+mv.xy+=position.xy*vR;
+gl_Position=projectionMatrix*mv;
+vUv=position.xy;
+vC=c;
+vTopM=top*Hm;
+vSeed=aCell.z;
 }
 `;
 const CLOUD_FRAGMENT = /* glsl */ `
 precision highp float;
-varying vec3 vWp;
+varying vec2 vUv;
+varying vec3 vC;
+varying float vR;
+varying float vTopM;
+varying float vSeed;
 ${ATMOSPHERE_FRAGMENT_PARS}
 void main(){
-vec2 pM=vWp.xz*uAtmoMPerUnit;
-float cov=atmoCloudCov(pM);
-if(cov<=0.003)discard;
+` +
+  // Four overlapping lobes (a central dome and three around it, their layout from the seed)
+  // give each card a cauliflower outline; the nearest lobe's sphere is the surface normal.
+  `float an=vSeed*6.2831;
+vec3 lb[4];
+lb[0]=vec3(0.0,0.12,0.6);
+lb[1]=vec3(0.42*cos(an),0.23*sin(an)-0.08,0.45);
+lb[2]=vec3(0.42*cos(an+2.4),0.23*sin(an+2.4)-0.08,0.42);
+lb[3]=vec3(0.4*cos(an+4.3),0.2*sin(an+4.3)-0.1,0.4);
+float n2=texture2D(uAtmoCloudTex,vUv*1.1+vSeed*1.9).g;
+float wob=0.82+0.3*texture2D(uAtmoCloudTex,vUv*0.45+vSeed*3.7).r+0.12*n2;
+` +
+  // Smooth union of the lobes (soft minimum), normal blended with the same weights: no seams.
+  `float ws=0.0;
+vec2 l=vec2(0.0);
+for(int k=0;k<4;k++){
+vec2 dl=(vUv-lb[k].xy)/lb[k].z;
+float w=exp(-dot(dl,dl)*wob/0.12);
+ws+=w;
+l+=dl*w;
+}
+float r2=-0.12*log(max(ws,1e-6));
+l/=max(ws,1e-6);
+if(r2>=1.0)discard;
+vec3 cr=vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]);
+vec3 cu=vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]);
+vec3 cb=vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]);
+vec3 wp=vC+(vUv.x*cr+vUv.y*cu)*vR;
+float dM=length(wp-cameraPosition)*uAtmoMPerUnit;
+if(dM<220.0)discard;
+vec3 n=normalize(l.x*cr+l.y*cu+sqrt(max(1.0-dot(l,l),0.0))*cb);
+float hB=(wp.y-uAtmoCloudY)*uAtmoMPerUnitY;
+vec3 rd=normalize(wp-cameraPosition);
+` +
+  // The flat base and its darker underside only show from below or the side; seen from above
+  // the puff stays round (cut the card there and it reads as a half dome).
+  `float side=1.0-smoothstep(0.08,0.4,-rd.y);
+` +
+  // Soft rim, flat base at the condensation level, thinning near the camera.
+  `float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-80.0,160.0,hB),side)*smoothstep(220.0,900.0,dM);
+` +
+  // Soft where the card meets the terrain (the coarse height map stands in for a depth
+  // buffer), and gone when the camera is inside or right next to the puff.
+  `a*=smoothstep(0.0,250.0,(wp.y-atmoCloudDom(wp.xz*uAtmoMPerUnit).r)*uAtmoMPerUnitY);
+a*=smoothstep(0.7,1.6,length(vC-cameraPosition)/vR);
 vec3 sd=normalize(uAtmoSunDir);
-vec3 vdir=normalize(vWp-cameraPosition);
-float fromAbove=step(vWp.y,cameraPosition.y);
-` +
-  // Thin margins are bright and translucent; thick cores are greyer from below.
-  `float edge=1.0-smoothstep(0.0,0.7,cov);
-vec2 q=pM+uAtmoWind*uAtmoTime;
-float lump=texture2D(uAtmoCloudTex,q/620.0+0.29).a;
-vec3 lit=vec3(0.97,0.97,0.955);
-vec3 base=vec3(0.66,0.70,0.77)*mix(0.92,1.06,lump);
-vec3 below=mix(base,lit,edge*0.75+0.1);
-vec3 above=mix(lit*mix(0.86,1.0,lump),lit,edge);
-vec3 col=mix(below,above,fromAbove);
-` +
-  // Silver lining when looking toward the sun.
-  `float fwd=pow(max(dot(vdir,sd),0.0),8.0);
-col+=vec3(1.0,0.95,0.85)*fwd*(0.15+edge*0.35);
-float a=cov*0.93;
-` +
-  // Seen edge-on the layer is a sheet: fade it out toward the horizon line.
-  // (From below it also hides layer slivers crossing in front of the massif.)
-  `a*=mix(smoothstep(0.10,0.38,abs(vdir.y)),smoothstep(0.05,0.26,abs(vdir.y)),fromAbove);
-` +
-  // Near the camera the layer thins out (flight-sim practice): a camera flying just above or
-  // below the cloud base sees the ground through it instead of a wall of nearby cloud.
-  `a*=smoothstep(220.0,900.0,length(vWp-cameraPosition)*uAtmoMPerUnit);
-vec3 hazeC=atmoSkyColor(normalize(vec3(vdir.x,abs(vdir.y)*0.2,vdir.z)));
-col=mix(col,hazeC,atmoHazeAmount(cameraPosition,vWp));
-gl_FragColor=vec4(min(col,vec3(1.0)),a);
+float sunL=clamp(dot(n,sd)*mix(0.3,0.6,side)+mix(0.72,0.45,side),0.0,1.0)*mix(1.0,mix(0.55,1.0,smoothstep(0.0,max(vTopM,300.0)*0.75,hB)),0.3+0.7*side);
+vec3 col=mix(vec3(0.57,0.62,0.71),vec3(1.0,0.985,0.95),sunL)*mix(0.9,1.05,n2);
+col+=vec3(1.0,0.95,0.85)*pow(max(dot(rd,sd),0.0),8.0)*0.35*smoothstep(0.3,1.0,r2);
+col=mix(col,atmoSkyColor(normalize(vec3(rd.x,abs(rd.y)*0.2,rd.z))),atmoHazeAmount(cameraPosition,wp));
+gl_FragColor=vec4(min(col,vec3(1.0)),a*0.96);
 }
 `;
+
+/** `n^2` candidate puffs: grid cell (i/n, j/n) plus two random seeds, one instanced quad. */
+function buildCloudPuffGeometry(n: number): THREE.InstancedBufferGeometry {
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  const cell = new Float32Array(n * n * 4);
+  let s = 12345;
+  const rnd = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  for (let j = 0; j < n; j += 1) {
+    for (let i = 0; i < n; i += 1) {
+      const o = (j * n + i) * 4;
+      cell[o] = i / n;
+      cell[o + 1] = j / n;
+      cell[o + 2] = rnd();
+      cell[o + 3] = rnd();
+    }
+  }
+  g.setAttribute('aCell', new THREE.InstancedBufferAttribute(cell, 4));
+  g.instanceCount = n * n;
+  return g;
+}
 
 /** Per-frame inputs of the WV2-LOOK physical sky and clouds (module state, not React state). */
 function applyLookAtmosphere(sunDir: THREE.Vector3, timeSec: number): void {
@@ -149,6 +226,8 @@ export interface WorldSkyProps {
    */
   sunTilt?: number;
   look?: boolean;
+  /** WV2-LOOK cumulus: candidate puffs per side of the drifting grid (quality tier). */
+  cloudGrid?: number;
 }
 
 interface CloudDescriptor {
@@ -244,6 +323,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   worldScale = 400,
   sunTilt = 0,
   look = false,
+  cloudGrid = 260,
 }) => {
   const cloudsRef = useRef<THREE.Group>(null);
   const tmpColor = useMemo(() => new THREE.Color(), []);
@@ -254,7 +334,18 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     () => ({ ...atmosphereUniforms, uMoonDir: skyUniforms.uMoonDir, uMoonGlow: skyUniforms.uMoonGlow }),
     [skyUniforms],
   );
-  const cloudUniforms = useMemo<Record<string, THREE.IUniform>>(() => ({ ...atmosphereUniforms }), []);
+  // The puff tile spans ~5 map extents around the camera (scale-agnostic: extent in metres is
+  // the render size times the metres per unit that `configureAtmosphere` set).
+  const cloudUniforms = useMemo<Record<string, THREE.IUniform>>(
+    () => ({
+      ...atmosphereUniforms,
+      uTile: { value: 5 * worldScale * atmosphereUniforms.uAtmoMPerUnit.value },
+      uN: { value: cloudGrid },
+    }),
+    [worldScale, cloudGrid],
+  );
+  const cloudPuffs = useMemo(() => buildCloudPuffGeometry(cloudGrid), [cloudGrid]);
+  useEffect(() => () => cloudPuffs.dispose(), [cloudPuffs]);
   useEffect(() => {
     setAtmosphereClouds(look);
     return () => setAtmosphereClouds(false);
@@ -408,8 +499,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
         )}
       </mesh>
       {look ? (
-        <mesh name="world-cloud-layer" rotation-x={-Math.PI / 2} frustumCulled={false} renderOrder={3}>
-          <planeGeometry args={[worldScale * 14, worldScale * 14, 1, 1]} />
+        <mesh name="world-cloud-layer" geometry={cloudPuffs} frustumCulled={false} renderOrder={3}>
           <shaderMaterial
             vertexShader={CLOUD_VERTEX}
             fragmentShader={CLOUD_FRAGMENT}

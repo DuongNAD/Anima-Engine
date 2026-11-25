@@ -43,15 +43,23 @@ export interface AtmosphereUniforms {
   uAtmoHzSun: { value: THREE.Color };
   uAtmoHzSide: { value: THREE.Color };
   uAtmoHzAway: { value: THREE.Color };
-  /** Cloud layer: 0 = off. Coverage threshold, base height (units), metres per unit, wind (m/s). */
+  /**
+   * Cumulus slab: 0 = off; global cloudiness offset; base height and depth (units); metres per
+   * unit horizontally and vertically; wind (m/s).
+   */
   uAtmoCloudOn: { value: number };
   uAtmoCloudCover: { value: number };
   uAtmoCloudY: { value: number };
+  uAtmoCloudTop: { value: number };
   uAtmoMPerUnit: { value: number };
+  uAtmoMPerUnitY: { value: number };
   uAtmoWind: { value: THREE.Vector2 };
   uAtmoTime: { value: number };
   uAtmoCloudTex: { value: THREE.Texture | null };
-  /** Coarse terrain-height texture (units) and the render size it spans: clouds clear off peaks. */
+  /**
+   * 512^2 RG over twice the map (centred): r = max-pooled ground height (units), g = terrain
+   * cloud forcing 0..1. `uAtmoRenderSize` is the map's size in units.
+   */
   uAtmoGroundTex: { value: THREE.Texture | null };
   uAtmoRenderSize: { value: number };
 }
@@ -79,10 +87,14 @@ export const atmosphereUniforms: AtmosphereUniforms = {
   uAtmoHzSide: { value: new THREE.Color(0.91, 0.93, 0.94) },
   uAtmoHzAway: { value: new THREE.Color(0.88, 0.9, 0.91) },
   uAtmoCloudOn: { value: 0 },
-  uAtmoCloudCover: { value: 0.65 },
+  uAtmoCloudCover: { value: 0 },
   uAtmoCloudY: { value: 120 },
+  uAtmoCloudTop: { value: 50 },
   uAtmoMPerUnit: { value: 34 },
-  uAtmoWind: { value: new THREE.Vector2(7, 2.5) },
+  uAtmoMPerUnitY: { value: 43 },
+  // The generator's prevailing wind blows west to east (anima-worldgen `climate.rs`, u_x > 0),
+  // so the wet windward slopes face -x: drift the cells along +x.
+  uAtmoWind: { value: new THREE.Vector2(7.5, 0.9) },
   uAtmoTime: { value: 0 },
   uAtmoCloudTex: { value: null },
   uAtmoGroundTex: { value: null },
@@ -199,9 +211,11 @@ export function configureAtmosphere(
   // above a few hundred metres look through almost none of it.
   atmosphereUniforms.uAtmoMarineDensity.value = -Math.log(0.85) / (2000 * unitsPerM);
   atmosphereUniforms.uAtmoMarineH.value = 60 * unitsPerMY;
-  // Fair-weather cumulus: bases ~1.9 km above the sea.
+  // Trade cumulus: flat bases ~1.9 km above the sea, tops up to ~2.4 km above that.
   atmosphereUniforms.uAtmoCloudY.value = seaY + 1900 * unitsPerMY;
+  atmosphereUniforms.uAtmoCloudTop.value = 2400 * unitsPerMY;
   atmosphereUniforms.uAtmoMPerUnit.value = 1 / unitsPerM;
+  atmosphereUniforms.uAtmoMPerUnitY.value = 1 / unitsPerMY;
   if (!cloudNoiseTex) cloudNoiseTex = buildLookNoiseTexture();
   atmosphereUniforms.uAtmoCloudTex.value = cloudNoiseTex;
 }
@@ -209,45 +223,117 @@ export function configureAtmosphere(
 let groundTex: THREE.DataTexture | null = null;
 
 /**
- * A 256^2 max-pooled terrain height map (scene units) so the cloud layer clears where the ground
- * reaches its base instead of slicing through the massif. `elevation` is the world's normalised
- * elevation grid (`size^2`), `heightUnits` its full span in units.
+ * Terrain inputs of the cumulus, as one 512^2 RG float texture spanning twice the map (centred),
+ * so island cloud trails can run out over the sea:
+ *  - r: max-pooled ground height in scene units, so the slab stops at the terrain;
+ *  - g: where the land makes cloud. Daytime heating over land (more over wet ground: `moisture`
+ *    is the generator's own rain field), lift where the slope rises into the prevailing wind,
+ *    and high ground; then carried downwind as a fading trail and blurred.
+ * `elevation`/`moisture` are the world's `size^2` grids (elevation normalised to `heightUnits`).
  */
 export function setAtmosphereGround(
   elevation: Float32Array,
+  moisture: Float32Array | null,
   size: number,
   heightUnits: number,
   renderSize: number,
 ): void {
-  const R = 256;
-  const data = new Float32Array(R * R);
-  const step = size / R;
-  for (let y = 0; y < R; y += 1) {
-    for (let x = 0; x < R; x += 1) {
+  const R = 512;
+  const H = R / 2; // map cells span the inner half of the texture
+  const step = size / H;
+  const u = atmosphereUniforms;
+  const mPerUY = u.uAtmoMPerUnitY.value;
+  const seaY = u.uAtmoSeaY.value;
+  const texelM = (2 * renderSize * u.uAtmoMPerUnit.value) / R;
+  const gmax = new Float32Array(R * R);
+  const hm = new Float32Array(R * R); // mean height above the sea (m)
+  const wet = new Float32Array(R * R);
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < H; x += 1) {
       let m = 0;
+      let sum = 0;
+      let w = 0;
+      let n = 0;
       const y0 = Math.floor(y * step);
       const x0 = Math.floor(x * step);
-      for (let yy = y0; yy < Math.min(size, Math.floor((y + 1) * step)); yy += 2) {
-        for (let xx = x0; xx < Math.min(size, Math.floor((x + 1) * step)); xx += 2) {
+      for (let yy = y0; yy < Math.min(size, Math.floor((y + 1) * step)); yy += 1) {
+        for (let xx = x0; xx < Math.min(size, Math.floor((x + 1) * step)); xx += 1) {
           const e = elevation[yy * size + xx];
           if (e > m) m = e;
+          sum += e;
+          w += moisture ? moisture[yy * size + xx] : 0.5;
+          n += 1;
         }
       }
-      data[y * R + x] = m * heightUnits;
+      const o = (y + H / 2) * R + x + H / 2;
+      gmax[o] = m * heightUnits;
+      hm[o] = Math.max(0, ((sum / Math.max(n, 1)) * heightUnits - seaY) * mPerUY);
+      wet[o] = w / Math.max(n, 1);
     }
   }
+  const clampI = (v: number) => Math.min(R - 1, Math.max(0, v));
+  const blur = (a: Float32Array, r: number) => {
+    const t = new Float32Array(R * R);
+    for (let y = 0; y < R; y += 1) {
+      for (let x = 0; x < R; x += 1) {
+        let acc = 0;
+        for (let k = -r; k <= r; k += 1) acc += a[y * R + clampI(x + k)];
+        t[y * R + x] = acc / (2 * r + 1);
+      }
+    }
+    for (let y = 0; y < R; y += 1) {
+      for (let x = 0; x < R; x += 1) {
+        let acc = 0;
+        for (let k = -r; k <= r; k += 1) acc += t[clampI(y + k) * R + x];
+        a[y * R + x] = acc / (2 * r + 1);
+      }
+    }
+  };
+  blur(hm, 4);
+  blur(wet, 4);
+  const wind = u.uAtmoWind.value.clone().normalize();
+  const at = (a: Float32Array, x: number, y: number) => a[clampI(Math.round(y)) * R + clampI(Math.round(x))];
+  const f0 = new Float32Array(R * R);
+  for (let y = 1; y < R - 1; y += 1) {
+    for (let x = 1; x < R - 1; x += 1) {
+      const i = y * R + x;
+      const h = hm[i];
+      const land = THREE.MathUtils.smoothstep(h, 10, 250);
+      // Rise per metre along the wind, measured over ~3 texels.
+      const rise = (h - at(hm, x - wind.x * 3, y - wind.y * 3)) / (3 * texelM);
+      f0[i] =
+        land * (0.08 + 0.3 * wet[i]) +
+        0.55 * THREE.MathUtils.smoothstep(rise, 0.01, 0.1) +
+        0.2 * THREE.MathUtils.smoothstep(h, 800, 2500);
+    }
+  }
+  const forcing = new Float32Array(R * R);
+  for (let y = 0; y < R; y += 1) {
+    for (let x = 0; x < R; x += 1) {
+      let f = 0;
+      for (let k = 0; k < 14; k += 1) f = Math.max(f, at(f0, x - wind.x * k * 2, y - wind.y * k * 2) * 0.92 ** k);
+      forcing[y * R + x] = Math.min(1, f);
+    }
+  }
+  blur(forcing, 3);
+  const data = new Float32Array(R * R * 2);
+  for (let i = 0; i < R * R; i += 1) {
+    const edge = i < R || i >= R * (R - 1) || i % R === 0 || i % R === R - 1;
+    data[i * 2] = gmax[i];
+    data[i * 2 + 1] = edge ? 0 : forcing[i];
+  }
   groundTex?.dispose();
-  groundTex = new THREE.DataTexture(data, R, R, THREE.RedFormat, THREE.FloatType);
+  groundTex = new THREE.DataTexture(data, R, R, THREE.RGFormat, THREE.FloatType);
   groundTex.minFilter = THREE.LinearFilter;
   groundTex.magFilter = THREE.LinearFilter;
   groundTex.wrapS = THREE.ClampToEdgeWrapping;
   groundTex.wrapT = THREE.ClampToEdgeWrapping;
   groundTex.needsUpdate = true;
-  atmosphereUniforms.uAtmoGroundTex.value = groundTex;
-  atmosphereUniforms.uAtmoRenderSize.value = renderSize;
+  u.uAtmoGroundTex.value = groundTex;
+  u.uAtmoRenderSize.value = renderSize;
 }
 
-/** Turn the cloud layer (and its shadows) on or off. */
+/** Turn the cumulus (and its shadows) on or off. */
 export function setAtmosphereClouds(on: boolean): void {
   atmosphereUniforms.uAtmoCloudOn.value = on ? 1 : 0;
 }
@@ -281,7 +367,9 @@ uniform vec3 uAtmoHzAway;
 uniform float uAtmoCloudOn;
 uniform float uAtmoCloudCover;
 uniform float uAtmoCloudY;
+uniform float uAtmoCloudTop;
 uniform float uAtmoMPerUnit;
+uniform float uAtmoMPerUnitY;
 uniform vec2 uAtmoWind;
 uniform float uAtmoTime;
 uniform sampler2D uAtmoCloudTex;
@@ -316,41 +404,52 @@ c=atmoAcesFit(c*uAtmoSkyExposure/0.6);
 return pow(c,vec3(1.0/2.2));
 }
 ` +
-  // Cumulus coverage at a point (metres, world xz), drifting with the wind. Three octaves of the
-  // tileable noise at unrelated scales so the 256-texel tiles do not visibly repeat.
-  `float atmoCloudCov(vec2 pM){
-vec2 q=pM+uAtmoWind*uAtmoTime;
-` +
-  // A slow ~60 km field groups the cells into cloudier and clearer regions.
-  `float region=texture2D(uAtmoCloudTex,q/61000.0+0.53).a;
-float n=texture2D(uAtmoCloudTex,q/9100.0+0.13).r*0.55
-+texture2D(uAtmoCloudTex,q/3300.0+0.71).g*0.30
-+texture2D(uAtmoCloudTex,q/1170.0+0.37).b*0.15;
-float thr=uAtmoCloudCover+(0.5-region)*0.22;
-float cov=smoothstep(thr,thr+0.16,n);
-` +
-  // Cleared where the ground reaches the cloud base (no layer slicing through the massif).
-  `vec2 uvMap=(pM/uAtmoMPerUnit)/uAtmoRenderSize+0.5;
-if(uvMap.x>0.0&&uvMap.x<1.0&&uvMap.y>0.0&&uvMap.y<1.0){
-float g=texture2D(uAtmoGroundTex,uvMap).r;
-cov*=1.0-smoothstep(-6.0,-1.0,g-uAtmoCloudY);
-}
-return cov;
+  // Terrain inputs at pM (metres, world xz): r = ground height (units), g = land cloud forcing.
+  // Border texels are zero, so beyond the texture the sea gets none.
+  `vec2 atmoCloudDom(vec2 pM){
+return texture2D(uAtmoGroundTex,pM/(uAtmoMPerUnit*uAtmoRenderSize*2.0)+0.5).rg;
 }
 ` +
-  // Sun transmittance through the cloud layer for a point on the ground (1 = clear sun). Uses the
-  // three coarse octaves only (shadows are soft anyway) and no ground lookup.
+  // Cloudiness 0..1 at pM: the land forcing, plus open-sea weather that drifts with the wind:
+  // ~100 km regions decide clear versus cloudy sea, and inside the cloudy ones the cells line
+  // up in wind-parallel streets ~4 km apart. `region` is sampled once per pixel by the caller.
+  `float atmoCloudC(vec2 pM,float land,float region){
+vec2 q=pM-uAtmoWind*uAtmoTime;
+vec2 w=normalize(uAtmoWind);
+float street=0.5+0.5*cos(dot(q,vec2(-w.y,w.x))*0.0015+region*7.0);
+float sea=smoothstep(0.45,0.8,region)*(0.12+0.26*street);
+return clamp(sea+land*0.5+uAtmoCloudCover,0.0,0.8);
+}
+float atmoCloudRegion(vec2 pM){
+vec2 q=pM-uAtmoWind*uAtmoTime;
+return texture2D(uAtmoCloudTex,q/97000.0+0.53).a*0.7+texture2D(uAtmoCloudTex,q/21000.0+0.17).b*0.3;
+}
+` +
+  // Local cloud top as a fraction of the slab (0 = clear sky) for cloudiness C. Noise in
+  // wind-aligned coordinates (cells stretched along the wind) is thresholded at 1 - C, so a
+  // cloudy region merges into wide fields and a clear one keeps a few small cells; inside a cell
+  // the top rises like a dome, higher where it is cloudier.
+  `float atmoCloudTop(vec2 pM,float C,int oct){
+vec2 q=pM-uAtmoWind*uAtmoTime;
+vec2 w=normalize(uAtmoWind);
+vec2 a=vec2(dot(q,w)*0.62,dot(q,vec2(-w.y,w.x)));
+float n=texture2D(uAtmoCloudTex,a/7200.0+0.13).r*0.6+texture2D(uAtmoCloudTex,a/2600.0+0.71).g*0.4;
+if(oct>0)n+=(texture2D(uAtmoCloudTex,a/900.0+0.37).b-0.5)*0.22;
+n=0.5+(n-0.5)*1.45;
+float x=(n-(1.0-C))/max(C,0.05);
+return x<=0.0?0.0:sqrt(min(x*1.8,1.0))*mix(0.25,1.0,C);
+}
+` +
+  // Sun transmittance through the cumulus for a point on the ground (1 = clear sun): the same
+  // cells, met where the sun ray crosses the lower slab.
   `float atmoCloudShadow(vec3 p){
 if(uAtmoCloudOn<0.5)return 1.0;
 vec3 sd=normalize(uAtmoSunDir);
 if(sd.y<=0.02)return 1.0;
-vec3 c=p+sd*((uAtmoCloudY-p.y)/sd.y);
-vec2 q=c.xz*uAtmoMPerUnit+uAtmoWind*uAtmoTime;
-float region=texture2D(uAtmoCloudTex,q/61000.0+0.53).a;
-float n=texture2D(uAtmoCloudTex,q/9100.0+0.13).r*0.55
-+texture2D(uAtmoCloudTex,q/3300.0+0.71).g*0.30+0.075;
-float thr=uAtmoCloudCover+(0.5-region)*0.22;
-return 1.0-0.62*smoothstep(thr-0.02,thr+0.2,n);
+vec3 c=p+sd*((uAtmoCloudY+0.2*uAtmoCloudTop-p.y)/sd.y);
+vec2 pM=c.xz*uAtmoMPerUnit;
+float C=atmoCloudC(pM,atmoCloudDom(pM).g,atmoCloudRegion(pM));
+return 1.0-0.62*smoothstep(0.0,0.3,atmoCloudTop(pM,C,0));
 }
 vec3 atmoSkyColorLegacy(vec3 d){
 float h=clamp(d.y,0.0,1.0);

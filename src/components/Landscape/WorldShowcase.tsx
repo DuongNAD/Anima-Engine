@@ -321,10 +321,16 @@ export const WorldShowcase: React.FC = () => {
   const teleportRef = useRef<{ x: number; z: number } | null>(null);
 
   // Diagnostics hook (like __worldScene): lets tooling inspect the generated world data.
-  // WV2-LOOK: coarse ground heights so the cloud layer clears where the massif reaches it.
+  // WV2-LOOK: terrain inputs of the cumulus (ground heights, and where the land makes cloud).
   useEffect(() => {
     if (worldV2Bundle && world) {
-      setAtmosphereGround(world.elevation, world.size, RENDER_SIZE * HEIGHT_RATIO, RENDER_SIZE);
+      setAtmosphereGround(
+        world.elevation,
+        world.moisture,
+        world.size,
+        RENDER_SIZE * HEIGHT_RATIO,
+        RENDER_SIZE,
+      );
     }
   }, [world, worldV2Bundle]);
 
@@ -632,6 +638,7 @@ export const WorldShowcase: React.FC = () => {
           worldScale={RENDER_SIZE}
           sunTilt={worldV2Bundle ? V2_SUN_TILT : 0}
           look={Boolean(worldV2Bundle)}
+          cloudGrid={effectiveQuality === 'high' ? 260 : effectiveQuality === 'medium' ? 180 : 120}
         />
         <WorldWeather
           weather={weather}
