@@ -157,14 +157,15 @@ const fragmentShader = /* glsl */ `
     float detail = 1.0 - smoothstep(uTerrainSize * 0.12, uTerrainSize * 0.48, camDist);
 
     // Animated micro-normal for soft sun sheen.
-    vec2 sw = vWorldPos.xz * 0.22;
-    float n1 = noise(sw + vec2(uTime * 0.20, uTime * 0.13));
-    float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
-    vec3 normal = normalize(vec3((n1 - 0.5) * 0.48 * detail, 1.0, (n2 - 0.5) * 0.48 * detail));
-
-    if (uUseWorldV2Water > 0.5) {
+    vec3 normal = vec3(0.0, 1.0, 0.0);
+    if (uUseWorldV2Water < 0.5) {
+      vec2 sw = vWorldPos.xz * 0.22;
+      float n1 = noise(sw + vec2(uTime * 0.20, uTime * 0.13));
+      float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
+      normal = normalize(vec3((n1 - 0.5) * 0.48 * detail, 1.0, (n2 - 0.5) * 0.48 * detail));
+    } else if (detail > 0.002) {
       // WV2-LOOK: wind ripples at a believable wavelength (~5-40 m), not 150 m blobs that the
-      // broad specular lobe turned into cloud-like patches.
+      // broad specular lobe turned into cloud-like patches. Skipped where detail has faded.
       vec2 rw = vWorldPos.xz * 1.1;
       float r1 = noise(rw + vec2(uTime * 0.35, uTime * 0.21));
       float r2 = noise(rw * 2.3 - vec2(uTime * 0.27, -uTime * 0.19));
