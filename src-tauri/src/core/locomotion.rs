@@ -204,6 +204,7 @@ pub fn steering_drive_system(
             Option<&Predator>,
             Option<&Prey>,
             Option<&ChildrenLinks>,
+            Option<&crate::core::island::inhabit::InhabitedControl>,
             &mut InertiaComponent,
         ),
         (With<Agent>, Without<ParentLink>),
@@ -283,7 +284,7 @@ pub fn steering_drive_system(
         }
     }
 
-    for (pos, homeo, predator, prey, children, mut inertia) in agents.iter_mut() {
+    for (pos, homeo, predator, prey, children, opt_inhabited, mut inertia) in agents.iter_mut() {
         if homeo.energy <= 0.0 {
             inertia.target_velocity = Vec3::ZERO;
             continue;
@@ -293,6 +294,26 @@ pub fn steering_drive_system(
         } else {
             PREY_MAX_SPEED
         };
+        if let Some(inhabited) = opt_inhabited {
+            if inhabited.kind == crate::core::island::OrganismTargetKind::Animal {
+                let raw_dir = Vec3::new(
+                    inhabited.creature.move_dir_x,
+                    0.0,
+                    inhabited.creature.move_dir_z,
+                );
+                let dir_len_sq = raw_dir.length_squared();
+                if !dir_len_sq.is_finite() || dir_len_sq <= 1e-6 {
+                    inertia.target_velocity = Vec3::ZERO;
+                } else {
+                    let dir = raw_dir / dir_len_sq.sqrt();
+                    let requested = inhabited.creature.speed_fraction.clamp(0.0, 1.0);
+                    let cpg_cap = drive_from_cpg(children, &oscillators).max(drive_floor);
+                    let speed = max_speed * requested.min(cpg_cap);
+                    inertia.target_velocity = dir * speed;
+                }
+                continue;
+            }
+        }
         let thirsty = policy.thirst_steering
             && homeo.hydration < homeo.hydration_target * THIRST_STEERING_FRACTION;
         let steering_to_water = thirsty && !lake_cache.is_empty();
