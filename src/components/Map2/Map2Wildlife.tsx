@@ -27,6 +27,8 @@ import {
 // Obstacle Avoidance Feelers, Lake Bathymetry Bounding, and Zero-Jitter Ground Clamping.
 // -------------------------------------------------------------------------------------------------
 
+export const MAP2_WILDLIFE_DECORATION_LABEL = 'Decoration, not simulated: wildlife';
+
 export interface Map2WildlifeProps {
   size?: number;
   waterLevel?: number;
@@ -993,7 +995,14 @@ export const Map2Wildlife: React.FC<Map2WildlifeProps> = ({
   });
 
   return (
-    <group name="map2-wildlife-root">
+    <group
+      name="map2-wildlife-root"
+      userData={{
+        decoration: true,
+        simulated: false,
+        label: MAP2_WILDLIFE_DECORATION_LABEL,
+      }}
+    >
       {/* Aerial Boids Birds */}
       <instancedMesh
         ref={birdMeshRef}
