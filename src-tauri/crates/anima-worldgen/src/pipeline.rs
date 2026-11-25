@@ -1064,7 +1064,7 @@ fn inject_fine_littoral_ria(
     {
         return;
     }
-    let amp_m = 14.5 * f64::from((coast_frac_amp / 0.055).min(1.5));
+    let amp_m = 17.5 * f64::from((coast_frac_amp / 0.055).min(1.5));
     let base_freq = 22.0_f64;
     let octaves = if lvl >= 2048 { 6u64 } else { 5u64 };
     let denom = (lvl - 1) as f64;
@@ -1154,9 +1154,9 @@ fn inject_fine_littoral_ria(
                     let so = s0.wrapping_add(oct.wrapping_mul(0x9E37_79B9_7F4A_7C15));
                     fbm5 += amp * det_vnoise(so, u * base_freq * freq, v * base_freq * freq);
                     freq *= 2.02;
-                    amp *= 0.74;
+                    amp *= 0.77;
                 }
-                let h_fade = libm::exp(-(h / 13.0) * (h / 13.0));
+                let h_fade = libm::exp(-(h / 16.0) * (h / 16.0));
                 bed_row[col] += (amp_m * fbm5 * h_fade) as f32;
             }
         });
@@ -1452,8 +1452,11 @@ pub fn run_worldgen_to_dir_with_schedule(
             )?
         };
         cur_size = lvl;
-        for u in &mut uplift_u {
+        for (&bh, u) in cur_bedrock.iter().zip(uplift_u.iter_mut()) {
             *u *= UPLIFT_M_YR_SCALE;
+            if bh > 5_480.0 {
+                *u *= ((5_680.0 - bh) / 200.0).clamp(0.0, 1.0);
+            }
         }
 
         // 2-pass S7 climate-erosion coupling + Step 0 Exp. B multigrid `dt_yr` & incision cap:
