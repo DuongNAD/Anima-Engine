@@ -37,6 +37,11 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'waterfall', 'creature'];
+// Opt-in views: accepted by --views, never part of the default run, so default runs and their
+// baselines keep the same set, order and poses.
+//   coastnear  low camera (~50-70 m above the waterline) just offshore of the `coast` beach,
+//              looking along the shore: the surf zone, swash and beach at close range.
+const OPTIONAL_VIEW_IDS = ['coastnear'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -47,7 +52,7 @@ const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world vie
   --quality Q         high | medium | low | auto (default high; auto changes tier mid-run)
   --viewport WxH      browser viewport (default 1280x720)
   --seconds S         FPS sampling window per view (default 3)
-  --views a,b,...     subset of: ${VIEW_IDS.join(', ')}
+  --views a,b,...     subset of: ${VIEW_IDS.join(', ')}; opt-in: ${OPTIONAL_VIEW_IDS.join(', ')}
   --baseline DIR      previous run folder to compare against (before/after + FPS deltas)
   --label TEXT        name for this run on the contact sheet (e.g. "after B1")
   --out DIR           output folder (default artifacts/map-captures/<timestamp>)
@@ -116,8 +121,10 @@ function parseArgs(argv) {
         break;
       case '--views': {
         const list = need(i, a).split(',').map((s) => s.trim()).filter(Boolean);
-        const bad = list.filter((v) => !VIEW_IDS.includes(v));
-        if (bad.length) throw new Error(`--views: unknown ${bad.join(', ')} (known: ${VIEW_IDS.join(', ')})`);
+        const bad = list.filter((v) => !VIEW_IDS.includes(v) && !OPTIONAL_VIEW_IDS.includes(v));
+        if (bad.length) {
+          throw new Error(`--views: unknown ${bad.join(', ')} (known: ${[...VIEW_IDS, ...OPTIONAL_VIEW_IDS].join(', ')})`);
+        }
         opts.views = list;
         i++;
         break;
@@ -685,6 +692,44 @@ function pageAnalyseWorld() {
     else {
       const t = [c[0], surfAt(c[0], c[1]), c[1]];
       put('coast', frame(t, 70, 20, downhillAz(c[0], c[1])), `${biomeAt(c[0], c[1])} nearest the map centre, from the sea side`);
+
+      // coastnear (opt-in): just offshore of the same beach, low over the water, looking along
+      // the shoreline (whichever direction keeps the line of sight nearest the waterline).
+      const seaAz = downhillAz(c[0], c[1]);
+      if (seaAz === null) skip('coastnear', 'flat shore cell: no seaward direction');
+      else {
+        const seaY = sea * H;
+        const unitsPerM = R / 40960;
+        // Walk seaward from the beach cell to the waterline (the Beach biome can sit inland of it).
+        let wl = null;
+        for (let m = 0; m <= 2000 && !wl; m += 20) {
+          const x = c[0] + m * unitsPerM * Math.cos(seaAz);
+          const z = c[1] + m * unitsPerM * Math.sin(seaAz);
+          if (elevAt(x, z) < sea) wl = [x, z];
+        }
+        const base = wl ?? c;
+        const out = 160 * unitsPerM; // ~160 m offshore of the waterline
+        const eyeY = seaY + 55 * (H / 7200); // ~55 m above the waterline
+        const pos = [base[0] + out * Math.cos(seaAz), eyeY, base[1] + out * Math.sin(seaAz)];
+        let best = null;
+        for (const sgn of [1, -1]) {
+          const tan = seaAz + (sgn * Math.PI) / 2;
+          const along = 1400 * unitsPerM; // look ~1.4 km along the shore
+          const tx = base[0] + along * Math.cos(tan) - 40 * unitsPerM * Math.cos(seaAz);
+          const tz = base[1] + along * Math.sin(tan) - 40 * unitsPerM * Math.sin(seaAz);
+          const err = Math.abs(elevAt(tx, tz) - sea);
+          if (insideMap(tx, tz) && (!best || err < best.err)) best = { err, target: [tx, seaY + 2 * (H / 7200), tz] };
+        }
+        if (!best || !insideMap(pos[0], pos[2]) || surfAt(pos[0], pos[2]) > eyeY - 0.2) {
+          skip('coastnear', 'no clear low viewpoint offshore of the coast beach');
+        } else {
+          put(
+            'coastnear',
+            { position: pos, target: best.target, azimuthDeg: deg(azTo(pos, best.target)), pitchDeg: 0, lineOfSight: 'unchecked (low over water)' },
+            `${biomeAt(c[0], c[1])} shore at close range, ~55 m above the water, looking along the shoreline`,
+          );
+        }
+      }
     }
   }
 
