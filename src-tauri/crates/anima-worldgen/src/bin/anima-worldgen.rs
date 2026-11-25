@@ -747,7 +747,8 @@ mod tests {
         assert_eq!(cfg_no_preset.layout, WorldLayout::SingleMassif);
 
         let pid = std::process::id();
-        let default_toml = std::env::temp_dir().join(format!("anima_wv2_layout_default_{pid}.toml"));
+        let default_toml =
+            std::env::temp_dir().join(format!("anima_wv2_layout_default_{pid}.toml"));
         fs::write(&default_toml, "seed = 42\ngrid_size = 128\n").unwrap();
         let cfg_omitted_layout = load_config(&GenerateArgs {
             seed: None,
@@ -759,7 +760,8 @@ mod tests {
         let _ = fs::remove_file(&default_toml);
         assert_eq!(cfg_omitted_layout.layout, WorldLayout::SingleMassif);
 
-        let unknown_toml = std::env::temp_dir().join(format!("anima_wv2_layout_unknown_{pid}.toml"));
+        let unknown_toml =
+            std::env::temp_dir().join(format!("anima_wv2_layout_unknown_{pid}.toml"));
         fs::write(
             &unknown_toml,
             "seed = 42\ngrid_size = 128\nunknown_field = true\n",
