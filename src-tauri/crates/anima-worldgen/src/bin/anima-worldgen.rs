@@ -56,6 +56,16 @@ struct WorldV2PresetOverride {
     caprock_min_m: Option<f32>,
     caprock_max_m: Option<f32>,
     max_erodibility_contrast: Option<f32>,
+    channel_init: Option<f32>,
+    mfd_p: Option<f32>,
+    storm_runoff: Option<f32>,
+    fluvial_k_mult: Option<f32>,
+    sapping_gain: Option<f32>,
+    basin_amp: Option<f32>,
+    glacial_mult: Option<f32>,
+    coast_frac_amp: Option<f32>,
+    coast_cliff_share: Option<f32>,
+    talus_substeps: Option<usize>,
 }
 
 fn usage_text() -> &'static str {
@@ -351,6 +361,36 @@ fn load_config(args: &GenerateArgs) -> Result<WorldV2Config, String> {
         }
         if let Some(v) = ov.max_erodibility_contrast {
             cfg.max_erodibility_contrast = v;
+        }
+        if let Some(v) = ov.channel_init {
+            cfg.channel_init = v;
+        }
+        if let Some(v) = ov.mfd_p {
+            cfg.mfd_p = v;
+        }
+        if let Some(v) = ov.storm_runoff {
+            cfg.storm_runoff = v;
+        }
+        if let Some(v) = ov.fluvial_k_mult {
+            cfg.fluvial_k_mult = v;
+        }
+        if let Some(v) = ov.sapping_gain {
+            cfg.sapping_gain = v;
+        }
+        if let Some(v) = ov.basin_amp {
+            cfg.basin_amp = v;
+        }
+        if let Some(v) = ov.glacial_mult {
+            cfg.glacial_mult = v;
+        }
+        if let Some(v) = ov.coast_frac_amp {
+            cfg.coast_frac_amp = v;
+        }
+        if let Some(v) = ov.coast_cliff_share {
+            cfg.coast_cliff_share = v;
+        }
+        if let Some(v) = ov.talus_substeps {
+            cfg.talus_substeps = v;
         }
     }
     cfg.validate()

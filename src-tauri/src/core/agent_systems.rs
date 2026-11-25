@@ -1642,6 +1642,7 @@ pub fn sensory_system(
             &mut CognitiveState,
             Option<&mut crate::ai::hrrl::LastTransitionState>,
             Option<&crate::core::components::AgentBrain>,
+            Option<&crate::core::island::inhabit::InhabitedControl>,
         ),
         With<crate::core::ecs::Agent>,
     >,
@@ -1724,6 +1725,7 @@ pub fn sensory_system(
         mut cog_state,
         opt_last,
         opt_brain,
+        opt_inhabited,
     ) in agent_query.iter_mut()
     {
         if !matches!(*cog_state, CognitiveState::Ready) {
@@ -1736,7 +1738,8 @@ pub fn sensory_system(
         //
         // A skipped agent is not frozen: it keeps its last CPG parameters and goes on moving,
         // eating and metabolising. Only the inference is skipped, which is the dominant cost.
-        if !lod.should_think(agent_pos.0, entity.index()) {
+        // Inhabited creatures stay Hot unconditionally for host telemetry parity.
+        if !lod.should_think_with_exemption(agent_pos.0, entity.index(), opt_inhabited.is_some()) {
             continue;
         }
 
@@ -1852,6 +1855,14 @@ pub fn sensory_system(
             continue;
         }
 
+        if opt_inhabited.is_some() {
+            if let Some(mut last) = opt_last {
+                last.pending_state = None;
+                last.has_last = false;
+            }
+            continue;
+        }
+
         let ticket_id = *ticket_counter;
         *ticket_counter += 1;
 
@@ -1916,16 +1927,33 @@ pub fn action_resolution_system(
         &mut InertiaComponent,
         Option<&mut crate::ai::hrrl::LastTransitionState>,
         Option<&mut crate::core::components::ActionGates>,
+        Option<&crate::core::island::inhabit::InhabitedControl>,
     )>,
     segment_query: Query<(Entity, &ParentAgent, &Segment)>,
     mut oscillator_query: Query<&mut CpgOscillator>,
     mut child_buf: Local<Vec<(u32, Entity)>>,
+    island_state: Option<Res<crate::core::island::inhabit::IslandInhabitState>>,
 ) {
     while let Ok(batch) = channels.res_rx.try_recv() {
         for response in &batch.responses {
-            if let Ok((_entity, mut cog_state, mut inertia, mut opt_last, opt_gates)) =
-                agent_query.get_mut(response.entity)
+            if let Ok((
+                _entity,
+                mut cog_state,
+                mut inertia,
+                mut opt_last,
+                opt_gates,
+                opt_inhabited,
+            )) = agent_query.get_mut(response.entity)
             {
+                if opt_inhabited.is_some() {
+                    inertia.ticks_pending = 0;
+                    *cog_state = CognitiveState::Ready;
+                    if let Some(last) = opt_last.as_deref_mut() {
+                        last.pending_state = None;
+                        last.has_last = false;
+                    }
+                    continue;
+                }
                 if let CognitiveState::PendingInference(ticket_id) = *cog_state {
                     if ticket_id == response.request_id {
                         use crate::evolution::brain_genotype::action_index;
@@ -1985,5 +2013,52 @@ pub fn action_resolution_system(
             }
         }
         let _ = channels.recycle_res_tx.send(batch);
+    }
+
+    if island_state
+        .as_deref()
+        .is_some_and(crate::core::island::inhabit::IslandInhabitState::has_active_leases)
+    {
+        for (entity, mut cog_state, mut inertia, mut opt_last, opt_gates, opt_inhabited) in
+            agent_query.iter_mut()
+        {
+            let Some(inhabited) = opt_inhabited else {
+                continue;
+            };
+            if inhabited.kind != crate::core::island::OrganismTargetKind::Animal {
+                continue;
+            }
+            inertia.ticks_pending = 0;
+            if matches!(*cog_state, CognitiveState::PendingInference(_)) {
+                *cog_state = CognitiveState::Ready;
+            }
+            if let Some(last) = opt_last.as_deref_mut() {
+                last.pending_state = None;
+                last.has_last = false;
+            }
+            let drive = crate::core::island::inhabit::creature_cpg_drive(inhabited.creature);
+            inertia.cpg_parameters =
+                [drive; crate::evolution::brain_genotype::action_index::CPG_LEN];
+            if let Some(mut gates) = opt_gates {
+                gates.pheromone_emit = inhabited.creature.pheromone_emit.clamp(0.0, 1.0);
+                gates.attack_intent = if inhabited.creature.attack_intent {
+                    1.0
+                } else {
+                    0.0
+                };
+                gates.feed_intent = if inhabited.creature.feed_intent {
+                    1.0
+                } else {
+                    0.0
+                };
+            }
+            apply_inertia_to_oscillators(
+                entity,
+                &inertia.cpg_parameters,
+                &segment_query,
+                &mut oscillator_query,
+                &mut child_buf,
+            );
+        }
     }
 }

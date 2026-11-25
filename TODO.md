@@ -14,6 +14,32 @@
 
 ---
 
+# 2026-11-25 (Update 2) — `WV2-7` Milestone 1 (`#279`), `I3` (`#276`), `ADR-0017` (`#275`), `P11` (`#280`), `P2` (`#283`) & `P9` (`#282`)
+
+- **World v2 milestone 1 (`#279`, `9931efe8`, [WV2-7 note](docs/ai/planning/2026-11-25-wv2-7.md)):** Desktop simulation boots provisional `C01` (`sim_world_identity cbdd3ba9…` per `MAP-D5`) and refuses old/mismatched saves loudly with `WorldIdentity`; headless science (`Generated`, `LiveExperimentAdapter`, `prereg_*`) is unchanged, and **the screen still draws the v1 map until `WV2-6`**. Trial installer (`QD-TRIAL-V2`), `WV2-6` (public tile release & Iris Xe gate), and cutting `0.9.0-rc.1` remain **owner gates**.
+- **Shared Island `I3` & `D18. SIGNALS-ADR` (`#276`, `2c727ebd`; `#275`, `69f5a0a4`):** `N4. I3` landed off-tick `~20 Hz` interest-area projection & `bincode` `IslandSnapshot`/`IslandDelta` encoder; `D18` landed `proposed` [ADR-0017](docs/decisions/ADR-0017-evolved-communication.md) & [`S1–S8`](docs/ai/planning/2026-11-24-signals-cards.md) (after `r4` `#277` `2e9c4612`).
+- **Hardening `P11`/`P2`/`P9` (`#280`, `1b64fec1`; `#283`, `56b9bbe4`; `#282`, `c758b393`):** `P11` resolved `F-081` (`physics_tests` flake fixed); `P2` baselined live-schedule allocations ([note](docs/ai/planning/2026-11-25-p2-alloc-baseline.md), `F-082` `BrainModel::forward` ~74 allocs/tick **OPEN**, reports without gating); `P9` pinned `scripts/paper/gate_faults/*.patch` to `LF` in `.gitattributes` ([note](docs/ai/planning/2026-11-25-p9-gate-fault-refresh.md), confirming the earlier `"ten rotted patches"` note was a Windows CRLF artifact).
+- **Still open at `9931efe8`:** `#274` (`WV2-PHYS3` draft), `#278` (`WV2-6-PREVIEW` dev preview, never merged), `#281` (research-notes sync, not an agent PR), `#284` (`P10` draft), `#285` (`P1` draft), `#188` (legacy awaiting owner), and the `I3` solo-run stream guard follow-up test. See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+
+---
+
+# 2026-11-25 — `I2` (`#272`), `MAP-D5` (`#273`), `ADR-0016` (`#271`), `WV2-PHYS2` (`#270`) & Open `physics_tests` Allocation Flake (`P11`)
+
+- **`I2`, `MAP-D5` & `ADR-0016` (`#272`, `9a53bad6`; `#273`, `33a4c197`; `#271`, `0e90f0d5`):** `N3. I2` landed host `Inhabit` actuation/release and `WR1`/`WR2` `WorldRecordHeader.island` replay; `MAP-D5` keeps provisional `C01` (`cbdd3ba9...`, `WV2-7` boots on `C01`), opens `WV2-PHYS3`, and notes `#270` provenance gap (`C01` reproduces from `#249` `f195a361`, not trunk `preset_v2.toml`); `D15. WORLD-CHANGE-ADR` merged `proposed` [ADR-0016](docs/decisions/ADR-0016-changing-world-surface.md) & `W1–W7` cards.
+- **World v2 physics rework (`#270`, `a146d2f2`, [note](docs/ai/planning/2026-11-24-wv2-phys2.md)):** Reworked `anima-worldgen` generator physics leaving `src/verify/**`, thresholds, and `artifacts/world-v2/` untouched; `S2_1 = P01` at `4096²` passed `9/15` gates (`0` spikes, `30` waterfalls, `40` caves, `16/16` zoned biomes) vs provisional `C01` `2/15`.
+- **Open CI flake & pending PRs:** `test_spatial_grid_zero_allocation` (`src-tauri/tests/physics_tests.rs:532`) flaked on attempt 1 of CI run [45516447719](https://github.com/DuongNAD/Anima-Engine/actions/runs/45516447719) (`1` allocation; Card `P11` with `anima-case`). Open PRs at `9a53bad6` include `#274` (`WV2-PHYS3`), `#275` (`D18` `ADR-0017`), `#276` (`I3`), and `#278` (`WV2-6-PREVIEW` draft). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+
+---
+
+# 2026-11-24 (Update 3) — Stage 4 Passed (`E3b` `#252`), Island `I1` (`#266`), ADRs (`#256`/`#259`/`#262`/`#263`/`#268`), `WV2-3..5` (`#242`/`#249`/`#265`), `HOTLOOP-PERSIST` (`#264`) & `HONEST-UI` (`#269`)
+
+- **Stage 4 passed & science pipeline (`#245`, `#252`, `#253`, `#247`, `#258`, `#260`):** `C3. E3B-RUN` (`#245`, `4a5ee26a`, `192` confirmation runs on Windows 1) and `C4. E3B-RESULT` (`#252`, `6d0fdeb2`, [`RESULT.md`](artifacts/experiments/e3b-productivity-gradient-body-mass/RESULT.md), [summary](docs/ai/planning/2026-11-24-e3b-results.md)) passed Stage 4 (`H1`/`H3` `insufficient_evidence`, `H2` `equivalent_to_zero`); `C5` + `C5b. SEL2P2-VIAB2` (`#247`, `#258`, `fce7b981`, `12/12` survival, [VIAB-2 results](docs/ai/planning/2026-11-24-sel2-p2-viab2-results.md)); `C6. LAW1-DRAFT` (`#253`, `902e505d`); `C12. E3B-PIN` (`#260`, `7e383b8b`, pinned `31` `LIVE_KEYS` & `28` observables).
+- **World Record `WR2`, Shared Island `I1` & Core/UI Fixes (`#246`, `#254`, `#256`, `#266`, `#264`, `#269`, `#261`):** `C9. WR2` (`#246`, `a0f2a2da`) + `#254` (`facc800c`); `D12. ISLAND-ADR` (`#256`, `9b3131a0`, accepted [ADR-0014](docs/decisions/ADR-0014-shared-island-host-and-guests.md) & [`I1–I11`](docs/ai/planning/2026-11-24-island-cards.md)) + `N2. I1` (`#266`, `65632382`, guest policy, reserved `CauseId` band, zero-alloc `SharedGuestIntents` ingress); `C15. HOTLOOP-PERSIST` (`#264`, `a0522af5`, fixed `F-067` & `F-068`); `C14. HONEST-UI` (`#269`, `617fb1c0`, disabled `GeneticInjection` `F-071` & Map2 decoration labels); root allowlist cleanup (`#261`, `1803aa85`).
+- **ADRs, v1.0 Specs, Decisions & Docs (`#244`, `#248`, `#250`, `#251`, `#255`, `#257`, `#259`, `#262`, `#263`, `#267`, `#268`, `#243`):** `D8. V-SPECS-2` (`#244`, `cf3fb24a`, `V7–V11` & `H10/H11`); `D9. FINDINGS-SYNC` (`#250`, `071ef259`); `D10. DOC-REVIEW` (`#251`, `186a60e7`); `D20. AUDIT-FINDINGS` (`#257`, `6e2324d2`, `F-069..F-080`); `D22. ADR-STATUS` (`#262`, `1991d924`, accepted `ADR-0009` & `ADR-0013`); `D19. ECOSYSTEM-ADR` (`#263`, `42ccaec8`, `proposed` `ADR-0018` & `E1–E7`); `C13. BRAIN-BODY-ADR` (`#259`, `1bd2483d`, `accepted` `ADR-0019`); `D14. PLANT-EVO-ADR` (`#268`, `01b24c37`, `proposed` `ADR-0015` & `P1–P8`); `decisions-1124b/c` (`#248`, `#255`, `QD-SCALE-TRIAL` `~100` animals, `QD-REL09`, `QD-OPENQ`/`QD-OPENC`, `QD-SHAREDISLAND`, `QD-PLAYRULES`); `D21. DOCS-CLEANUP` (`#267`, `40776625`); `D1. STATE-SYNC r3` (`#243`, `92bf0df0`).
+- **Map v2 (`#242`, `#249`, `#265`):** `WV2-3` (`#242`, `21abdfba`, `ANMW v3` reader & `G-SIM`), `WV2-4` (`#249`, `f195a361`, provisional `C01` `2/15` gates), and `WV2-5` (`#265`, `e7b99745`, offline bake engine & `QD-WV25`).
+
+---
+
 # 2026-11-24 (Update 2) — E3B-SMOKE (`#240`), WR1 (`#236`), Release 0.9 CI/Docs (`#233`/`#237`/`#238`) & V-ADR/V-SPECS (`#235`/`#239`)
 
 - **Science & World Record (`#240`, `9eeb3130`; `#236`, `ee4fc287`):** `C2. E3B-SMOKE` passed all blind `WP-2` gates on Windows 1 (`seed = 999953`, `b1 = -0.4862814293602915`, `b2 = -0.005175446571556897`, `max_abs_eu_drift <= 4.5547494664788246e-8`, `0` `trait_mass` substrings, [smoke results](docs/ai/planning/2026-11-24-e3b-smoke-results.md)), unblocking `C3. E3B-RUN` (`192` confirmation runs); `C8. WR1` landed `ADR-0008` H1 segmented SHA-256 World Record v1 & zero-feedback end-of-tick recorder ([WR1 spec](docs/ai/planning/2026-11-24-wr1-world-record-format.md), `LIVE_KEYS` `31`).
@@ -113,6 +139,7 @@ Chỉ tài liệu; không build, không chạy test nào. Hai PR vào thân cây
   QĐ-P2; T3 có cần sống lại khi `main` đã được bảo vệ; ADR vòng đời mà thẻ V3 cần; `review_cycle: weekly`
   của kế hoạch tách crate trong khi nó hoãn tới sau 1.0; dòng trạng thái đầu ADR-0005 còn ghi "đề xuất";
   `CLAUDE.md` còn ghi "Two Rust advisories are ignored" trong khi `audit.toml` nay có nhiều hơn.
+  - *Ghi chú 2026-11-24:* `QĐ-P2` được làm rõ thêm bởi `QD-OPENC` (hình vẽ là dữ liệu trong repo công khai, bản nháp văn bản để ở repo riêng tư); `T3` đã thay bằng fast-forward `main` (`AGENT_WORKFLOW.md:153`, `QD-REL09` `G4`); ADR vòng đời cho `V3` (`ADR-0013`) đã merge ở `#235` và được duyệt `accepted` theo `QD-OPENQ` (`D22` `PR #262`); tách crate xác nhận làm sau `v1.0` (`QD-M2` trong `QD-OPENQ`); frontmatter `ADR-0005` là `accepted` (dòng prose banner `:13` được ghi nhận riêng ngoài phạm vi `D21`); `CLAUDE.md` do lead giữ; xem [`AGENT_WORKFLOW.md` §4](docs/how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0) (`PR #255`).
 
 # ⏪ Rà soát tiến độ, lộ trình và tài liệu (2026-11-17)
 
@@ -855,6 +882,7 @@ tài liệu**, không phải hướng đi.
   `fix/temp-path-collisions` — nhánh có PR #6 mở với tiêu đề chỉ nói về temp path. Cần tách sang
   nhánh docs riêng trước khi push. Chưa tự commit vì đụng công việc chưa commit của phiên khác.
 - **ADR-0004 chờ quyết định.** Chưa đem hệ quả của nó vào contract nào, đúng kỷ luật `proposed`.
+- *Ghi chú 2026-11-24:* Cả hai mục 2026-07-26 trên đều đã đóng — `PR #6` đã xử lý trong đợt dọn bàn làm việc 2026-11-17, và [ADR-0004](docs/decisions/ADR-0004-observer-as-declared-intervention.md) đã `accepted` từ 2026-07-26 (xem [`STATE_OF_THE_PROJECT.md` §3.8](docs/planning/STATE_OF_THE_PROJECT.md#38-hai-adr-đang-ở-trạng-thái-proposed-và-cả-hai-đều-đang-đỡ-tải)).
 
 ---
 

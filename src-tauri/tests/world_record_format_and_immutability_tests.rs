@@ -30,6 +30,7 @@ fn sample_header(deterministic: bool) -> WorldRecordHeader {
             height: 16,
             checksum: 0xDEAD_BEEF,
             sim_world_sha256: None,
+            genesis_phase: None,
         },
         world_artifact_sha256: Some("a".repeat(64)),
         model_version: LIVE_MODEL_VERSION.to_string(),
@@ -46,6 +47,7 @@ fn sample_header(deterministic: bool) -> WorldRecordHeader {
         era_index: 0,
         prev_era_tail_hash: None,
         omissions: vec!["gpu_microstate".to_string()],
+        island: None,
     }
 }
 

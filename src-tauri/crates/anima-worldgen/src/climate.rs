@@ -478,8 +478,8 @@ pub fn compute_climate(
 
     let step_scale = dx_c / 80.0;
     let oro_gain = (cfg.windward_precip_target_m_yr / 3.2).clamp(0.4, 2.0);
-    let c_bg = 1.92 * oro_gain;
-    let c_oro = 3.90 * oro_gain;
+    let c_bg = 1.82 * oro_gain;
+    let c_oro = 3.65 * oro_gain;
     let w_sat = 0.19_f32;
     let c_lee = 5.2_f32;
     let s0_sq = 0.25_f32 * 0.25_f32;

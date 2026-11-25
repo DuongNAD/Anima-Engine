@@ -1292,6 +1292,7 @@ mod tests {
             experiment_id: "unit-wide-sweep".into(),
             name: "Unit Wide Sweep".into(),
             observer: ObserverPolicy::default(),
+            island: None,
             world_identity: WorldIdentity {
                 seed: 1,
                 generator_version: 20,
@@ -1299,6 +1300,7 @@ mod tests {
                 height: 16,
                 checksum: 1,
                 sim_world_sha256: None,
+                genesis_phase: None,
             },
             laws: WorldLawSet::baseline(),
             initial_conditions: InitialConditionSet::new(vec![("plants".into(), 10.0)]),

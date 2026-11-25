@@ -18,6 +18,7 @@
 
 use crate::core::exotic_energy::{ExoticEnergyLaw, ExoticIntervention, UnitId, EU_UNIT};
 use crate::core::intervention::{Curve, InterventionCommand, Region};
+pub use crate::core::island::{GenesisPhase, IslandId, IslandManifest, RealTimeEcologyProfile};
 pub use crate::core::observer::ObserverPolicy;
 use crate::core::sim_clock::RateBand;
 pub use crate::core::world_artifact::WorldIdentity;
@@ -166,6 +167,13 @@ pub enum ExperimentError {
     /// structure does not exist in this run — e.g. death observables on a run that declares no
     /// death rule. Reporting a zero would look like a measurement; failing here does not.
     InvalidObservableRequest { id: String, reason: String },
+    /// Shared-island declaration (`ADR-0014`) violates guest/observer/phase invariants.
+    InvalidIslandConfig { reason: String },
+    /// Experiments must never mix organism genesis phases (`QD-GENESIS` / `ADR-0014`).
+    MixedGenesisPhase {
+        control: Option<GenesisPhase>,
+        treatment: Option<GenesisPhase>,
+    },
 }
 
 impl std::fmt::Display for ExperimentError {
@@ -256,6 +264,21 @@ impl std::fmt::Display for ExperimentError {
                 f,
                 "observable '{id}' cannot be produced by this run: {reason}"
             ),
+            ExperimentError::InvalidIslandConfig { reason } => {
+                write!(f, "invalid shared-island configuration: {reason}")
+            }
+            ExperimentError::MixedGenesisPhase { control, treatment } => {
+                let fmt_phase = |p: Option<GenesisPhase>| match p {
+                    Some(phase) => phase.code(),
+                    None => "none",
+                };
+                write!(
+                    f,
+                    "experiments must never mix genesis phases (control: {}, treatment: {})",
+                    fmt_phase(*control),
+                    fmt_phase(*treatment)
+                )
+            }
         }
     }
 }

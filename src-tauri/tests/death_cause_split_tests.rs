@@ -315,6 +315,7 @@ fn manifest(with_cause_split: bool) -> ExperimentManifest {
         observable_ids,
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

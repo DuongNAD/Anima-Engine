@@ -524,6 +524,7 @@ fn measure_drift_pair_case(
         observable_ids: shared_observable_ids(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     };
     let m_drf = ExperimentManifest {
         experiment_id: format!("m4-full-{label}-drf"),

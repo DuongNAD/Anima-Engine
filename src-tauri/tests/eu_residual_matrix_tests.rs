@@ -675,6 +675,7 @@ fn run_drift_pair_case(
         observable_ids: shared_observable_ids(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     };
     let m_drf = ExperimentManifest {
         experiment_id: format!("m4-{label}-drf"),
@@ -1086,6 +1087,7 @@ fn drift_control_pairs_and_excluded_keys_conserve_closed_eu() {
         observable_ids: shared_observable_ids(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     };
     let m_drf = ExperimentManifest {
         experiment_id: "m4-parity-drf".to_string(),

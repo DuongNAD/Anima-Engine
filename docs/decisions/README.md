@@ -2,7 +2,7 @@
 title: Chỉ mục quyết định kiến trúc
 status: active
 owner: architecture
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-25
 ---
 
 # Architecture Decision Records
@@ -22,7 +22,11 @@ last_reviewed: 2026-11-24
 | [`ADR-0012`](ADR-0012-ui-free-simulation-core.md) | accepted | Lõi mô phỏng chạy đủ không cần giao diện; giao diện là client chỉ đọc (ghi chỉ qua ADR-0004); giao diện cho máy (CLI, manifest, artifact, IPC) là hạng nhất; tầng ảnh chẩn đoán tách khỏi UI sản phẩm. ADR-0011 để dành cho lựa chọn renderer sau NR-SPIKE |
 | [`ADR-0013`](ADR-0013-live-creature-lifecycle.md) | accepted | Live creature lifecycle for V3: chronological age, life stages (juvenile/adult/senescent), maturation gate & cost, costly reproduction cooldown, and senescence mortality (opt-in, closed-EU via `total_cost`) |
 | [`ADR-0014`](ADR-0014-shared-island-host-and-guests.md) | accepted | Shared island architecture (`QD-ADR0014` accepted `2026-11-24`: `QD-SHAREDISLAND` amending `QD-SCOPE`; `QD-GENESIS`; `QD-PLAYRULES`): one authoritative host, real-time ecology profile, LAN `Spectate` / organism `Inhabit` intents with `CauseId` + World Record replay, phased genesis, chronicle, and opt-in host LLM narration |
+| [`ADR-0015`](ADR-0015-evolving-plants.md) | proposed | Evolving plants (`QD-LIFE`, `QD-GENESIS` `G1`/`G2`/`G3`, `QD-PLAYRULES` #2): hybrid `Individual` trees/shrubs + `Population Field` evolving grass on `ResourceField`, conserved energy/`total_cost`, Red Queen coevolution, and inhabiting individual plants (`P1`–`P8`) |
+| [`ADR-0016`](ADR-0016-changing-world-surface.md) | proposed | Changing world surface (`QD-LIFE` extension, `QD-BIO-D3`): dedicated `WorldRecordHeader::geological_era` (never overloading `era_index`), 3-timescale architecture (`DynamicFields` -> `SurfaceDeltaOverlay` -> offline `anima-worldgen` era transitions), physical process laws + `CauseId` triggers, and `AE-S12`/allopatric gates (`W1`–`W7`) |
+| [`ADR-0017`](ADR-0017-evolved-communication.md) | proposed | Evolved communication & local perceptual channels (chemical `PheromoneGrid`, acoustic, visual; `total_cost` accounting, predator eavesdropping, offline shuffled-control auditor) |
 | [`ADR-0018`](ADR-0018-ecosystem-scales-and-cycles.md) | proposed | Ecosystem open energy flow (opt-in solar LUE in, `total_cost`-routed heat out via `EnergyLedger`), density-dependent cycles (`live.prey_cap` legacy), Kleiber/lifespan allometric pace, and 3 representation tiers (individuals, swarms, population fields; `QD-BIO-D1`, `QD-ECOSCALE`) |
+| [`ADR-0019`](ADR-0019-brain-body-interface.md) | accepted | Brain–body interface for variable morphologies: fixed brain shape (ADR-0003 / EB-S02 / Schema 8) + shared 2-channel motor modulation + per-edge heritable `JointCpgGene` (opt-in, growth & homologous-crossover ready, `QD-BIO-D4`; accepted 2026-11-24, `QD-BRAINBODY D1–D5 = A`) |
 
 **Front matter thắng banner trong thân.** ADR-0005, 0006 và 0007 mở đầu thân bằng dòng "Trạng thái: đề xuất,
 chờ chủ dự án", viết lúc soạn; mỗi ADR có một mục "Quyết định (2026-11-16)" ở cuối ghi việc chấp nhận, và

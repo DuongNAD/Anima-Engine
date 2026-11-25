@@ -11,7 +11,7 @@ use anima_engine_lib::physics::{
 };
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 #[global_allocator]
 static ALLOCATOR: common::allocator::TrackingAllocator =
@@ -19,9 +19,13 @@ static ALLOCATOR: common::allocator::TrackingAllocator =
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+fn lock_test() -> MutexGuard<'static, ()> {
+    TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn test_static_equilibrium() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     world.insert_resource(TimeStep(0.01));
     world.insert_resource(MapBounds::default());
@@ -104,7 +108,7 @@ fn test_static_equilibrium() {
 
 #[test]
 fn test_cpg_driven_oscillation() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016)); // ~60fps
     world.insert_resource(MapBounds::default());
@@ -184,7 +188,7 @@ fn test_cpg_driven_oscillation() {
 
 #[test]
 fn test_zero_allocation_hot_path() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = init_world();
 
     // Spawn parent and child connected by joint
@@ -249,6 +253,8 @@ fn test_zero_allocation_hot_path() {
         schedule.run(&mut world);
     }
 
+    // Runs a Bevy `Schedule` (which may use the multi-threaded executor or rayon), so per
+    // `common/allocator.rs` this window must keep the process-wide counter.
     ALLOCATOR.start_tracking();
     for _ in 0..100 {
         schedule.run(&mut world);
@@ -264,7 +270,7 @@ fn test_zero_allocation_hot_path() {
 
 #[test]
 fn test_damping_effect() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     // 1. Undamped case (damping = 0.0)
     let mut world_undamped = World::new();
     world_undamped.insert_resource(TimeStep(0.01));
@@ -413,7 +419,7 @@ fn test_damping_effect() {
 
 #[test]
 fn test_spatial_grid_rebuild_and_raycast() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     let bounds = MapBounds {
         min: Vec3::new(-100.0, 0.0, -100.0),
@@ -490,7 +496,7 @@ fn test_spatial_grid_rebuild_and_raycast() {
 
 #[test]
 fn test_spatial_grid_zero_allocation() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     let bounds = MapBounds {
         min: Vec3::new(-100.0, 0.0, -100.0),
@@ -525,7 +531,11 @@ fn test_spatial_grid_zero_allocation() {
     // Warm up
     let _ = grid.raycast(&ray, 100.0, &bounds, &query);
 
-    ALLOCATOR.start_tracking();
+    // `SpatialHashGrid::raycast` (`src/physics/spatial.rs:141`) is a pure synchronous,
+    // single-threaded grid traversal (no `Schedule`, rayon, or worker threads). Use thread-scoped
+    // tracking so libtest's main thread cannot inject false positives (F-081 / PR #273 run
+    // 45516447719).
+    ALLOCATOR.start_tracking_this_thread();
     let _ = grid.raycast(&ray, 100.0, &bounds, &query);
     let allocs = ALLOCATOR.stop_tracking();
 
@@ -538,7 +548,7 @@ fn test_spatial_grid_zero_allocation() {
 
 #[test]
 fn test_decoupled_systems_zero_allocation() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
 
     // Insert necessary resources
@@ -650,7 +660,8 @@ fn test_decoupled_systems_zero_allocation() {
         }
     }
 
-    // Start tracking allocations
+    // Runs a Bevy `Schedule` (which may use the multi-threaded executor or rayon), so per
+    // `common/allocator.rs` this window must keep the process-wide counter.
     ALLOCATOR.start_tracking();
 
     schedule.run(&mut world);
@@ -683,7 +694,7 @@ fn test_decoupled_systems_zero_allocation() {
 
 #[test]
 fn test_zero_joint_axis_no_nan() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016));
 
@@ -760,7 +771,7 @@ fn test_zero_joint_axis_no_nan() {
 
 #[test]
 fn test_predator_energy_depletion_stops_movement() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016));
 
@@ -852,7 +863,7 @@ fn test_predator_energy_depletion_stops_movement() {
 // self-collision, and the agent sees nothing — on every ray, every tick, with the whole suite green.
 #[test]
 fn sensor_ray_from_agent_centre_sees_past_its_own_collider() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = lock_test();
     let mut world = World::new();
     let bounds = MapBounds {
         min: Vec3::new(-100.0, 0.0, -100.0),
