@@ -67,3 +67,4 @@ schemas/**                  -text
 # text despite `-text`; `whitespace=-trailing-space` because several carry trailing spaces that
 # "tidying" would falsify.
 licensing/upstream/**       -text diff whitespace=-trailing-space
+scripts/paper/gate_faults/*.patch text eol=lf
