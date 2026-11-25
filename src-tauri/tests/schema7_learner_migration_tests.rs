@@ -140,7 +140,22 @@ fn pre_upgrade_schema7_snapshot_restores_world_resets_learner_and_reports_named_
     assert_world_state_matches(&raw_state, &migrated);
 
     // Booting SimulationEngine from the migrated schema-7 snapshot starts a fresh Burn 0.22
-    // learner and advances ticks without error.
+    // learner and advances ticks without error. First assert that the frozen legacy v1 fixture
+    // mismatches the switched-over C01 World v2 desktop identity, then align the in-memory
+    // identity to the active desktop world so learner migration runs without modifying the fixture.
+    let active_identity =
+        anima_engine_lib::core::world_artifact::active_desktop_world_identity(None)
+            .expect("active desktop world identity must resolve");
+    assert!(
+        migrated
+            .world_identity
+            .mismatch_against(&active_identity)
+            .is_some(),
+        "frozen v1 schema-7 fixture must mismatch switched-over C01 desktop world"
+    );
+    let mut migrated = migrated;
+    migrated.world_identity = active_identity;
+
     let resume_tick = migrated.tick_count;
     let engine = SimulationEngine::new();
     *engine.pending_load_state.lock().unwrap() = Some(migrated);
@@ -276,6 +291,17 @@ fn simulation_loop_handles_raw_schema7_shared_learning_state_without_aborting() 
     let mut unmigrated = envelope.parse_state().unwrap();
     unmigrated.loaded_from_schema = 7;
     assert!(unmigrated.shared_learning.is_some());
+    let active_identity =
+        anima_engine_lib::core::world_artifact::active_desktop_world_identity(None)
+            .expect("active desktop world identity must resolve");
+    assert!(
+        unmigrated
+            .world_identity
+            .mismatch_against(&active_identity)
+            .is_some(),
+        "frozen v1 schema-7 fixture must mismatch switched-over C01 desktop world"
+    );
+    unmigrated.world_identity = active_identity;
 
     let tick_before = unmigrated.tick_count;
     let engine = SimulationEngine::new();

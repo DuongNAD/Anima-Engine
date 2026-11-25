@@ -317,12 +317,34 @@ pub struct SimulationEngine {
     /// place, together with that run's last state, which is still consistent; `start` empties it
     /// before the new run exists. A restore that is refused before the workers start returns before
     /// that reset, so the previous run's seed and state stay together.
+    /// The restore returns before resetting if rejected, so the previous run's seed and state stay
+    /// paired.
     pub run_seed: Arc<RwLock<Option<u64>>>,
+    /// Optional bundled `world-v2/sim_256.anmw3` path resolved on the Tauri main thread (`WV2-7`).
+    pub bundled_world_path: Arc<RwLock<Option<std::path::PathBuf>>>,
 }
 
 impl Default for SimulationEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Classifies non-`land_nav` lake spawn candidates (`WV2-7` lake-threshold audit).
+///
+/// On `ANMW v3` (`Some(sea_level_norm)`), candidates must be inland lakes/rivers (`biome == 1 ||
+/// biome == 3`) above `sea_level_norm + 0.001`, allowing high alpine lakes `>= 0.4` (`1,380 m`)
+/// while excluding `DeepOcean` (`biome == 0`). Legacy v1 and `Generated` (`None`) keep the exact
+/// historical predicate `(biome == 0 || biome == 1 || biome == 3) && elevation < 0.4`.
+#[inline]
+pub fn is_non_land_nav_lake_candidate(
+    biome: u8,
+    elevation: f32,
+    v3_sea_level_norm: Option<f32>,
+) -> bool {
+    match v3_sea_level_norm {
+        Some(sea_level_norm) => (biome == 1 || biome == 3) && elevation > sea_level_norm + 0.001,
+        None => (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4,
     }
 }
 
@@ -389,7 +411,24 @@ impl SimulationEngine {
                 crate::core::telemetry_export::EnergyFluxReport::default(),
             )),
             run_seed: Arc::new(RwLock::new(None)),
+            bundled_world_path: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Registers the bundled `world-v2/sim_256.anmw3` resource path resolved by Tauri `setup`.
+    pub fn set_bundled_world_path(&self, path: std::path::PathBuf) {
+        *self
+            .bundled_world_path
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(path);
+    }
+
+    /// Returns the registered bundled `world-v2/sim_256.anmw3` resource path, if any.
+    pub fn bundled_world_path(&self) -> Option<std::path::PathBuf> {
+        self.bundled_world_path
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn start<R: tauri::Runtime>(
@@ -427,14 +466,58 @@ impl SimulationEngine {
         } else {
             None
         };
+        let loaded_world = if manifest_to_load.is_some()
+            && std::env::var_os("ANIMA_WORLD_ARTIFACT")
+                .filter(|v| !v.is_empty())
+                .is_none()
+        {
+            let settings = crate::core::terrain::MapSettings::default();
+            let terrain = crate::core::terrain::TerrainMap::generate_with_config(
+                &settings,
+                &crate::core::terrain::MapConfig::default(),
+            );
+            let identity = crate::core::world_artifact::WorldIdentity::from_terrain(
+                &terrain,
+                settings.seed,
+                crate::core::terrain::WORLD_CACHE_VERSION,
+            );
+            crate::core::world_artifact::LoadedDesktopWorld {
+                terrain,
+                identity,
+                v3_sea_level_norm: None,
+            }
+        } else {
+            let bundled_path = self.bundled_world_path();
+            match crate::core::world_artifact::load_desktop_world_with_bundled_path(
+                bundled_path.as_deref(),
+                &crate::core::terrain::MapSettings::default(),
+            ) {
+                Ok(world) => world,
+                Err(error) => {
+                    eprintln!("ERROR: simulation start aborted before workers started: {error}");
+                    self.running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            }
+        };
+        if let Some(state) = state_to_load.as_ref() {
+            if let Some(reason) = state
+                .world_identity
+                .mismatch_against(&loaded_world.identity)
+            {
+                eprintln!(
+                    "ERROR: snapshot restore aborted before workers started: world identity mismatch ({reason})"
+                );
+                self.running.store(false, Ordering::SeqCst);
+                return;
+            }
+        }
         let startup_run_seed = if let Some(ref manifest) = manifest_to_load {
             manifest.seed
         } else {
             crate::core::simulation_state::startup_run_seed(
                 state_to_load.as_ref(),
-                crate::core::resources::resolve_run_seed(
-                    crate::core::world_artifact::world_seed_from_disk(),
-                ),
+                crate::core::resources::resolve_run_seed(loaded_world.identity.seed),
             )
         };
         let deterministic_mode = crate::core::determinism::DeterministicMode::from_env();
@@ -1062,7 +1145,7 @@ impl SimulationEngine {
         let sim_handle = thread::spawn(move || {
             let _exit = sim_exit;
 
-            let mut world = init_world();
+            let mut world = init_world_from_loaded(loaded_world);
 
             // S08: warn loudly if the save belongs to a DIFFERENT world than the one just built, so
             // saved agents/positions aren't silently dropped into a mismatched world. Compared
@@ -1735,6 +1818,7 @@ impl SimulationEngine {
                 let mut lake_candidates = Vec::new();
                 let mut tree_candidates = Vec::new();
 
+                let v3_sea_level_norm = world.get_resource::<WorldV3SeaLevel>().map(|s| s.0);
                 if let Some(ref tm) = terrain_map {
                     for row in 0..tm.height {
                         for col in 0..tm.width {
@@ -1754,8 +1838,11 @@ impl SimulationEngine {
                                     tm, col, row,
                                 )
                             } else {
-                                let elevation = tm.elevations[idx];
-                                (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4
+                                is_non_land_nav_lake_candidate(
+                                    biome,
+                                    tm.elevations[idx],
+                                    v3_sea_level_norm,
+                                )
                             };
                             if is_lake_candidate {
                                 lake_candidates.push(pos);
