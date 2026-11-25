@@ -849,7 +849,7 @@ fn apply_late_quaternary_piedmont_subsidence(
     seed: u64,
     basin_amp: f32,
 ) {
-    if lvl < 1024 || basin_amp <= 0.0 {
+    if dx_m > 50.0 || lvl < 512 || basin_amp <= 0.0 {
         return;
     }
     let n = lvl * lvl;
@@ -891,83 +891,146 @@ fn apply_late_quaternary_piedmont_subsidence(
 
     let dx = f64::from(dx_m);
     let cell_area_m2 = dx * dx;
-    let trunk_cells = ((2.5e6 / cell_area_m2).round() as u32).max(1);
-    let b_scale = libm::sqrt(f64::from(basin_amp).clamp(0.5, 2.5));
-    let rx_m = 920.0 * b_scale;
-    let ry_m = 1_650.0 * b_scale;
-    let margin = lvl / 10;
-
-    let base_vs = [0.12_f64, 0.27, 0.42, 0.58, 0.73, 0.88];
-    let dr_cells = (250.0 / dx).round() as isize;
-    let mut centers: Vec<(usize, usize)> = Vec::with_capacity(base_vs.len());
-    for (bi, &v0) in base_vs.iter().enumerate() {
-        let jitter = 0.02 * (det_hash01(seed ^ 0x4C41_4B45_0000_0001, bi as i64, 0) * 2.0 - 1.0);
-        let rc = ((v0 + jitter) * (lvl - 1) as f64).round() as usize;
-        let rc = rc.clamp(margin, lvl.saturating_sub(margin + 1));
-        let mut cands: Vec<usize> = Vec::new();
-        for dr in -dr_cells..=dr_cells {
-            let r = (rc as isize + dr).clamp(1, lvl as isize - 2) as usize;
-            let row = r * lvl;
-            for c in margin..lvl.saturating_sub(margin) {
-                let i = row + c;
-                let h = bedrock_h[i] + sediment_s[i];
-                if (35.0..=145.0).contains(&h)
-                    && precip_m_yr[i] >= 1.45
-                    && acc_cells[i] < trunk_cells
-                {
-                    cands.push(c);
-                }
-            }
-        }
-        if cands.len() >= 12 {
-            cands.sort_unstable();
-            let cc = cands[cands.len() * 3 / 10];
-            let too_close = centers.iter().any(|&(pr, pc)| {
-                let dist_m = dx * libm::hypot(rc as f64 - pr as f64, cc as f64 - pc as f64);
-                dist_m < 4_500.0
-            });
-            if !too_close {
-                centers.push((rc, cc));
+    let extent_m = dx * (lvl as f64);
+    let trunk_cells = ((6.0e6 / cell_area_m2).round() as u32).max(1);
+    let margin_m = (0.03 * extent_m).clamp(600.0, 2_000.0);
+    let margin = ((margin_m / dx).round() as usize).clamp(4, lvl / 8);
+    let mut dist_safe_m = vec![f32::INFINITY; n];
+    for r in 0..lvl {
+        let row = r * lvl;
+        for c in 0..lvl {
+            let i = row + c;
+            let h = bedrock_h[i] + sediment_s[i];
+            if r < margin
+                || r + margin >= lvl
+                || c < margin
+                || c + margin >= lvl
+                || acc_cells[i] >= trunk_cells
+                || h <= 8.0
+                || h >= 320.0
+                || precip_m_yr[i] < 1.45
+            {
+                dist_safe_m[i] = 0.0;
             }
         }
     }
+    drop(acc_cells);
 
-    let max_rw = 1.45_f64;
-    let rad_r = (libm::ceil(1.8 * ry_m / dx) as isize).max(4);
-    let rad_c = (libm::ceil(1.8 * rx_m / dx) as isize).max(4);
+    let diag_m = dx_m * core::f32::consts::SQRT_2;
+    for r in 0..lvl {
+        let row = r * lvl;
+        for c in 0..lvl {
+            let i = row + c;
+            let mut d = dist_safe_m[i];
+            if r > 0 {
+                let up = row - lvl;
+                d = d.min(dist_safe_m[up + c] + dx_m);
+                if c > 0 {
+                    d = d.min(dist_safe_m[up + c - 1] + diag_m);
+                }
+                if c + 1 < lvl {
+                    d = d.min(dist_safe_m[up + c + 1] + diag_m);
+                }
+            }
+            if c > 0 {
+                d = d.min(dist_safe_m[i - 1] + dx_m);
+            }
+            dist_safe_m[i] = d;
+        }
+    }
+    for r in (0..lvl).rev() {
+        let row = r * lvl;
+        for c in (0..lvl).rev() {
+            let i = row + c;
+            let mut d = dist_safe_m[i];
+            if r + 1 < lvl {
+                let dn = row + lvl;
+                d = d.min(dist_safe_m[dn + c] + dx_m);
+                if c + 1 < lvl {
+                    d = d.min(dist_safe_m[dn + c + 1] + diag_m);
+                }
+                if c > 0 {
+                    d = d.min(dist_safe_m[dn + c - 1] + diag_m);
+                }
+            }
+            if c + 1 < lvl {
+                d = d.min(dist_safe_m[i + 1] + dx_m);
+            }
+            dist_safe_m[i] = d;
+        }
+    }
+
+    let b_scale = libm::sqrt(f64::from(basin_amp).clamp(0.5, 2.5));
+    let step = ((80.0 / dx).round() as usize).max(1);
+    let area_ratio = (extent_m / 40_960.0) * (extent_m / 40_960.0);
+    let max_basins = ((28.0 * area_ratio).round() as usize).clamp(16, 128);
+    let rc_end = lvl.saturating_sub(margin);
+    let mut avail = dist_safe_m.clone();
+    let mut centers: Vec<(usize, usize, f64)> = Vec::with_capacity(max_basins);
+    if margin < rc_end {
+        for _ in 0..max_basins {
+            let mut best: Option<(usize, usize, f32)> = None;
+            for r in (margin..rc_end).step_by(step) {
+                let row = r * lvl;
+                for c in (margin..rc_end).step_by(step) {
+                    let d_m = avail[row + c];
+                    if !d_m.is_finite() {
+                        continue;
+                    }
+                    let replace = match best {
+                        None => true,
+                        Some((_, _, bd)) => d_m > bd,
+                    };
+                    if replace {
+                        best = Some((r, c, d_m));
+                    }
+                }
+            }
+            let Some((br, bc, bd)) = best else {
+                break;
+            };
+            if bd < 400.0 {
+                break;
+            }
+            let bd_f = f64::from(bd);
+            centers.push((br, bc, bd_f));
+            let clr_m = 1.22 * bd_f;
+            let clr_cells = (libm::ceil(clr_m / dx) as isize).max(1);
+            let clr_sq = clr_m * clr_m;
+            let nr_lo = (br as isize - clr_cells).max(0) as usize;
+            let nr_hi = (br as isize + clr_cells).min(lvl as isize - 1) as usize;
+            let nc_lo = (bc as isize - clr_cells).max(0) as usize;
+            let nc_hi = (bc as isize + clr_cells).min(lvl as isize - 1) as usize;
+            for nr in nr_lo..=nr_hi {
+                let dz_m = (nr as f64 - br as f64) * dx;
+                let nrow = nr * lvl;
+                for nc in nc_lo..=nc_hi {
+                    let dx_c = (nc as f64 - bc as f64) * dx;
+                    if dz_m * dz_m + dx_c * dx_c <= clr_sq {
+                        avail[nrow + nc] = 0.0;
+                    }
+                }
+            }
+        }
+    }
+    drop(avail);
+
+    let max_rw = 1.26_f64;
     let mut lip_samples = Vec::with_capacity(512);
-    let mut footprint_hs = Vec::with_capacity(2048);
 
-    for (bi, &(rc, cc)) in centers.iter().enumerate() {
+    for (bi, &(rc, cc, d_ctr)) in centers.iter().enumerate() {
+        let amp_factor = (b_scale / 1.162).clamp(0.88, 1.07);
+        let r_base = (0.80 * d_ctr * amp_factor).min(0.86 * d_ctr);
+        let u_asp = det_hash01(seed ^ 0x4C41_4B45_0000_0007, bi as i64, 0);
+        let rx_m = (r_base * (0.92 + 0.14 * u_asp)).min(0.86 * d_ctr);
+        let ry_m = (r_base * (1.08 - 0.14 * u_asp)).min(0.86 * d_ctr);
+        let rad_r = (libm::ceil(1.5 * ry_m / dx) as isize).max(4);
+        let rad_c = (libm::ceil(1.5 * rx_m / dx) as isize).max(4);
         let bs = seed ^ 0x4C41_4B45_55AA_0000 ^ (bi as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
         let r_lo = (rc as isize - rad_r).max(1) as usize;
         let r_hi = (rc as isize + rad_r).min(lvl as isize - 2) as usize;
         let c_lo = (cc as isize - rad_c).max(1) as usize;
         let c_hi = (cc as isize + rad_c).min(lvl as isize - 2) as usize;
-
-        footprint_hs.clear();
-        let mut ok_footprint = 0usize;
-        for r in r_lo..=r_hi {
-            let row = r * lvl;
-            let uz = (r as f64 - rc as f64) * dx / ry_m;
-            for c in c_lo..=c_hi {
-                let ux = (c as f64 - cc as f64) * dx / rx_m;
-                if libm::hypot(ux, uz) <= 1.0 {
-                    let h = f64::from(bedrock_h[row + c] + sediment_s[row + c]);
-                    footprint_hs.push(h);
-                    if (18.0..=220.0).contains(&h) {
-                        ok_footprint += 1;
-                    }
-                }
-            }
-        }
-        if footprint_hs.len() < 16 || ok_footprint * 5 < footprint_hs.len() * 3 {
-            continue;
-        }
-        footprint_hs.sort_unstable_by(f64::total_cmp);
-        if footprint_hs[footprint_hs.len() / 2] > 165.0 {
-            continue;
-        }
 
         let warped_r = |r: usize, c: usize| -> f64 {
             let ux = (c as f64 - cc as f64) * dx / rx_m;
@@ -983,7 +1046,7 @@ fn apply_late_quaternary_piedmont_subsidence(
                         (c as f64 * dx) / 350.0,
                         (r as f64 * dx) / 350.0,
                     );
-            (re * (1.0 + 0.22 * nv)).max(0.0)
+            (re * (1.0 + 0.14 * nv)).max(0.0)
         };
 
         lip_samples.clear();
@@ -991,9 +1054,10 @@ fn apply_late_quaternary_piedmont_subsidence(
             let row = r * lvl;
             for c in c_lo..=c_hi {
                 let rw = warped_r(r, c);
-                if (0.95..=1.22).contains(&rw) {
-                    let h = f64::from(bedrock_h[row + c] + sediment_s[row + c]);
-                    if h > 12.0 && h < 320.0 {
+                if (0.94..=1.14).contains(&rw) {
+                    let i = row + c;
+                    let h = f64::from(bedrock_h[i] + sediment_s[i]);
+                    if h > 8.0 && h < 340.0 && dist_safe_m[i] >= 40.0 {
                         lip_samples.push(h);
                     }
                 }
@@ -1003,8 +1067,11 @@ fn apply_late_quaternary_piedmont_subsidence(
             continue;
         }
         lip_samples.sort_unstable_by(f64::total_cmp);
-        let h_lip = lip_samples[lip_samples.len() / 4].clamp(38.0, 165.0);
-        let h_floor = (h_lip - 24.0 * b_scale).max(10.0);
+        let h_rim_min = lip_samples[lip_samples.len() / 20];
+        let h_lip = lip_samples[lip_samples.len() / 5]
+            .min(h_rim_min + 20.0)
+            .clamp(15.0, 260.0);
+        let h_floor = (h_lip - 16.0 * b_scale).clamp(5.5, h_lip - 6.0);
 
         for r in r_lo..=r_hi {
             let row = r * lvl;
@@ -1015,30 +1082,102 @@ fn apply_late_quaternary_piedmont_subsidence(
                 }
                 let i = row + c;
                 let h = f64::from(bedrock_h[i] + sediment_s[i]);
-                if h <= 10.0 || h >= 220.0 {
+                if h <= 5.5 || h >= 320.0 || dist_safe_m[i] <= 40.0 {
                     continue;
                 }
-                let elev_fade = ((220.0 - h) / 60.0).clamp(0.0, 1.0);
-                if rw < 0.98 {
-                    let t_wall = ((rw - 0.58) / 0.40).clamp(0.0, 1.0);
+                let safe_fade = ((f64::from(dist_safe_m[i]) - 40.0) / 80.0).clamp(0.0, 1.0);
+                let elev_fade = ((320.0 - h) / 60.0).clamp(0.0, 1.0);
+                let mask_w = elev_fade * safe_fade;
+                if rw < 0.96 {
+                    let t_wall = ((rw - 0.70) / 0.26).clamp(0.0, 1.0);
                     let smooth_w = t_wall * t_wall * (3.0 - 2.0 * t_wall);
                     let target_h = h_floor + (h_lip - h_floor) * smooth_w;
                     if h > target_h {
-                        let drop_m = ((h - target_h) * elev_fade).min(38.0);
-                        let new_h = (h - drop_m).max(8.0);
+                        let drop_m = ((h - target_h) * mask_w).min(38.0);
+                        let new_h = (h - drop_m).max(5.5);
                         let new_s = f64::from(sediment_s[i]).max(2.0);
                         sediment_s[i] = new_s as f32;
                         bedrock_h[i] = (new_h - new_s) as f32;
                     }
-                } else if rw <= 1.38 && acc_cells[i] < trunk_cells && h < 190.0 {
-                    let dr = (rw - 1.08) / 0.14;
+                } else if rw <= 1.24 && h < 280.0 {
+                    let dr = (rw - 1.04) / 0.11;
                     let rim_bell = libm::exp(-(dr * dr));
-                    let sill_target = h_lip + 3.5;
+                    let sill_target = h_lip + 4.5;
                     if h < sill_target {
-                        let raise_m = ((sill_target - h) * rim_bell * elev_fade).min(30.0);
+                        let raise_m = ((sill_target - h) * rim_bell * mask_w).min(28.0);
                         bedrock_h[i] += raise_m as f32;
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Unroofs thin upper sandstone caprock remnants on post-erosion steep massif escarpments
+/// (`slope_120m > 0.16` or `h > caprock_ceiling_m`) and humid windward rainforest outliers
+/// (`precip > 1.35 m/yr`) at fine physical resolutions (`dx_m <= 50 m`), while preserving
+/// mapped `waterfalls` knickpoint lips (`±2` cells) and leaving `256²`/`512²` tectonic invariants intact.
+fn strip_steep_escarpment_and_humid_caprock(
+    total_h: &[f32],
+    precip_m_yr: &[f32],
+    waterfalls: &[crate::lakes_falls::WaterfallRecord],
+    lithology_id: &mut [u8],
+    lvl: usize,
+    dx_m: f32,
+    caprock_ceiling_m: f32,
+) {
+    if dx_m > 50.0 || lvl < 512 {
+        return;
+    }
+    let n = lvl * lvl;
+    if total_h.len() != n || precip_m_yr.len() != n || lithology_id.len() != n {
+        return;
+    }
+    let mut wf_lip_guard = vec![false; n];
+    for wf in waterfalls {
+        let idx = wf.lip_cell as usize;
+        if idx >= n {
+            continue;
+        }
+        let lr = idx / lvl;
+        let lc = idx % lvl;
+        let r_lo = lr.saturating_sub(2);
+        let r_hi = (lr + 2).min(lvl - 1);
+        let c_lo = lc.saturating_sub(2);
+        let c_hi = (lc + 2).min(lvl - 1);
+        for nr in r_lo..=r_hi {
+            let nrow = nr * lvl;
+            for nc in c_lo..=c_hi {
+                wf_lip_guard[nrow + nc] = true;
+            }
+        }
+    }
+    let span = ((120.0 / dx_m).round() as usize).clamp(1, lvl / 8);
+    let cap_id = crate::tectonic::LithologyClass::SandstoneCaprock as u8;
+    let shale_id = crate::tectonic::LithologyClass::SoftShale as u8;
+
+    for r in 0..lvl {
+        let row = r * lvl;
+        let r_lo = r.saturating_sub(span);
+        let r_hi = (r + span).min(lvl - 1);
+        let dz_span = ((r_hi - r_lo) as f32 * dx_m).max(dx_m);
+        for c in 0..lvl {
+            let i = row + c;
+            if lithology_id[i] != cap_id || wf_lip_guard[i] {
+                continue;
+            }
+            let h = total_h[i];
+            if h > caprock_ceiling_m || precip_m_yr[i] > 1.35 {
+                lithology_id[i] = shale_id;
+                continue;
+            }
+            let c_lo = c.saturating_sub(span);
+            let c_hi = (c + span).min(lvl - 1);
+            let dx_span = ((c_hi - c_lo) as f32 * dx_m).max(dx_m);
+            let gx = (total_h[row + c_hi] - total_h[row + c_lo]) / dx_span;
+            let gz = (total_h[r_hi * lvl + c] - total_h[r_lo * lvl + c]) / dz_span;
+            if libm::hypotf(gx, gz) > 0.16 {
+                lithology_id[i] = shale_id;
             }
         }
     }
@@ -1172,6 +1311,7 @@ fn widen_trunk_alluvial_floodplains(
     sediment_s: &mut [f32],
     river_w_m: &[f32],
     strahler: &[u8],
+    strahler_fp: &[u8],
     d8_dir: &[u8],
     lvl: usize,
     dx_m: f32,
@@ -1182,10 +1322,141 @@ fn widen_trunk_alluvial_floodplains(
         || sediment_s.len() != n
         || river_w_m.len() != n
         || strahler.len() != n
+        || strahler_fp.len() != n
         || d8_dir.len() != n
     {
         return;
     }
+    let fine_mode = dx_m <= 50.0 && lvl >= 512;
+    if fine_mode {
+        let mut fp_cut = vec![0.0_f32; n];
+        for r in 2..lvl.saturating_sub(2) {
+            let row = r * lvl;
+            for c in 2..lvl.saturating_sub(2) {
+                let i = row + c;
+                let ord = strahler[i];
+                let ord_fp = strahler_fp[i];
+                if (ord < 2 && ord_fp < 2) || d8_dir[i] >= 8 {
+                    continue;
+                }
+                let z_i = bedrock_h[i] + sediment_s[i];
+                if z_i <= 1.5 {
+                    continue;
+                }
+                let gx =
+                    (bedrock_h[i + 1] + sediment_s[i + 1] - bedrock_h[i - 1] - sediment_s[i - 1])
+                        / (2.0 * dx_m);
+                let gz = (bedrock_h[i + lvl] + sediment_s[i + lvl]
+                    - bedrock_h[i - lvl]
+                    - sediment_s[i - lvl])
+                    / (2.0 * dx_m);
+                let slope = libm::hypotf(gx, gz);
+                let d = usize::from(d8_dir[i]);
+                let inv_dist = 1.0 / (DIST8[d] as f32);
+                let ux = (DX8[d] as f32) * inv_dist;
+                let uz = (DZ8[d] as f32) * inv_dist;
+
+                let nr_dn = (r as isize + DZ8[d]).clamp(0, lvl as isize - 1) as usize;
+                let nc_dn = (c as isize + DX8[d]).clamp(0, lvl as isize - 1) as usize;
+                let z_dn = bedrock_h[nr_dn * lvl + nc_dn] + sediment_s[nr_dn * lvl + nc_dn];
+                let chan_slope = ((z_i - z_dn) / (dx_m * DIST8[d] as f32)).max(0.0);
+
+                if ord_fp >= 4 && z_i < 750.0 && chan_slope < 0.12 {
+                    let w_fp = (360.0 + 48.0 * river_w_m[i]).clamp(360.0, 680.0);
+                    let r_ref = 80.0_f32.max(1.5 * dx_m);
+                    let along_lim = 1.65 * dx_m;
+                    let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
+                    let r_lo = (r as isize - rad).max(1) as usize;
+                    let r_hi = (r as isize + rad).min(lvl as isize - 2) as usize;
+                    let c_lo = (c as isize - rad).max(1) as usize;
+                    let c_hi = (c as isize + rad).min(lvl as isize - 2) as usize;
+                    for nr in r_lo..=r_hi {
+                        let dz_m = (nr as f32 - r as f32) * dx_m;
+                        let nrow = nr * lvl;
+                        for nc in c_lo..=c_hi {
+                            let j = nrow + nc;
+                            if strahler[j] >= 1 || strahler_fp[j] >= 1 {
+                                continue;
+                            }
+                            let z_j = bedrock_h[j] + sediment_s[j];
+                            if z_j <= 0.5 {
+                                continue;
+                            }
+                            let dx_c = (nc as f32 - c as f32) * dx_m;
+                            let along = libm::fabsf(dx_c * ux + dz_m * uz);
+                            let perp = libm::fabsf(dx_c * (-uz) + dz_m * ux);
+                            if along > along_lim || perp > w_fp {
+                                continue;
+                            }
+                            let along_t = ((along_lim - along) / (0.65 * dx_m)).clamp(0.0, 1.0);
+                            let along_w = along_t * along_t * (3.0 - 2.0 * along_t);
+                            let t = ((w_fp - perp) / (0.40 * w_fp)).clamp(0.0, 1.0);
+                            let perp_w = t * t * (3.0 - 2.0 * t);
+                            let a = perp_w * along_w * 0.995;
+                            let u_r = (perp / r_ref).max(0.0);
+                            let t_h = z_i + 0.0025 * perp + 0.24 * libm::powf(u_r, 2.30);
+                            let diff = z_j - t_h;
+                            if diff > 0.0 && diff < 70.0 {
+                                let cut_fade = ((70.0 - diff) / 38.0).clamp(0.0, 1.0);
+                                let cut = a * cut_fade * diff;
+                                if cut > fp_cut[j] {
+                                    fp_cut[j] = cut;
+                                }
+                            }
+                        }
+                    }
+                } else if (ord == 2 || ord == 3) && slope < 0.65 {
+                    let px = -uz;
+                    let pz = ux;
+                    let max_idx = lvl as isize - 2;
+                    for &side in &[-1.0_f32, 1.0_f32] {
+                        let r1 = libm::roundf(r as f32 + side * pz) as isize;
+                        let c1 = libm::roundf(c as f32 + side * px) as isize;
+                        let r2 = libm::roundf(r as f32 + 2.0 * side * pz) as isize;
+                        let c2 = libm::roundf(c as f32 + 2.0 * side * px) as isize;
+                        if r1 < 1
+                            || r1 > max_idx
+                            || c1 < 1
+                            || c1 > max_idx
+                            || r2 < 1
+                            || r2 > max_idx
+                            || c2 < 1
+                            || c2 > max_idx
+                        {
+                            continue;
+                        }
+                        let j1 = (r1 as usize) * lvl + (c1 as usize);
+                        let j2 = (r2 as usize) * lvl + (c2 as usize);
+                        if strahler[j1] != 0 {
+                            continue;
+                        }
+                        let z_j1 = bedrock_h[j1] + sediment_s[j1];
+                        let z_j2 = bedrock_h[j2] + sediment_s[j2];
+                        if z_j1 > 0.5 && z_j2 > z_i + 4.0 && z_j1 > z_i + 0.58 * (z_j2 - z_i) {
+                            let th = z_i + 0.50 * (z_j2 - z_i);
+                            let diff = z_j1 - th;
+                            if diff > 0.0 && diff <= 45.0 {
+                                fp_cut[j1] = fp_cut[j1].max(0.50 * diff);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (j, &cut) in fp_cut.iter().enumerate() {
+            if cut <= 0.0 {
+                continue;
+            }
+            let z_j = bedrock_h[j] + sediment_s[j];
+            if z_j > 0.5 {
+                let new_z = (z_j - cut).max(0.5);
+                sediment_s[j] = sediment_s[j].max(1.2);
+                bedrock_h[j] = new_z - sediment_s[j];
+            }
+        }
+        return;
+    }
+
     let mut fp_target = vec![f32::INFINITY; n];
     let mut fp_alpha = vec![0.0_f32; n];
 
@@ -1801,6 +2072,15 @@ pub fn run_worldgen_to_dir_with_schedule(
                     cfg.sapping_gain,
                 );
             }
+            inject_fine_littoral_ria(
+                &mut cur_bedrock,
+                &cur_sediment,
+                &lithology_id,
+                lvl,
+                lvl_dx,
+                cfg.seed,
+                cfg.coast_frac_amp,
+            );
             apply_late_quaternary_piedmont_subsidence(
                 &mut cur_bedrock,
                 &mut cur_sediment,
@@ -1818,15 +2098,6 @@ pub fn run_worldgen_to_dir_with_schedule(
                 t_elapsed_yr,
                 &mut lithology_id,
             )?;
-            inject_fine_littoral_ria(
-                &mut cur_bedrock,
-                &cur_sediment,
-                &lithology_id,
-                lvl,
-                lvl_dx,
-                cfg.seed,
-                cfg.coast_frac_amp,
-            );
             // Spill uplift_u, lithology_id, talus_frac, bedrock_h, sediment_s; drop unneeded buffers.
             let mut layers: Vec<LayerMeta> = Vec::with_capacity(30);
             drop(cached_clim_precip.take());
@@ -1962,6 +2233,48 @@ pub fn run_worldgen_to_dir_with_schedule(
                 .collect();
             let strahler = crate::anmw_v3::compute_strahler_order(&d8_dir, &q_channel, lvl, lvl);
             drop(q_channel);
+            let strahler_fp = if target_dx <= 50.0 && lvl >= 512 {
+                let mut fp_channel: Vec<bool> = (0..lvl_n)
+                    .map(|i| {
+                        total_h[i] > crate::SEA_LEVEL_M
+                            && ((hydro.is_channel[i] && hydro.discharge_q_m3_s[i] >= 0.05)
+                                || hydro.river_w_m[i] >= 0.5)
+                    })
+                    .collect();
+                let seeds: Vec<u32> = fp_channel
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, &c)| if c { Some(i as u32) } else { None })
+                    .collect();
+                for s_u32 in seeds {
+                    let mut cur = s_u32 as usize;
+                    for _ in 0..lvl_n {
+                        let d = d8_dir[cur];
+                        if d >= NO_DIR {
+                            break;
+                        }
+                        let nr = (cur / lvl) as isize + DZ8[usize::from(d)];
+                        let nc = (cur % lvl) as isize + DX8[usize::from(d)];
+                        if nr < 0 || nc < 0 || nr >= lvl as isize || nc >= lvl as isize {
+                            break;
+                        }
+                        let nxt = (nr as usize) * lvl + (nc as usize);
+                        if nxt == cur || total_h[nxt] <= crate::SEA_LEVEL_M || fp_channel[nxt] {
+                            break;
+                        }
+                        fp_channel[nxt] = true;
+                        cur = nxt;
+                    }
+                }
+                Some(crate::anmw_v3::compute_strahler_order(
+                    &d8_dir,
+                    &fp_channel,
+                    lvl,
+                    lvl,
+                ))
+            } else {
+                None
+            };
 
             // -----------------------------------------------------------------
             // S7 Pass 2 (TWI + Moisture using S5 flow_acc_m2 halves -> peak ~848 MiB)
@@ -2031,10 +2344,12 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &mut sediment_s,
                 &hydro.river_w_m,
                 &strahler,
+                strahler_fp.as_deref().unwrap_or(&strahler),
                 &d8_dir,
                 lvl,
                 target_dx,
             );
+            drop(strahler_fp);
             drop(strahler);
             drop(d8_dir);
 
@@ -2117,7 +2432,7 @@ pub fn run_worldgen_to_dir_with_schedule(
             // -----------------------------------------------------------------
             let precip_m_yr = read_bin_f32(&out_dir.join("precip_m_yr.bin"), lvl_n)?;
             let pet_m_yr = read_bin_f32(&out_dir.join("pet_m_yr.bin"), lvl_n)?;
-            let lithology_id = read_bin_u8(&out_dir.join("lithology_id.bin"), lvl_n)?;
+            let mut lithology_id = read_bin_u8(&out_dir.join("lithology_id.bin"), lvl_n)?;
             let s6_in = LakesFallsInput {
                 width: lvl,
                 height: lvl,
@@ -2146,6 +2461,26 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &s6_in,
                 &s6_cfg,
             )?;
+            let caprock_ceiling_m = 0.52 * (cfg.caprock_min_m + cfg.caprock_max_m) + 205.0;
+            strip_steep_escarpment_and_humid_caprock(
+                &total_h,
+                &precip_m_yr,
+                &s6.waterfalls,
+                &mut lithology_id,
+                lvl,
+                target_dx,
+                caprock_ceiling_m,
+            );
+            upsert_layer(
+                &mut layers,
+                write_u8_layer(
+                    out_dir,
+                    "lithology_id.bin",
+                    &lithology_id,
+                    target_size,
+                    target_size,
+                )?,
+            );
 
             upsert_layer(
                 &mut layers,
