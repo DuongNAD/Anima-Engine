@@ -142,7 +142,7 @@ pub fn compute_multigrid_schedule(target_size: u32) -> Vec<(u32, usize)> {
         return vec![(target_size, 80)];
     }
     let mut levels = Vec::new();
-    for &(sz, steps) in &[(512_u32, 115_usize), (1024, 35), (2048, 20), (4096, 30)] {
+    for &(sz, steps) in &[(512_u32, 160_usize), (1024, 35), (2048, 20), (4096, 30)] {
         if sz < target_size {
             levels.push((sz, steps));
         }
@@ -448,7 +448,7 @@ fn worldgen_hydro_config(cfg: &WorldV2Config, dx_m: f32) -> HydrologyConfig {
         mfd_exponent_p: f64::from(cfg.mfd_p),
         channel_init_threshold: f64::from(cfg.channel_init),
         seasonal_storm_runoff_coeff: cfg.storm_runoff,
-        bankfull_q_mult: 7.5,
+        bankfull_q_mult: 5.8,
         ..HydrologyConfig::default()
     }
 }
@@ -894,8 +894,8 @@ fn apply_late_quaternary_piedmont_subsidence(
     let trunk_cells = ((2.5e6 / cell_area_m2).round() as u32).max(1);
     let min_inflow_cells = ((1.5e5 / cell_area_m2).round() as u32).max(1);
     let b_scale = libm::sqrt(f64::from(basin_amp).clamp(0.5, 2.5));
-    let rx_m = 1_480.0 * b_scale;
-    let ry_m = 2_600.0 * b_scale;
+    let rx_m = 1_680.0 * b_scale;
+    let ry_m = 2_950.0 * b_scale;
     let margin = lvl / 10;
 
     let base_vs = [0.10_f64, 0.21, 0.32, 0.44, 0.56, 0.68, 0.79, 0.90];
@@ -1216,8 +1216,8 @@ fn widen_trunk_alluvial_floodplains(
             let uz = (DZ8[d] as f32) * inv_dist;
 
             if ord >= 4 && z_i < 1_300.0 && slope < 0.25 {
-                let w_fp = (520.0 + 60.0 * river_w_m[i]).clamp(520.0, 960.0);
-                let r_ref = 105.0_f32.max(2.0 * dx_m);
+                let w_fp = (580.0 + 60.0 * river_w_m[i]).clamp(580.0, 1_080.0);
+                let r_ref = 115.0_f32.max(2.0 * dx_m);
                 let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
                 let r_lo = (r as isize - rad).max(1) as usize;
                 let r_hi = (r as isize + rad).min(lvl as isize - 2) as usize;
@@ -1242,8 +1242,8 @@ fn widen_trunk_alluvial_floodplains(
                             continue;
                         }
                         let u_r = (perp / r_ref).max(0.0);
-                        let t_h = z_i + 0.15 * libm::powf(u_r, 2.45);
-                        let t = ((w_fp - perp) / (0.30 * w_fp)).clamp(0.0, 1.0);
+                        let t_h = z_i + 0.12 * libm::powf(u_r, 2.85);
+                        let t = ((w_fp - perp) / (0.25 * w_fp)).clamp(0.0, 1.0);
                         let a = t * t * (3.0 - 2.0 * t) * 0.96;
                         if t_h < fp_target[j] {
                             fp_target[j] = t_h;

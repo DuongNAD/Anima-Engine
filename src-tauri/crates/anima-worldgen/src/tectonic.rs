@@ -423,8 +423,12 @@ fn eval_cell_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) -> Cel
     // 6. Compose base surface + monotonically dipped caprock plateau + volcanic cone.
     let base_surface = shelf_and_margin + massif_h;
     let plateau_subtile = fbm_4(p.seed_u64 ^ 0xCAF0_1234_5678_9ABC, u * 48.0, v * 48.0);
-    let plateau_surface =
-        caprock_target_m + 12.0 * fbm_detail + 14.0 * plateau_subtile + 280.0 * (p.plateau_u - u);
+    let plateau_trough = 42.0 * libm::cos(v * TAU * 3.0 + p.phase_z);
+    let plateau_surface = caprock_target_m
+        + 12.0 * fbm_detail
+        + 14.0 * plateau_subtile
+        + plateau_trough
+        + 300.0 * (p.plateau_u - u);
     let detail_gate = ((d_coast - 0.038) / 0.025).clamp(0.0, 1.0);
     let pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface
