@@ -1454,8 +1454,8 @@ pub fn run_worldgen_to_dir_with_schedule(
         cur_size = lvl;
         for (&bh, u) in cur_bedrock.iter().zip(uplift_u.iter_mut()) {
             *u *= UPLIFT_M_YR_SCALE;
-            if bh > 5_170.0 {
-                *u *= ((5_620.0 - bh) / 450.0).clamp(0.0, 1.0);
+            if bh > 5_480.0 {
+                *u *= ((5_680.0 - bh) / 200.0).clamp(0.0, 1.0);
             }
         }
 

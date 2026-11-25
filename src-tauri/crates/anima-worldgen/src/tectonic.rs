@@ -540,7 +540,7 @@ fn soft_bound_elevation(h_m: f64, elev_min_m: f32, elev_max_m: f32) -> f32 {
     let hi_knee = 0.72 * max_b;
 
     let mapped = if h_m > hi_knee {
-        let span = 0.935 * (max_b - hi_knee);
+        let span = 0.995 * (max_b - hi_knee);
         hi_knee + span * libm::tanh((h_m - hi_knee) / span)
     } else if h_m < lo_knee {
         let span = 0.995 * (lo_knee - min_b);
