@@ -156,7 +156,7 @@ float lkCanopy = smoothstep(0.20, 0.85, pow(lkMask.b, 1.4) * 1.15 + (lkNHi.g - 0
 // Near the camera the 3D trees are the crowns; the painted crown pattern flattens into a
 // shadowed forest floor there instead of a second, camouflage-like layer of crowns.
 float lkCrown = mix(0.42, smoothstep(0.30, 0.78, lkNVHi.g * 0.6 + lkNHi.b * 0.4), smoothstep(25.0, 110.0, lkCamDist));
-vec3 lkCanopyCol = mix(vec3(0.016, 0.030, 0.014), vec3(0.055, 0.092, 0.032), lkCrown);
+vec3 lkCanopyCol = mix(vec3(0.012, 0.023, 0.011), vec3(0.043, 0.074, 0.026), lkCrown);
 lkCanopyCol *= mix(vec3(0.85, 1.0, 1.08), vec3(1.15, 1.04, 0.85), lkDry) * mix(0.85, 1.15, lkNMid.g);
 lkGround = mix(lkGround, lkCanopyCol, lkCanopy * (1.0 - lkMask.g));
 // Soil showing through on moderately steep vegetated ground.
@@ -189,9 +189,14 @@ float lkShed = 1.0 - smoothstep(0.24, 0.46, lkSlope + (lkNHi.b - 0.5) * 0.14);
 // On steep faces snow survives on ledges and in patches (isotropic), not in fall-line strips.
 float lkLedge = smoothstep(0.35, 0.85, sin(lkWp.y * 1.6 + (lkNMid.r - 0.5) * 6.0) * 0.5 + 0.5)
   * smoothstep(0.40, 0.70, lkNMid.g);
+// Ledge/patch detail is sub-pixel past ~0.5 km of view distance: fade it to its mean there or
+// it aliases into white speckle along the snow edge in the overview.
+float lkPatchNear = 1.0 - smoothstep(250.0, 700.0, lkCamDist);
+lkLedge = mix(0.12, lkLedge, lkPatchNear);
 lkShed = mix(lkShed, max(lkShed, lkLedge * 0.85), lkStretch);
 float lkSnow = smoothstep(0.30, 0.62, lkSnowRaw * lkShed
-  + (lkNHi.b - 0.5) * mix(0.30, 0.22, lkStretch) + (lkNMid.b - 0.5) * 0.45 * lkStretch);
+  + (lkNHi.b - 0.5) * mix(0.30, 0.22, lkStretch) * mix(0.5, 1.0, lkPatchNear)
+  + (lkNMid.b - 0.5) * 0.45 * lkStretch);
 vec3 lkSnowCol = vec3(0.70, 0.73, 0.78)
   * mix(0.92, 1.05, lkNMid.b)
   * mix(0.92, 1.02, lkNHi.r)
