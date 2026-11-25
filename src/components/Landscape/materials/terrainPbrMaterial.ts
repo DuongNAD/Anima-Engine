@@ -215,10 +215,17 @@ lkGround *= lkDetail;
 vec2 lkG = (vec2(lkNVHi.g, lkNVHi.b) - 0.5) * (1.0 - lkSnow * 0.7) * 0.9
          + (vec2(lkNHi.b, lkNHi.g) - 0.5) * 0.5;
 // ---- Coast (reference board CST-01, CST-03, CST-04) ------------------------------------------
-vec4 lkShoreS = texture2D(uLookShore, vMapUv);
-float lkShoreM = lkShoreS.r * 1000.0 - 500.0;          // metres from the shore, + on land
-float lkExpo = lkShoreS.g;
 float lkHAbove = (lkWp.y - uAtmoSeaY) * (uElevSpanM / uHeightUnits);   // metres above sea
+// Every coast term needs ground within ~60 m of sea level; higher ground skips the SDF fetch.
+vec2 lkUvDx = dFdx(vMapUv);
+vec2 lkUvDy = dFdy(vMapUv);
+float lkShoreM = 500.0;                                 // metres from the shore, + on land
+float lkExpo = 0.0;
+if (lkHAbove < 60.0) {
+  vec4 lkShoreS = textureGrad(uLookShore, vMapUv, lkUvDx, lkUvDy);
+  lkShoreM = lkShoreS.r * 1000.0 - 500.0;
+  lkExpo = lkShoreS.g;
+}
 float lkCoast = 1.0 - smoothstep(150.0, 320.0, lkShoreM);
 // Sea bed: below the waterline it is sand, silt and rock, never meadow or canopy.
 float lkSeabed = (1.0 - smoothstep(-1.0, 0.6, lkHAbove)) * (1.0 - smoothstep(-10.0, 25.0, lkShoreM));
