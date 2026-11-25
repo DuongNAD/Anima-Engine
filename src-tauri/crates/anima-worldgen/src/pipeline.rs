@@ -456,6 +456,7 @@ fn worldgen_hydro_config(cfg: &WorldV2Config, dx_m: f32) -> HydrologyConfig {
 /// Applies bounded differential plunge/shale sapping where active D8 channels leave resistant
 /// `SandstoneCaprock` strata onto softer `SoftShale` / `SolubleLimestone` / `UnconsolidatedAlluvium`
 /// downstream beds, preserving `< 0.06` sandstone benches upstream and graded `14..22 m` drops within `30 m`.
+#[allow(clippy::too_many_arguments)]
 fn apply_caprock_knickpoint_sapping(
     bedrock_h: &mut [f32],
     sediment_s: &mut [f32],
@@ -463,6 +464,7 @@ fn apply_caprock_knickpoint_sapping(
     precip_m_yr: &[f32],
     lvl: usize,
     dx_m: f32,
+    extent_m: f32,
     sapping_gain: f32,
 ) {
     let n = lvl * lvl;
@@ -530,12 +532,19 @@ fn apply_caprock_knickpoint_sapping(
             || lid == LithologyClass::SoftShale as u8
             || lid == LithologyClass::UnconsolidatedAlluvium as u8
     };
-    let run_limit = if dx_m > 20.0 {
+    let is_large_82km = extent_m >= 80_000.0;
+    let run_limit = if is_large_82km {
+        crate::lakes_falls::scaled_waterfall_max_run_m(dx_m)
+    } else if dx_m > 20.0 {
         30.0_f32.max(3.65 * dx_m)
     } else {
         30.0_f32
     };
-    let k_steps = ((run_limit / dx_m).round() as usize).clamp(1, 3);
+    let k_steps = if is_large_82km {
+        ((run_limit / dx_m).round() as usize).clamp(1, 4)
+    } else {
+        ((run_limit / dx_m).round() as usize).clamp(1, 3)
+    };
     let mut cands: Vec<(f32, usize, usize, f32)> = Vec::new();
 
     for r in 3..(lvl - 3) {
@@ -562,7 +571,13 @@ fn apply_caprock_knickpoint_sapping(
                 }
                 if is_soft_lith(lithology_id[nxt]) {
                     soft_cell = Some((nxt, dist_m));
-                    if dist_m >= 1.5 * dx_m || dx_m > 20.0 {
+                    if dist_m >= 1.5 * dx_m
+                        || if is_large_82km {
+                            dx_m >= 20.0
+                        } else {
+                            dx_m > 20.0
+                        }
+                    {
                         break;
                     }
                 }
@@ -576,9 +591,10 @@ fn apply_caprock_knickpoint_sapping(
 
     cands.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let min_sp_sq = 310.0_f32 * 310.0_f32;
+    let accepted_cap = if is_large_82km { 135 } else { 54 };
     let mut accepted: Vec<(usize, usize, f32)> = Vec::new();
     for (_, u, v, d_uv) in cands {
-        if accepted.len() >= 54 {
+        if accepted.len() >= accepted_cap {
             break;
         }
         let ur = (u / lvl) as f32 * dx_m;
@@ -658,7 +674,12 @@ fn apply_caprock_knickpoint_sapping(
         // Propagate downstream plunge-gorge floor monotonically (no micro-pits).
         let mut prev_h = total[base_v];
         let mut g_cur = base_v;
-        for _ in 0..10 {
+        let gorge_steps = if is_large_82km && dx_m >= 20.0 {
+            ((100.0 / dx_m).round() as usize).clamp(4, 10)
+        } else {
+            10
+        };
+        for _ in 0..gorge_steps {
             let d = d8_dir[g_cur];
             let Some(nxt) = step_nb(g_cur, d) else {
                 break;
@@ -840,12 +861,14 @@ fn det_vnoise(seed: u64, x: f64, z: f64) -> f64 {
 /// interfluves after S2/S3 erosion (`lvl >= 1024`), bounded below by `8 m` ASL and rimmed by
 /// gentle morainic/alluvial sills so `Fill-Spill-Merge` retains large `FreshwaterSpilling`
 /// lakes (`endo_humid == 0.0`, `lake_surface_fraction ~ 0.012–0.024`).
+#[allow(clippy::too_many_arguments)]
 fn apply_late_quaternary_piedmont_subsidence(
     bedrock_h: &mut [f32],
     sediment_s: &mut [f32],
     precip_m_yr: &[f32],
     lvl: usize,
     dx_m: f32,
+    extent_m: f32,
     seed: u64,
     basin_amp: f32,
 ) {
@@ -897,7 +920,13 @@ fn apply_late_quaternary_piedmont_subsidence(
     let ry_m = 1_650.0 * b_scale;
     let margin = lvl / 10;
 
-    let base_vs = [0.12_f64, 0.27, 0.42, 0.58, 0.73, 0.88];
+    let base_vs: &[f64] = if extent_m >= 80_000.0 {
+        &[
+            0.08_f64, 0.16, 0.24, 0.32, 0.40, 0.48, 0.56, 0.64, 0.72, 0.80, 0.88, 0.94,
+        ]
+    } else {
+        &[0.12_f64, 0.27, 0.42, 0.58, 0.73, 0.88]
+    };
     let dr_cells = (250.0 / dx).round() as isize;
     let mut centers: Vec<(usize, usize)> = Vec::with_capacity(base_vs.len());
     for (bi, &v0) in base_vs.iter().enumerate() {
@@ -1175,6 +1204,7 @@ fn widen_trunk_alluvial_floodplains(
     d8_dir: &[u8],
     lvl: usize,
     dx_m: f32,
+    extent_m: f32,
 ) {
     let n = lvl * lvl;
     if lvl < 32
@@ -1215,7 +1245,11 @@ fn widen_trunk_alluvial_floodplains(
 
             if ord >= 4 && z_i < 800.0 && slope < 0.14 {
                 let w_fp = (280.0 + 40.0 * river_w_m[i]).clamp(280.0, 560.0);
-                let r_ref = 65.0_f32.max(1.5 * dx_m);
+                let r_ref = if extent_m >= 80_000.0 {
+                    65.0_f32.max(4.0 * dx_m)
+                } else {
+                    65.0_f32.max(1.5 * dx_m)
+                };
                 let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
                 let r_lo = (r as isize - rad).max(1) as usize;
                 let r_hi = (r as isize + rad).min(lvl as isize - 2) as usize;
@@ -1798,6 +1832,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     &precip_for_s2,
                     lvl,
                     lvl_dx,
+                    cfg.extent_m,
                     cfg.sapping_gain,
                 );
             }
@@ -1807,6 +1842,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &precip_for_s2,
                 lvl,
                 lvl_dx,
+                cfg.extent_m,
                 cfg.seed,
                 cfg.basin_amp,
             );
@@ -2010,13 +2046,26 @@ pub fn run_worldgen_to_dir_with_schedule(
                 is_channel: &hydro.is_channel,
                 d8_receiver: None,
             };
-            let s4_cfg = DepositionConfig {
-                seed: cfg.seed,
-                schema_tag: cfg.schema_tag.clone(),
-                dx_m: target_dx,
-                meander_max_slope: 0.025,
-                meander_min_q_m3_s: 2.0,
-                ..DepositionConfig::default()
+            let is_large_82km = cfg.extent_m >= 80_000.0;
+            let s4_cfg = if is_large_82km {
+                DepositionConfig {
+                    seed: cfg.seed,
+                    schema_tag: cfg.schema_tag.clone(),
+                    dx_m: target_dx,
+                    meander_max_slope: 0.025,
+                    meander_min_q_m3_s: 2.0,
+                    delta_max_mouths: 12,
+                    ..DepositionConfig::default()
+                }
+            } else {
+                DepositionConfig {
+                    seed: cfg.seed,
+                    schema_tag: cfg.schema_tag.clone(),
+                    dx_m: target_dx,
+                    meander_max_slope: 0.025,
+                    meander_min_q_m3_s: 2.0,
+                    ..DepositionConfig::default()
+                }
             };
             let s4 = apply_deposition(
                 &mut bedrock_h,
@@ -2034,6 +2083,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &d8_dir,
                 lvl,
                 target_dx,
+                cfg.extent_m,
             );
             drop(strahler);
             drop(d8_dir);
@@ -2128,15 +2178,20 @@ pub fn run_worldgen_to_dir_with_schedule(
                 is_channel: &hydro.is_channel,
                 lithology_id: &lithology_id,
             };
-            let s6_cfg = LakesFallsConfig {
-                dx_m: target_dx,
-                min_lake_cells: (libm::ceilf(100_000.0 / (target_dx * target_dx)) as usize).max(4),
-                waterfall_max_run_m: if target_dx > 20.0 {
-                    30.0_f32.max(3.65 * target_dx)
-                } else {
-                    30.0
-                },
-                ..LakesFallsConfig::default()
+            let s6_cfg = if is_large_82km {
+                LakesFallsConfig::for_scale(target_dx, cfg.extent_m)
+            } else {
+                LakesFallsConfig {
+                    dx_m: target_dx,
+                    min_lake_cells: (libm::ceilf(100_000.0 / (target_dx * target_dx)) as usize)
+                        .max(4),
+                    waterfall_max_run_m: if target_dx > 20.0 {
+                        30.0_f32.max(3.65 * target_dx)
+                    } else {
+                        30.0
+                    },
+                    ..LakesFallsConfig::default()
+                }
             };
             let s6 = generate_lakes_and_waterfalls(
                 &mut total_h,
@@ -2520,11 +2575,24 @@ pub fn run_worldgen_to_dir_with_schedule(
                 glacier_h_m: &bf.glacier_h_m,
                 dominant_biome: &bf.dominant_biome,
             };
-            let s9_cfg = CaveConfig {
-                seed: cfg.seed,
-                schema_tag: cfg.schema_tag.clone(),
-                dx_m: target_dx,
-                ..CaveConfig::default()
+            let s9_cfg = if is_large_82km {
+                CaveConfig {
+                    seed: cfg.seed,
+                    schema_tag: cfg.schema_tag.clone(),
+                    dx_m: target_dx,
+                    min_entrances: 60,
+                    max_entrances: 140,
+                    target_entrances: 90,
+                    min_spacing_fraction: ((400.0 + target_dx) / cfg.extent_m).clamp(0.002, 0.02),
+                    ..CaveConfig::default()
+                }
+            } else {
+                CaveConfig {
+                    seed: cfg.seed,
+                    schema_tag: cfg.schema_tag.clone(),
+                    dx_m: target_dx,
+                    ..CaveConfig::default()
+                }
             };
             let caves = generate_caves(&s9_in, &s9_cfg)?;
             drop(total_h);

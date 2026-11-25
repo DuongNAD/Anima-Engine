@@ -86,6 +86,38 @@ impl Default for LakesFallsConfig {
     }
 }
 
+/// Returns a grid-spacing-aware waterfall drop run limit in metres.
+///
+/// Preserves the `30.0 m` trunk value below `dx_m = 20.0 m` (`40.96 km @ 4096^2`) and
+/// scales up to `3.65 * dx_m` (`73.0 m` at `20.0 m`) so multi-step knickpoint drops
+/// stay detectable at `81.92 km @ 4096^2`.
+#[must_use]
+pub fn scaled_waterfall_max_run_m(dx_m: f32) -> f32 {
+    if dx_m >= 20.0 {
+        30.0_f32.max(3.65 * dx_m)
+    } else {
+        30.0_f32
+    }
+}
+
+impl LakesFallsConfig {
+    /// Constructs a scale-aware Stage S6 configuration for `(dx_m, extent_m)`.
+    ///
+    /// Keeps exact trunk defaults for `< 80_000 m` extents and `< 20 m` cells.
+    #[must_use]
+    pub fn for_scale(dx_m: f32, extent_m: f32) -> Self {
+        let cell_m2 = (dx_m * dx_m).max(1.0);
+        let is_large_82km = extent_m >= 80_000.0;
+        Self {
+            dx_m,
+            min_lake_cells: (libm::ceilf(100_000.0 / cell_m2) as usize).max(4),
+            waterfall_max_run_m: scaled_waterfall_max_run_m(dx_m),
+            waterfall_max_count: if is_large_82km { 160 } else { 80 },
+            ..Self::default()
+        }
+    }
+}
+
 /// Borrowed input slices for Stage S6 (avoids retaining S5's `f64` arrays at `4096^2`).
 pub struct LakesFallsInput<'a> {
     pub width: usize,
@@ -3458,5 +3490,110 @@ mod tests {
 
         assert_eq!(wk[rill_idx], WaterKind::None as u8);
         assert_eq!(wk[river_idx], WaterKind::River as u8);
+    }
+
+    #[test]
+    fn lakes_falls_config_for_scale_preserves_40km_10m_defaults() {
+        let cfg_40k = LakesFallsConfig::for_scale(10.0, 40_960.0);
+        assert!((cfg_40k.dx_m - 10.0).abs() < 1e-6);
+        assert_eq!(cfg_40k.min_lake_cells, 1_000);
+        assert!((cfg_40k.waterfall_max_run_m - 30.0).abs() < 1e-6);
+        assert_eq!(cfg_40k.waterfall_max_count, 80);
+
+        let cfg_82k = LakesFallsConfig::for_scale(20.0, 81_920.0);
+        assert!((cfg_82k.dx_m - 20.0).abs() < 1e-6);
+        assert_eq!(cfg_82k.min_lake_cells, 250);
+        assert!((cfg_82k.waterfall_max_run_m - 73.0).abs() < 1e-6);
+        assert_eq!(cfg_82k.waterfall_max_count, 160);
+    }
+
+    #[test]
+    fn waterfall_detection_scales_max_run_at_20m_cells() {
+        let n = 16;
+        let mut elev = vec![20.0_f32; n * n];
+        for r in 0..n {
+            for c in 0..n {
+                elev[r * n + c] = if c <= 6 {
+                    60.0 + 0.05 * (6 - c) as f32
+                } else if c == 7 {
+                    58.0
+                } else if c == 8 {
+                    56.0
+                } else {
+                    40.0 - 0.1 * (c - 9) as f32
+                };
+            }
+        }
+        let sed = vec![0.0_f32; n * n];
+        let precip = vec![2.5_f32; n * n];
+        let pet = vec![0.5_f32; n * n];
+        let mut q = vec![0.0_f32; n * n];
+        let mut rw = vec![0.0_f32; n * n];
+        let mut is_ch = vec![false; n * n];
+        let mut lith = vec![LithologyClass::SoftShale as u8; n * n];
+
+        let row = 8;
+        for c in 2..=12 {
+            let idx = row * n + c;
+            is_ch[idx] = true;
+            q[idx] = 2.0;
+            rw[idx] = 1.5;
+        }
+        // Lip at col 6 requires 3 steps (60 m run at dx = 20 m) to reach col 9 (drop = 20 m).
+        lith[row * n + 6] = LithologyClass::SandstoneCaprock as u8;
+        let input = LakesFallsInput {
+            width: n,
+            height: n,
+            precip_m_yr: &precip,
+            pet_m_yr: &pet,
+            discharge_q_m3_s: &q,
+            river_w_m: &rw,
+            is_channel: &is_ch,
+            lithology_id: &lith,
+        };
+
+        let mut e_legacy = elev.clone();
+        let mut s_legacy = sed.clone();
+        let mut wh_legacy = elev.clone();
+        let mut wk_legacy = vec![WaterKind::None as u8; n * n];
+        let cfg_legacy = LakesFallsConfig {
+            dx_m: 20.0,
+            waterfall_max_run_m: 30.0,
+            ..LakesFallsConfig::default()
+        };
+        let rep_legacy = generate_lakes_and_waterfalls(
+            &mut e_legacy,
+            &mut s_legacy,
+            &mut wh_legacy,
+            &mut wk_legacy,
+            &input,
+            &cfg_legacy,
+        )
+        .expect("legacy 30 m run limit");
+        assert_eq!(
+            rep_legacy.waterfalls.len(),
+            0,
+            "legacy 30 m run_limit at dx=20 m must miss a 60 m 3-step knickpoint"
+        );
+
+        let mut e_scaled = elev;
+        let mut s_scaled = sed;
+        let mut wh_scaled = e_scaled.clone();
+        let mut wk_scaled = vec![WaterKind::None as u8; n * n];
+        let cfg_scaled = LakesFallsConfig::for_scale(20.0, 81_920.0);
+        let rep_scaled = generate_lakes_and_waterfalls(
+            &mut e_scaled,
+            &mut s_scaled,
+            &mut wh_scaled,
+            &mut wk_scaled,
+            &input,
+            &cfg_scaled,
+        )
+        .expect("scaled 73 m run limit");
+        assert_eq!(
+            rep_scaled.waterfalls.len(),
+            1,
+            "scaled 73 m run_limit at dx=20 m must detect the 60 m 3-step knickpoint"
+        );
     }
 }
