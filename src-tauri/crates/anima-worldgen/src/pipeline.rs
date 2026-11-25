@@ -142,7 +142,7 @@ pub fn compute_multigrid_schedule(target_size: u32) -> Vec<(u32, usize)> {
         return vec![(target_size, 80)];
     }
     let mut levels = Vec::new();
-    for &(sz, steps) in &[(512_u32, 160_usize), (1024, 35), (2048, 20), (4096, 30)] {
+    for &(sz, steps) in &[(512_u32, 100_usize), (1024, 35), (2048, 20), (4096, 30)] {
         if sz < target_size {
             levels.push((sz, steps));
         }
@@ -448,7 +448,7 @@ fn worldgen_hydro_config(cfg: &WorldV2Config, dx_m: f32) -> HydrologyConfig {
         mfd_exponent_p: f64::from(cfg.mfd_p),
         channel_init_threshold: f64::from(cfg.channel_init),
         seasonal_storm_runoff_coeff: cfg.storm_runoff,
-        bankfull_q_mult: 5.8,
+        bankfull_q_mult: 6.5,
         ..HydrologyConfig::default()
     }
 }
@@ -1216,8 +1216,8 @@ fn widen_trunk_alluvial_floodplains(
             let uz = (DZ8[d] as f32) * inv_dist;
 
             if ord >= 4 && z_i < 1_300.0 && slope < 0.25 {
-                let w_fp = (580.0 + 60.0 * river_w_m[i]).clamp(580.0, 1_080.0);
-                let r_ref = 115.0_f32.max(2.0 * dx_m);
+                let w_fp = (640.0 + 60.0 * river_w_m[i]).clamp(640.0, 1_150.0);
+                let r_ref = 95.0_f32.max(2.0 * dx_m);
                 let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
                 let r_lo = (r as isize - rad).max(1) as usize;
                 let r_hi = (r as isize + rad).min(lvl as isize - 2) as usize;
@@ -1242,8 +1242,8 @@ fn widen_trunk_alluvial_floodplains(
                             continue;
                         }
                         let u_r = (perp / r_ref).max(0.0);
-                        let t_h = z_i + 0.12 * libm::powf(u_r, 2.85);
-                        let t = ((w_fp - perp) / (0.25 * w_fp)).clamp(0.0, 1.0);
+                        let t_h = z_i + 0.06 * libm::powf(u_r, 3.25);
+                        let t = ((w_fp - perp) / (0.20 * w_fp)).clamp(0.0, 1.0);
                         let a = t * t * (3.0 - 2.0 * t) * 0.96;
                         if t_h < fp_target[j] {
                             fp_target[j] = t_h;
