@@ -157,6 +157,10 @@ name = "tick_systems"
 harness = false
 
 [[bench]]
+name = "live_schedule_ablation"
+harness = false
+
+[[bench]]
 name = "live_schedule_scaling"
 harness = false
 
