@@ -6,6 +6,7 @@ import type { World } from './utils/worldGen';
 import { sceneElapsed } from './utils/sceneClock';
 import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
 import type { WorldV2LoadedBundle } from './worldV2/types';
+import { ATMOSPHERE_FRAGMENT_PARS, atmosphereUniforms } from './materials/atmosphere';
 
 export interface WorldWaterProps {
   world: World;
@@ -74,6 +75,7 @@ const fragmentShader = /* glsl */ `
   uniform float uUseWorldV2Water;
 
   varying vec3 vWorldPos;
+  ${ATMOSPHERE_FRAGMENT_PARS}
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
   float noise(vec2 p) {
@@ -127,9 +129,27 @@ const fragmentShader = /* glsl */ `
     float edgeSoft = smoothstep(0.84, 0.98, boxN + nEdge) * isOcean;
     float edgeHard = smoothstep(-uTerrainSize * 0.04, -uTerrainSize * 0.01, borderDist) * isOcean;
     float edgeFade = max(edgeSoft, edgeHard);
+    if (uUseWorldV2Water > 0.5) {
+      // WV2-LOOK: a wider, noisier fall-off so the shelf colour does not stop on the map's line.
+      float nEdge2 = (noise(vWorldPos.xz * 0.004) - 0.5) * 0.10 + (noise(vWorldPos.xz * 0.017) - 0.5) * 0.05;
+      edgeFade = max(edgeFade * 0.0, smoothstep(0.86, 1.02, boxN + nEdge2) * isOcean);
+    }
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
     depthN = mix(depthN, 1.0, edgeFade);
     vec3 color = mix(uShallow, uDeep, depthN);
+    if (uUseWorldV2Water > 0.5) {
+      // WV2-LOOK: absorption-style depth colour — turquoise over the shelf, through teal, to a
+      // deep ocean blue that is not the near-black navy of the legacy palette.
+      float dAbs = 1.0 - exp(-depth / (uSeaY * 0.10 + 0.001));
+      float dDeep = 1.0 - exp(-depth / (uSeaY * 0.55 + 0.001));
+      dAbs = mix(dAbs, 1.0, edgeFade);
+      dDeep = mix(dDeep, 1.0, edgeFade);
+      vec3 wShallow = vec3(0.16, 0.42, 0.40);
+      vec3 wMid = vec3(0.05, 0.24, 0.30);
+      vec3 wDeep = vec3(0.025, 0.11, 0.20);
+      color = mix(mix(wShallow, wMid, dAbs), wDeep, dDeep);
+      depthN = max(dAbs, depthN);
+    }
 
     // Micro-detail dies completely before overview distance (~0.48 * terrainSize) so open ocean
     // never shimmers into white speckle noise.
@@ -142,22 +162,49 @@ const fragmentShader = /* glsl */ `
     float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
     vec3 normal = normalize(vec3((n1 - 0.5) * 0.48 * detail, 1.0, (n2 - 0.5) * 0.48 * detail));
 
+    if (uUseWorldV2Water > 0.5) {
+      // WV2-LOOK: wind ripples at a believable wavelength (~5-40 m), not 150 m blobs that the
+      // broad specular lobe turned into cloud-like patches.
+      vec2 rw = vWorldPos.xz * 1.1;
+      float r1 = noise(rw + vec2(uTime * 0.35, uTime * 0.21));
+      float r2 = noise(rw * 2.3 - vec2(uTime * 0.27, -uTime * 0.19));
+      float r3 = noise(rw * 0.37 + vec2(-uTime * 0.08, uTime * 0.05));
+      float rx = (r1 - 0.5) * 0.22 + (r2 - 0.5) * 0.12 + (r3 - 0.5) * 0.10;
+      float rz = (noise(rw.yx + 7.3 + uTime * 0.3) - 0.5) * 0.22 + (r2 - 0.5) * 0.08 + (r3 - 0.5) * 0.08;
+      normal = normalize(vec3(rx * detail, 1.0, rz * detail));
+    }
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
     vec3 sunDir = normalize(uSunDir);
     vec3 halfDir = normalize(sunDir + viewDir);
     float ndh = max(dot(normal, halfDir), 0.0);
-    float spec = pow(ndh, 28.0) * 0.42 * detail * detail + pow(ndh, 8.0) * 0.12;
+    float spec = uUseWorldV2Water > 0.5
+      ? pow(ndh, 220.0) * 1.4 * detail + pow(ndh, 24.0) * 0.06
+      : pow(ndh, 28.0) * 0.42 * detail * detail + pow(ndh, 8.0) * 0.12;
     float diff = clamp(dot(normal, sunDir) * 0.45 + 0.64, 0.0, 1.0);
     color = color * diff + uSunColor * spec;
 
     // Grazing angles reflect atmospheric horizon tint smoothly.
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
-    color = mix(color, uFogColor, clamp(fres * 0.85, 0.0, 0.62));
+    if (uUseWorldV2Water > 0.5) {
+      // WV2-LOOK: Schlick fresnel against the sky dome's own gradient (shared uniforms).
+      float ndv = max(dot(normal, viewDir), 0.0);
+      float schlick = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+      vec3 rn = normalize(vec3(normal.x * 0.3, 1.0, normal.z * 0.3));
+      float ndvR = max(dot(rn, viewDir), 0.0);
+      schlick = 0.02 + 0.98 * pow(1.0 - ndvR, 5.0);
+      vec3 rdir = reflect(-viewDir, rn);
+      rdir.y = abs(rdir.y);
+      vec3 skyR = atmoSkyColor(normalize(rdir));
+      color = mix(color, skyR, clamp(schlick * 1.1 + 0.03, 0.0, 0.8));
+    } else {
+      color = mix(color, uFogColor, clamp(fres * 0.85, 0.0, 0.62));
+    }
 
     // Transparent in coastal shallows (showing sandy/coral floor), seamlessly opaque in deep ocean
     // so the end of the terrain mesh at ±renderSize/2 never shows through the water.
     float oceanDeepOpaque = mix(uOpacity, 1.0, smoothstep(0.45, 0.92, depthN) * isOcean);
     float alpha = mix(0.36, 1.0, pow(depthN, 0.78)) * oceanDeepOpaque;
+    if (uUseWorldV2Water > 0.5) alpha = max(alpha, 0.58 + 0.4 * depthN);
 
     // Shoreline foam strictly inside terrain boundaries & close camera range.
     float surf = sin(uTime * 0.9 + (vWorldPos.x + vWorldPos.z) * 0.045)
@@ -196,8 +243,16 @@ const fragmentShader = /* glsl */ `
 
     // Smooth atmospheric fog + horizon melt so the ocean blends cleanly into the sky dome.
     float fogF = smoothstep(uFogNear * 0.72, uFogFar, camDist);
-    color = mix(color, uFogColor, fogF);
-    alpha = mix(alpha, 1.0, fogF * fogF);
+    if (uUseWorldV2Water > 0.5) {
+      // WV2-LOOK: the same height-attenuated aerial perspective as terrain and flora.
+      float hz = atmoHazeAmount(cameraPosition, vWorldPos);
+      vec3 hdir = normalize(vWorldPos - cameraPosition);
+      color = mix(color, atmoSkyColor(normalize(vec3(hdir.x, hdir.y * 0.2, hdir.z))), hz);
+      alpha = mix(alpha, 1.0, hz * hz);
+    } else {
+      color = mix(color, uFogColor, fogF);
+      alpha = mix(alpha, 1.0, fogF * fogF);
+    }
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -253,6 +308,7 @@ function makeWaterUniforms(
     uShoreSdf: { value: inputs.shoreSdfTex },
     uHydroFlow: { value: inputs.hydroFlowTex },
     uUseWorldV2Water: { value: inputs.useWorldV2Water },
+    ...atmosphereUniforms,
   };
 }
 

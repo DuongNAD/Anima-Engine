@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import type { TerrainPbrArrays } from '../assets/worldAssets';
+import {
+  ATMOSPHERE_FRAGMENT_PARS,
+  atmosphereFragmentApply,
+  bindAtmosphereUniforms,
+} from './atmosphere';
 
 // prototype, to be replaced — W3-lite 6-layer biome/slope/height PBR splat terrain material with seamless procedural fallback.
 
@@ -14,6 +19,15 @@ export interface TerrainPbrMaterialParams {
   horizonMap?: THREE.Texture | null;
   sunDir?: [number, number, number];
   normalScale?: number;
+  /**
+   * WV2-LOOK (World v2 only): biome surface classes (`lookMaskMap`) + tileable noise switch the
+   * material to slope/altitude-driven rock/scree/soil/snow shading, baked AO from the colour
+   * map's alpha, and height-attenuated aerial perspective. Absent = the W3-lite path, unchanged.
+   */
+  lookMaskMap?: THREE.Texture | null;
+  lookNoiseMap?: THREE.Texture | null;
+  elevMinM?: number;
+  elevSpanM?: number;
 }
 
 export interface TerrainPbrShaderHandle {
@@ -44,6 +58,236 @@ function makeDummyLayerArray(r: number, g: number, b: number, a: number): THREE.
   return tex;
 }
 
+// prototype, to be replaced — WV2-LOOK terrain shading (World v2 only).
+//
+// Colour comes from surface physics rather than one flat biome swatch: bedrock with strata on
+// steep faces, scree/talus on rocky gentle ground, soil on mid slopes, varied vegetation tints
+// on gentle low ground, and snow by altitude AND slope so steep faces show rock through it.
+// Slope is read from the baked `normal_xy` layer (true metres), altitude from world Y.
+const WV2_LOOK_PARS = /* glsl */ `
+uniform sampler2D uLookMask;
+uniform sampler2D uLookNoise;
+uniform float uElevMinM;
+uniform float uElevSpanM;
+`;
+
+const WV2_LOOK_MAP_FRAGMENT = /* glsl */ `
+#include <map_fragment>
+// ---- WV2-LOOK surface ------------------------------------------------------------------
+float lkAo = clamp(diffuseColor.a * 1.25, 0.0, 1.3);
+diffuseColor.a = 1.0;
+vec3 lkWp = vW3WorldPos;
+vec4 lkMask = texture2D(uLookMask, vMapUv);
+vec3 lkBn = texture2D(normalMap, vMapUv).xyz * 2.0 - 1.0;
+float lkSlope = 1.0 - clamp(lkBn.z, 0.0, 1.0);
+float lkHm = (lkWp.y / uHeightUnits) * uElevSpanM + uElevMinM;
+// Large-scale noise is planar (xz). Fine noise is biplanar on steep ground: a top-down
+// projection is constant down a cliff face and smears into vertical streaks there.
+vec2 lkP = lkWp.xz;
+float lkSteepW = smoothstep(0.10, 0.30, lkSlope);
+float lkAxX = abs(lkBn.x) / max(abs(lkBn.x) + abs(lkBn.y), 1e-3);
+vec2 lkSA = vec2(lkWp.z, lkWp.y * 1.2);
+vec2 lkSB = vec2(lkWp.x, lkWp.y * 1.2);
+vec4 lkNLo = texture2D(uLookNoise, lkP * 0.0019);
+vec4 lkNMid = texture2D(uLookNoise, lkP * 0.0105 + vec2(0.31, 0.17));
+vec4 lkNHi = texture2D(uLookNoise, lkP * 0.071 + vec2(0.13, 0.57));
+vec4 lkNVHi = texture2D(uLookNoise, lkP * 0.53 + vec2(0.71, 0.29));
+if (lkSteepW > 0.01) {
+  vec4 hiS = mix(texture2D(uLookNoise, lkSB * 0.071 + vec2(0.13, 0.57)),
+                 texture2D(uLookNoise, lkSA * 0.071 + vec2(0.53, 0.21)), lkAxX);
+  vec4 vhiS = mix(texture2D(uLookNoise, lkSB * 0.53 + vec2(0.71, 0.29)),
+                  texture2D(uLookNoise, lkSA * 0.53 + vec2(0.27, 0.61)), lkAxX);
+  lkNHi = mix(lkNHi, hiS, lkSteepW);
+  lkNVHi = mix(lkNVHi, vhiS, lkSteepW);
+}
+float lkCamDist = length(vViewPosition);
+float lkNear = 1.0 - smoothstep(40.0, 200.0, lkCamDist);
+
+vec3 lkMacro = diffuseColor.rgb;
+// Vegetated / bare ground: break the biome swatch with lush-cool <-> dry-warm drift.
+float lkDry = smoothstep(0.30, 0.72, lkNLo.r * 0.55 + lkNMid.r * 0.45 + (1.0 - lkAo) * -0.25);
+vec3 lkGround = lkMacro
+  * mix(vec3(0.84, 0.97, 0.80), vec3(1.26, 1.07, 0.70), lkDry)
+  * mix(0.78, 1.15, lkNMid.g)
+  * mix(0.88, 1.10, lkNHi.b);
+// Distant vegetation reads olive, not lawn: pull saturation and value down a little, and give
+// dense canopy biomes a dappled crown texture so the ground between trunks is not bare paint.
+lkGround = mix(vec3(dot(lkGround, vec3(0.2126, 0.7152, 0.0722))), lkGround, 0.66) * 0.82;
+float lkCanopy = smoothstep(0.55, 0.95, lkMask.b);
+lkGround *= mix(1.0, (0.50 + 0.30 * lkNVHi.g) * mix(0.85, 1.1, lkNHi.r), lkCanopy);
+// Soil showing through on moderately steep vegetated ground.
+float lkSoil = smoothstep(0.09, 0.24, lkSlope + (lkNMid.b - 0.5) * 0.14)
+  * (1.0 - lkMask.g) * (1.0 - lkMask.a * 0.8);
+vec3 lkSoilCol = mix(vec3(0.075, 0.056, 0.040), vec3(0.15, 0.115, 0.080), lkNHi.r);
+lkGround = mix(lkGround, lkSoilCol, lkSoil * 0.6);
+// Rock-biome gentle ground -> scree / talus, lichen-stained below the high alpine.
+vec3 lkScree = mix(vec3(0.15, 0.145, 0.135), vec3(0.27, 0.25, 0.22), lkNHi.g)
+  * mix(0.82, 1.14, lkNVHi.r);
+float lkLichen = smoothstep(0.52, 0.80, lkNMid.a) * (1.0 - smoothstep(2600.0, 3600.0, lkHm));
+lkScree = mix(lkScree, vec3(0.10, 0.12, 0.07), lkLichen * 0.55);
+lkGround = mix(lkGround, lkScree, lkMask.r);
+// Bedrock on steep faces (and on rock-biome moderate slopes), with altitude strata.
+float lkSteepLo = 0.25 + (lkNMid.r - 0.5) * 0.12;
+float lkRock = smoothstep(lkSteepLo, lkSteepLo + 0.15, lkSlope + (lkNHi.a - 0.5) * 0.08);
+lkRock = max(lkRock, lkMask.r * smoothstep(0.12, 0.26, lkSlope + (lkNHi.a - 0.5) * 0.16));
+vec4 lkRHi = lkNHi;
+float lkStrataMask = smoothstep(0.35, 0.75, lkNMid.b);
+float lkStrata = sin(lkHm * 0.042 + (lkNMid.r - 0.5) * 5.0 + (lkNLo.g - 0.5) * 9.0 + (lkRHi.r - 0.5) * 2.0);
+vec3 lkRockCol = mix(vec3(0.095, 0.094, 0.098), vec3(0.20, 0.168, 0.135),
+  smoothstep(0.30, 0.70, lkNLo.b + (lkNMid.g - 0.5) * 0.4));
+lkRockCol *= 1.0 + lkStrata * 0.10 * lkStrataMask;
+lkRockCol *= mix(0.88, 1.12, lkRHi.g);
+lkGround = mix(lkGround, lkRockCol, lkRock);
+// Snow: altitude band with a noisy snowline, the baked snow/glacier biomes, and slope shedding.
+float lkSnowLine = 3500.0 + (lkNLo.a - 0.5) * 900.0 + (lkNMid.a - 0.5) * 380.0;
+float lkSnowRaw = max(smoothstep(lkSnowLine - 140.0, lkSnowLine + 280.0, lkHm), lkMask.g);
+float lkShed = 1.0 - smoothstep(0.24, 0.46, lkSlope + (lkNHi.b - 0.5) * 0.14);
+float lkSnow = smoothstep(0.30, 0.62, lkSnowRaw * lkShed + (lkNHi.b - 0.5) * 0.30);
+vec3 lkSnowCol = vec3(0.80, 0.83, 0.88)
+  * mix(0.90, 1.02, lkNHi.r)
+  * mix(0.95, 1.01, lkNVHi.a);
+lkGround = mix(lkGround, lkSnowCol, lkSnow);
+
+// Close-range grain. Procedural only: the CC0 photo layers tile every ~12 units (~400 m),
+// so at this world scale their pebbles read as boulder-sized camouflage.
+float lkGrain = mix(0.90, 1.10, lkNVHi.r) * mix(0.95, 1.05, lkNVHi.b);
+float lkDetail = mix(1.0, lkGrain, lkNear * (0.35 + lkRock * 0.4 + lkMask.r * 0.2));
+lkGround *= lkDetail;
+// Seen through the water: absorption tint below sea level.
+// Micro relief for the normal hook: two decorrelated, filtered noise channels used directly as
+// a tangent-space tilt (no derivatives, so no 2x2-pixel blocks; mip-filtered with distance).
+vec2 lkG = (vec2(lkNVHi.g, lkNVHi.b) - 0.5) * (1.0 - lkSnow * 0.7) * 0.9
+         + (vec2(lkNHi.b, lkNHi.g) - 0.5) * 0.5;
+float lkUnder = clamp((uAtmoSeaY - lkWp.y) / 4.0, 0.0, 1.0);
+lkGround = mix(lkGround, lkGround * vec3(0.42, 0.66, 0.70), lkUnder);
+// Baked cavity: part on albedo, the rest on indirect light (see aomap hook below).
+lkGround *= mix(1.0, lkAo, 0.45);
+diffuseColor.rgb = lkGround;
+float lkAoInd = clamp(lkAo, 0.35, 1.0);
+float lkSunVis = 1.0;
+{
+  vec4 rivMask = texture2D(uRiverMask, vMapUv);
+  float riv = rivMask.r;
+  if (riv > 0.01) {
+    vec2 rawFlow = (rivMask.gb * 255.0 - 128.0) / 127.0;
+    float flowLen = length(rawFlow);
+    float validFlow = smoothstep(0.35, 0.75, rivMask.a) * step(0.2, flowLen);
+    vec2 flowDir = flowLen > 0.2 ? (rawFlow / flowLen) : vec2(0.0);
+    float phaseJitter = texture2D(uDetail, vMapUv * 24.0).r;
+    float p0 = fract(uTime * 0.30 + phaseJitter);
+    float p1 = fract(uTime * 0.30 + phaseJitter + 0.5);
+    float blend = abs(2.0 * p0 - 1.0);
+    vec2 advUvBase = vMapUv * 220.0;
+    float adv0 = texture2D(uDetail, advUvBase - flowDir * (p0 * 1.25)).r * 2.0;
+    float adv1 = texture2D(uDetail, advUvBase - flowDir * (p1 * 1.25)).r * 2.0;
+    float advected = mix(adv0, adv1, blend);
+    diffuseColor.rgb = mix(diffuseColor.rgb, lkMacro * mix(1.0, advected, validFlow), clamp(riv * 0.85, 0.0, 0.85));
+  }
+  if (uUseBakedHorizon > 0.5) {
+    vec4 hzn = texture2D(uHorizonMap, vMapUv) * 1.5707963;
+    vec3 sd = normalize(uSunDir);
+    vec4 azW = vec4(max(sd.x, 0.0), max(-sd.x, 0.0), max(-sd.z, 0.0), max(sd.z, 0.0));
+    float wSum = max(0.0001, azW.x + azW.y + azW.z + azW.w);
+    float thetaH = dot(hzn, azW) / wSum;
+    float sunElev = asin(clamp(sd.y, -1.0, 1.0));
+    lkSunVis = smoothstep(thetaH - 0.14, thetaH + 0.22, sunElev);
+  }
+}
+`;
+
+const WV2_LOOK_NORMAL_FRAGMENT = /* glsl */ `
+#include <normal_fragment_maps>
+{
+  // Snow buries micro relief: flatten the baked fine normals under it.
+  mapN.xy *= mix(1.0, 0.4, lkSnow);
+  normal = normalize(tbn * mapN);
+  float lkNf = 1.0 - smoothstep(15.0, 140.0, lkCamDist);
+  if (lkNf > 0.01) {
+    vec2 g = lkG;
+    float rough = 0.20 + lkRock * 0.8 + lkMask.r * 0.3 - lkSnow * 0.15;
+    mapN.xy += g * 0.16 * rough * lkNf;
+    normal = normalize(tbn * mapN);
+  }
+}
+`;
+
+const WV2_LOOK_LIGHTS_BEGIN = THREE.ShaderChunk.lights_fragment_begin.replace(
+  'getDirectionalLightInfo( directionalLight, directLight );',
+  'getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= lkSunVis;',
+);
+
+// Map edge: the C01 tile has land touching its border, which read as a cut slab. Within a
+// noisy 0.5-3.4 km band the surface is pulled down under the (opaque, deep) border ocean, so the
+// world ends in a coastline instead of a vertical cut. Rendering only; colliders, creature and
+// flora heights still read the data (flora skips this band).
+const WV2_LOOK_EDGE_VERTEX = /* glsl */ `
+#include <begin_vertex>
+{
+  vec2 lkUv0 = uv;
+  float lkD = min(min(lkUv0.x, 1.0 - lkUv0.x), min(lkUv0.y, 1.0 - lkUv0.y));
+  float lkEn = texture2D(uLookNoise, lkUv0 * 2.0).r * 0.6 + texture2D(uLookNoise, lkUv0 * 7.0).g * 0.4;
+  float lkW = 0.012 + 0.07 * lkEn * lkEn;
+  float lkFall = smoothstep(0.0, lkW, lkD);
+  transformed.y = min(transformed.y, mix(uAtmoSeaY - 20.0, transformed.y, lkFall));
+}
+`;
+
+function applyWv2LookShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  shader.vertexShader =
+    'varying vec3 vW3WorldPos;\nvarying vec3 vW3WorldNormal;\nuniform sampler2D uLookNoise;\nuniform float uAtmoSeaY;\n' +
+    shader.vertexShader.replace('#include <begin_vertex>', WV2_LOOK_EDGE_VERTEX).replace(
+      '#include <worldpos_vertex>',
+      `#include <worldpos_vertex>
+        vec4 w3WorldPos4 = modelMatrix * vec4( transformed, 1.0 );
+        vW3WorldPos = w3WorldPos4.xyz;
+        vW3WorldNormal = normalize( mat3( modelMatrix ) * objectNormal );`,
+    );
+  shader.fragmentShader =
+    `precision highp sampler2DArray;
+uniform sampler2D uDetail;
+uniform sampler2D uRiverMask;
+uniform sampler2D uSplatMap;
+uniform sampler2D uHorizonMap;
+uniform float uUseBakedHorizon;
+uniform vec3 uSunDir;
+uniform float uTime;
+uniform float uPbrEnabled;
+uniform float uHeightUnits;
+uniform sampler2DArray uPbrAlbedo;
+uniform sampler2DArray uPbrNormal;
+varying vec3 vW3WorldPos;
+varying vec3 vW3WorldNormal;
+${WV2_LOOK_PARS}
+${ATMOSPHERE_FRAGMENT_PARS}
+vec4 w3SampleAntiTile(sampler2DArray texArr, vec2 wp, float layer) {
+  vec2 uvA = wp * 0.085;
+  vec2 rotWp = vec2(wp.x * 0.7986 - wp.y * 0.6018, wp.x * 0.6018 + wp.y * 0.7986);
+  vec2 uvB = rotWp * 0.021 + vec2(0.37, 0.71);
+  vec4 a = texture(texArr, vec3(uvA, layer));
+  vec4 b = texture(texArr, vec3(uvB, layer));
+  return mix(a, b, 0.44);
+}
+vec4 w3SampleTriplanarRock(sampler2DArray texArr, vec3 wp, vec3 wn) {
+  vec3 blend = abs(wn);
+  blend = max(blend - vec3(0.2), vec3(0.001));
+  blend /= (blend.x + blend.y + blend.z);
+  vec4 cx = w3SampleAntiTile(texArr, wp.zy, 2.0);
+  vec4 cy = w3SampleAntiTile(texArr, wp.xz, 2.0);
+  vec4 cz = w3SampleAntiTile(texArr, wp.xy, 2.0);
+  return cx * blend.x + cy * blend.y + cz * blend.z;
+}
+` +
+    shader.fragmentShader
+      .replace('#include <map_fragment>', WV2_LOOK_MAP_FRAGMENT)
+      .replace('#include <normal_fragment_maps>', WV2_LOOK_NORMAL_FRAGMENT)
+      .replace('#include <lights_fragment_begin>', WV2_LOOK_LIGHTS_BEGIN)
+      .replace(
+        '#include <aomap_fragment>',
+        '#include <aomap_fragment>\n\treflectedLight.indirectDiffuse *= lkAoInd;',
+      )
+      .replace('#include <fog_fragment>', atmosphereFragmentApply('vW3WorldPos'));
+}
+
 export function createTerrainPbrMaterial(
   params: TerrainPbrMaterialParams,
 ): { material: THREE.MeshStandardMaterial; handle: TerrainPbrShaderHandle } {
@@ -58,6 +302,7 @@ export function createTerrainPbrMaterial(
   );
   dummyHorizon.needsUpdate = true;
   const hasHorizon = Boolean(params.horizonMap);
+  const look = Boolean(params.lookMaskMap && params.lookNoiseMap);
   const initSun = params.sunDir ?? [0.6, 0.7, 0.35];
 
   const uniforms: {
@@ -85,6 +330,12 @@ export function createTerrainPbrMaterial(
     uPbrAlbedo: { value: dummyAlbedo },
     uPbrNormal: { value: dummyNormal },
   };
+  const lookUniforms = {
+    uLookMask: { value: params.lookMaskMap ?? params.detailMap },
+    uLookNoise: { value: params.lookNoiseMap ?? params.detailMap },
+    uElevMinM: { value: params.elevMinM ?? -1500 },
+    uElevSpanM: { value: params.elevSpanM ?? 7200 },
+  };
 
   const normScale = params.normalScale ?? 1;
   const material = new THREE.MeshStandardMaterial({
@@ -108,6 +359,16 @@ export function createTerrainPbrMaterial(
     shader.uniforms.uHeightUnits = uniforms.uHeightUnits;
     shader.uniforms.uPbrAlbedo = uniforms.uPbrAlbedo;
     shader.uniforms.uPbrNormal = uniforms.uPbrNormal;
+
+    if (look) {
+      shader.uniforms.uLookMask = lookUniforms.uLookMask;
+      shader.uniforms.uLookNoise = lookUniforms.uLookNoise;
+      shader.uniforms.uElevMinM = lookUniforms.uElevMinM;
+      shader.uniforms.uElevSpanM = lookUniforms.uElevSpanM;
+      bindAtmosphereUniforms(shader.uniforms);
+      applyWv2LookShader(shader);
+      return;
+    }
 
     shader.vertexShader =
       'varying vec3 vW3WorldPos;\nvarying vec3 vW3WorldNormal;\n' +
@@ -292,7 +553,7 @@ void w3ComputeLayerWeights(
   };
 
   material.customProgramCacheKey = () =>
-    hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
+    look ? 'wv2-look-terrain-v1' : hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
 
   const handle: TerrainPbrShaderHandle = {
     applyPbrArrays(arrays) {

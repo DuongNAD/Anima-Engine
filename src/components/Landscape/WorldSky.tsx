@@ -1,7 +1,8 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getWorldLightRig, type SkyParams } from './utils/skyParams';
+import { getWorldLightRig, sunDirectionWithTilt, type SkyParams } from './utils/skyParams';
+import { atmosphereUniforms } from './materials/atmosphere';
 import { makeSceneRandom, sceneDelta } from './utils/sceneClock';
 
 // Gradient sky dome: zenith deepens, horizon pales into haze, and a soft halo wraps the sun.
@@ -56,6 +57,13 @@ export interface WorldSkyProps {
   speed?: number;
   /** Overall scale; dome/orbit/star radii derive from this (≈ camera far budget). */
   worldScale?: number;
+  /**
+   * prototype, to be replaced — WV2-LOOK: tilt of the sun's daily arc (radians) so a
+   * late-morning sun sits ~45-50 degrees up instead of near the zenith, plus a stronger key
+   * light against a dimmer, warmer fill. 0 / false = the legacy rig, unchanged.
+   */
+  sunTilt?: number;
+  look?: boolean;
 }
 
 interface CloudDescriptor {
@@ -131,12 +139,26 @@ function applySkyUniforms(
     .set(frame.moonPosition[0], frame.moonPosition[1], frame.moonPosition[2])
     .normalize();
   u.uMoonGlow.value = frame.moonGlow;
+  // WV2-LOOK aerial perspective reads the dome's own horizon so distant land melts into it.
+  atmosphereUniforms.uAtmoHorizon.value.copy(u.uHorizon.value);
+  atmosphereUniforms.uAtmoZenith.value.copy(u.uZenith.value);
+  atmosphereUniforms.uAtmoSunDir.value.copy(u.uSunDir.value);
+  atmosphereUniforms.uAtmoSunColor.value.copy(u.uSunColor.value);
+  atmosphereUniforms.uAtmoGlow.value = u.uGlow.value;
+}
+
+/** Nudge the key light toward a warm late-morning white (WV2-LOOK only). */
+function warmSun(hex: string): string {
+  const c = new THREE.Color(hex).lerp(new THREE.Color('#ffe2b8'), 0.45);
+  return `#${c.getHexString()}`;
 }
 
 export const WorldSky: React.FC<WorldSkyProps> = ({
   timeOfDay = 12,
   speed = 1.0,
   worldScale = 400,
+  sunTilt = 0,
+  look = false,
 }) => {
   const cloudsRef = useRef<THREE.Group>(null);
   const tmpColor = useMemo(() => new THREE.Color(), []);
@@ -152,10 +174,13 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   // Sun / moon orbit (same tilt convention as legacy Sky).
   const safeTime = Number.isFinite(timeOfDay) ? ((timeOfDay % 24) + 24) % 24 : 0;
   const angle = ((safeTime - 6) / 24) * Math.PI * 2;
-  const sunDirUnit = useMemo(
-    () => new THREE.Vector3(Math.cos(angle), Math.sin(angle), Math.sin(angle) * 0.1).normalize(),
-    [angle],
-  );
+  const sunDirUnit = useMemo(() => {
+    if (sunTilt !== 0) {
+      const d = sunDirectionWithTilt(safeTime, sunTilt);
+      return new THREE.Vector3(d[0], d[1], d[2]);
+    }
+    return new THREE.Vector3(Math.cos(angle), Math.sin(angle), Math.sin(angle) * 0.1).normalize();
+  }, [angle, safeTime, sunTilt]);
   const sunPosition: [number, number, number] = [
     sunDirUnit.x * ORBIT_R,
     sunDirUnit.y * ORBIT_R,
@@ -171,6 +196,13 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
 
   const lightRig = getWorldLightRig(safeTime);
   const { params, showMoon } = lightRig;
+  // WV2-LOOK key/fill balance: sun carries the modelling, sky fill is dimmer and the ground
+  // bounce is warm earth instead of near-black navy. Exposure is raised in WorldShowcase.
+  const sunLightIntensity = look ? lightRig.sunIntensity * 2.1 : lightRig.sunIntensity;
+  const hemiLightIntensity = look ? lightRig.hemiIntensity * 1.7 : lightRig.hemiIntensity;
+  const ambientLightIntensity = look ? lightRig.ambientIntensity * 0.45 : lightRig.ambientIntensity;
+  const hemiGround = look ? '#5a4a36' : params.hemiGroundColor;
+  const sunLightColor = look ? warmSun(params.sunColor) : params.sunColor;
   const showStars = params.starOpacity > 0;
 
   const starPositions = useMemo(() => {
@@ -267,8 +299,8 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       <directionalLight
         name="world-sun-light"
         position={sunPosition}
-        color={params.sunColor}
-        intensity={lightRig.sunIntensity}
+        color={sunLightColor}
+        intensity={sunLightIntensity}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -294,10 +326,10 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       <hemisphereLight
         name="world-hemi-light"
         color={params.hemiSkyColor}
-        groundColor={params.hemiGroundColor}
-        intensity={lightRig.hemiIntensity}
+        groundColor={hemiGround}
+        intensity={hemiLightIntensity}
       />
-      <ambientLight name="world-ambient-light" color={params.ambientColor} intensity={lightRig.ambientIntensity} />
+      <ambientLight name="world-ambient-light" color={params.ambientColor} intensity={ambientLightIntensity} />
 
       {showMoon && (
         <mesh name="world-moon-mesh" position={moonPosition}>

@@ -22,7 +22,7 @@ import { sceneElapsed } from './utils/sceneClock';
 import { isCaptureRequested } from './utils/captureMode';
 import type { QualityTier } from './utils/qualityTiers';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
-import type { WorldV2LoadedBundle } from './worldV2/types';
+import { ELEV_MIN_M, ELEV_SPAN_M, type WorldV2LoadedBundle } from './worldV2/types';
 
 // ---------------------------------------------------------------------------------------
 // WorldTerrainLod — the chunked, distance-LOD, streamable terrain (M3), an opt-in alternative
@@ -101,6 +101,8 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
       horizonMap: null as THREE.DataTexture | null,
       shoreSdfMap: null as THREE.DataTexture | null,
       hydroFlowMap: null as THREE.DataTexture | null,
+      lookMaskMap: null as THREE.DataTexture | null,
+      lookNoiseMap: null as THREE.DataTexture | null,
     };
   }, [world, worldV2, renderSize, heightRatio, meshResolution]);
 
@@ -182,6 +184,10 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
         riverMaskMap: textures.riverMaskMap,
         splatMap: textures.splatMap,
         horizonMap: textures.horizonMap,
+        lookMaskMap: textures.lookMaskMap,
+        lookNoiseMap: textures.lookNoiseMap,
+        elevMinM: ELEV_MIN_M,
+        elevSpanM: ELEV_SPAN_M,
         normalScale: worldV2 ? 0.45 : 1,
         heightUnits: renderSize * heightRatio,
       }),
@@ -251,6 +257,8 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
       textures.horizonMap?.dispose();
       textures.shoreSdfMap?.dispose();
       textures.hydroFlowMap?.dispose();
+      textures.lookMaskMap?.dispose();
+      textures.lookNoiseMap?.dispose();
       terrainMat.handle.dispose();
       cacheBundle.cache.forEach((g) => typeof g.dispose === 'function' && g.dispose());
       cacheBundle.cache.clear();

@@ -840,6 +840,143 @@ export interface WorldV2TerrainTextures {
   horizonMap: THREE.DataTexture;
   shoreSdfMap: THREE.DataTexture;
   hydroFlowMap: THREE.DataTexture;
+  /** WV2-LOOK: R = rock-biome, G = snow/ice-biome, B = vegetation density, A = sand/beach. */
+  lookMaskMap: THREE.DataTexture;
+  /** WV2-LOOK: tileable 4-channel value noise (independent octaves per channel). */
+  lookNoiseMap: THREE.DataTexture;
+}
+
+// prototype, to be replaced — WV2-LOOK per-biome surface classes, weighted by `biome_weights`.
+// Index = canonical 22-biome id (see `BIOME_SRGB_PALETTE` in `worldV2/types.ts`).
+// [rock, snow, vegetation, sand]
+const WV2_LOOK_BIOME_CLASS: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0.0, 0.0, 0.0, 0.3], // 0 Ocean
+  [0.0, 0.0, 0.0, 1.0], // 1 Beach
+  [0.1, 0.0, 0.02, 0.85], // 2 Desert
+  [0.0, 0.0, 0.35, 0.15], // 3 Savanna
+  [0.0, 0.0, 0.45, 0.0], // 4 Grassland
+  [0.05, 0.0, 0.55, 0.05], // 5 Shrubland
+  [0.0, 0.0, 1.0, 0.0], // 6 Forest
+  [0.0, 0.0, 1.0, 0.0], // 7 Jungle
+  [0.0, 0.0, 0.9, 0.0], // 8 Taiga
+  [0.25, 0.05, 0.2, 0.0], // 9 Tundra
+  [0.0, 0.0, 0.7, 0.0], // 10 Swamp
+  [1.0, 0.0, 0.05, 0.0], // 11 Rock
+  [0.0, 1.0, 0.0, 0.0], // 12 Snow
+  [0.0, 0.0, 0.2, 0.2], // 13 River
+  [0.0, 0.0, 0.2, 0.2], // 14 Lake
+  [0.0, 0.0, 0.9, 0.1], // 15 Mangrove
+  [0.05, 0.0, 0.5, 0.05], // 16 Chaparral
+  [0.05, 0.0, 0.25, 0.1], // 17 Steppe
+  [0.35, 0.0, 0.3, 0.0], // 18 Alpine
+  [0.6, 0.0, 0.05, 0.3], // 19 Badlands
+  [0.0, 1.0, 0.0, 0.0], // 20 Glacier
+  [0.0, 0.0, 0.5, 0.0], // 21 Bog
+];
+
+function buildWorldV2LookMask(bundle: WorldV2LoadedBundle): THREE.DataTexture {
+  const { size } = bundle;
+  const count = size * size;
+  const data = new Uint8Array(count * 4);
+  for (let i = 0; i < count; i += 1) {
+    const o4 = i * 4;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let a = 0;
+    let wSum = 0;
+    for (let k = 0; k < 4; k += 1) {
+      const w = bundle.biomeWeightsRgba[o4 + k];
+      if (w === 0) continue;
+      const cls = WV2_LOOK_BIOME_CLASS[bundle.biomeIdsRgba[o4 + k]] ?? WV2_LOOK_BIOME_CLASS[4];
+      r += cls[0] * w;
+      g += cls[1] * w;
+      b += cls[2] * w;
+      a += cls[3] * w;
+      wSum += w;
+    }
+    if (wSum === 0) {
+      const cls = WV2_LOOK_BIOME_CLASS[bundle.biomeIdsRgba[o4]] ?? WV2_LOOK_BIOME_CLASS[4];
+      r = cls[0];
+      g = cls[1];
+      b = cls[2];
+      a = cls[3];
+      wSum = 1;
+    }
+    data[o4] = Math.round((r / wSum) * 255);
+    data[o4 + 1] = Math.round((g / wSum) * 255);
+    data[o4 + 2] = Math.round((b / wSum) * 255);
+    data[o4 + 3] = Math.round((a / wSum) * 255);
+  }
+  return createRgbaTex(data, size, THREE.NoColorSpace, true);
+}
+
+/** Tileable RGBA value noise; each channel is an independent 3-octave fBm. */
+export function buildLookNoiseTexture(): THREE.DataTexture {
+  const N = 256;
+  let s = 977;
+  const rnd = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  const lattices: Float32Array[] = [];
+  const G = [8, 16, 32, 64];
+  for (let c = 0; c < 4; c += 1) {
+    for (const g of G) {
+      const lat = new Float32Array(g * g);
+      for (let i = 0; i < lat.length; i += 1) lat[i] = rnd();
+      lattices.push(lat);
+    }
+  }
+  const vnoise = (lat: Float32Array, g: number, u: number, v: number) => {
+    const x = u * g;
+    const y = v * g;
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const tx = x - xi;
+    const ty = y - yi;
+    const sx = tx * tx * (3 - 2 * tx);
+    const sy = ty * ty * (3 - 2 * ty);
+    const x0 = ((xi % g) + g) % g;
+    const y0 = ((yi % g) + g) % g;
+    const x1 = (x0 + 1) % g;
+    const y1 = (y0 + 1) % g;
+    const a = lat[y0 * g + x0];
+    const b = lat[y0 * g + x1];
+    const c = lat[y1 * g + x0];
+    const d = lat[y1 * g + x1];
+    return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
+  };
+  const data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y += 1) {
+    for (let x = 0; x < N; x += 1) {
+      const u = x / N;
+      const v = y / N;
+      const o = (y * N + x) * 4;
+      for (let c = 0; c < 4; c += 1) {
+        let n = 0;
+        let amp = 0.5;
+        let norm = 0;
+        for (let k = 0; k < G.length; k += 1) {
+          n += vnoise(lattices[c * G.length + k], G[k], u, v) * amp;
+          norm += amp;
+          amp *= 0.5;
+        }
+        // Stretch contrast: fBm clusters around 0.5.
+        const stretched = 0.5 + (n / norm - 0.5) * 1.9;
+        data[o + c] = Math.min(255, Math.max(0, Math.round(stretched * 255)));
+      }
+    }
+  }
+  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 function createRgbaTex(
@@ -897,6 +1034,8 @@ export function buildWorldV2TerrainTextures(
       const bounce = bundle.lightingRgba[o4 + 2] / 255;
       const litScale = 0.56 + 0.44 * (ao * 0.72 + svf * 0.28) + bounce * 0.06;
 
+      // WV2-LOOK: albedo stays un-lit in RGB; the baked lighting factor rides in alpha
+      // (litScale / 1.25) so the terrain shader can re-apply it after re-colouring by slope.
       for (let c = 0; c < 3; c += 1) {
         const s00 = bundle.macroAlbedoRgba[idx00 + c] / 255;
         const s10 = bundle.macroAlbedoRgba[idx10 + c] / 255;
@@ -904,11 +1043,9 @@ export function buildWorldV2TerrainTextures(
         const s11 = bundle.macroAlbedoRgba[idx11 + c] / 255;
         const srgbSample =
           (s00 * (1 - fx) + s10 * fx) * (1 - fy) + (s01 * (1 - fx) + s11 * fx) * fy;
-        const linear = Math.pow(Math.max(0.001, srgbSample), 2.2) * litScale;
-        const encoded = Math.pow(Math.min(1.0, linear), 1.0 / 2.2);
-        colorData[o4 + c] = Math.min(255, Math.max(0, Math.round(encoded * 255)));
+        colorData[o4 + c] = Math.min(255, Math.max(0, Math.round(srgbSample * 255)));
       }
-      colorData[o4 + 3] = 255;
+      colorData[o4 + 3] = Math.min(255, Math.max(0, Math.round((litScale / 1.25) * 255)));
     }
   }
 
@@ -961,5 +1098,7 @@ export function buildWorldV2TerrainTextures(
     horizonMap: createRgbaTex(new Uint8Array(bundle.horizonRgba), size, THREE.NoColorSpace, false),
     shoreSdfMap: createRgbaTex(shoreSdfData, size, THREE.NoColorSpace, false),
     hydroFlowMap: createRgbaTex(new Uint8Array(bundle.hydroFlowRgba), size, THREE.NoColorSpace, false),
+    lookMaskMap: buildWorldV2LookMask(bundle),
+    lookNoiseMap: buildLookNoiseTexture(),
   };
 }

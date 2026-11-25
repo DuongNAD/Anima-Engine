@@ -38,6 +38,18 @@ export function sunDirectionForTime(timeOfDay: number): [number, number, number]
   return [v.x, v.y, v.z];
 }
 
+/**
+ * prototype, to be replaced — WV2-LOOK: the same daily arc tilted by `tilt` radians about the
+ * east-west axis, so the late-morning sun sits ~45-50 degrees up instead of near the zenith.
+ * Rotating about X keeps sunrise/sunset times and the rising/setting azimuths unchanged.
+ */
+export function sunDirectionWithTilt(timeOfDay: number, tilt: number): [number, number, number] {
+  const angle = ((normalizeTimeOfDay(timeOfDay) - 6) / 24) * Math.PI * 2;
+  const s = Math.sin(angle);
+  const v = new THREE.Vector3(Math.cos(angle), s * Math.cos(tilt), s * Math.sin(tilt)).normalize();
+  return [v.x, v.y, v.z];
+}
+
 export function getSkyParams(timeOfDay: number): SkyParams {
   const safeTime = normalizeTimeOfDay(timeOfDay);
   const keyframes = [

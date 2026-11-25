@@ -44,7 +44,9 @@ import {
   SAMPLE_INTERVAL_MS,
   type LodFocusPayload,
 } from '../../utils/lodFocus';
-import { sunDirectionForTime } from './utils/skyParams';
+import { sunDirectionForTime, sunDirectionWithTilt } from './utils/skyParams';
+import { configureAtmosphere } from './materials/atmosphere';
+import { SEA_LEVEL_NORM } from './worldV2/types';
 import { ALWAYS_DAY_HOUR, sceneDelta, stepTimeOfDay } from './utils/sceneClock';
 import {
   QUALITY_SELECTIONS,
@@ -89,6 +91,13 @@ import {
 const RENDER_SIZE = FLORA_RADIUS_REFERENCE_EXTENT;
 const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
+// prototype, to be replaced — WV2-LOOK (World v2 only; v1 and the canonical capture keep the
+// legacy rig). The scene's lights were tuned for three's pre-r155 intensity scale, which left
+// every lit surface ~1/pi too dark under ACES at exposure 1.04. The look path raises exposure,
+// tilts the sun's arc so 11:00 sits ~50 degrees up (instead of near the zenith) and leaves the
+// sky dome (unlit, untonemapped) as it was.
+const V2_LOOK_EXPOSURE = 2.5;
+const V2_SUN_TILT = -0.65;
 // M3: opt-in chunked terrain (frustum-culls off-screen chunks; see WorldTerrainLod / chunkLod).
 // OFF by default = the proven single-mesh WorldTerrain. Turn on for a chunked terrain; add
 // TERRAIN_LOD_DISTANCES (e.g. [520, 900]) + TERRAIN_SKIRT (e.g. 6) to also drop distant detail,
@@ -521,7 +530,12 @@ export const WorldShowcase: React.FC = () => {
     );
   }
 
-  const sunDir = sunDirectionForTime(timeOfDay);
+  const sunDir = worldV2Bundle
+    ? sunDirectionWithTilt(timeOfDay, V2_SUN_TILT)
+    : sunDirectionForTime(timeOfDay);
+  if (worldV2Bundle) {
+    configureAtmosphere(RENDER_SIZE, RENDER_SIZE * HEIGHT_RATIO, SEA_LEVEL_NORM * RENDER_SIZE * HEIGHT_RATIO);
+  }
   const worldV2Meta = worldV2Bundle ? worldV2RenderMeta(worldV2Bundle) : null;
   // Canonical poses are published in the canonical [-100, 100] bounds; the scene is a different
   // span with its own vertical exaggeration. One conversion, in `mapManifest.ts`.
@@ -542,7 +556,7 @@ export const WorldShowcase: React.FC = () => {
         gl={{
           powerPreference: 'high-performance',
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.04,
+          toneMappingExposure: worldV2Bundle ? V2_LOOK_EXPOSURE : 1.04,
           // ---- three capture-only context flags, each closing one source of frame variance -----
           //
           // All three are `capture !== null` / `capture === null`, so an ordinary visit gets exactly
@@ -597,7 +611,13 @@ export const WorldShowcase: React.FC = () => {
         ) : null}
 
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}
-        <WorldSky timeOfDay={timeOfDay} speed={speed} worldScale={RENDER_SIZE} />
+        <WorldSky
+          timeOfDay={timeOfDay}
+          speed={speed}
+          worldScale={RENDER_SIZE}
+          sunTilt={worldV2Bundle ? V2_SUN_TILT : 0}
+          look={Boolean(worldV2Bundle)}
+        />
         <WorldWeather
           weather={weather}
           precipitationRate={precipFor(weather)}

@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
-import { makeFloraGeometry } from '../utils/floraGeometry';
-import { FloraType, type World } from '../utils/worldGen';
+import { type World } from '../utils/worldGen';
 import { sampleMeshHeight } from '../utils/worldSample';
 import type { QualityTier } from '../utils/qualityTiers';
 import { getQualityTierConfig } from '../utils/qualityTiers';
-import { VEGETATION_BASE_SIZE } from '../utils/floraClearance';
-import { FLORA_SECTORS_PER_SIDE, type WorldV2LoadedBundle } from './types';
-import { WV2_SPECIES_TO_FLORA } from './worldV2Adapter';
+import { FLORA_SECTORS_PER_SIDE, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './types';
+import { LOOK_SPECIES, LOOK_SPECIES_SIZE, makeLookFloraGeometry } from './floraLook';
+import {
+  ATMOSPHERE_FRAGMENT_PARS,
+  atmosphereFragmentApply,
+  bindAtmosphereUniforms,
+} from '../materials/atmosphere';
 
 export interface WorldV2FloraProps {
   bundle: WorldV2LoadedBundle;
@@ -20,13 +23,83 @@ export interface WorldV2FloraProps {
 
 interface SpeciesBatch {
   speciesId: number;
-  floraType: FloraType;
   geometry: THREE.BufferGeometry;
   matrices: Float32Array;
+  colors: Float32Array;
   count: number;
 }
 
 const SPECIES_COUNT = 8;
+
+// prototype, to be replaced — WV2-LOOK placement rules.
+//
+// Each baked flora point becomes a small STAND of plants at real-world size (8-38 m trees,
+// 3-11 m boulders) instead of one 40-130 m toy tree: the bake's spacing (~70-200 m) is far
+// coarser than a real canopy, so a stand fills the gap without inventing new placement data.
+// Stand size follows a low-frequency clump noise and the local biome purity, so forest edges
+// thin out raggedly instead of stopping on a line; plants on cliff-steep cells are dropped.
+
+/** Stand radius in metres per species. */
+const STAND_RADIUS_M: ReadonlyArray<number> = [34, 30, 30, 18, 14, 30, 22, 16];
+/** Plants per stand at `high`; medium/low scale this down. */
+const STAND_BASE: ReadonlyArray<number> = [5, 4, 4, 2, 4, 2, 3, 4];
+
+function hash2(x: number, y: number, seed: number): number {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(seed, 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
+function valueNoise(x: number, y: number, seed: number): number {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const fx = x - xi;
+  const fy = y - yi;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const a = hash2(xi, yi, seed);
+  const b = hash2(xi + 1, yi, seed);
+  const c = hash2(xi, yi + 1, seed);
+  const d = hash2(xi + 1, yi + 1, seed);
+  return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
+}
+
+function seeded(seed: number): () => number {
+  let s = seed >>> 0 || 1;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+function makeFloraLookMaterial(): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.92,
+    metalness: 0.0,
+  });
+  material.onBeforeCompile = (shader) => {
+    bindAtmosphereUniforms(shader.uniforms);
+    shader.vertexShader =
+      'varying vec3 vLkFloraWp;\n' +
+      shader.vertexShader.replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 lkFloraWp4 = vec4( transformed, 1.0 );
+        #ifdef USE_INSTANCING
+          lkFloraWp4 = instanceMatrix * lkFloraWp4;
+        #endif
+        vLkFloraWp = ( modelMatrix * lkFloraWp4 ).xyz;`,
+      );
+    shader.fragmentShader =
+      'varying vec3 vLkFloraWp;\n' +
+      ATMOSPHERE_FRAGMENT_PARS +
+      shader.fragmentShader.replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
+  };
+  material.customProgramCacheKey = () => 'wv2-look-flora-v1';
+  return material;
+}
 
 /**
  * Renders decoded `flora_tiles` (`ANMF v1`, `FLORA_FLAG_DECORATIVE`) as up to 8 `InstancedMesh`
@@ -42,21 +115,19 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
 }) => {
   const heightUnits = renderSize * heightRatio;
   const stride = tier === 'high' ? 1 : tier === 'medium' ? 2 : 4;
+  const standScale = tier === 'high' ? 1 : tier === 'medium' ? 0.8 : 0.7;
   const castsShadow = getQualityTierConfig(tier).shadows && tier === 'high';
 
-  const material = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.88,
-        metalness: 0.0,
-      }),
-    [],
-  );
+  const material = useMemo(() => makeFloraLookMaterial(), []);
 
   const batches = useMemo<SpeciesBatch[]>(() => {
-    const perSpecies: Array<Array<{ x: number; y: number; z: number; scale: number; yaw: number }>> =
-      Array.from({ length: SPECIES_COUNT }, () => []);
+    const unitsPerM = renderSize / (bundle.extentM || WORLD_EXTENT_M);
+    const { size } = bundle;
+    const perSpecies: number[][] = Array.from({ length: SPECIES_COUNT }, () => []);
+    const perSpeciesColor: number[][] = Array.from({ length: SPECIES_COUNT }, () => []);
+    const rnd = seeded(bundle.seed ^ 0x5eed);
+    const dummy = new THREE.Object3D();
+    const tint = new THREE.Color();
 
     let idx = 0;
     for (const sector of bundle.floraSectors) {
@@ -66,44 +137,86 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           continue;
         }
         idx += 1;
-        const sid = inst.species_id < SPECIES_COUNT ? inst.species_id : 7;
+        const sid = inst.species_id < SPECIES_COUNT ? inst.species_id : LOOK_SPECIES.Bush;
         const u = (sector.sectorX + inst.x_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
         const v = (sector.sectorZ + inst.z_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
-        const wx = (u - 0.5) * renderSize;
-        const wz = (v - 0.5) * renderSize;
-        const wy = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
-        const scale = VEGETATION_BASE_SIZE * (0.45 + (inst.scale_u8 / 255.0) * 1.15);
-        const yaw = (inst.yaw_u8 / 255.0) * Math.PI * 2;
-        perSpecies[sid].push({ x: wx, y: wy, z: wz, scale, yaw });
+        // The terrain's map-edge falloff band (see terrainPbrMaterial) is under water.
+        if (Math.min(u, 1 - u, v, 1 - v) < 0.085) continue;
+        const cx = Math.min(size - 1, Math.max(0, Math.floor(u * size)));
+        const cy = Math.min(size - 1, Math.max(0, Math.floor(v * size)));
+        const ci = cy * size + cx;
+
+        // Cliff-steep cells: no trees (boulders may stay).
+        const nx = (bundle.normalRg[ci * 2] / 255) * 2 - 1;
+        const nz = (bundle.normalRg[ci * 2 + 1] / 255) * 2 - 1;
+        const ny = Math.sqrt(Math.max(0, 1 - nx * nx - nz * nz));
+        const slope = 1 - ny;
+        if (sid !== LOOK_SPECIES.Rock && slope > 0.32) continue;
+
+        // Biome purity: 1 deep inside a biome, lower on an ecotone.
+        const purity = (bundle.biomeWeightsRgba[ci * 4] ?? 255) / 255;
+        const wx0 = (u - 0.5) * renderSize;
+        const wz0 = (v - 0.5) * renderSize;
+        const clump =
+          valueNoise(wx0 * 0.045, wz0 * 0.045, 17) * 0.65 + valueNoise(wx0 * 0.16, wz0 * 0.16, 23) * 0.35;
+        const keep = clump * 0.9 + purity * 0.55 - slope * 1.2;
+        if (keep < 0.42) continue;
+        const density = Math.min(1.25, Math.max(0.25, (keep - 0.42) * 2.2));
+        const k = Math.max(1, Math.round(STAND_BASE[sid] * standScale * density + rnd() * 0.8));
+
+        const sizeSpec = LOOK_SPECIES_SIZE[sid];
+        const scale01 = inst.scale_u8 / 255;
+        const radius = STAND_RADIUS_M[sid] * unitsPerM;
+        const yaw0 = (inst.yaw_u8 / 255) * Math.PI * 2;
+        for (let m = 0; m < k; m += 1) {
+          const a = rnd() * Math.PI * 2;
+          const r = m === 0 ? rnd() * radius * 0.3 : Math.sqrt(rnd()) * radius;
+          const px = wx0 + Math.cos(a) * r;
+          const pz = wz0 + Math.sin(a) * r;
+          const pu = px / renderSize + 0.5;
+          const pv = pz / renderSize + 0.5;
+          if (pu < 0 || pu > 1 || pv < 0 || pv > 1) continue;
+          const hM =
+            sizeSpec.minM +
+            (sizeSpec.maxM - sizeSpec.minM) * Math.min(1, Math.max(0, scale01 * 0.6 + rnd() * 0.55 - 0.1));
+          const h = hM * unitsPerM;
+          const wJ = 0.85 + rnd() * 0.3;
+          const py = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits - h * 0.03;
+          dummy.position.set(px, py, pz);
+          dummy.rotation.set((rnd() - 0.5) * 0.08, yaw0 + rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
+          dummy.scale.set(h * wJ, h, h * (0.85 + rnd() * 0.3));
+          dummy.updateMatrix();
+          const e = dummy.matrix.elements;
+          const list = perSpecies[sid];
+          for (let j = 0; j < 16; j += 1) list.push(e[j]);
+
+          // Per-plant tint: value +-18%, drift between dry-warm and lush-cool.
+          const val = 0.78 + rnd() * 0.4;
+          const warm = rnd();
+          if (sid === LOOK_SPECIES.Rock) {
+            tint.setRGB(val, val * 0.98, val * (0.92 + warm * 0.1));
+          } else {
+            tint.setRGB(val * (0.9 + warm * 0.28), val * (0.98 + warm * 0.06), val * (1.06 - warm * 0.3));
+          }
+          perSpeciesColor[sid].push(tint.r, tint.g, tint.b);
+        }
       }
     }
 
-    const dummy = new THREE.Object3D();
     const out: SpeciesBatch[] = [];
     for (let sid = 0; sid < SPECIES_COUNT; sid += 1) {
       const list = perSpecies[sid];
       if (list.length === 0) continue;
-      const floraType = WV2_SPECIES_TO_FLORA[sid] ?? FloraType.Bush;
-      const geometry = makeFloraGeometry(floraType);
-      const matrices = new Float32Array(list.length * 16);
-      for (let i = 0; i < list.length; i += 1) {
-        const item = list[i];
-        dummy.position.set(item.x, item.y, item.z);
-        dummy.rotation.set(0, item.yaw, 0);
-        dummy.scale.setScalar(item.scale);
-        dummy.updateMatrix();
-        matrices.set(dummy.matrix.elements, i * 16);
-      }
       out.push({
         speciesId: sid,
-        floraType,
-        geometry,
-        matrices,
-        count: list.length,
+        geometry: makeLookFloraGeometry(sid),
+        matrices: new Float32Array(list),
+        colors: new Float32Array(perSpeciesColor[sid]),
+        count: list.length / 16,
       });
     }
     return out;
-  }, [bundle, world, renderSize, heightUnits, meshResolution, stride]);
+  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale]);
 
   useEffect(() => {
     return () => {
@@ -132,6 +245,12 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
             if (!mesh || !mesh.instanceMatrix) return;
             mesh.instanceMatrix.array.set(batch.matrices);
             mesh.instanceMatrix.needsUpdate = true;
+            if (!mesh.instanceColor || mesh.instanceColor.count !== batch.count) {
+              mesh.instanceColor = new THREE.InstancedBufferAttribute(batch.colors, 3);
+            } else {
+              (mesh.instanceColor.array as Float32Array).set(batch.colors);
+              mesh.instanceColor.needsUpdate = true;
+            }
             mesh.computeBoundingSphere();
           }}
         />
