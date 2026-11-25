@@ -852,6 +852,7 @@ fn drift_control_replay_respects_strict_cap_while_legacy_bypasses_it() {
             observable_ids: obs_ids.clone(),
             exotic_interventions: Vec::new(),
             observer: Default::default(),
+            island: None,
         }
     };
     let pair = run_live_drift_pair(

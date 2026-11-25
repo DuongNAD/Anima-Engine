@@ -118,7 +118,7 @@ pub mod opt_sha256_hex {
 /// instead of silently regenerating a different one (M1.5 / S08). Stored as a Bevy `Resource` at
 /// `init_world` and copied into `SavedSimulationState`; a mismatch on load means the save belongs to
 /// a different world. `Default` (all-zero) marks an unknown/legacy save that predates this field.
-#[derive(Resource, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Resource, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct WorldIdentity {
     pub seed: u32,
     pub generator_version: u32,
@@ -128,12 +128,52 @@ pub struct WorldIdentity {
     /// Optional SHA-256 of the raw `sim_256.anmw3` bytes (World v2 `LD-2`); `None` for legacy v1/v2
     /// and headless `TerrainSource::Generated` worlds so JSON fixtures and manifest fingerprints stay
     /// byte-identical.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "crate::core::world_artifact::opt_sha256_hex"
-    )]
+    #[serde(default, with = "crate::core::world_artifact::opt_sha256_hex")]
     pub sim_world_sha256: Option<[u8; 32]>,
+    /// Declared organism genesis phase (`QD-GENESIS` / ADR-0014); `None` for legacy/science runs
+    /// so JSON fixtures and manifest fingerprints stay byte-identical.
+    #[serde(default)]
+    pub genesis_phase: Option<crate::core::island::GenesisPhase>,
+}
+
+impl Serialize for WorldIdentity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        struct OptSha256Hex<'a>(&'a Option<[u8; 32]>);
+        impl Serialize for OptSha256Hex<'_> {
+            fn serialize<S2>(&self, serializer: S2) -> Result<S2::Ok, S2::Error>
+            where
+                S2: serde::Serializer,
+            {
+                crate::core::world_artifact::opt_sha256_hex::serialize(self.0, serializer)
+            }
+        }
+
+        // Human-readable formats (JSON) omit optional `None` fields so pre-WV2/pre-ADR-0014
+        // fixtures remain byte-identical, while positional binary formats (`bincode`) always encode
+        // all 7 fields so any `None`/`Some` combination decodes unambiguously.
+        let human = serializer.is_human_readable();
+        let field_count = 5
+            + usize::from(!human || self.sim_world_sha256.is_some())
+            + usize::from(!human || self.genesis_phase.is_some());
+        let mut state = serializer.serialize_struct("WorldIdentity", field_count)?;
+        state.serialize_field("seed", &self.seed)?;
+        state.serialize_field("generator_version", &self.generator_version)?;
+        state.serialize_field("width", &self.width)?;
+        state.serialize_field("height", &self.height)?;
+        state.serialize_field("checksum", &self.checksum)?;
+        if !human || self.sim_world_sha256.is_some() {
+            state.serialize_field("sim_world_sha256", &OptSha256Hex(&self.sim_world_sha256))?;
+        }
+        if !human || self.genesis_phase.is_some() {
+            state.serialize_field("genesis_phase", &self.genesis_phase)?;
+        }
+        state.end()
+    }
 }
 
 impl WorldIdentity {
@@ -154,6 +194,7 @@ impl WorldIdentity {
             height: map.height as u32,
             checksum: fnv1a_32(&payload),
             sim_world_sha256: None,
+            genesis_phase: None,
         }
     }
 
@@ -178,19 +219,37 @@ impl WorldIdentity {
             current.height,
             current.checksum,
         );
-        if self.sim_world_sha256.is_none() && current.sim_world_sha256.is_none() {
-            Some(legacy)
-        } else {
+        if self.sim_world_sha256.is_none()
+            && current.sim_world_sha256.is_none()
+            && self.genesis_phase.is_none()
+            && current.genesis_phase.is_none()
+        {
+            return Some(legacy);
+        }
+        let mut msg = legacy;
+        if self.sim_world_sha256.is_some() || current.sim_world_sha256.is_some() {
             let fmt_sha = |opt: Option<[u8; 32]>| match opt {
                 Some(d) => anima_worldgen::anmw_v3::sha256_to_hex(&d),
                 None => "none".to_string(),
             };
-            Some(format!(
-                "{legacy} [sim_world_sha256 {} != {}]",
+            msg.push_str(&format!(
+                " [sim_world_sha256 {} != {}]",
                 fmt_sha(self.sim_world_sha256),
                 fmt_sha(current.sim_world_sha256)
-            ))
+            ));
         }
+        if self.genesis_phase.is_some() || current.genesis_phase.is_some() {
+            let fmt_phase = |opt: Option<crate::core::island::GenesisPhase>| match opt {
+                Some(p) => p.code(),
+                None => "none",
+            };
+            msg.push_str(&format!(
+                " [genesis_phase {} != {}]",
+                fmt_phase(self.genesis_phase),
+                fmt_phase(current.genesis_phase)
+            ));
+        }
+        Some(msg)
     }
 }
 
@@ -380,6 +439,7 @@ impl WorldArtifact {
             height: self.height as u32,
             checksum: self.checksum(),
             sim_world_sha256: None,
+            genesis_phase: None,
         }
     }
 
@@ -961,6 +1021,52 @@ mod tests {
             .mismatch_against(&v3)
             .expect("distinct sha256 must trigger mismatch");
         assert!(msg.contains("sim_world_sha256"));
+    }
+
+    #[test]
+    fn island_i1_world_identity_genesis_phase_serde_and_bincode_roundtrip() {
+        use crate::core::island::GenesisPhase;
+
+        fn assert_copy<T: Copy>() {}
+        assert_copy::<WorldIdentity>();
+
+        let mut base = tiny_artifact().identity();
+        assert_eq!(base.genesis_phase, None);
+        let base_json = serde_json::to_string(&base).expect("serialize base identity");
+        assert!(
+            !base_json.contains("genesis_phase"),
+            "genesis_phase: None must be omitted from JSON: {base_json}"
+        );
+
+        // Bincode roundtrip works even when both optional fields are None.
+        let bin_none =
+            bincode::serde::encode_to_vec(base, bincode::config::standard()).expect("bincode none");
+        let (dec_none, _): (WorldIdentity, usize) =
+            bincode::serde::decode_from_slice(&bin_none, bincode::config::standard())
+                .expect("bincode decode none");
+        assert_eq!(dec_none, base);
+
+        for phase in [GenesisPhase::G1, GenesisPhase::G2, GenesisPhase::G3] {
+            base.genesis_phase = Some(phase);
+            let json = serde_json::to_string(&base).expect("serialize phased identity");
+            assert!(json.contains("genesis_phase"));
+            let back: WorldIdentity = serde_json::from_str(&json).expect("deserialize phase");
+            assert_eq!(back, base);
+
+            let bin = bincode::serde::encode_to_vec(base, bincode::config::standard())
+                .expect("bincode phase");
+            let (dec, _): (WorldIdentity, usize) =
+                bincode::serde::decode_from_slice(&bin, bincode::config::standard())
+                    .expect("bincode decode phase");
+            assert_eq!(dec, base);
+        }
+
+        let mut other = base;
+        other.genesis_phase = Some(GenesisPhase::G1);
+        let reason = base
+            .mismatch_against(&other)
+            .expect("distinct genesis_phase must trigger mismatch");
+        assert!(reason.contains("genesis_phase"));
     }
 
     #[test]

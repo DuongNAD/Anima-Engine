@@ -132,7 +132,12 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             (
                 crate::core::simulation_lod::sync_lod_focus_system,
                 crate::core::observer::record_observer_trace_system,
-                crate::core::observer::drain_observer_actions_system,
+                (
+                    crate::core::observer::drain_observer_actions_system,
+                    crate::core::island::drain_guest_intents_system,
+                    crate::core::island::inhabit::apply_island_inhabit_system,
+                )
+                    .chain(),
                 crate::core::live_experiment::apply_live_interventions_system,
                 sensory_system,
                 crate::core::live_experiment::live_inference_pump_system,
@@ -193,6 +198,7 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
                 crate::core::tick_capture::capture_checkpoint_ecology_system,
                 energy_flux_aggregation_system,
                 sync_evolution_settings_system,
+                crate::core::island::inhabit::reconcile_inhabited_deaths_system,
                 crate::core::world_record::record_world_record_tick_system,
             )
                 .chain(),

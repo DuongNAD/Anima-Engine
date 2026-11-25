@@ -68,6 +68,8 @@ fn sample_header(seed: u64, segment_ticks: u64) -> WorldRecordHeader {
             width: 16,
             height: 16,
             checksum: 0xDEAD_BEEF,
+            sim_world_sha256: None,
+            genesis_phase: None,
         },
         world_artifact_sha256: None,
         model_version: "1".to_string(),
@@ -81,6 +83,7 @@ fn sample_header(seed: u64, segment_ticks: u64) -> WorldRecordHeader {
         era_index: 0,
         prev_era_tail_hash: None,
         omissions: vec![],
+        island: None,
     }
 }
 

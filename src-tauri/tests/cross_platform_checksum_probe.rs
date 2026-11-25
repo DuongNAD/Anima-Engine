@@ -136,6 +136,7 @@ fn reference_manifest(seed: u64, ticks: u64) -> ExperimentManifest {
         // exotic law, which the baseline manifest does not declare.
         observable_ids: vec!["plants".into(), "herbivores".into(), "predators".into()],
         exotic_interventions: Vec::new(),
+        island: None,
     }
 }
 

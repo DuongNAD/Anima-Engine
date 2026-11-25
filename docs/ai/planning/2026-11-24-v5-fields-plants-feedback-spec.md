@@ -89,13 +89,13 @@ Add `step_regrowth_coupled_strided` on `ResourceField` (`src-tauri/src/core/ecol
 
 ## 3. Open Owner Decisions (`D-V5-1`–`D-V5-3`)
 
-- **`D-V5-1` (Multi-factor plant growth limitation rule, `M4.2` / `S22`):**
+- **`D-V5-1` (Multi-factor plant growth limitation rule, `M4.2` / `S22`):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (Liebig's Law of the Minimum).
   - **Option A (Recommended):** **Liebig's Law of the Minimum** (`limiting = min(f_water, f_nutrient) * f_temp * f_light`), directly identifying and attributing *which single factor* (`"water"`, `"nitrogen"`, `"temperature"`, or `"light"`) limited cell NPP for causal explainability (`M4.2` "explainable limiting factor").
   - **Option B:** Full multiplicative combination (`f_water * f_nutrient * f_temp * f_light`). Smoother curve, harder single-factor attribution.
-- **`D-V5-2` (Downstream hydrologic transport of turbidity and leached nitrogen):**
+- **`D-V5-2` (Downstream hydrologic transport of turbidity and leached nitrogen):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (pre-allocated `transport_scratch` downstream advection).
   - **Option A (Recommended):** Add one pre-allocated `transport_scratch: Vec<f32>` pass along `DynamicFields::downstream[i]` inside `step_erosion` / `step_soil` so headwaters deforestation turbidity and upslope excess leached nitrogen visibly advect into downstream river/lake cells (using strictly measured `moved = before - after` transfers so conservation holds!).
   - **Option B:** Keep `erosion`/`turbidity` and `soil_nitrogen` strictly cell-local (`V1` `step_erosion` & `step_soil` equations unchanged). Simpler, but lake cells only eutrophy if fertilizer lands directly inside or adjacent to lake cells.
-- **`D-V5-3` (Drought plant wilt feedback vs growth-pause only):**
+- **`D-V5-3` (Drought plant wilt feedback vs growth-pause only):** — **DECIDED (2026-11-24, QD-OPENQ): Option A** (drought dieback below `WILTING_MOISTURE` conserving EU).
   - **Option A (Recommended):** Above wilting point only growth slows/stops; below `WILTING_MOISTURE`, standing grass `ResourceField.r[i]` suffers mild drought dieback (`wilt_rate * delta_moisture`), transferring exact measured `f64` biomass `plants -> pool.detritus` (and optionally `CARCASS_EU_TO_ORGANIC_NM` litter back into `soil_organic` tracked in `cum_nutrient_added`). Ensures severe 30-day drought visibly thins dense preexisting grassland rather than merely freezing regrowth if no herbivores are nearby.
   - **Option B:** Regrowth pauses cleanly (`f_water = 0.0`) without non-grazing plant dieback.
 

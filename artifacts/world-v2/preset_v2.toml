@@ -1,0 +1,12 @@
+seed = 0x57563201
+schema_tag = "ANMW3-SNSM-v1"
+grid_size = 4096
+extent_m = 40960.0
+elev_min_m = -1500.0
+elev_max_m = 5700.0
+target_ocean_fraction = 0.45
+massif_uplift_amplitude = 1200.0
+volcano_relief_m = 3100.0
+caprock_min_m = 450.0
+caprock_max_m = 1100.0
+max_erodibility_contrast = 8.0

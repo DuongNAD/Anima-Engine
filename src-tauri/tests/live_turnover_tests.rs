@@ -71,6 +71,7 @@ fn manifest(initial: InitialConditionSet, ticks: u64) -> ExperimentManifest {
         observable_ids: LIVE_OBSERVABLE_IDS.iter().map(|s| s.to_string()).collect(),
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

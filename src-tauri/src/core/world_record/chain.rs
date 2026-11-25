@@ -12,9 +12,9 @@ use crate::core::sha256::sha256;
 
 use super::encoding::canonical_encode;
 use super::types::{
-    InputKind, SegmentBody, SegmentHash, SignedSegment, VerificationReport, WorldEvent,
-    WorldRecord, WorldRecordError, WorldRecordHeader, GENESIS_HASH, WORLD_RECORD_FORMAT,
-    WORLD_RECORD_SCHEMA_VERSION,
+    GuestIntentBoundary, InputKind, SegmentBody, SegmentHash, SignedSegment, VerificationReport,
+    WorldEvent, WorldRecord, WorldRecordError, WorldRecordHeader, GENESIS_HASH,
+    WORLD_RECORD_FORMAT, WORLD_RECORD_SCHEMA_VERSION,
 };
 
 const DOMAIN_HEADER: &[u8] = b"anima.world_record.header.v1\0";
@@ -129,6 +129,53 @@ fn validate_input_floats(idx: usize, kind: &InputKind) -> Result<(), WorldRecord
             )?;
         }
         InputKind::ObserverAction(_) | InputKind::ChronicleNote { .. } => {}
+        InputKind::GuestIntent(rec) => match &rec.boundary {
+            GuestIntentBoundary::Control(ctrl) => {
+                check_f32(ctrl.move_dir_x, &format!("body.inputs[{idx}].move_dir_x"))?;
+                check_f32(ctrl.move_dir_z, &format!("body.inputs[{idx}].move_dir_z"))?;
+                check_f32(
+                    ctrl.speed_fraction,
+                    &format!("body.inputs[{idx}].speed_fraction"),
+                )?;
+                check_f32(
+                    ctrl.pheromone_emit,
+                    &format!("body.inputs[{idx}].pheromone_emit"),
+                )?;
+            }
+            GuestIntentBoundary::PlantControl(ctrl) => {
+                check_f32(ctrl.root_share, &format!("body.inputs[{idx}].root_share"))?;
+                check_f32(
+                    ctrl.canopy_share,
+                    &format!("body.inputs[{idx}].canopy_share"),
+                )?;
+                check_f32(
+                    ctrl.defence_share,
+                    &format!("body.inputs[{idx}].defence_share"),
+                )?;
+                check_f32(
+                    ctrl.reproduction_share,
+                    &format!("body.inputs[{idx}].reproduction_share"),
+                )?;
+                check_f32(
+                    ctrl.seed_size_bias,
+                    &format!("body.inputs[{idx}].seed_size_bias"),
+                )?;
+            }
+            GuestIntentBoundary::Death {
+                death_x,
+                death_y,
+                death_z,
+                ..
+            } => {
+                check_f32(*death_x, &format!("body.inputs[{idx}].death_x"))?;
+                check_f32(*death_y, &format!("body.inputs[{idx}].death_y"))?;
+                check_f32(*death_z, &format!("body.inputs[{idx}].death_z"))?;
+            }
+            GuestIntentBoundary::Claim { .. }
+            | GuestIntentBoundary::Release
+            | GuestIntentBoundary::DisconnectRelease
+            | GuestIntentBoundary::Kick => {}
+        },
     }
     Ok(())
 }
@@ -191,6 +238,43 @@ pub fn validate_header(header: &WorldRecordHeader) -> Result<(), WorldRecordErro
         return Err(WorldRecordError::InvalidEraLink {
             era_index: header.era_index,
         });
+    }
+    if let Some(ref island) = header.island {
+        if !island.island_id.is_valid() {
+            return Err(WorldRecordError::InvalidIslandHeader(
+                "island_id must be non-zero".into(),
+            ));
+        }
+        let expected_label = island.genesis_phase.display_label();
+        if island.genesis_label != expected_label {
+            return Err(WorldRecordError::InvalidIslandHeader(format!(
+                "genesis_label '{}' does not match genesis_phase {} ('{expected_label}')",
+                island.genesis_label, island.genesis_phase
+            )));
+        }
+        for session in &island.guest_sessions {
+            if !session.guest_id.is_valid() {
+                return Err(WorldRecordError::InvalidIslandHeader(
+                    "guest_sessions contains zero GuestId".into(),
+                ));
+            }
+            if !crate::core::causal::is_island_guest_cause(session.cause_id) {
+                return Err(WorldRecordError::InvalidIslandHeader(format!(
+                    "guest {} cause_id {} lies outside reserved island guest band",
+                    session.guest_id.raw(),
+                    session.cause_id
+                )));
+            }
+            if let Some(leave) = session.leave_tick {
+                if leave < session.join_tick {
+                    return Err(WorldRecordError::InvalidIslandHeader(format!(
+                        "guest {} leave_tick ({leave}) precedes join_tick ({})",
+                        session.guest_id.raw(),
+                        session.join_tick
+                    )));
+                }
+            }
+        }
     }
     validate_header_floats(header)?;
     let _ = canonical_encode(header)?;

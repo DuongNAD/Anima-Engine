@@ -342,6 +342,11 @@ pub enum RingEntry {
         title: InlineStr<INLINE_TEXT_LEN>,
         description: InlineStr<INLINE_TEXT_LEN>,
     },
+    InputGuestIntent {
+        tick: u64,
+        cause_id: CauseId,
+        intent: super::types::RecordedGuestIntent,
+    },
     EventBirth {
         tick: u64,
         agent_id: InlineStr<INLINE_ID_LEN>,
@@ -412,6 +417,11 @@ impl RingEntry {
                 event_type: InlineStr::from_str_truncating(event_type),
                 title: InlineStr::from_str_truncating(title),
                 description: InlineStr::from_str_truncating(description),
+            },
+            InputKind::GuestIntent(intent) => Self::InputGuestIntent {
+                tick: input.tick,
+                cause_id: input.cause_id,
+                intent: *intent,
             },
         }
     }
@@ -524,6 +534,15 @@ impl RingEntry {
                     title: title.to_owned_string(),
                     description: description.to_owned_string(),
                 },
+            }),
+            Self::InputGuestIntent {
+                tick,
+                cause_id,
+                intent,
+            } => Some(RecordedInput {
+                tick,
+                cause_id,
+                kind: InputKind::GuestIntent(intent),
             }),
             _ => None,
         }

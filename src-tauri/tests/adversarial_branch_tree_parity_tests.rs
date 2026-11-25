@@ -37,6 +37,7 @@ fn standard_base_manifest(duration_ticks: u64) -> ExperimentManifest {
             height: 128,
             checksum: 0xCAFE_BABE,
             sim_world_sha256: None,
+            genesis_phase: None,
         },
         laws: WorldLawSet::baseline(),
         initial_conditions: InitialConditionSet::new(vec![
@@ -58,6 +59,7 @@ fn standard_base_manifest(duration_ticks: u64) -> ExperimentManifest {
             "detritus".into(),
         ],
         exotic_interventions: Vec::new(),
+        island: None,
     }
 }
 

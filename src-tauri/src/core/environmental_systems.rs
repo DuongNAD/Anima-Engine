@@ -400,25 +400,27 @@ pub fn demographic_census_system(
         With<crate::core::components::Agent>,
     >,
     tracker: Option<Res<crate::core::telemetry_export::DemographicTracker>>,
-    mut census_resource: Option<ResMut<crate::core::telemetry_export::DemographicCensusState>>,
+    census_resource: Option<ResMut<crate::core::telemetry_export::DemographicCensusState>>,
 ) {
-    let mut agent_data = Vec::new();
-    for (eval, opt_pred, _opt_prey, opt_sex, homeo) in agent_query.iter() {
-        if homeo.energy > 0.0 {
+    let Some(mut res) = census_resource else {
+        return;
+    };
+    let agents = agent_query
+        .iter()
+        .filter(|(_, _, _, _, homeo)| homeo.energy > 0.0)
+        .map(|(eval, opt_pred, _opt_prey, opt_sex, _)| {
             let agent_type = if opt_pred.is_some() {
                 Some(crate::core::ecs::AgentType::Predator)
             } else {
                 Some(crate::core::ecs::AgentType::Prey)
             };
-            agent_data.push((eval.survival_ticks, agent_type, opt_sex.copied()));
-        }
-    }
-
-    let census =
-        crate::core::telemetry_export::build_demographic_census(&agent_data, tracker.as_deref());
-    if let Some(ref mut res) = census_resource {
-        **res = census;
-    }
+            (eval.survival_ticks, agent_type, opt_sex.copied())
+        });
+    crate::core::telemetry_export::update_demographic_census_from_iter(
+        &mut res,
+        agents,
+        tracker.as_deref(),
+    );
 }
 
 /// Directed energy flux aggregation system:

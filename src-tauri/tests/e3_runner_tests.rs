@@ -111,6 +111,7 @@ fn synthetic_manifest(
         observable_ids: all_obs,
         exotic_interventions: Vec::new(),
         observer: Default::default(),
+        island: None,
     }
 }
 

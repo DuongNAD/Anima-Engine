@@ -33,6 +33,9 @@ impl FactorDiff {
         if control.observer != treatment.observer {
             paths.push("observer".to_string());
         }
+        if control.island != treatment.island {
+            paths.push("island".to_string());
+        }
         if control.world_identity != treatment.world_identity {
             paths.push("world_identity".to_string());
         }

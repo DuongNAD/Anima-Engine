@@ -18,6 +18,7 @@ pub mod exotic_energy;
 pub mod experiment;
 pub mod experiment_runner;
 pub mod intervention;
+pub mod island;
 pub mod live_experiment;
 pub mod live_lineage;
 pub mod locomotion;
