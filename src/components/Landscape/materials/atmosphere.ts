@@ -421,8 +421,8 @@ float sea=smoothstep(0.45,0.8,region)*(0.12+0.26*street);
 return clamp(sea+land*0.5+uAtmoCloudCover,0.0,0.8);
 }
 float atmoCloudRegion(vec2 pM){
-vec2 q=pM-uAtmoWind*uAtmoTime;
-return texture2D(uAtmoCloudTex,q/97000.0+0.53).a*0.7+texture2D(uAtmoCloudTex,q/21000.0+0.17).b*0.3;
+vec4 r=texture2D(uAtmoCloudTex,(pM-uAtmoWind*uAtmoTime)/97000.0+0.53);
+return r.a*0.7+r.b*0.3;
 }
 ` +
   // Local cloud top as a fraction of the slab (0 = clear sky) for cloudiness C. Noise in

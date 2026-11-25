@@ -137,6 +137,7 @@ varying float vHaze;
 varying vec3 vHazeC;
 ${ATMOSPHERE_FRAGMENT_PARS}
 void main(){
+if(dot(vUv,vUv)>=1.0)discard;
 vec3 cr=vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0]);
 vec3 cu=vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1]);
 vec3 cb=vec3(viewMatrix[0][2],viewMatrix[1][2],viewMatrix[2][2]);
@@ -152,8 +153,9 @@ lb[0]=vec3(0.0,0.12,0.6);
 lb[1]=vec3(0.42*cos(an),0.23*sin(an)-0.08,0.45);
 lb[2]=vec3(0.42*cos(an+2.4),0.23*sin(an+2.4)-0.08,0.42);
 lb[3]=vec3(0.4*cos(an+4.3),0.2*sin(an+4.3)-0.1,0.4);
-float n2=texture2D(uAtmoCloudTex,vUv*1.1+vSeed*1.9).g;
-float wob=0.82+0.3*texture2D(uAtmoCloudTex,vUv*0.45+vSeed*3.7).r+0.12*n2;
+vec4 nz=texture2D(uAtmoCloudTex,vUv*0.6+vSeed*3.7);
+float n2=nz.g;
+float wob=0.82+0.3*nz.r+0.12*n2;
 ` +
   // Smooth union of the lobes (soft minimum), normal blended with the same weights: no seams.
   `float ws=0.0;
