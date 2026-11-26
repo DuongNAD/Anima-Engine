@@ -18,6 +18,19 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Regional macro-layout mode for World v2 tectonic generation (`WV2-BIG-1`).
+///
+/// [`WorldLayout::SingleMassif`] preserves trunk `40.96 km` generation bit-for-bit;
+/// [`WorldLayout::MultiEnvironment`] activates the opt-in metre-based `81.92 km`
+/// multi-environment layout (`E1..E9`, `§4b` coastal plain setbacks).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorldLayout {
+    #[default]
+    SingleMassif,
+    MultiEnvironment,
+}
+
 /// Top-level configuration for World v2 regional terrain generation (`LD-1` / `LD-5`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldV2Config {
@@ -25,6 +38,9 @@ pub struct WorldV2Config {
     pub seed: u64,
     /// Schema/preset tag hashed into PRNG domain separation.
     pub schema_tag: String,
+    /// Regional tectonic layout mode (default: `single_massif`, bit-identical to trunk).
+    #[serde(default)]
+    pub layout: WorldLayout,
     /// Grid resolution per side (`width == height`). Minimum supported is `64`.
     pub grid_size: u32,
     /// Physical square domain extent in metres (`40,960.0` default).
@@ -113,6 +129,7 @@ impl Default for WorldV2Config {
         Self {
             seed: 0x0057_5632_2026_1120,
             schema_tag: "ANMW3-SNSM-v1".to_owned(),
+            layout: WorldLayout::default(),
             grid_size: 4096,
             extent_m: WORLD_EXTENT_M,
             elev_min_m: ELEV_MIN_M,
@@ -226,5 +243,29 @@ impl WorldV2Config {
             return Err(err("talus_substeps must lie within [1, 64]"));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorldLayout, WorldV2Config};
+
+    #[test]
+    fn default_layout_is_single_massif_and_legacy_toml_defaults_to_it() {
+        assert_eq!(WorldV2Config::default().layout, WorldLayout::SingleMassif);
+        let legacy_toml = include_str!("../../../../artifacts/world-v2/preset_v2.toml");
+        let parsed: WorldV2Config = toml::from_str(legacy_toml).expect("parse legacy preset");
+        assert_eq!(parsed.layout, WorldLayout::SingleMassif);
+        assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn wv2_big_81920_preset_toml_parses_and_validates() {
+        let big_toml = include_str!("../presets/wv2_big_81920.toml");
+        let parsed: WorldV2Config = toml::from_str(big_toml).expect("parse wv2_big_81920.toml");
+        assert_eq!(parsed.layout, WorldLayout::MultiEnvironment);
+        assert!((parsed.extent_m - 81_920.0).abs() < 1e-3);
+        assert_eq!(parsed.grid_size, 4096);
+        assert!(parsed.validate().is_ok());
     }
 }

@@ -355,6 +355,7 @@ pub fn classify_biomes(
     let coast_dist_u16 =
         compute_coast_distance_u16(input.total_h_m, input.water_kind, w, h, cfg.sea_level_m);
     let coast_scale = cfg.dx_m / 3.0;
+    let large_world = (w.max(h) as f32) * cfg.dx_m >= 60_000.0;
     let glacier_hard_floor_m = cfg.ela_base_m - cfg.glacier_floor_offset_m;
 
     let wind_len = libm::hypotf(cfg.wind_dir.0, cfg.wind_dir.1).max(1e-5);
@@ -575,7 +576,13 @@ pub fn classify_biomes(
                         + input.moisture[r * w + c_lt]
                         + input.moisture[r * w + c_rt])
                         / 6.0;
-                    let moist_w = (moist_soft + warp_scale * 0.09 * n3).clamp(0.0, 1.0);
+                    let dx_moist_boost = if large_world {
+                        0.025 * libm::log2f((80.0_f32 / cfg.dx_m).max(1.0))
+                    } else {
+                        0.0_f32
+                    };
+                    let moist_w =
+                        (moist_soft + dx_moist_boost + warp_scale * 0.09 * n3).clamp(0.0, 1.0);
                     let twi_soft = (2.0 * twi_v
                         + input.twi[r_up * w + c]
                         + input.twi[r_dn * w + c]
@@ -630,30 +637,53 @@ pub fn classify_biomes(
                             }
                         }
 
-                        // 1. Coastal Beach (<= 80 m from sea, gentle slope <= 20 deg) or salt flat.
-                        if (coast_d_m <= 80.0 && (0.0..=28.0).contains(&h_m) && slope_deg <= 20.0)
+                        // 1. Coastal Beach (<= 80 m from sea, <= 120 m on low-alluvium large-world strands) or salt flat.
+                        let beach_max_d = if large_world && alluv < 0.25 {
+                            120.0_f32
+                        } else {
+                            80.0_f32
+                        };
+                        if (coast_d_m <= beach_max_d
+                            && (0.0..=28.0).contains(&h_m)
+                            && slope_deg <= 20.0)
                             || (near_endo && slope_deg <= 18.0)
                         {
                             let d_gate = if near_endo {
                                 1.0
                             } else {
-                                smoothstep_c2(80.0, 10.0, coast_d_m)
+                                smoothstep_c2(beach_max_d, 10.0, coast_d_m)
                                     * smoothstep_c2(28.0, 3.0, h_m)
                                     * smoothstep_c2(20.0, 6.0, slope_deg)
                             };
+                            let strand_gain = if large_world { 2.15_f32 } else { 1.45_f32 };
+                            let strand_d_max = if large_world { 140.0_f32 } else { 100.0_f32 };
                             let strand_bonus = if near_endo {
                                 0.0
                             } else {
-                                1.45 * smoothstep_c2(100.0, 20.0, coast_d_m)
+                                strand_gain
+                                    * smoothstep_c2(strand_d_max, 20.0, coast_d_m)
                                     * smoothstep_c2(10.0, 2.0, h_m)
                                     * smoothstep_c2(0.30, 0.08, alluv)
                             };
                             ll[BiomeId::Beach as usize] = 3.2 + strand_bonus + gate_ll(d_gate);
                         }
 
-                        // 2. Mangrove (warm, wet, calm coast/delta <= 640 m, h <= 36 m, slope <= 20 deg).
-                        if coast_d_m <= 640.0 && h_m <= 36.0 && slope_deg <= 20.0 && moist >= 0.32 {
-                            let mg = smoothstep_c2(640.0, 80.0, coast_d_m)
+                        // 2. Mangrove (warm, wet, calm coast/delta <= 640 m, expanded on large 82 km alluvial deltas).
+                        let mg_coast_max = if large_world
+                            && alluv_soft >= 0.25
+                            && h_m <= 24.0
+                            && slope_deg <= 12.0
+                        {
+                            1_400.0_f32
+                        } else {
+                            640.0_f32
+                        };
+                        if coast_d_m <= mg_coast_max
+                            && h_m <= 36.0
+                            && slope_deg <= 20.0
+                            && moist >= 0.32
+                        {
+                            let mg = smoothstep_c2(mg_coast_max, 80.0, coast_d_m)
                                 * smoothstep_c2(36.0, 4.0, h_soft_m)
                                 * smoothstep_c2(20.0, 5.0, slope_soft_deg)
                                 * smoothstep_c2(0.32, 0.48, moist_soft)
@@ -665,39 +695,72 @@ pub fn classify_biomes(
 
                         // 3. Swamp (lowland wetland/floodplain: high moisture or convergent TWI/alluvial hollows).
                         if h_w <= 580.0 {
-                            let twi_boost = smoothstep_c2(5.5, 13.0, twi_eff);
-                            let wet_g = smoothstep_c2(0.32, 0.56, moist_w);
-                            let wet_pen = 2.0 * smoothstep_c2(0.58, 0.32, moist_w);
-                            let elev_pen = 3.2 * smoothstep_c2(100.0, 560.0, h_w);
-                            let slope_pen = 1.8 * smoothstep_c2(4.0, 30.0, slope_soft_deg);
-                            ll[BiomeId::Swamp as usize] =
-                                3.15 + 0.55 * twi_boost + 0.50 * alluv_soft
-                                    - wet_pen
-                                    - elev_pen
-                                    - slope_pen
-                                    + gate_ll(wet_g);
+                            if large_world {
+                                let twi_boost = smoothstep_c2(8.6, 13.0, twi_eff);
+                                let wet_g = smoothstep_c2(0.32, 0.56, moist_w);
+                                let wet_pen = 2.0 * smoothstep_c2(0.58, 0.32, moist_w);
+                                let elev_pen = 3.4 * smoothstep_c2(35.0, 240.0, h_w);
+                                let slope_pen = 1.8 * smoothstep_c2(4.0, 30.0, slope_soft_deg);
+                                ll[BiomeId::Swamp as usize] =
+                                    2.18 + 1.55 * twi_boost + 0.70 * alluv_soft
+                                        - wet_pen
+                                        - elev_pen
+                                        - slope_pen
+                                        + gate_ll(wet_g);
+                            } else {
+                                let twi_boost = smoothstep_c2(5.5, 13.0, twi_eff);
+                                let wet_g = smoothstep_c2(0.32, 0.56, moist_w);
+                                let wet_pen = 2.0 * smoothstep_c2(0.58, 0.32, moist_w);
+                                let elev_pen = 3.2 * smoothstep_c2(100.0, 560.0, h_w);
+                                let slope_pen = 1.8 * smoothstep_c2(4.0, 30.0, slope_soft_deg);
+                                ll[BiomeId::Swamp as usize] =
+                                    3.15 + 0.55 * twi_boost + 0.50 * alluv_soft
+                                        - wet_pen
+                                        - elev_pen
+                                        - slope_pen
+                                        + gate_ll(wet_g);
+                            }
                         }
 
                         // 4. Jungle (humid windward lowland/foothill rainforest).
-                        let j_gate =
-                            smoothstep_c2(1_150.0, 600.0, h_w) * smoothstep_c2(0.46, 0.68, moist_w);
-                        let j_slope_pen = 1.8 * smoothstep_c2(22.0, 44.0, slope_soft_deg);
-                        ll[BiomeId::Jungle as usize] = 3.15
-                            + gauss_ll(t_w, 25.0, 4.5)
-                            + gauss_ll(p_w, 2.8, 0.9)
-                            + gauss_ll(moist_w, 0.76, 0.16)
-                            - j_slope_pen
-                            + gate_ll(j_gate);
+                        if large_world {
+                            let j_gate = smoothstep_c2(1_150.0, 580.0, h_w)
+                                * smoothstep_c2(0.42, 0.62, moist_w);
+                            let j_slope_pen = 1.8 * smoothstep_c2(22.0, 44.0, slope_soft_deg);
+                            ll[BiomeId::Jungle as usize] = 3.25
+                                + gauss_ll(t_w, 25.0, 4.8)
+                                + gauss_ll(p_w, 2.35, 1.05)
+                                + gauss_ll(moist_w, 0.66, 0.19)
+                                - j_slope_pen
+                                + gate_ll(j_gate);
+                        } else {
+                            let j_gate = smoothstep_c2(1_150.0, 600.0, h_w)
+                                * smoothstep_c2(0.46, 0.68, moist_w);
+                            let j_slope_pen = 1.8 * smoothstep_c2(22.0, 44.0, slope_soft_deg);
+                            ll[BiomeId::Jungle as usize] = 3.15
+                                + gauss_ll(t_w, 25.0, 4.5)
+                                + gauss_ll(p_w, 2.8, 0.9)
+                                + gauss_ll(moist_w, 0.76, 0.16)
+                                - j_slope_pen
+                                + gate_ll(j_gate);
+                        }
 
                         // 5. Grassland (warm/mesic valley & alluvial plains).
                         let gr_gate = smoothstep_c2(1_450.0, 750.0, h_w);
                         let gr_slope_pen = 1.8 * smoothstep_c2(8.0, 30.0, slope_soft_deg);
-                        ll[BiomeId::Grassland as usize] = 3.00
-                            + 0.75 * alluv_soft
-                            + gauss_ll(moist_w, 0.54, 0.125)
-                            + gauss_ll(t_w, 23.0, 5.0)
-                            - gr_slope_pen
-                            + gate_ll(gr_gate);
+                        ll[BiomeId::Grassland as usize] = if large_world {
+                            2.58 + 0.75 * alluv_soft
+                                + gauss_ll(moist_w, 0.52, 0.125)
+                                + gauss_ll(t_w, 23.0, 5.0)
+                                - gr_slope_pen
+                                + gate_ll(gr_gate)
+                        } else {
+                            3.00 + 0.75 * alluv_soft
+                                + gauss_ll(moist_w, 0.54, 0.125)
+                                + gauss_ll(t_w, 23.0, 5.0)
+                                - gr_slope_pen
+                                + gate_ll(gr_gate)
+                        };
 
                         // 6. Desert (driest leeward sandy pocket & thorn scrub).
                         let d_gate = smoothstep_c2(0.72, 0.28, p_w);
@@ -725,38 +788,59 @@ pub fn classify_biomes(
                         // 8. Savanna (warm leeward sub-humid lowlands).
                         let sv_gate = smoothstep_c2(1_250.0, 750.0, h_w);
                         let sv_slope_pen = 2.0 * smoothstep_c2(10.0, 30.0, slope_soft_deg);
-                        ll[BiomeId::Savanna as usize] = 3.15
-                            + gauss_ll(moist_w, 0.34, 0.11)
-                            + gauss_ll(p_w, 0.72, 0.30)
-                            + gauss_ll(t_w, 24.5, 4.5)
-                            - sv_slope_pen
-                            + gate_ll(sv_gate);
+                        ll[BiomeId::Savanna as usize] = if large_world {
+                            2.74 + gauss_ll(moist_w, 0.35, 0.115)
+                                + gauss_ll(p_w, 0.72, 0.31)
+                                + gauss_ll(t_w, 24.5, 4.5)
+                                - sv_slope_pen
+                                + gate_ll(sv_gate)
+                        } else {
+                            3.15 + gauss_ll(moist_w, 0.34, 0.11)
+                                + gauss_ll(p_w, 0.72, 0.30)
+                                + gauss_ll(t_w, 24.5, 4.5)
+                                - sv_slope_pen
+                                + gate_ll(sv_gate)
+                        };
 
                         // 9. Shrubland (transitional dry-to-montane slopes).
                         let sh_gate = smoothstep_c2(2_100.0, 1_300.0, h_w);
-                        ll[BiomeId::Shrubland as usize] = 2.50
+                        let sh_base = if large_world { 2.72_f32 } else { 2.50_f32 };
+                        ll[BiomeId::Shrubland as usize] = sh_base
                             + gauss_ll(moist_w, 0.40, 0.085)
                             + gauss_ll(h_w, 950.0, 500.0)
                             + gauss_ll(slope_soft_deg, 16.0, 11.0)
                             + gate_ll(sh_gate);
 
                         // 10. Forest (montane cloud forest & mid-altitude forest).
-                        let f_gate = smoothstep_c2(420.0, 920.0, h_w)
-                            * smoothstep_c2(2_850.0, 2_350.0, h_w)
-                            * smoothstep_c2(0.28, 0.45, moist_w)
-                            * smoothstep_c2(44.0, 28.0, slope_soft_deg);
-                        ll[BiomeId::Forest as usize] = 4.15
-                            + gauss_ll(h_w, 1_700.0, 480.0)
-                            + gauss_ll(t_w, 16.5, 4.6)
-                            + gauss_ll(moist_w, 0.58, 0.24)
-                            + gate_ll(f_gate);
+                        if large_world {
+                            let f_gate = smoothstep_c2(420.0, 920.0, h_w)
+                                * smoothstep_c2(2_850.0, 2_350.0, h_w)
+                                * smoothstep_c2(0.24, 0.42, moist_w)
+                                * smoothstep_c2(48.0, 26.0, slope_soft_deg);
+                            ll[BiomeId::Forest as usize] = 4.22
+                                + gauss_ll(h_w, 1_650.0, 520.0)
+                                + gauss_ll(t_w, 16.5, 4.8)
+                                + gauss_ll(moist_w, 0.55, 0.26)
+                                + gate_ll(f_gate);
+                        } else {
+                            let f_gate = smoothstep_c2(420.0, 920.0, h_w)
+                                * smoothstep_c2(2_850.0, 2_350.0, h_w)
+                                * smoothstep_c2(0.28, 0.45, moist_w)
+                                * smoothstep_c2(44.0, 28.0, slope_soft_deg);
+                            ll[BiomeId::Forest as usize] = 4.15
+                                + gauss_ll(h_w, 1_700.0, 480.0)
+                                + gauss_ll(t_w, 16.5, 4.6)
+                                + gauss_ll(moist_w, 0.58, 0.24)
+                                + gate_ll(f_gate);
+                        }
 
                         // 11. Taiga (upper-montane / sub-páramo elfin & conifer proxy).
                         let tg_gate = smoothstep_c2(1_900.0, 2_300.0, h_w)
                             * smoothstep_c2(3_650.0, 3_250.0, h_w)
                             * smoothstep_c2(0.18, 0.34, moist_w)
                             * smoothstep_c2(48.0, 30.0, slope_soft_deg);
-                        ll[BiomeId::Taiga as usize] = 4.30
+                        let tg_base = if large_world { 4.95_f32 } else { 4.30_f32 };
+                        ll[BiomeId::Taiga as usize] = tg_base
                             + gauss_ll(h_w, 2_750.0, 430.0)
                             + gauss_ll(t_w, 9.5, 4.5)
                             + gauss_ll(moist_w, 0.50, 0.30)
@@ -766,7 +850,8 @@ pub fn classify_biomes(
                         let al_gate = smoothstep_c2(3_000.0, 3_360.0, h_w)
                             * smoothstep_c2(4_400.0, 3_950.0, h_w)
                             * smoothstep_c2(42.0, 22.0, slope_soft_deg);
-                        ll[BiomeId::Alpine as usize] = 3.70
+                        let al_base = if large_world { 4.15_f32 } else { 3.70_f32 };
+                        ll[BiomeId::Alpine as usize] = al_base
                             + gauss_ll(h_w, 3_680.0, 320.0)
                             + gauss_ll(t_w, 4.2, 3.0)
                             + gate_ll(al_gate);
@@ -776,7 +861,8 @@ pub fn classify_biomes(
                             * smoothstep_c2(4_800.0, 4_450.0, h_w)
                             * smoothstep_c2(36.0, 22.0, slope_soft_deg)
                             * smoothstep_c2(0.24, 0.36, moist_w);
-                        ll[BiomeId::Bog as usize] = 4.52
+                        let bg_base = if large_world { 4.05 } else { 4.52 };
+                        ll[BiomeId::Bog as usize] = bg_base
                             + 1.35 * smoothstep_c2(3.6, 6.6, twi_eff)
                             + 0.70 * smoothstep_c2(0.30, 0.50, moist_w)
                             + gate_ll(bg_gate);
@@ -790,7 +876,12 @@ pub fn classify_biomes(
                             + gate_ll(tu_gate);
 
                         // 15. Rock (steep cliffs >= 36 deg, sloped talus aprons, exposed sub-nival scree).
-                        let cliff = smoothstep_c2(36.0, 50.0, slope_soft_deg);
+                        let (cliff_lo, cliff_hi, rock_gain) = if large_world {
+                            (26.0_f32, 42.0_f32, 4.6_f32)
+                        } else {
+                            (36.0_f32, 50.0_f32, 3.6_f32)
+                        };
+                        let cliff = smoothstep_c2(cliff_lo, cliff_hi, slope_soft_deg);
                         let scree = smoothstep_c2(4_250.0, 4_700.0, h_soft_m)
                             * smoothstep_c2(14.0, 28.0, slope_soft_deg);
                         let high_talus = smoothstep_c2(0.60, 0.98, talus_soft)
@@ -798,7 +889,7 @@ pub fn classify_biomes(
                             * (1.0 - alluv_soft);
                         let bare_rock = cliff.max(scree).max(high_talus * 0.45);
                         ll[BiomeId::Rock as usize] =
-                            -0.8 + 3.6 * bare_rock + 0.25 * (1.0 - sed.min(1.0));
+                            -0.8 + rock_gain * bare_rock + 0.25 * (1.0 - sed.min(1.0));
                     }
 
                     // Softmax over log-likelihoods -> exact [f32; BIOME_COUNT] probabilities.
@@ -812,6 +903,11 @@ pub fn classify_biomes(
                         }
                     }
 
+                    let eff_sharpness = if large_world {
+                        cfg.softmax_sharpness * 1.32
+                    } else {
+                        cfg.softmax_sharpness
+                    };
                     let mut probs = [0.0_f32; BIOME_COUNT];
                     if max_ll.is_finite() {
                         let mut p_sum = 0.0_f32;
@@ -822,7 +918,7 @@ pub fn classify_biomes(
                             {
                                 continue;
                             }
-                            let p = libm::expf(cfg.softmax_sharpness * (ll[b_i] - max_ll));
+                            let p = libm::expf(eff_sharpness * (ll[b_i] - max_ll));
                             probs[b_i] = p;
                             p_sum += p;
                         }
