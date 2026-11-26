@@ -597,9 +597,10 @@ QD-FOCUS  = release 0.9 and get one scientific result before the living world gr
             - A REPLAY-1 preregistration is drafted, docs only: many seeds forked from one checkpoint, one factor
               changed against a control arm, measuring whether lineages converge or diverge.
             - QD-LAW1 is unchanged. The order of REPLAY-1 and LAW1 is set when both are ready to freeze.
-            - OPEN: the proposal called REPLAY-1 the flagship without checking QD-ISLAND. Whether REPLAY-1
-              replaces QD-ISLAND's flagship question or serves it (by replaying island worlds) is a question for
-              the owner. Until it is answered, QD-ISLAND stands.
+            - REPLAY-1 serves QD-ISLAND (owner in chat, 2026-11-26: "Phục vụ QD-ISLAND"). QD-ISLAND stays the
+              flagship question. REPLAY-1 replays island worlds from one checkpoint, to test whether the island
+              rule's outcome repeats across replays. The lead's proposal had called REPLAY-1 the flagship
+              without checking QD-ISLAND.
             FOCUS-4 (A): the living world reopens after v0.9.0, in this order:
             1. The RNG-stream registry card (LR-RNG-1).
             2. The time-law card: P0 in the gap note, since 1 day = 20 min and 1 year = 90 min.
