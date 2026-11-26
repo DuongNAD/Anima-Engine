@@ -259,6 +259,8 @@ export interface WorldSkyProps {
   look?: boolean;
   /** WV2-LOOK cumulus: candidate puffs per side of the drifting grid (quality tier). */
   cloudGrid?: number;
+  /** WV2-LOOK: width of the cumulus puff tile in scene widths (5 on C01; see `worldScale.ts`). */
+  cloudTileExtents?: number;
 }
 
 interface CloudDescriptor {
@@ -355,6 +357,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   sunTilt = 0,
   look = false,
   cloudGrid = 210,
+  cloudTileExtents = 5,
 }) => {
   const cloudsRef = useRef<THREE.Group>(null);
   const tmpColor = useMemo(() => new THREE.Color(), []);
@@ -365,15 +368,15 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     () => ({ ...atmosphereUniforms, uMoonDir: skyUniforms.uMoonDir, uMoonGlow: skyUniforms.uMoonGlow }),
     [skyUniforms],
   );
-  // The puff tile spans ~5 map extents around the camera (scale-agnostic: extent in metres is
-  // the render size times the metres per unit that `configureAtmosphere` set).
+  // The puff tile spans `cloudTileExtents` map extents around the camera (5 on C01; extent in
+  // metres is the render size times the metres per unit that `configureAtmosphere` set).
   const cloudUniforms = useMemo<Record<string, THREE.IUniform>>(
     () => ({
       ...atmosphereUniforms,
-      uTile: { value: 5 * worldScale * atmosphereUniforms.uAtmoMPerUnit.value },
+      uTile: { value: cloudTileExtents * worldScale * atmosphereUniforms.uAtmoMPerUnit.value },
       uN: { value: cloudGrid },
     }),
-    [worldScale, cloudGrid],
+    [worldScale, cloudGrid, cloudTileExtents],
   );
   const cloudPuffs = useMemo(() => buildCloudPuffGeometry(cloudGrid), [cloudGrid]);
   useEffect(() => () => cloudPuffs.dispose(), [cloudPuffs]);

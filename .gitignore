@@ -89,3 +89,5 @@ $.agents/
 map-prototype/
 .claude/settings.local.json
 /public/world-v2/
+# Prototype (WV2-LOOK): a second staged World v2 pack, picked with ?worldV2Root=world-v2-big.
+/public/world-v2-big/

@@ -5,7 +5,7 @@ import type { EnvironmentalState } from '../../types/generated/EnvironmentalStat
 import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
 import type { TickSource } from './utils/tickRecording';
 import type { World } from './utils/worldGen';
-import { surfaceHeight } from './utils/worldSample';
+import { sampleMeshHeight, surfaceHeight } from './utils/worldSample';
 import { isCaptureRequested } from './utils/captureMode';
 import {
   computeEntityColor,
@@ -30,6 +30,13 @@ export interface LiveEnvironmentProps {
   channel?: SimEnvironmentChannel | null;
   fetchInitialElements?: (() => Promise<EnvironmentalState | null>) | null;
   onCountsChange?: (counts: SimEnvironmentCounts) => void;
+  /**
+   * prototype, to be replaced — WV2-LOOK: skip elements that land on water. The synthetic replay
+   * fixture places its lakes/trees/food around `LAND_ANCHORS`, which are lowland points of the v1
+   * `#161` supercontinent in [-100, 100] sim bounds; scaled onto a World v2 map they fall in the sea
+   * west of the island and floated there. World v2 passes `true`; v1 keeps every element.
+   */
+  landOnly?: boolean;
 }
 
 const INIT_CAP = 256;
@@ -105,6 +112,7 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
   channel,
   fetchInitialElements,
   onCountsChange,
+  landOnly = false,
 }) => {
   const lakesRef = useRef<THREE.InstancedMesh>(null);
   const treesRef = useRef<THREE.InstancedMesh>(null);
@@ -119,7 +127,25 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
     [world, renderSize, heightRatio, meshResolution],
   );
 
+  const isLand = useMemo(
+    () =>
+      landOnly
+        ? (rx: number, rz: number): boolean => {
+            const u = rx / renderSize + 0.5;
+            const v = rz / renderSize + 0.5;
+            if (u < 0 || u > 1 || v < 0 || v > 1) return false;
+            // The drawn ground (what the props stand on), at least ~14 m above the sea.
+            if (sampleMeshHeight(world, u, v, meshResolution) <= world.seaLevel + 0.002) return false;
+            const n = world.size;
+            const i = Math.round(v * (n - 1)) * n + Math.round(u * (n - 1));
+            return !(world.water && world.water[i] > 0);
+          }
+        : null,
+    [landOnly, world, renderSize, meshResolution],
+  );
+
   const groundRef = useRef(sampleGroundY);
+  const landRef = useRef(isLand);
   const sizeRef = useRef(renderSize);
   const onCountsRef = useRef(onCountsChange);
   const rawRef = useRef<EnvironmentalState | null>(null);
@@ -136,7 +162,7 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
     if (fromTick) hasTickRef.current = true;
     rawRef.current = env;
     const mapped = env
-      ? mapSimulationElements(env.elements, sizeRef.current, groundRef.current)
+      ? mapSimulationElements(env.elements, sizeRef.current, groundRef.current, landRef.current)
       : EMPTY_MAPPED;
     mappedRef.current = mapped;
 
@@ -165,12 +191,13 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
   useEffect(() => {
     sizeRef.current = renderSize;
     groundRef.current = sampleGroundY;
+    landRef.current = isLand;
     onCountsRef.current = onCountsChange;
     capRef.current = capacity;
     if (rawRef.current) {
-      mappedRef.current = mapSimulationElements(rawRef.current.elements, renderSize, sampleGroundY);
+      mappedRef.current = mapSimulationElements(rawRef.current.elements, renderSize, sampleGroundY, isLand);
     }
-  }, [renderSize, sampleGroundY, onCountsChange, capacity]);
+  }, [renderSize, sampleGroundY, isLand, onCountsChange, capacity]);
 
   useEffect(() => {
     const hasTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -277,13 +304,14 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
         rawRef.current.elements,
         renderSize,
         sampleGroundY,
+        isLand,
       );
     }
     const m = mappedRef.current;
     writeMesh(lakesRef.current, m.lakes, capacity, scratch);
     writeMesh(treesRef.current, m.trees, capacity, scratch);
     writeMesh(foodRef.current, m.food, capacity, scratch);
-  }, [hasEntities, capacity, rev, renderSize, sampleGroundY, scratch]);
+  }, [hasEntities, capacity, rev, renderSize, sampleGroundY, isLand, scratch]);
 
   if (!hasEntities) return null;
 

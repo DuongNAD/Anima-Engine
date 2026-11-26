@@ -7,6 +7,7 @@ import { sceneElapsed } from './utils/sceneClock';
 import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
 import { ELEV_SPAN_M, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './worldV2/types';
 import { ATMOSPHERE_FRAGMENT_PARS, atmosphereUniforms } from './materials/atmosphere';
+import { edgeThreshold, glslFloat, replaceOnce, worldRenderScale } from './worldV2/worldScale';
 
 export interface WorldWaterProps {
   world: World;
@@ -479,6 +480,27 @@ gl_FragColor=vec4(color,alpha);
 }
 `;
 
+/**
+ * WV2-LOOK r8: the water shader for a world whose map-edge bands are `edgeScale` times C01's as a
+ * fraction of the map (`worldRenderScale().edgeScale`), so the sunk-coast band and the deep-water
+ * rim stay the same distance in metres from the border. `edgeScale === 1` is the C01 source as is.
+ */
+function waterFragmentFor(edgeScale: number): string {
+  if (edgeScale === 1) return fragmentShader;
+  const t = (v: number) => glslFloat(edgeThreshold(v, edgeScale));
+  let src = fragmentShader;
+  src = replaceOnce(src, 'if(boxN>0.78){', `if(boxN>${t(0.78)}){`);
+  src = replaceOnce(
+    src,
+    'nEdge2=(noise(vWorldPos.xz*0.004)-0.5)*0.10+(noise(vWorldPos.xz*0.017)-0.5)*0.05;',
+    `nEdge2=(noise(vWorldPos.xz*0.004)-0.5)*${glslFloat(0.1 * edgeScale)}+(noise(vWorldPos.xz*0.017)-0.5)*${glslFloat(0.05 * edgeScale)};`,
+  );
+  src = replaceOnce(src, 'smoothstep(0.86,1.02,boxN+nEdge2)', `smoothstep(${t(0.86)},${t(1.02)},boxN+nEdge2)`);
+  src = replaceOnce(src, 'smoothstep(0.86,0.93,boxN)', `smoothstep(${t(0.86)},${t(0.93)},boxN)`);
+  src = replaceOnce(src, 'smoothstep(1.0,1.8,boxN)', `smoothstep(1.0,${glslFloat(1 + 0.8 * edgeScale)},boxN)`);
+  return src;
+}
+
 /** The parts of the water uniforms that come from the world and the frame, not the palette. */
 interface WaterUniformInputs {
   heightTex: THREE.Texture;
@@ -549,6 +571,10 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   sunDir = [1, 1.5, 0.6],
 }) => {
   const oceanMat = useRef<THREE.ShaderMaterial>(null);
+  const waterFragment = useMemo(
+    () => waterFragmentFor(worldRenderScale(worldV2?.extentM).edgeScale),
+    [worldV2],
+  );
 
   const heightUnits = renderSize * heightRatio;
   const seaY = world.seaLevel * heightUnits;
@@ -655,13 +681,13 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     () =>
       new THREE.ShaderMaterial({
         vertexShader,
-        fragmentShader,
+        fragmentShader: waterFragment,
         uniforms: makeWaterUniforms(uniformInputs, '#3b9cc0', '#164870', 0.88, 0.35, 1),
         transparent: true,
         depthWrite: false,
         fog: false,
       }),
-    [uniformInputs],
+    [uniformInputs, waterFragment],
   );
 
   // Lakes & ponds: one bbox quad per basin at its spill level, merged into (up to) TWO
@@ -739,7 +765,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
         <shaderMaterial
           ref={oceanMat}
           vertexShader={vertexShader}
-          fragmentShader={fragmentShader}
+          fragmentShader={waterFragment}
           uniforms={oceanUniforms}
           transparent
           depthWrite={false}

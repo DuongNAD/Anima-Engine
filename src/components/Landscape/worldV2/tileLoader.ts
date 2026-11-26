@@ -82,6 +82,23 @@ export function resolveWorldV2Mip(tier: QualityTier, search = ''): number {
   return tier === 'high' ? 1 : 2;
 }
 
+/** The public directory the shipped World v2 pack is staged in (`npm run fetch:world-v2-tiles`). */
+export const DEFAULT_WORLD_V2_ROOT = 'world-v2';
+
+/**
+ * prototype, to be replaced — WV2-LOOK: dev-only `?worldV2Root=<dir>` picks a second staged pack
+ * under `public/` (e.g. `world-v2-big`, the 81.92 km world). A production build, a missing value or
+ * anything but a plain directory name reads {@link DEFAULT_WORLD_V2_ROOT}.
+ */
+export function resolveWorldV2Root(
+  search: string,
+  isDev = Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV),
+): string {
+  if (!isDev) return DEFAULT_WORLD_V2_ROOT;
+  const raw = new URLSearchParams(search).get('worldV2Root');
+  return raw !== null && /^[A-Za-z0-9_-]{1,64}$/.test(raw) ? raw : DEFAULT_WORLD_V2_ROOT;
+}
+
 function tileKey(layer: string, mip: number, tx: number, ty: number): string {
   return `${layer}:${mip}:${tx}:${ty}`;
 }
@@ -407,6 +424,9 @@ export async function loadWorldV2Bundle(
         );
       }
     });
+    // Sectors arrive in fetch-completion order. Consumers draw per-plant randomness from one seeded
+    // stream while walking this list (WorldV2Flora stands), so fix the order: same trees every load.
+    floraSectors.sort((a, b) => a.sectorZ - b.sectorZ || a.sectorX - b.sectorX);
   }
 
   return {

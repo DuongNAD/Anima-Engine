@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { TerrainPbrArrays } from '../assets/worldAssets';
 import { ATMOSPHERE_FRAGMENT_PARS, bindAtmosphereUniforms } from './atmosphere';
+import { glslFloat, replaceOnce } from '../worldV2/worldScale';
 
 // prototype, to be replaced — W3-lite 6-layer biome/slope/height PBR splat terrain material with seamless procedural fallback.
 
@@ -26,6 +27,11 @@ export interface TerrainPbrMaterialParams {
   lookShoreMap?: THREE.Texture | null;
   elevMinM?: number;
   elevSpanM?: number;
+  /**
+   * WV2-LOOK: C01 extent / world extent (`worldRenderScale().edgeScale`). The map-edge sink band is
+   * written as a fraction of the map; this keeps it at C01's 0.5-3.4 km on a bigger map. Default 1.
+   */
+  edgeScale?: number;
 }
 
 export interface TerrainPbrShaderHandle {
@@ -402,10 +408,24 @@ transformed.y=min(transformed.y,mix(uAtmoSeaY-20.0,transformed.y,lkFall));
 }
 `;
 
-function applyWv2LookShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
+/** The map-edge chunk for a world whose edge band is `edgeScale` times C01's as a map fraction. */
+function wv2LookEdgeVertex(edgeScale: number): string {
+  if (edgeScale === 1) return WV2_LOOK_EDGE_VERTEX;
+  let src = WV2_LOOK_EDGE_VERTEX;
+  src = replaceOnce(src, 'lkUv0*2.0', `lkUv0*${glslFloat(2 / edgeScale)}`);
+  src = replaceOnce(src, 'lkUv0*7.0', `lkUv0*${glslFloat(7 / edgeScale)}`);
+  src = replaceOnce(
+    src,
+    'float lkW=0.012+0.07*',
+    `float lkW=${glslFloat(0.012 * edgeScale)}+${glslFloat(0.07 * edgeScale)}*`,
+  );
+  return src;
+}
+
+function applyWv2LookShader(shader: THREE.WebGLProgramParametersWithUniforms, edgeScale = 1): void {
   shader.vertexShader =
     'varying vec3 vW3WorldPos;\nvarying vec3 vW3WorldNormal;\nuniform sampler2D uLookNoise;\nuniform float uAtmoSeaY;\n' +
-    shader.vertexShader.replace('#include <begin_vertex>', WV2_LOOK_EDGE_VERTEX).replace(
+    shader.vertexShader.replace('#include <begin_vertex>', wv2LookEdgeVertex(edgeScale)).replace(
       '#include <worldpos_vertex>',
       `
 #include <worldpos_vertex>
@@ -489,6 +509,7 @@ export function createTerrainPbrMaterial(
   dummyShore.needsUpdate = true;
   const hasHorizon = Boolean(params.horizonMap);
   const look = Boolean(params.lookMaskMap && params.lookNoiseMap);
+  const edgeScale = params.edgeScale ?? 1;
   const initSun = params.sunDir ?? [0.6, 0.7, 0.35];
 
   const uniforms: {
@@ -554,7 +575,7 @@ export function createTerrainPbrMaterial(
       shader.uniforms.uElevMinM = lookUniforms.uElevMinM;
       shader.uniforms.uElevSpanM = lookUniforms.uElevSpanM;
       bindAtmosphereUniforms(shader.uniforms);
-      applyWv2LookShader(shader);
+      applyWv2LookShader(shader, edgeScale);
       return;
     }
 
@@ -740,7 +761,7 @@ normal=normalize(tbn*mapN);
   };
 
   material.customProgramCacheKey = () =>
-    look ? 'wv2-look-terrain-v2' : hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
+    look ? `wv2-look-terrain-v2${edgeScale === 1 ? '' : `-e${edgeScale}`}` : hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
 
   const handle: TerrainPbrShaderHandle = {
     applyPbrArrays(arrays) {

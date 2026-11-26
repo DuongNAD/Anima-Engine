@@ -58,6 +58,7 @@ const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world vie
   --label TEXT        name for this run on the contact sheet (e.g. "after B1")
   --out DIR           output folder (default artifacts/map-captures/<timestamp>)
   --port P            dev server port (default 5173)
+  --world-root DIR    World v2 pack under public/ (default world-v2; e.g. world-v2-big, dev-only switch)
   --headed            show the browser window
   --vsync             keep the display's frame cap (default: uncapped, so a fast GPU shows headroom)
   --hud               keep the HTML overlays (HUD, minimap, compass) in the screenshots
@@ -78,6 +79,7 @@ function parseArgs(argv) {
     label: '',
     out: null,
     port: 5173,
+    worldRoot: 'world-v2',
     headed: false,
     hud: false,
     vsync: false,
@@ -142,6 +144,13 @@ function parseArgs(argv) {
         opts.out = path.resolve(need(i, a));
         i++;
         break;
+      case '--world-root': {
+        const r = need(i, a);
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(r)) throw new Error(`--world-root: ${r}`);
+        opts.worldRoot = r;
+        i++;
+        break;
+      }
       case '--port':
         opts.port = int(need(i, a), a, 1, 65535);
         i++;
@@ -444,10 +453,10 @@ function pageGlInfo() {
  * world if generation changes. A view whose feature does not exist comes back `skipped` with why.
  */
 /** Extent (manifest) and elevation span (format constants) of the World v2 bake, or null. */
-function readWorldMetrics() {
+function readWorldMetrics(worldRoot = 'world-v2') {
   const out = { extentM: null, elevSpanM: null };
   try {
-    out.extentM = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'public/world-v2/index.json'), 'utf8')).extent_m ?? null;
+    out.extentM = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'public', worldRoot, 'index.json'), 'utf8')).extent_m ?? null;
   } catch {
     /* no World v2 tiles staged: the metre-based views fall back to the v1 scale guess below */
   }
@@ -690,8 +699,59 @@ function pageAnalyseWorld() {
     };
   }
 
-  // 3. coast: the beach nearest the map centre, seen from the sea side.
+  // 3. coast: the beach nearest the map centre that faces the OPEN SEA, seen from the sea side.
+  // Open sea = below-sea cells connected to the map border (flood fill on a half-resolution grid),
+  // so a sand patch beside an inland pan, lagoon or lake does not count. A beach qualifies when the
+  // points ~200 m and ~600 m seaward of it (down the local slope) are both open sea.
   {
+    const OS = 2; // open-sea grid step, in cells
+    const M = Math.ceil(N / OS);
+    const open = new Uint8Array(M * M);
+    const wet = (gx, gy) => {
+      const i = gy * N + gx;
+      return w.elevation[i] < sea && !(w.water && w.water[i] > 0) && w.biome[i] !== 14 && w.biome[i] !== 13;
+    };
+    const queue = new Int32Array(M * M);
+    let qh = 0;
+    let qt = 0;
+    const seed = (mx, my) => {
+      const k = my * M + mx;
+      if (open[k] || !wet(Math.min(N - 1, mx * OS), Math.min(N - 1, my * OS))) return;
+      open[k] = 1;
+      queue[qt++] = k;
+    };
+    for (let m = 0; m < M; m++) {
+      seed(m, 0);
+      seed(m, M - 1);
+      seed(0, m);
+      seed(M - 1, m);
+    }
+    while (qh < qt) {
+      const k = queue[qh++];
+      const mx = k % M;
+      const my = (k - mx) / M;
+      if (mx > 0) seed(mx - 1, my);
+      if (mx < M - 1) seed(mx + 1, my);
+      if (my > 0) seed(mx, my - 1);
+      if (my < M - 1) seed(mx, my + 1);
+    }
+    const openSeaAt = (x, z) => {
+      const u = x / R + 0.5;
+      const v = z / R + 0.5;
+      if (u < 0 || u > 1 || v < 0 || v > 1) return true; // past the border is ocean
+      const mx = Math.min(M - 1, Math.floor((u * (N - 1)) / OS));
+      const my = Math.min(M - 1, Math.floor((v * (N - 1)) / OS));
+      return open[my * M + mx] === 1;
+    };
+    const uPerM = metrics.extentM ? R / metrics.extentM : R / 40960;
+    const facesOpenSea = (x, z) => {
+      const az = downhillAz(x, z);
+      if (az === null) return false;
+      for (const m of [200, 600]) {
+        if (!openSeaAt(x + m * uPerM * Math.cos(az), z + m * uPerM * Math.sin(az))) return false;
+      }
+      return true;
+    };
     let c = null;
     let d0 = Infinity;
     for (let gy = 0; gy < N; gy += 2) {
@@ -703,16 +763,16 @@ function pageAnalyseWorld() {
         const x = cellToR(gx);
         const z = cellToR(gy);
         const d = x * x + z * z;
-        if (d < d0) {
+        if (d < d0 && facesOpenSea(x, z)) {
           d0 = d;
           c = [x, z];
         }
       }
     }
-    if (!c) skip('coast', 'no beach or shoreline cell');
+    if (!c) skip('coast', 'no beach or shoreline cell facing the open sea');
     else {
       const t = [c[0], surfAt(c[0], c[1]), c[1]];
-      put('coast', frame(t, 70, 20, downhillAz(c[0], c[1])), `${biomeAt(c[0], c[1])} nearest the map centre, from the sea side`);
+      put('coast', frame(t, 70, 20, downhillAz(c[0], c[1])), `${biomeAt(c[0], c[1])} facing the open sea nearest the map centre, from the sea side`);
 
       // coastnear (opt-in): just offshore of the same beach, low over the water, looking along
       // the shoreline (whichever direction keeps the line of sight nearest the waterline).
@@ -811,8 +871,10 @@ function pageAnalyseWorld() {
     }
   }
 
-  // 4. peak: the highest cell (snow cap if there is one), from the side facing the map centre.
-  put('peak', frame(peak, R * 0.15, 15, azTo(peak, [0, 0, 0])), `highest point, elevation ${maxE.toFixed(3)} (${biomeAt(peak[0], peak[2])})`);
+  // 4. peak: the highest cell (snow cap if there is one), from the side facing the map centre,
+  // 0.15 of C01's map away (~6.1 km) on every extent.
+  const c01Share = metrics.extentM ? 40960 / metrics.extentM : 1;
+  put('peak', frame(peak, R * 0.15 * c01Share, 15, azTo(peak, [0, 0, 0])), `highest point, elevation ${maxE.toFixed(3)} (${biomeAt(peak[0], peak[2])})`);
 
   // 5. river valley: the biggest inland river cell, looking upstream from below it.
   {
@@ -869,16 +931,93 @@ function pageAnalyseWorld() {
     }
   }
 
-  // 7. waterfall: the tallest drop, seen from downstream.
+  // 7. waterfall: the tallest drop that can be SEEN, from downstream, a little above its base.
+  // The curtain hangs one unit downstream of the lip (`WorldWaterfalls`), and downstream is +yaw.
+  // Waterfalls are tried tallest first; for each, cameras 10-52 units downstream (up to 60 degrees
+  // off the flow line) at a third to one drop above the base, and the first with a clear line of
+  // sight to the middle of the curtain, as drawn, wins. The old steep fallback is the last resort.
   if (!w.waterfallCount) skip('waterfall', 'world has no waterfalls');
   else {
-    let k = 0;
-    for (let i = 1; i < w.waterfallCount; i++) if (w.waterfallDrop[i] > w.waterfallDrop[k]) k = i;
-    const x = w.waterfallX[k] * cellUnitToR;
-    const z = w.waterfallZ[k] * cellUnitToR;
-    const drop = Math.max(1.2, w.waterfallDrop[k] * H);
-    const t = [x, w.waterfallTopE[k] * H - drop / 2, z];
-    put('waterfall', frame(t, Math.max(15, drop * 6), 10, w.waterfallYaw[k]), `tallest of ${w.waterfallCount} waterfalls, drop ${drop.toFixed(1)} units`);
+    const order = Array.from({ length: w.waterfallCount }, (_, i) => i).sort((a, b) => w.waterfallDrop[b] - w.waterfallDrop[a]);
+    // The drawn terrain is a coarser mesh than the data (hundreds of metres per vertex), and in a
+    // gorge it sits well above the data floor: test against the higher of the two, read from the
+    // terrain geometry itself (a regular (res+1)^2 grid; max of the four corners, conservative).
+    const tGeom = terrain && terrain.geometry && terrain.geometry.attributes && terrain.geometry.attributes.position;
+    const side = tGeom ? Math.round(Math.sqrt(tGeom.count)) : 0;
+    const meshSurfAt = (x, z) => {
+      if (!tGeom || side * side !== tGeom.count) return -Infinity;
+      const fx = Math.min(side - 1, Math.max(0, (x / R + 0.5) * (side - 1)));
+      const fz = Math.min(side - 1, Math.max(0, (z / R + 0.5) * (side - 1)));
+      const x0 = Math.floor(fx);
+      const z0 = Math.floor(fz);
+      const x1 = Math.min(side - 1, x0 + 1);
+      const z1 = Math.min(side - 1, z0 + 1);
+      const a = tGeom.array;
+      return Math.max(a[(z0 * side + x0) * 3 + 1], a[(z0 * side + x1) * 3 + 1], a[(z1 * side + x0) * 3 + 1], a[(z1 * side + x1) * 3 + 1]);
+    };
+    const groundAt = (x, z) => Math.max(surfAt(x, z), meshSurfAt(x, z));
+    // Where each curtain is actually drawn (the renderer may seat it on the drawn surface): the
+    // instance translation is the curtain's centre, its Y scale the drop + 0.6 (WorldWaterfalls).
+    const curtains = scene.getObjectByName('waterfall-curtains');
+    const drawn = (k) => {
+      if (!curtains || !curtains.instanceMatrix || k >= curtains.count) return null;
+      const e = curtains.instanceMatrix.array;
+      const o = k * 16;
+      const sy = Math.hypot(e[o + 4], e[o + 5], e[o + 6]);
+      return { centre: [e[o + 12], e[o + 13], e[o + 14]], drop: Math.max(0.1, sy - 0.6) };
+    };
+    const losClear = (from, to) => {
+      for (let s = 1; s < 48; s++) {
+        const t = s / 48;
+        if (t > 0.92) break;
+        const x = from[0] + (to[0] - from[0]) * t;
+        const y = from[1] + (to[1] - from[1]) * t;
+        const z = from[2] + (to[2] - from[2]) * t;
+        if (groundAt(x, z) > y - 0.15) return false;
+      }
+      return true;
+    };
+    let pick = null;
+    for (const k of order) {
+      if (pick) break;
+      const yaw = w.waterfallYaw[k];
+      const drop = Math.max(1.2, w.waterfallDrop[k] * H);
+      const topY = w.waterfallTopE[k] * H;
+      const lip = [w.waterfallX[k] * cellUnitToR, w.waterfallZ[k] * cellUnitToR];
+      const d = drawn(k);
+      const t = d ? d.centre : [lip[0] + Math.cos(yaw) * 1.0, topY - drop / 2, lip[1] + Math.sin(yaw) * 1.0];
+      const baseY = d ? d.centre[1] - d.drop / 2 : topY - drop;
+      // A curtain the drawn terrain swallows past its middle cannot be framed: next waterfall.
+      if (meshSurfAt(t[0], t[2]) > t[1]) continue;
+      for (const dist of [10, 16, 24, 36, 52]) {
+        if (pick) break;
+        for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) {
+          if (pick) break;
+          for (const up of [0.35, 0.7, 1.0]) {
+            const az = yaw + off;
+            const x = t[0] + dist * Math.cos(az);
+            const z = t[2] + dist * Math.sin(az);
+            if (!insideMap(x, z)) continue;
+            const y = Math.max(baseY + drop * up, groundAt(x, z) + 1.0);
+            if (y > baseY + drop * 1.6) continue; // the ground there is above the fall: not "downstream"
+            const pos = [x, y, z];
+            if (!losClear(pos, t)) continue;
+            pick = { k, drop, pose: { position: pos, target: t, azimuthDeg: deg(azTo(pos, t)), pitchDeg: deg(Math.atan2(t[1] - y, dist)), lineOfSight: 'clear' }, dist, rank: order.indexOf(k) + 1 };
+            break;
+          }
+        }
+      }
+    }
+    if (pick) {
+      put('waterfall', pick.pose, `waterfall #${pick.rank} by drop of ${w.waterfallCount} (drop ${pick.drop.toFixed(1)} units), from ${pick.dist} units downstream, a little above its base`);
+    } else {
+      const k = order[0];
+      const x = w.waterfallX[k] * cellUnitToR;
+      const z = w.waterfallZ[k] * cellUnitToR;
+      const drop = Math.max(1.2, w.waterfallDrop[k] * H);
+      const t = [x, w.waterfallTopE[k] * H - drop / 2, z];
+      put('waterfall', frame(t, Math.max(15, drop * 6), 10, w.waterfallYaw[k]), `tallest of ${w.waterfallCount} waterfalls, drop ${drop.toFixed(1)} units (no clear downstream view found)`);
+    }
   }
 
   // Kept on the page for the creature view, which is framed later (creatures move).
@@ -1214,7 +1353,7 @@ async function main() {
     });
     page.on('pageerror', (e) => messages.push({ type: 'pageerror', text: String(e?.stack || e), phase }));
 
-    const url = `${server.base}/landscape.html?replay=synthetic&agents=${opts.agents}&segments=${opts.segments}${opts.quality === 'auto' ? '' : `&quality=${opts.quality}`}`;
+    const url = `${server.base}/landscape.html?replay=synthetic&agents=${opts.agents}&segments=${opts.segments}${opts.quality === 'auto' ? '' : `&quality=${opts.quality}`}${opts.worldRoot === 'world-v2' ? '' : `&worldV2Root=${opts.worldRoot}`}`;
     report.url = url;
     log(`opening ${url}`);
     await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -1261,7 +1400,7 @@ async function main() {
 
     // World extent / elevation span for the metre-based optional views, read from the World v2
     // manifest and the format constants (no hard-coded map size).
-    await page.evaluate((m) => (window.__mapCaptureWorld = m), readWorldMetrics());
+    await page.evaluate((m) => (window.__mapCaptureWorld = m), readWorldMetrics(opts.worldRoot));
     const analysis = await page.evaluate(pageAnalyseWorld);
     await page.evaluate((s) => (window.__mapCaptureScale = s), { renderSize: analysis.renderSize, heightUnits: analysis.heightUnits });
     report.world = { size: analysis.worldSize, renderSize: analysis.renderSize, heightUnits: Math.round(analysis.heightUnits * 10) / 10, seaLevel: analysis.seaLevel, notes: analysis.notes };

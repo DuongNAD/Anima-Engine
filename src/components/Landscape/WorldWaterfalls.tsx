@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { driveTimeUniform } from './utils/sceneClock';
+import { sampleMeshHeight } from './utils/worldSample';
 import type { WorldV2LoadedBundle } from './worldV2/types';
 
 // ---------------------------------------------------------------------------------------
@@ -17,6 +18,13 @@ export interface WorldWaterfallsProps {
   worldV2?: WorldV2LoadedBundle | null;
   renderSize?: number;
   heightRatio?: number;
+  /**
+   * WV2-LOOK r8 (World v2 only): the terrain mesh resolution. The mesh samples elevation every
+   * ~100-160 m, so a gorge narrower than that is drawn filled in by its walls, and a curtain placed
+   * at the data's lip height hung inside the hill (51 of 58 on the 81.92 km world). With this set,
+   * each fall keeps its drop but is lifted until its base sits on the drawn surface.
+   */
+  meshResolution?: number;
 }
 
 // ShaderMaterial on an InstancedMesh: three auto-defines USE_INSTANCING and declares the
@@ -109,6 +117,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
   worldV2 = null,
   renderSize = 400,
   heightRatio = 0.13,
+  meshResolution,
 }) => {
   const curtainRef = useRef<THREE.InstancedMesh>(null);
   const foamRef = useRef<THREE.InstancedMesh>(null);
@@ -190,11 +199,18 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     for (let i = 0; i < count; i++) {
       const x = world.waterfallX[i] * toWorld;
       const z = world.waterfallZ[i] * toWorld;
-      const topY = world.waterfallTopE[i] * heightUnits;
       const dropY = Math.max(1.2, world.waterfallDrop[i] * heightUnits);
       const yaw = world.waterfallYaw[i];
       const dirX = Math.cos(yaw);
       const dirZ = Math.sin(yaw);
+      let topY = world.waterfallTopE[i] * heightUnits;
+      if (worldV2 && meshResolution) {
+        // Seat the base on the drawn surface just downstream of the curtain.
+        const bu = (x + dirX * 1.6) / renderSize + 0.5;
+        const bv = (z + dirZ * 1.6) / renderSize + 0.5;
+        const drawnBase = sampleMeshHeight(world, bu, bv, meshResolution) * heightUnits;
+        topY = Math.max(topY, drawnBase + dropY);
+      }
       const wfDischarge = worldV2?.sim.waterfalls[i]?.discharge_q_m3_s ?? 0;
       const qBoost = wfDischarge > 0 ? Math.min(1.6, 1.0 + Math.log2(1 + wfDischarge) * 0.08) : 1.0;
       const width = Math.min(4.8, (1.2 + dropY * 0.3) * qBoost);
@@ -216,7 +232,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     }
     if (curtain.instanceMatrix) curtain.instanceMatrix.needsUpdate = true;
     if (foam.instanceMatrix) foam.instanceMatrix.needsUpdate = true;
-  }, [world, worldV2, count, renderSize, heightUnits]);
+  }, [world, worldV2, count, renderSize, heightUnits, meshResolution]);
 
   useEffect(() => {
     return () => {

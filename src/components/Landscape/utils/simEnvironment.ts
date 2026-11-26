@@ -18,6 +18,8 @@ export const DECORATION_LEGEND_TOOLTIP =
 
 export type SimEntityKind = 'lake' | 'tree' | 'food';
 export type SimGroundSampler = (renderX: number, renderZ: number) => number;
+/** Whether a render-space point is dry land; elements that fail it are skipped. */
+export type SimLandTest = (renderX: number, renderZ: number) => boolean;
 
 export interface MappedSimElement {
   kind: SimEntityKind;
@@ -64,6 +66,7 @@ export function mapSimulationElements(
   elements: readonly EnvironmentalElement[],
   renderSize: number,
   sampleGroundY: SimGroundSampler,
+  isLand?: SimLandTest | null,
 ): MappedSimEnvironment {
   const lakes: MappedSimElement[] = [];
   const trees: MappedSimElement[] = [];
@@ -89,6 +92,10 @@ export function mapSimulationElements(
 
     const renderX = simToRender(el.x, renderSize);
     const renderZ = simToRender(el.y, renderSize);
+    if (isLand && !isLand(renderX, renderZ)) {
+      skipped += 1;
+      continue;
+    }
     const rawGround = sampleGroundY(renderX, renderZ);
     const groundY = Number.isFinite(rawGround) ? rawGround : 0;
     const resources = Number.isFinite(el.resources) ? Math.max(0, el.resources) : 0;

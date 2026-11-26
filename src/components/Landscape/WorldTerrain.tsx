@@ -17,6 +17,7 @@ import { isCaptureRequested } from './utils/captureMode';
 import type { QualityTier } from './utils/qualityTiers';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 import { ELEV_MIN_M, ELEV_SPAN_M, type WorldV2LoadedBundle } from './worldV2/types';
+import { worldRenderScale } from './worldV2/worldScale';
 
 export interface WorldTerrainProps {
   world: World;
@@ -135,6 +136,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         elevSpanM: ELEV_SPAN_M,
         normalScale: worldV2 ? 0.45 : 1,
         heightUnits: renderSize * heightRatio,
+        edgeScale: worldRenderScale(worldV2?.extentM).edgeScale,
       }),
     [textures, worldV2, renderSize, heightRatio],
   );
