@@ -915,50 +915,81 @@ fn apply_late_quaternary_piedmont_subsidence(
     let dx = f64::from(dx_m);
     let cell_area_m2 = dx * dx;
     let trunk_cells = ((2.5e6 / cell_area_m2).round() as u32).max(1);
+    let rim_trunk_cells = if extent_m >= 80_000.0 {
+        ((12.0e6 / cell_area_m2).round() as u32).max(1)
+    } else {
+        trunk_cells
+    };
     let b_scale = libm::sqrt(f64::from(basin_amp).clamp(0.5, 2.5));
-    let rx_m = 920.0 * b_scale;
-    let ry_m = 1_650.0 * b_scale;
+    let (rx_m, ry_m, min_spacing_m, sill_offset_m) = if extent_m >= 80_000.0 {
+        (1_564.0 * b_scale, 2_805.0 * b_scale, 5_200.0, 4.5)
+    } else {
+        (920.0 * b_scale, 1_650.0 * b_scale, 4_500.0, 3.5)
+    };
     let margin = lvl / 10;
 
     let base_vs: &[f64] = if extent_m >= 80_000.0 {
         &[
-            0.08_f64, 0.16, 0.24, 0.32, 0.40, 0.48, 0.56, 0.64, 0.72, 0.80, 0.88, 0.94,
+            0.11_f64, 0.18, 0.25, 0.32, 0.39, 0.46, 0.53, 0.60, 0.67, 0.74, 0.81, 0.88,
         ]
     } else {
         &[0.12_f64, 0.27, 0.42, 0.58, 0.73, 0.88]
     };
     let dr_cells = (250.0 / dx).round() as isize;
-    let mut centers: Vec<(usize, usize)> = Vec::with_capacity(base_vs.len());
-    for (bi, &v0) in base_vs.iter().enumerate() {
-        let jitter = 0.02 * (det_hash01(seed ^ 0x4C41_4B45_0000_0001, bi as i64, 0) * 2.0 - 1.0);
-        let rc = ((v0 + jitter) * (lvl - 1) as f64).round() as usize;
-        let rc = rc.clamp(margin, lvl.saturating_sub(margin + 1));
-        let mut cands: Vec<usize> = Vec::new();
-        for dr in -dr_cells..=dr_cells {
-            let r = (rc as isize + dr).clamp(1, lvl as isize - 2) as usize;
-            let row = r * lvl;
-            for c in margin..lvl.saturating_sub(margin) {
-                let i = row + c;
-                let h = bedrock_h[i] + sediment_s[i];
-                if (35.0..=145.0).contains(&h)
-                    && precip_m_yr[i] >= 1.45
-                    && acc_cells[i] < trunk_cells
-                {
-                    cands.push(c);
+    let mut centers: Vec<(usize, usize)> = Vec::with_capacity(base_vs.len() * 2);
+    let mut cands: Vec<usize> = Vec::new();
+    let mut push_piedmont_column = |vs: &[f64],
+                                    seed_salt: u64,
+                                    q_num: usize,
+                                    q_den: usize,
+                                    min_cands: usize,
+                                    elliptical_guard: bool| {
+        for (bi, &v0) in vs.iter().enumerate() {
+            let jitter = 0.02 * (det_hash01(seed ^ seed_salt, bi as i64, 0) * 2.0 - 1.0);
+            let rc = ((v0 + jitter) * (lvl - 1) as f64).round() as usize;
+            let rc = rc.clamp(margin, lvl.saturating_sub(margin + 1));
+            cands.clear();
+            for dr in -dr_cells..=dr_cells {
+                let r = (rc as isize + dr).clamp(1, lvl as isize - 2) as usize;
+                let row = r * lvl;
+                for c in margin..lvl.saturating_sub(margin) {
+                    let i = row + c;
+                    let h = bedrock_h[i] + sediment_s[i];
+                    if (35.0..=145.0).contains(&h)
+                        && precip_m_yr[i] >= 1.45
+                        && acc_cells[i] < trunk_cells
+                    {
+                        cands.push(c);
+                    }
+                }
+            }
+            if cands.len() >= min_cands {
+                cands.sort_unstable();
+                let cc = cands[cands.len() * q_num / q_den];
+                let too_close = centers.iter().any(|&(pr, pc)| {
+                    let dr_m = dx * (rc as f64 - pr as f64);
+                    let dc_m = dx * (cc as f64 - pc as f64);
+                    let dist_m = libm::hypot(dr_m, dc_m);
+                    if elliptical_guard {
+                        dist_m < 3_600.0
+                            || libm::hypot(dc_m / (1.45 * rx_m), dr_m / (1.45 * ry_m)) < 1.0
+                    } else {
+                        dist_m < min_spacing_m
+                    }
+                });
+                if !too_close {
+                    centers.push((rc, cc));
                 }
             }
         }
-        if cands.len() >= 12 {
-            cands.sort_unstable();
-            let cc = cands[cands.len() * 3 / 10];
-            let too_close = centers.iter().any(|&(pr, pc)| {
-                let dist_m = dx * libm::hypot(rc as f64 - pr as f64, cc as f64 - pc as f64);
-                dist_m < 4_500.0
-            });
-            if !too_close {
-                centers.push((rc, cc));
-            }
-        }
+    };
+    if extent_m >= 80_000.0 {
+        // Primary piedmont belt at 32% quantile, plus staggered upper-bench column at 78%.
+        push_piedmont_column(base_vs, 0x4C41_4B45_0000_0001, 32, 100, 12, false);
+        const STAGGERED_COL2_VS: &[f64] = &[0.145, 0.215, 0.285, 0.355, 0.425, 0.495, 0.845];
+        push_piedmont_column(STAGGERED_COL2_VS, 0x4C41_4B45_0000_0002, 78, 100, 180, true);
+    } else {
+        push_piedmont_column(base_vs, 0x4C41_4B45_0000_0001, 3, 10, 12, false);
     }
 
     let max_rw = 1.45_f64;
@@ -1059,10 +1090,10 @@ fn apply_late_quaternary_piedmont_subsidence(
                         sediment_s[i] = new_s as f32;
                         bedrock_h[i] = (new_h - new_s) as f32;
                     }
-                } else if rw <= 1.38 && acc_cells[i] < trunk_cells && h < 190.0 {
+                } else if rw <= 1.38 && acc_cells[i] < rim_trunk_cells && h < 190.0 {
                     let dr = (rw - 1.08) / 0.14;
                     let rim_bell = libm::exp(-(dr * dr));
-                    let sill_target = h_lip + 3.5;
+                    let sill_target = h_lip + sill_offset_m;
                     if h < sill_target {
                         let raise_m = ((sill_target - h) * rim_bell * elev_fade).min(30.0);
                         bedrock_h[i] += raise_m as f32;
@@ -1200,6 +1231,7 @@ fn widen_trunk_alluvial_floodplains(
     bedrock_h: &mut [f32],
     sediment_s: &mut [f32],
     river_w_m: &[f32],
+    discharge_q_m3_s: &[f32],
     strahler: &[u8],
     d8_dir: &[u8],
     lvl: usize,
@@ -1211,11 +1243,40 @@ fn widen_trunk_alluvial_floodplains(
         || bedrock_h.len() != n
         || sediment_s.len() != n
         || river_w_m.len() != n
+        || discharge_q_m3_s.len() != n
         || strahler.len() != n
         || d8_dir.len() != n
     {
         return;
     }
+    let is_large = extent_m >= 80_000.0;
+    let is_protected_chan =
+        |idx: usize| -> bool { strahler[idx] >= 1 || (is_large && discharge_q_m3_s[idx] >= 0.020) };
+    let near_upper_valley = if is_large {
+        let mut mask = vec![false; n];
+        let rad_u: isize = 5;
+        for r in 2..lvl.saturating_sub(2) {
+            let row = r * lvl;
+            for c in 2..lvl.saturating_sub(2) {
+                let ord = strahler[row + c];
+                if ord == 2 || ord == 3 {
+                    let r_lo = (r as isize - rad_u).max(0) as usize;
+                    let r_hi = (r as isize + rad_u).min(lvl as isize - 1) as usize;
+                    let c_lo = (c as isize - rad_u).max(0) as usize;
+                    let c_hi = (c as isize + rad_u).min(lvl as isize - 1) as usize;
+                    for nr in r_lo..=r_hi {
+                        let nrow = nr * lvl;
+                        for nc in c_lo..=c_hi {
+                            mask[nrow + nc] = true;
+                        }
+                    }
+                }
+            }
+        }
+        mask
+    } else {
+        Vec::new()
+    };
     let mut fp_target = vec![f32::INFINITY; n];
     let mut fp_alpha = vec![0.0_f32; n];
 
@@ -1243,12 +1304,24 @@ fn widen_trunk_alluvial_floodplains(
             let ux = (DX8[d] as f32) * inv_dist;
             let uz = (DZ8[d] as f32) * inv_dist;
 
-            if ord >= 4 && z_i < 800.0 && slope < 0.14 {
-                let w_fp = (280.0 + 40.0 * river_w_m[i]).clamp(280.0, 560.0);
-                let r_ref = if extent_m >= 80_000.0 {
-                    65.0_f32.max(4.0 * dx_m)
+            if ord >= 4
+                && ((is_large && z_i < 750.0 && slope < 0.13)
+                    || (!is_large && z_i < 800.0 && slope < 0.14))
+            {
+                let (w_fp, r_ref, wall_k, wall_pow) = if is_large {
+                    (
+                        (720.0 + 45.0 * river_w_m[i]).clamp(720.0, 1_160.0),
+                        200.0_f32.max(2.5 * dx_m),
+                        0.32_f32,
+                        2.35_f32,
+                    )
                 } else {
-                    65.0_f32.max(1.5 * dx_m)
+                    (
+                        (280.0 + 40.0 * river_w_m[i]).clamp(280.0, 560.0),
+                        65.0_f32.max(1.5 * dx_m),
+                        0.36_f32,
+                        2.15_f32,
+                    )
                 };
                 let rad = (libm::ceilf(w_fp / dx_m) as isize).max(1);
                 let r_lo = (r as isize - rad).max(1) as usize;
@@ -1260,7 +1333,7 @@ fn widen_trunk_alluvial_floodplains(
                     let nrow = nr * lvl;
                     for nc in c_lo..=c_hi {
                         let j = nrow + nc;
-                        if strahler[j] >= 1 {
+                        if is_protected_chan(j) {
                             continue;
                         }
                         let z_j = bedrock_h[j] + sediment_s[j];
@@ -1273,8 +1346,11 @@ fn widen_trunk_alluvial_floodplains(
                         if along > 1.15 * dx_m || perp > w_fp {
                             continue;
                         }
+                        if is_large && perp > 240.0 && near_upper_valley[j] {
+                            continue;
+                        }
                         let u_r = (perp / r_ref).max(0.0);
-                        let t_h = z_i + 0.36 * libm::powf(u_r, 2.15);
+                        let t_h = z_i + wall_k * libm::powf(u_r, wall_pow);
                         let t = ((w_fp - perp) / (0.38 * w_fp)).clamp(0.0, 1.0);
                         let a = t * t * (3.0 - 2.0 * t) * 0.96;
                         if t_h < fp_target[j] {
@@ -1284,6 +1360,9 @@ fn widen_trunk_alluvial_floodplains(
                     }
                 }
             } else if (ord == 2 || ord == 3) && slope < 0.65 {
+                if is_large && discharge_q_m3_s[i] < 0.05 {
+                    continue;
+                }
                 let px = -uz;
                 let pz = ux;
                 let max_idx = lvl as isize - 2;
@@ -1990,12 +2069,25 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &hcfg,
             );
             drop(pf_filled);
-            let q_channel: Vec<bool> = hydro
-                .discharge_q_m3_s
-                .iter()
-                .zip(total_h.iter())
-                .map(|(&q, &h_m)| h_m > crate::SEA_LEVEL_M && q >= 0.05)
-                .collect();
+            let q_channel: Vec<bool> = if cfg.extent_m >= 80_000.0 {
+                hydro
+                    .discharge_q_m3_s
+                    .iter()
+                    .zip(hydro.river_w_m.iter())
+                    .zip(hydro.is_channel.iter())
+                    .zip(total_h.iter())
+                    .map(|(((&q, &rw), &is_ch), &h_m)| {
+                        h_m > crate::SEA_LEVEL_M && ((is_ch && q >= 0.027_778) || rw >= 0.5)
+                    })
+                    .collect()
+            } else {
+                hydro
+                    .discharge_q_m3_s
+                    .iter()
+                    .zip(total_h.iter())
+                    .map(|(&q, &h_m)| h_m > crate::SEA_LEVEL_M && q >= 0.05)
+                    .collect()
+            };
             let strahler = crate::anmw_v3::compute_strahler_order(&d8_dir, &q_channel, lvl, lvl);
             drop(q_channel);
 
@@ -2079,6 +2171,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &mut bedrock_h,
                 &mut sediment_s,
                 &hydro.river_w_m,
+                &hydro.discharge_q_m3_s,
                 &strahler,
                 &d8_dir,
                 lvl,
@@ -2687,4 +2780,185 @@ pub fn run_worldgen_to_dir_with_schedule(
     Err(PipelineError {
         message: "multigrid schedule was empty".to_owned(),
     })
+}
+
+#[cfg(test)]
+mod piedmont_subsidence_tests {
+    use super::apply_late_quaternary_piedmont_subsidence;
+
+    #[test]
+    fn piedmont_subsidence_scales_at_82km_without_perturbing_40km() {
+        let lvl = 1024_usize;
+        let run_case = |extent_m: f32| -> (usize, Vec<f32>, Vec<f32>) {
+            let dx_m = extent_m / lvl as f32;
+            let mut bedrock = vec![0.0_f32; lvl * lvl];
+            let mut sediment = vec![4.0_f32; lvl * lvl];
+            let precip = vec![1.8_f32; lvl * lvl];
+            for r in 0..lvl {
+                for c in 0..lvl {
+                    // Piedmont ramp from ~20m on the west (c=0) up to ~180m on the east.
+                    let h_total = 20.0 + (c as f32 / (lvl - 1) as f32) * 160.0;
+                    bedrock[r * lvl + c] = h_total - 4.0;
+                }
+            }
+            let init: Vec<f32> = bedrock
+                .iter()
+                .zip(sediment.iter())
+                .map(|(b, s)| b + s)
+                .collect();
+            apply_late_quaternary_piedmont_subsidence(
+                &mut bedrock,
+                &mut sediment,
+                &precip,
+                lvl,
+                dx_m,
+                extent_m,
+                0x5756_3248,
+                1.0,
+            );
+            let subsided_cells = bedrock
+                .iter()
+                .zip(sediment.iter())
+                .zip(init.iter())
+                .filter(|&((b, s), h0)| (*b + *s) < *h0 - 1.0)
+                .count();
+            (subsided_cells, bedrock, sediment)
+        };
+
+        let (sub_40, b40, s40) = run_case(40_960.0);
+        let (sub_79, b79, s79) = run_case(79_999.0);
+        let (sub_82, b82, s82) = run_case(81_920.0);
+        assert!(sub_40 > 0, "expected 40.96 km piedmont basins to form");
+        assert!(sub_79 > 0, "expected <80 km gate to match 40.96 km path");
+        assert!(
+            b40.iter().all(|v| v.is_finite())
+                && s40.iter().all(|v| v.is_finite())
+                && b79.iter().all(|v| v.is_finite())
+                && s79.iter().all(|v| v.is_finite())
+                && b82.iter().all(|v| v.is_finite())
+                && s82.iter().all(|v| v.is_finite())
+        );
+        // At 81.92 km (2x dx), 12 larger basins still cover more total km^2 than 40.96 km.
+        let dx_40_km = 40.96 / lvl as f64;
+        let dx_82_km = 81.92 / lvl as f64;
+        let area_40_km2 = (sub_40 as f64) * dx_40_km * dx_40_km;
+        let area_82_km2 = (sub_82 as f64) * dx_82_km * dx_82_km;
+        assert!(
+            area_82_km2 > area_40_km2 * 2.0,
+            "81.92 km piedmont subsided area ({area_82_km2:.2} km^2) must be >2x 40.96 km ({area_40_km2:.2} km^2)"
+        );
+    }
+
+    #[test]
+    fn widen_trunk_alluvial_floodplains_preserves_40km_and_shapes_82km() {
+        use super::widen_trunk_alluvial_floodplains;
+
+        let lvl = 160_usize;
+        let dx_m = 20.0_f32;
+        let trunk_r = 90_usize;
+        let upper_r = 12_usize;
+        let protect_r = trunk_r + 36; // 720 m from trunk (> 560 m cap on <80 km, inside <= 1160 m on >=80 km)
+
+        let run_case = |extent_m: f32| -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+            let n = lvl * lvl;
+            let mut bedrock = vec![160.0_f32; n];
+            let mut sediment = vec![2.0_f32; n];
+            let mut river_w = vec![0.0_f32; n];
+            let mut discharge_q = vec![0.0_f32; n];
+            let mut strahler = vec![0_u8; n];
+            let mut d8_dir = vec![255_u8; n];
+
+            for r in 0..lvl {
+                let row = r * lvl;
+                for c in 0..lvl {
+                    let dr_trunk = (r as isize - trunk_r as isize).abs() as f32;
+                    let dr_upper = (r as isize - upper_r as isize).abs() as f32;
+                    let h = if dr_upper <= 2.0 {
+                        100.0 + 0.5 * dr_upper
+                    } else if dr_upper <= 4.0 {
+                        132.0
+                    } else {
+                        (100.0 + 1.2 * dr_trunk).min(240.0)
+                    };
+                    bedrock[row + c] = h - 2.0;
+                }
+            }
+            for c in 4..lvl.saturating_sub(4) {
+                let i_tr = trunk_r * lvl + c;
+                bedrock[i_tr] = 98.0;
+                strahler[i_tr] = 4;
+                d8_dir[i_tr] = 0; // +c (East)
+                river_w[i_tr] = 16.0;
+                discharge_q[i_tr] = 25.0;
+
+                let i_up = upper_r * lvl + c;
+                bedrock[i_up] = 98.0;
+                strahler[i_up] = 3;
+                d8_dir[i_up] = 0;
+                river_w[i_up] = 3.0;
+                discharge_q[i_up] = 1.5;
+
+                // Protect a low-Q verified channel cell at 720 m south of trunk.
+                if c % 4 == 0 {
+                    discharge_q[protect_r * lvl + c] = 0.030;
+                }
+            }
+            // Place an ord == 2 cell near (protect_r, 50) to verify outer-floodplain shielding.
+            strahler[(protect_r + 1) * lvl + 50] = 2;
+
+            let init_total: Vec<f32> = bedrock
+                .iter()
+                .zip(sediment.iter())
+                .map(|(b, s)| b + s)
+                .collect();
+            widen_trunk_alluvial_floodplains(
+                &mut bedrock,
+                &mut sediment,
+                &river_w,
+                &discharge_q,
+                &strahler,
+                &d8_dir,
+                lvl,
+                dx_m,
+                extent_m,
+            );
+            (init_total, bedrock, sediment)
+        };
+
+        let (init40, b40, s40) = run_case(40_960.0);
+        let (_, b79, s79) = run_case(79_999.0);
+        let (_, b82, s82) = run_case(81_920.0);
+
+        assert_eq!(b40, b79, "<80 km extents must match bit-identically");
+        assert_eq!(s40, s79, "<80 km extents must match bit-identically");
+        assert!(
+            b82.iter().all(|v| v.is_finite()) && s82.iter().all(|v| v.is_finite()),
+            "all elevations must remain finite"
+        );
+
+        let unprot_idx = protect_r * lvl + 81;
+        let prot_idx = protect_r * lvl + 80;
+        let trunk_idx = trunk_r * lvl + 80;
+        assert!(
+            (b40[unprot_idx] + s40[unprot_idx] - init40[unprot_idx]).abs() < 1e-5,
+            "40.96 km must not widen beyond 560 m"
+        );
+        assert!(
+            b82[unprot_idx] + s82[unprot_idx] < init40[unprot_idx] - 5.0,
+            "81.92 km must widen downstream U-valley beyond 560 m"
+        );
+        assert!(
+            (b82[prot_idx] + s82[prot_idx] - init40[prot_idx]).abs() < 1e-5,
+            "81.92 km must protect discharge_q >= 0.020 channels inside floodplain"
+        );
+        assert!(
+            (b82[trunk_idx] + s82[trunk_idx] - init40[trunk_idx]).abs() < 1e-5,
+            "trunk channel cell must remain untouched"
+        );
+        let shielded_idx = protect_r * lvl + 50;
+        assert!(
+            (b82[shielded_idx] + s82[shielded_idx] - init40[shielded_idx]).abs() < 1e-5,
+            "81.92 km outer floodplain must shield nearby ord 2..3 valleys"
+        );
+    }
 }
