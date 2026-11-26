@@ -48,3 +48,5 @@ Review hàng quý theo [chính sách tài liệu](../governance/DOCUMENTATION_PO
 còn được duy trì không, license/tag có đổi không, benchmark có còn chứng minh lợi ích không, và có
 gỡ được dependency mà vẫn đọc được dữ liệu cũ không. Mỗi đợt review phải ghi **bằng chứng cho từng
 thay đổi quyết định**, không sửa lặng lẽ ô trong bảng.
+
+<!-- CI fast-path live control for PR #315; this branch is never merged. -->
