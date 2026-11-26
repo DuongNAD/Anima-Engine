@@ -1,11 +1,13 @@
-// Docs-only fast path for the `Rust (src-tauri)` CI job (QD-FOCUS FOCUS-5, owner 2026-11-26).
+// Docs-only fast path for `Rust (src-tauri)` (ci.yml) and `determinism` (hardening.yml) (QD-FOCUS FOCUS-5, owner 2026-11-26).
 //
-// The Rust job costs one to two hours on a Windows runner. Until 2026-11-26, a pull request that only
-// edited documentation paid that cost too, and most of the pull requests of the night of 2026-11-25/26
-// were documentation. This script decides whether a pull request's diff is "docs-only". The `scope`
-// job in .github/workflows/ci.yml runs it, and `Rust (src-tauri)` is skipped when the answer is yes.
-// GitHub reports a job skipped by its `if:` as a success, so the required check keeps its name and
-// branch protection is unchanged.
+// The Rust CI job costs one to two hours on a Windows runner and hardening's `determinism` job takes
+// ~35 minutes on Ubuntu. Until 2026-11-26, a pull request that only edited documentation paid those
+// costs too, and most of the pull requests of the night of 2026-11-25/26 were documentation. This
+// script decides whether a pull request's diff is "docs-only". Both the `scope` job in
+// .github/workflows/ci.yml and the `scope` job in .github/workflows/hardening.yml run it, sharing one
+// definition and one drift guard; `Rust (src-tauri)` and `determinism` are skipped when the answer
+// is yes. GitHub reports a job skipped by its `if:` as a success, so required checks keep their
+// names and branch protection is unchanged.
 //
 // The `Frontend` job always runs in full, docs-only or not. It holds every docs gate: link check,
 // metadata, IPC reference, doc commands, text hygiene and conflict markers.
