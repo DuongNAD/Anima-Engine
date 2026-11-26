@@ -14,6 +14,18 @@
 
 ---
 
+# 2026-11-26 (Update 3) — `ADR-ACCEPT` (`#312`), `STATE-SYNC r7` (`#313`), `QD-FOCUS` (`#314` `VERIFIED`), `CI-FASTPATH` (`#315`), `BIG-COMBO-NOTE` (`#317`) & `STATE-SYNC r8`
+
+- **Merged into trunk (`40551113`):** **`#312`** (`ADR-ACCEPT`, `5e6927bb`, setting [`ADR-0015`](docs/decisions/ADR-0015-evolving-plants.md) & [`ADR-0016`](docs/decisions/ADR-0016-changing-world-surface.md) -> `accepted`) and **`#313`** (`D1. STATE-SYNC r7`, `40551113`, reconciling `STATE_OF_THE_PROJECT.md` & `TODO.md` through `#311`).
+- **Open PRs & governance (`QD-FOCUS`):**
+  - **`#314`** (`mac/decisions-1126-focus` @ `ea78df18`, `VERIFIED` at `verdicts/QD-FOCUS_ea78df18.md`, awaiting merge): records `QD-1126AM` and `QD-FOCUS` (`FOCUS-1` scope freeze on `RESP-D`..`MICRO-D`, `ADR-0017`, `ADR-0018` until `v0.9.0`; `FOCUS-2` release path `HYDRO/FLORA` -> `BIG-3` -> tile release -> `WV2-6` -> `WV2-LOOK` -> `rc` -> `v0.9.0`; `FOCUS-3` frozen `SEL2-P2` once + `REPLAY-1` serving `QD-ISLAND` flagship; `FOCUS-4` living-world reopen sequence; `FOCUS-5` CI fast-path; `FOCUS-6` two focus counters).
+  - **`#315`** (`mac/ci-docs-fastpath` @ `e1161c85`, open draft): docs-only fast-path for `Rust (src-tauri)` under `FOCUS-5`.
+  - **`#317`** (`dell/wv2-big-combo-note` @ `02645707`, `VERIFIED` at `verdicts/BIG-COMBO-NOTE_02645707.md`, open draft): `D1. BIG-COMBO-NOTE` transcribing the `81.92 km` `8/15` cross-platform `BIG-COMBO` / `BIG-COMBO-X` measurement (`08549db5…` / `132fa5fa…`) and default `C01` bit-identity.
+  - **Prototype note:** `WV2-LOOK r8` (`699127ed` on `mac/wv2-look-proto`) is a **prototype** branch that never merges (`LR-LOOK-1`).
+  - **Still open:** `#291` (`WV2-6`, internal under `QD-TRIAL-V3`), `#278` (`WV2-6-PREVIEW`, never merged), `#281`, and branch-only `D16` (`REL09-RC`). See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17) for `FOCUS-6` counters and sourced stage status.
+
+---
+
 # 2026-11-26 (Update 2) — `WV2-BIG-1` (`#311`), `WV2-BIG-2` (`#308`), `BIG-COMBO` (`8/15`), `WV2-D2` Accepted (`#294`/`#295`/`#309`), `QD-WCHG`/`QD-PLANT` (`#296`/`#305`), Night Design/Research Suite & `STATE-SYNC r7`
 
 - **World v2 `WV2-BIG-1` (`#311`, `1b988167`) & `WV2-BIG-2` (`#308`, `3b78b4b8`, [note](docs/ai/planning/2026-11-26-wv2-big-2.md)):** Both halves of the `81.92 km` world (`WV2-BIG-1`, `VERIFIED` by `anima-case` at `11e3b669` with `C01` bit-identity, `verdicts/WV2-BIG-1_843769b8.md`, `verdicts/WV2-BIG-1_11e3b669.md`; `WV2-BIG-2`, `verdicts/WV2-BIG-2_3936ce3b.md`, `verdicts/WV2-BIG-2_23dd1304.md`) are now merged into trunk. On the combined tree, the `81.92 km` world measured **`8/15`** (`G-SIM`, `G-SHAPE.1`, `G-SHAPE.6`, `G-SHAPE.4_2`, `C1` [`16/16` biomes, `58` waterfalls, `90` caves], `C2`, `C5`, `C5b` pass; `7/15` open: `G-SHAPE.2,.3,.4,.5,.7`, `C3` lakes, `C4` rivers Hack `R^2 0.7658`) on both platforms with identical hashes (`world_sha256 08549db56c551c54ba428359f14d8fce666bca68fed8ee4b8c639f9e464a16b0`, `sim_world_identity 132fa5fa2ebfe9529412b17059e8e02d1d506632cf23cc1e7af80b3e930338ec`) and bit-identical default `C01` (`49f1d62b…` / `079772566c…`, same `6` failed gates) — **measured 2026-11-26 on macOS and Windows 1 (hub reports `BIG-COMBO` / `BIG-COMBO-X`); not yet a repo note**. Next: `WV2-BIG-3` replaces provisional `C01` (`cbdd3ba9…`) once (owner gate); public tile release & `v0.9.0-rc.1` wait for it (`WB-D4`); `C3`, `C4`, and `G-SHAPE` work is open.

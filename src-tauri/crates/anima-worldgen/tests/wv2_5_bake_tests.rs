@@ -11,7 +11,9 @@ use anima_worldgen::bake::assets::{
 use anima_worldgen::bake::fields::{
     bake_fields_from_raw_dir, compute_shore_sdf_and_exposure, meijster_edt_sq, merge_field_strips,
 };
-use anima_worldgen::bake::flora_place::{FloraInstance, FloraSectorBlob, FLORA_FLAG_DECORATIVE};
+use anima_worldgen::bake::flora_place::{
+    generate_decorative_flora_sectors, FloraInstance, FloraSectorBlob, FLORA_FLAG_DECORATIVE,
+};
 use anima_worldgen::bake::lighting_cpu::{
     bake_lighting_cpu_from_raw_dir, bake_lighting_cpu_region, merge_lighting_tiles,
     solve_1d_horizon_bounded_stewart,
@@ -30,7 +32,7 @@ use anima_worldgen::caves::{CaveEdge, CaveEntrance, CaveNetwork, CaveNode};
 use anima_worldgen::config::WorldV2Config;
 use anima_worldgen::pipeline::run_worldgen_to_dir;
 use anima_worldgen::verify::WorldV2IndexJson;
-use anima_worldgen::WaterKind;
+use anima_worldgen::{BiomeId, WaterKind};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -1009,4 +1011,173 @@ fn anima_bake_cli_end_to_end_smoke_on_256_world() {
     );
 
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn flora_density_per_km2_is_invariant_to_cell_size_across_biomes() {
+    fn density_for_biome(biome: BiomeId, size: usize, dx_m: f32) -> f64 {
+        let n = size * size;
+        let total_h = vec![50.0_f32; n];
+        let dominant_biome = vec![biome as u8; n];
+        let water_kind = vec![WaterKind::None as u8; n];
+        let moisture = vec![0.70_f32; n];
+        let twi = vec![6.0_f32; n];
+        let river_w = vec![0.0_f32; n];
+        let glacier_h = vec![0.0_f32; n];
+
+        let (blobs, summary) = generate_decorative_flora_sectors(
+            0x5756_3201,
+            "ANMW3-FLORA-INV",
+            size,
+            size,
+            dx_m,
+            &total_h,
+            &dominant_biome,
+            &water_kind,
+            &moisture,
+            &twi,
+            &river_w,
+            &glacier_h,
+            None,
+        )
+        .expect("generate uniform flora");
+        assert!(summary.decorative_only);
+        assert!(
+            summary.total_instances > 0,
+            "expected non-zero flora for {biome:?} at dx_m={dx_m}"
+        );
+        for blob in &blobs {
+            let encoded = blob.to_bytes().expect("encode ANMF");
+            let decoded = FloraSectorBlob::from_bytes(&encoded).expect("decode ANMF");
+            assert_eq!(decoded, *blob);
+            for inst in &blob.instances {
+                assert_ne!(inst.flags_u8 & FLORA_FLAG_DECORATIVE, 0);
+            }
+        }
+        let area_km2 = (size as f64 * f64::from(dx_m)) * (size as f64 * f64::from(dx_m)) / 1.0e6;
+        summary.total_instances as f64 / area_km2
+    }
+
+    let biomes = [
+        BiomeId::Jungle,
+        BiomeId::Forest,
+        BiomeId::Swamp,
+        BiomeId::Savanna,
+        BiomeId::Grassland,
+        BiomeId::Taiga,
+        BiomeId::Mangrove,
+    ];
+    let resolutions = [(5.0_f32, 1024_usize), (15.0, 512), (20.0, 512), (40.0, 512)];
+
+    for biome in biomes {
+        let ref_density = density_for_biome(biome, 512, 10.0);
+        for (dx_m, size) in resolutions {
+            let density = density_for_biome(biome, size, dx_m);
+            let rel_err = (density - ref_density).abs() / ref_density;
+            assert!(
+                rel_err <= 0.15,
+                "flora density per km^2 drifted for {biome:?} at dx_m={dx_m}: \
+                 got {density:.2}/km^2 vs ref {ref_density:.2}/km^2 (rel_err={rel_err:.4})"
+            );
+        }
+    }
+
+    // Reject invalid non-positive or non-finite cell spacings.
+    let n = 256 * 256;
+    let total_h = vec![50.0_f32; n];
+    let dominant_biome = vec![BiomeId::Forest as u8; n];
+    let water_kind = vec![WaterKind::None as u8; n];
+    let moisture = vec![0.70_f32; n];
+    let twi = vec![6.0_f32; n];
+    let river_w = vec![0.0_f32; n];
+    let glacier_h = vec![0.0_f32; n];
+    for bad_dx in [0.0_f32, -10.0, f32::NAN, f32::INFINITY] {
+        assert!(generate_decorative_flora_sectors(
+            0x5756_3201,
+            "ANMW3-FLORA-BAD",
+            256,
+            256,
+            bad_dx,
+            &total_h,
+            &dominant_biome,
+            &water_kind,
+            &moisture,
+            &twi,
+            &river_w,
+            &glacier_h,
+            None,
+        )
+        .is_err());
+    }
+}
+
+#[test]
+fn flora_dx10_preserves_legacy_stride2_and_determinism() {
+    let size = 256_usize;
+    let n = size * size;
+    let mut total_h = vec![40.0_f32; n];
+    let mut dominant_biome = vec![BiomeId::Forest as u8; n];
+    for r in 0..size {
+        for c in 0..size {
+            let idx = r * size + c;
+            total_h[idx] = 40.0 + 0.3 * r as f32;
+            dominant_biome[idx] = if (r + c) % 3 == 0 {
+                BiomeId::Jungle as u8
+            } else if c < size / 2 {
+                BiomeId::Swamp as u8
+            } else {
+                BiomeId::Savanna as u8
+            };
+        }
+    }
+    let water_kind = vec![WaterKind::None as u8; n];
+    let moisture = vec![0.65_f32; n];
+    let twi = vec![7.5_f32; n];
+    let river_w = vec![0.0_f32; n];
+    let glacier_h = vec![0.0_f32; n];
+
+    let (blobs_a, sum_a) = generate_decorative_flora_sectors(
+        0x5756_3201,
+        "ANMW3-SNSM-v1",
+        size,
+        size,
+        10.0,
+        &total_h,
+        &dominant_biome,
+        &water_kind,
+        &moisture,
+        &twi,
+        &river_w,
+        &glacier_h,
+        None,
+    )
+    .expect("first dx10 run");
+    let (blobs_b, sum_b) = generate_decorative_flora_sectors(
+        0x5756_3201,
+        "ANMW3-SNSM-v1",
+        size,
+        size,
+        10.0,
+        &total_h,
+        &dominant_biome,
+        &water_kind,
+        &moisture,
+        &twi,
+        &river_w,
+        &glacier_h,
+        None,
+    )
+    .expect("second dx10 run");
+
+    assert_eq!(blobs_a, blobs_b);
+    assert_eq!(sum_a, sum_b);
+    assert!(sum_a.total_instances > 100);
+    for blob in &blobs_a {
+        for inst in &blob.instances {
+            let lc = ((f32::from(inst.x_local_u16) / 65_535.0) * 256.0) as usize;
+            let lr = ((f32::from(inst.z_local_u16) / 65_535.0) * 256.0) as usize;
+            assert_eq!(lc % 2, 0, "expected legacy even col at dx_m=10, got {lc}");
+            assert_eq!(lr % 2, 0, "expected legacy even row at dx_m=10, got {lr}");
+        }
+    }
 }
