@@ -125,3 +125,73 @@ Both candidates were built in `--release` and measured end-to-end (`generate` + 
   2. **Steep `inland_ramp` alone breaks `flint_concavity_theta`:** `G1`'s `+560 m` `inland_ramp` + `+380 m` flat caprock created a break in `S(A)` at intermediate `Q`, collapsing `flint_theta` from `0.6003` (`R² = 0.9316`) to `0.2321` (`R² = 0.2838`). Raising `windward_precip_target_m_yr` in `G2` recovered `flint_theta = 0.4137` (`R² = 0.9066`), **but** crossed the humid-cell runoff threshold inside closed depressions, regressing `G-SHAPE.6.EndorheicSpillways` (`endo_humid = 0.000001 > 0`).
   3. **Tilted caprock (`cv`) got worse when plateau elevation rose:** reducing `260*(plat_u_c - u)` to `45*(plat_u_c - u)` in `G1`/`G2` while shrinking qualifying `cap_t >= 0.8` tiles (`73 -> 65`) increased `caprock_tile_cv` (`0.7142 -> 0.7501 / 0.7652`). Edge drainage off the higher plateau dominates tile variance rather than intra-plateau west-east tilt.
   4. **Conclusion (`WV2-BIG-3` coordination):** `tectonic.rs` uplift for `G-SHAPE.7` and caprock noise/CV tuning should be tuned **after** `anima-case`'s `WV2-BIG-HYDRO` (`pipeline.rs`, `hydrology.rs`, `lakes_falls.rs`, `erosion_*.rs`) lands, so spillway routing (`M6`), Hack scatter (`M4`), downstream floodplain width (`M5.b_down`), and `plains_flat_wet` braiding (`M3.dissection_ratio`) are fixed in one coherent `WV2-BIG-3` pass.
+
+---
+
+## 5. Round 2 One-Factor Split (`WV2-BIG-GSHAPE-2`: `G3` & `G4`)
+
+Per owner directive (`MSG_20261126_112000`), `G1` is split into two strictly one-factor `MultiEnvironment`-only `tectonic.rs` candidates tested independently against `BIG-COMBO @ 08549db5`. Neither touches `climate.rs`, any `anima-case`-owned stage, or any verifier threshold. Acceptance requires passing the candidate's target gate with **zero regressions** on any other gate.
+
+### 5.1 Pre-Registered One-Factor Candidates (`tectonic.rs`, `MultiEnvironment` Only)
+
+1. **Candidate `G3` — Interior Upland Hypsometry Only (`tectonic.rs`, aimed at `G-SHAPE.7.hi_global`):**
+   - **Exact changes:**
+     - `inland_ramp`: `185.0 * tanh((d_coast_m - 12_000) / 16_000)` -> `560.0 * tanh((d_coast_m - 14_000).max(0) / 11_000)`.
+     - Northern Massif (`massif2_h`): `dv2` width `8_500 -> 11_200`, `w2` `(5_200, 5_800) -> (7_400, 8_000)`, amplitude `3_150 -> 3_950`.
+     - Southern Massif (`massif1_h`): `dv1` width `10_500 -> 12_200`, `w1` `7_400 -> 8_800`, peak coeff `5_380 -> 5_050`.
+     - **Unchanged:** `plain_ramp = 48.0`, caprock offset `+120.0`, `plateau_subtile` `14.0`, tilt `260.0`, `climate.rs` untouched.
+   - **Pre-registered predictions:**
+     - **`G-SHAPE.7.hi_global` (target):** rises from `0.1585` to **`~0.225–0.238` (`PASS >= 0.22`)**, `needle_spikes == 0`.
+     - **`flint_concavity_theta`:** likely drops toward **`~0.24–0.36`** (tests whether the steep `+560 m` `inland_ramp` + massif broadening alone caused `G1`'s `0.2321` collapse rather than the caprock plateau change).
+     - **`endo_humid`:** stays **`0.0` (`G-SHAPE.6` PASS)**.
+     - **`C5b`:** stays **`PASS`** (`plain_backed_5km >= 0.70`, `median_coast_to_1000m >= 11.5 km`, because `inland_ramp == 0` inside `14 km` and `plain_ramp` is unchanged at `48 m`).
+     - **`caprock_tile_cv`:** stays near baseline **`~0.70–0.73`**.
+
+2. **Candidate `G4` — Caprock Plateau Only (`tectonic.rs`, aimed at `G-SHAPE.3.caprock_tile_cv`):**
+   - **Exact changes:**
+     - `caprock_target_m` offset `+120.0 -> +380.0`.
+     - `plateau_surface`: `plateau_subtile` `14.0 -> 6.0` and regional tilt `260.0 * (plat_u_c - u) -> 45.0 * (plat_u_c - u)`.
+     - **Unchanged:** `plain_ramp = 48.0`, `inland_ramp` (`185.0`), `massif1_h`, `massif2_h`, `climate.rs` untouched.
+   - **Pre-registered predictions:**
+     - **`G-SHAPE.3.caprock_tile_cv` (target):** stays **`~0.68–0.76` (unlikely to pass `<= 0.45`)**, testing whether raising the caprock plateau shrinks `cap_t >= 0.8` tile count (`73 -> ~65`) and amplifies rim drainage contrast.
+     - **`flint_concavity_theta`:** stays in-band **`~0.55–0.62`** (`flint_r_squared >= 0.88`), isolating `G1`'s Flint regression to upland/inland geometry rather than caprock.
+     - **`endo_humid`:** stays **`0.0` (`G-SHAPE.6` PASS)**.
+     - **`C5b`:** stays **`PASS`** (`plain_backed_5km ~ 0.74–0.75`).
+     - **`G-SHAPE.7.hi_global`:** rises only marginally (`~0.162`, still **FAIL**).
+
+### 5.2 `4096²` Measurement Results (`G3` & `G4` — Both Reverted Under Strict Non-Regression)
+
+Both one-factor candidates were built in `--release` and evaluated end-to-end (`generate` + `verify --report-only`) at `4096²` (`81.92 km`, `dx = 20 m`, `seed = 0x57563201`) on macOS `arm64` (`RAYON_NUM_THREADS=4`).
+
+| Gate / Metric | `BIG-COMBO` (`08549db5`) | `G3` (Upland Hypsometry Only) | `G4` (Caprock Plateau Only) | Causality & Acceptance Check |
+|---|---|---|---|---|
+| `world_sha256` (prefix) | `08549db5` | `691246c2` | `7a9e917d` | Seed `1465266689` (`C01` unchanged) |
+| `sim_world_identity` (prefix) | `132fa5fa` | `5135a18c` | `66443620` | Raw `4096² -> 256²` bridge |
+| Passing / Failing (`15` gates) | `8 / 15` (`7` fail) | `9 / 15` (`6` fail) | `8 / 15` (`7` fail) | Neither clears `G-SHAPE` regression-free |
+| `G-SHAPE.1` (`omega / r_b / r_l`) | **PASS** (`6 / 4.175 / 1.645`) | **PASS** (`6 / 4.201 / 1.709`) | **PASS** (`6 / 4.152 / 1.719`) | Both keep `omega_max = 6` (`G1` dropped to `5`) |
+| `G-SHAPE.2` (`obtuse / med`) | FAIL (`0.1263 / 75.02°`) | FAIL (`0.1049 / 70.02°`, `391`) | FAIL (`0.1311 / 75.02°`, `389`) | **`G3` improves obtuse `-0.021`**, **`G4` worsens `+0.005`** |
+| `G-SHAPE.3.global_dd` | PASS (`1.2426`) | PASS (`1.2971`) | PASS (`1.2390`) | Stable in `[0.8, 3.5]` |
+| `G-SHAPE.3.dissection_ratio` | FAIL (`0.7948`) | FAIL (`1.1031`) | FAIL (`0.8212`) | `G3` raises `+0.308`, still `< 1.50` |
+| `G-SHAPE.3.caprock_tile_cv` | FAIL (`0.7142`, `73` tiles) | FAIL (`0.7723`, `65` tiles) | FAIL (`0.6564`, `76` tiles) | **`G4` improves `-0.058` (still `> 0.45`)**; **`G3` worsens `+0.058`** |
+| `G-SHAPE.4` (`R² / h / C`) | FAIL (`0.7658 / 0.606 / 1.559`) | FAIL (`0.8056 / 0.628 / 1.515`) | FAIL (`0.7853 / 0.598 / 1.537`) | **`G3` pushes `h = 0.6280 > 0.62` upper bound** |
+| `G-SHAPE.5.b_up` (`[0.85, 1.35]`) | in-band (`0.8663`) | in-band (`0.9257`) | **out-of-band (`0.7521`)** | **`G4` drops `b_up` below `0.85`** |
+| `G-SHAPE.5.vf_up` (`[0.05, 0.80]`) | FAIL (`1.1018`) | **in-band (`0.3806`)** | FAIL (`0.8579`) | `G3` enters band |
+| `G-SHAPE.5.b_down` (`[1.60, 3.50]`) | FAIL (`1.1783`) | FAIL (`1.1201`) | FAIL (`1.3601`) | **`G3` drops `-0.058`**; `G4` gains `+0.182` |
+| `G-SHAPE.5.flint_theta / R²` | **in-band (`0.600 / 0.932`)** | **in-band (`0.435 / 0.810`)** | **in-band (`0.577 / 0.909`)** | **Neither collapses Flint alone (`G1` interaction)** |
+| `G-SHAPE.6.EndorheicSpillways` | **PASS** (`endo_humid = 0.0`) | **PASS** (`0.000000`) | **PASS** (`0.000000`) | Both clean (`0` micro-pits/severed spillways) |
+| `G-SHAPE.7.HypsometrySpikes` | FAIL (`hi = 0.1585`, `0`) | **PASS (`hi = 0.2353`, `0`)** | FAIL (`hi = 0.1619`, `0`) | **`G3` hits target PASS (`>= 0.22`)** |
+| `G-SHAPE.4_2.ShorelineFractal` | **PASS** (`1.1939`) | **PASS** (`1.1964`) | **PASS** (`1.1937`) | Stable |
+| `C1 / C2 / C5 / C5b (5km) / G-SIM` | ALL PASS (`0.7461`) | ALL PASS (`0.7467`) | ALL PASS (`0.7461`) | `C5b` completely preserved |
+| `C3 / C4` | FAIL (`122`) / FAIL | FAIL (`141`) / FAIL | FAIL (`118`) / FAIL | `anima-case` (`WV2-BIG-HYDRO`) |
+| Macro biomes `E1..E5` (`% land`) | `25.9 / 13.2 / 29.1 / 9.2 / 13.4` | `20.2 / 20.7 / 16.7 / 10.4 / 15.3` | `26.0 / 13.7 / 28.4 / 10.1 / 13.5` | `G3` reproduces `G1` `E3 -> E2` shift |
+
+### 5.3 Causal Attribution, Timing, and Verdict (`G3` & `G4` Reverted)
+
+- **Compute cost (`macOS arm64`, `RAYON_NUM_THREADS=4`):**
+  - `G3`: `generate` = `1,044.97 s` (`max RSS = 1,257,963,520 B` / `1.17 GiB`), `verify --report-only` = `4.27 s` (`max RSS = 1,542,619,136 B` / `1.44 GiB`).
+  - `G4`: `generate` = `1,010.17 s` (`max RSS = 1,132,036,096 B` / `1.05 GiB`), `verify --report-only` = `4.38 s` (`max RSS = 1,542,553,600 B` / `1.44 GiB`).
+- **What the one-factor split isolated:**
+  1. **Neither factor alone caused `G1`'s Flint collapse (`0.2321`):** `G3` alone held `flint_concavity_theta = 0.4352` (`R² = 0.8101`) and `G4` alone held `0.5772` (`R² = 0.9087`). The `0.2321` collapse in `G1` was a nonlinear superposition of raising interior uplands (`+560 m`), flattening/raising the caprock (`+380 m`), and raising `plain_ramp` (`48 -> 64 m`) all at once.
+  2. **`G4` improved `caprock_tile_cv` (`0.7142 -> 0.6564`, `76` tiles) rather than hurting it:** It was `G3`'s `inland_ramp` + massif broadening shrinking `cap_t >= 0.8` tile count (`73 -> 65`) that drove `G1`'s and `G3`'s `caprock_tile_cv` increase (`0.7501` / `0.7723`). Even so, `G4` fell well short of `<= 0.45` and worsened `G-SHAPE.2.obtuse_fraction` (`0.1263 -> 0.1311`) and `G-SHAPE.5.b_up` (`0.8663 -> 0.7521`, dropping below `[0.85, 1.35]`).
+  3. **`G3` cleanly solves `G-SHAPE.7` (`hi_global = 0.2353`) without `climate.rs` changes and preserves `M1`/`M6`/`C5b`/`theta`,** *but* fails the strict non-regression rule because it pushes `G-SHAPE.4.exponent_h` above `0.62` (`0.6056 -> 0.6280`), worsens `caprock_tile_cv` (`0.7142 -> 0.7723`), slightly drops `b_down` (`1.1783 -> 1.1201`), and adds piedmont/high lakes (`C3`: `122 -> 141`).
+- **Decision:** Reverted `tectonic.rs` cleanly; no candidate code commit is kept. `G3`'s upland envelope (`G-SHAPE.7`) remains the natural starting point to re-test atop `anima-case`'s merged `WV2-BIG-HYDRO` changes alongside explicit caprock-tile channel-uniformity (`cv`) and Hack-exponent checks.
