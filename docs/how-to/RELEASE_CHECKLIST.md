@@ -2,13 +2,16 @@
 title: Release Checklist (0.9)
 status: active
 owner: maintainers
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-26
 review_cycle: per-release
 ---
 
 # Release Checklist (`0.9`)
 
-Every technical gate, compliance verification, installer build check, and human release step required before cutting a `v0.9.0` tag or shipping trial installers. Every npm script below maps directly to [`package.json`](../../package.json); authoritative gate status lives in [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+Every technical gate, compliance verification, World v2 / Iris Xe check, installer build step, and human governance step required before cutting `v0.9.0-rc.1` or tagging `v0.9.0`. Every npm script below maps directly to [`package.json`](../../package.json); authoritative gate status lives in [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+> **Target `0.9` Release Sequence (`QD-FOCUS FOCUS-2` `#314` & `WB-D4 (a)` `#295`):**
+> `WV2-BIG-HYDRO` + `WV2-BIG-FLORA` + `G-SHAPE` diagnosis → `WV2-BIG-3` replaces provisional `C01` once (with owner `yes`; `81.92 km` at `4096²` / `20 m` cells, `world_sha256` / `sim_world_identity` / `release_archive_sha256` and final sizes **set at WV2-BIG-3**) → one public tile-pack release (**about 190 MB, final size set at WV2-BIG-3**, with owner final `yes`) → Dell Intel Iris Xe performance gate (`#289`) + `WV2-6` merge → real `WV2-LOOK` card (`QD-WV2-LOOK` `#293`, `LR-LOOK-1`) → `v0.9.0-rc.1` → three recorded `MP-5.1` sessions (§5.1) → `v0.9.0` on fast-forwarded `main`. Under `FOCUS-1`, `0.9` stays in scope freeze until `v0.9.0` tags.
 
 ---
 
@@ -66,6 +69,7 @@ Run one Node command at a time on constrained hosts (see [`STATE_OF_THE_PROJECT.
   npm run check:e2
   npm run check:e3
   npm run check:e3b
+  npm run check:sel2p2
   ```
 
 ---
@@ -128,26 +132,45 @@ As documented in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) an
   npm run check:flora-footprint
   ```
 - [ ] Confirm [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) reports **`0 component(s) unresolved`** and upstream license elections remain valid.
-- [ ] *(Only if world artifact bytes changed)* Regenerate `map_manifest.json` and `artifacts/world_256.anmw` together:
+- [ ] *(Only if legacy `world_256.anmw` bytes changed)* Regenerate `map_manifest.json` and `artifacts/world_256.anmw` together (final `81.92 km` `4096² @ 20 m` World v2 hashes `world_sha256`, `sim_world_identity`, `release_archive_sha256` and sizes are **set at WV2-BIG-3**):
   ```powershell
   npm run gen:world-manifest
   ```
 
 ---
 
-## 4. Installer Builds & Clean-Machine Verification (`MP-5.3`)
+## 4. World v2, Hardware Gate, Installer Builds & Clean-Machine Verification (`MP-5.3`)
 
-- [ ] Verify the CI `Release Build` workflow (`workflow_dispatch` / PR `#233`) completes green on **both** `windows-latest` and `macos-latest` and uploads non-empty artifacts (`anima-engine-windows-installers` with `.msi`/`.exe`; `anima-engine-macos-bundles` with `.dmg`/`.app`).
+- [ ] Complete `WV2-BIG-HYDRO`, `WV2-BIG-FLORA`, and `G-SHAPE` diagnosis (`QD-FOCUS FOCUS-2` step 1, `#314`), then obtain owner `yes` for `WV2-BIG-3` to replace provisional `C01` once with the `81.92 km` (`4096² @ 20 m`) tropical world (`WB-D1` / `WB-D2`, `#295`), recording final `world_sha256`, `sim_world_identity`, `release_archive_sha256`, and archive sizes (`set at WV2-BIG-3`).
+- [ ] Obtain owner's final `yes` naming the asset and its size (`QD-1126AM` `#314`) and publish the single public World v2 tile pack (**about 190 MB, final size set at WV2-BIG-3**) once on GitHub Releases before `WV2-6` CI / `v0.9.0-rc.1` (`QD-GATES-1125 (4)` `#288`, `FOCUS-2` step 3).
+- [ ] Run the Dell Intel Iris Xe performance gate ([`2026-11-26-wv2-6-iris-xe-runbook.md`](../ai/planning/2026-11-26-wv2-6-iris-xe-runbook.md), `#289`: `<= 8 GB` RSS / `<= 4 GB` VRAM / `<= 60` draw calls; `QD-TRIAL-V3` uses an internal build with locally staged tiles, never published) and merge `WV2-6`, then land the real `WV2-LOOK` rendering card (`QD-WV2-LOOK` `#293`, `LR-LOOK-1` `#314`).
+- [ ] Verify the merged CI `Release Build` workflow ([`.github/workflows/release-build.yml`](../../.github/workflows/release-build.yml), `#233`; proven green in run `45268921473`) completes green on **both** `windows-latest` and `macos-latest` (`QD-M4`: macOS unsigned if `NM-2` checksums match Windows class, `#255`) and uploads non-empty artifacts (`anima-engine-windows-installers` with `.msi`/`.exe`; `anima-engine-macos-bundles` with `.dmg`/`.app`; 14-day retention for `v0.9.0-rc.1` per `QD-REL09` G3).
 - [ ] *(Local build alternative)* Build installers strictly via `npm run tauri:build` (passes `--features desktop`; never bare `tauri build`).
-- [ ] Install the built Windows (and macOS if `QD-M4` selects it) installer on a clean machine following [`INSTALL.md`](INSTALL.md), verify launch + simulation start + landscape showcase, and commit the installation record under `docs/ai/deployment/` (`MP-5.3`).
+- [ ] Install the built Windows (and macOS per `QD-M4`) installer on a clean machine following [`INSTALL.md`](INSTALL.md), verify launch + **Start Simulation** + **Landscape Showcase** (`~100` target animals per `QD-SCALE-TRIAL`), and commit the installation record under `docs/ai/deployment/` (`MP-5.3`).
 
 ---
 
 ## 5. Stage 5 Governance & `MP-5.1` External User Sessions
 
-Per [`DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md` §5](../planning/DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#5-lộ-trình-theo-chặng) and [`0.9.0.md` §1](../release/0.9.0.md#1-open-release-gates-owner-decisions-required-before-tagging):
+Per [`DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md` §5](../planning/DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#5-lộ-trình-theo-chặng) and [`0.9.0.md` §1](../release/0.9.0.md#1-release-path-and-owner-gates):
 
-- [ ] Resolve the 4 open release gates in [`0.9.0.md`](../release/0.9.0.md) (version/tag, signing `QD-M8`, publishing venue, `main` branch sync), plus `QD-M4` (second platform) and `MP-5.6` (sample world / creature export scope).
-- [ ] Land `MP-5.2` repository community files (`SECURITY.md`, PR template, feedback channel).
-- [ ] Run and record **at least three `MP-5.1` external-user install & first-run sessions** while observing (log where each user pauses, what questions they ask, and whether WebView2 / SmartScreen / Gatekeeper prompts were clear; see [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md)).
-- [ ] Fast-forward/sync `main` (if decided), tag `v0.9.0`, and verify downloaded release artifacts match the tagged commit.
+- [x] Decision baseline recorded: `QD-REL09` (`G1 = B` `v0.9.0-rc.1` first -> `v0.9.0`, `G2 = A` unsigned installers, `G3 = C` workflow artifacts for RC / GitHub Release for `v0.9.0`, `G4 = A` owner fast-forwards `main` before tagging), `QD-OPENC` (`QD-M4` macOS unsigned if `NM-2` matches Windows class, `QD-M8` signing before `v1.0.0`, `MP-5.6` bundled sample world in `0.9` / creature export in `1.0`), `QD-WV2-D2` (`WB-D1..WB-D8`), and `QD-FOCUS` (`FOCUS-1..6`, [`AGENT_WORKFLOW.md` §4](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0)).
+- [ ] Land `MP-5.2` repository community files (`SECURITY.md` — still absent on trunk `f684049d` — plus PR template and feedback channel).
+- [ ] Complete `WV2-LOOK` (`FOCUS-2` step 5) and cut `v0.9.0-rc.1`, then run and record **at least three `MP-5.1` external-user install & first-run sessions** following §5.1 below.
+- [ ] Address `MP-5.1` trial blockers (keeping `FOCUS-1` scope freeze), owner fast-forwards `main` from verified `feat/ecological-selection`, owner bumps version & tags `v0.9.0` (`G4`), and owner publishes GitHub Release artifacts + single public World v2 tile pack (`about 190 MB, final size set at WV2-BIG-3`) matching the tagged commit and hashes (`set at WV2-BIG-3`).
+
+### 5.1 `MP-5.1` External-User Session Protocol
+
+Each of the three required `MP-5.1` sessions validates unguided onboarding and first-run clarity on **`v0.9.0-rc.1`** (or trial candidate) under [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md):
+
+1. **What the tester gets:**
+   - The GitHub Actions **Release Build** workflow run link for `v0.9.0-rc.1` (unsigned Windows `.msi`/`.exe`, or macOS `.dmg`/`.app` if `QD-M4` applies; `QD-REL09` G1–G3 `#255`) plus the expected commit SHA and release archive SHA (`set at WV2-BIG-3`).
+   - Access to the single public `81.92 km` (`4096² @ 20 m`) World v2 tile pack (**about 190 MB, final size set at WV2-BIG-3**) once published at `FOCUS-2` step 3 (note: pre-merge `QD-TRIAL-V3` local builds remain internal only and are not given to external `MP-5.1` testers).
+   - [`INSTALL.md`](INSTALL.md) steps for WebView2 prerequisites, bypassing unsigned SmartScreen/Gatekeeper warnings, AC power guidance, **Low** quality recommendation for integrated GPUs, and `ANIMA_FOUNDING_POPULATION` target guidance (`~100` shared-trial target per `QD-SCALE-TRIAL` `#255`; `200` recommended in [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md) when launching with an env var).
+   - Honest scope framing from [`OWNER_TRIAL_RUN.md` §4](OWNER_TRIAL_RUN.md#4-what-to-tell-your-friend-honest-framing) and [`0.9.0.md` §3–4](../release/0.9.0.md#3-scientific-status-strictly-bounded-by-merged-resultmd) (early pre-1.0 prototype; background fauna/caves carry `"Decoration, not simulated"` labels per `C14` `#269`; do not claim unmeasured `"autonomous living AI"`).
+2. **What the owner watches and records (without prematurely rescuing):**
+   - Observe **where they stopped** (every hesitation, UI dead-end, WebView2/SmartScreen/Gatekeeper friction, startup wait before **Start Simulation** activates, camera/speed confusion, performance drop, or crash/quarantine).
+   - Record verbatim **what they asked** (terms, controls, genotype/decoration labels, or installation steps they did not understand without explanation).
+   - Record host OS/GPU, graphics tier preset, approximate FPS/smoothness, founder setting, and any screenshots or `trial-log.txt` if an error occurred.
+3. **Where session notes go:**
+   - Write each session record (and any `MP-5.3` clean-machine install verification) under **`docs/ai/deployment/`** (committed via PR without user PII or secrets, linked from release verification before bumping `v0.9.0-rc.1` to `v0.9.0`).
