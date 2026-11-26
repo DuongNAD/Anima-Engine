@@ -557,6 +557,63 @@ QD-PLANT  = ADR-0015 (evolving plants) has its six open gates decided, all as re
             plant or animal; speed-up is only for empty or prehistory islands.
             ADR-0015 stays proposed until the follow-up that sets it to accepted. The plant law is opt-in;
             with it off the trunk is bit-identical, and SEL2-P2 and every prereg_* are unchanged.
+QD-1126AM = morning of 2026-11-26 (owner in chat: "Approve as recommended", after the lead's morning report;
+            hub OWNER_APPROVALS_2026-11-26_morning.md):
+            - WV2-BIG-3 replaces C01 only after WV2-BIG-HYDRO and WV2-BIG-FLORA merge, and then needs its own
+              owner yes.
+            - These lead rulings are confirmed:
+              - LR-RNG-1: one RNG-stream registry card comes before any new sim-feature design is implemented.
+              - LR-LOOK-1: the prototype may exceed check:bundle; the real WV2-LOOK card code-splits or carries
+                an explicit, reasoned budget raise.
+              - LR-AUTH-BIG1-BIN.
+              - LR-SCOPE-NIGHT.
+              - LR-AUTH-FLORA-AREA: WV2-BIG-FLORA may edit bake/flora_place.rs plus its own test and note,
+                with C01 bit-identical.
+            - WV2-6 CI takes option 1: the tile pack is published once, and CI fetches and caches it. No ci.yml
+              change now. This is not an approval to publish.
+            - Still open: how WB-D8's coast mix is measured; the D-gates of the night's eight sim-feature
+              designs and of the gap and reverse-evolution notes; the Iris Xe run.
+QD-FOCUS  = release 0.9 and get one scientific result before the living world grows. Owner in chat, 2026-11-26:
+            "Duyệt như đề xuất", on the lead's proposal (hub DECISION_PROPOSAL_QD-FOCUS_2026-11-26.md).
+            FOCUS-1 (A): a hard scope freeze until the v0.9.0 tag.
+            - No new sim-feature design or ADR.
+            - No code for RESP-D, INVERT-D, AERO-D, AQUA-D, FOSS-D, WX-D, PATHO-D, MICRO-D, ADR-0017 or
+              ADR-0018; they stay proposed.
+            - Bug fixes, the release path, the next experiment, and documents that record measurements or
+              decisions continue.
+            - The owner can open an exception with one decision line.
+            - DIRECTION rule L7 is enforced again: a new planning or design document needs a code PR merged
+              since the previous one.
+            FOCUS-2 (A): the 0.9 path, in this order:
+            1. WV2-BIG-HYDRO and WV2-BIG-FLORA, plus the G-SHAPE diagnosis.
+            2. WV2-BIG-3 replaces C01 once, with its own owner yes.
+            3. One public tile release, after the owner's final yes naming the asset and its size.
+            4. WV2-6 merges after the Iris Xe gate.
+            5. The real WV2-LOOK card (QD-WV2-LOOK, LR-LOOK-1).
+            6. v0.9.0-rc.1, then three MP-5.1 sessions, then v0.9.0.
+            WB-D4 (a) stands.
+            FOCUS-3 (A):
+            - The frozen SEL2-P2 (#290) runs once on Windows 1, between release cards, and gets its RESULT.md.
+            - A REPLAY-1 preregistration is drafted, docs only: many seeds forked from one checkpoint, one factor
+              changed against a control arm, measuring whether lineages converge or diverge.
+            - QD-LAW1 is unchanged. The order of REPLAY-1 and LAW1 is set when both are ready to freeze.
+            - OPEN: the proposal called REPLAY-1 the flagship without checking QD-ISLAND. Whether REPLAY-1
+              replaces QD-ISLAND's flagship question or serves it (by replaying island worlds) is a question for
+              the owner. Until it is answered, QD-ISLAND stands.
+            FOCUS-4 (A): the living world reopens after v0.9.0, in this order:
+            1. The RNG-stream registry card (LR-RNG-1).
+            2. The time-law card: P0 in the gap note, since 1 day = 20 min and 1 year = 90 min.
+            3. One feature at a time. Each needs its design's D-gates decided, a preregistered question that it
+               serves, and an opt-in flag that keeps the baselines and SEL2-P2 bit-identical.
+            QD-REALMS (after the SEL2-P result; water, then sky, then underground) and QD-SCOPE still apply.
+            FOCUS-5 (A): one card (anima-case, reviewer anima-mac) lets the Rust (src-tauri) job pass fast on a
+            docs-only diff.
+            - The required check names stay the same.
+            - The card defines "docs-only" only after listing every Rust test that reads docs/ or *.md.
+            - Negative control: a .rs change still runs in full.
+            FOCUS-6 (A): STATE §3.00 gains two counters, updated at each STATE-SYNC:
+            - designs proposed against designs implemented;
+            - experiments with a RESULT.md, conclusive against not conclusive.
 MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
             4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
             (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
