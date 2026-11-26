@@ -364,10 +364,10 @@ fn wv2_7_lake_threshold_audit_on_c01_allows_alpine_lakes_and_keeps_v1_path_bit_i
             assert!(tm.elevations[i] > sim.sea_level_norm + 0.001);
         }
     }
-    // Before (v1 rule on C01): 29,457 DeepOcean/Ocean cells < 0.4 + 10 inland freshwater lakes = 29,467.
-    // After (v3 rule on C01): strictly the 10 inland freshwater lake cells at elev 0.3418..0.3469.
-    assert_eq!(v1_rule_count, 29_467);
-    assert_eq!(v3_rule_count, 10);
+    // Before (v1 rule on MAP-D8 BIG_4096_v2): 31,038 cells matching `(Ocean/Sea/Marsh) && elev < 0.4`.
+    // After (v3 rule on MAP-D8 BIG_4096_v2): 1,473 inland non-DeepOcean freshwater lake cells > sea_level_norm + 0.001.
+    assert_eq!(v1_rule_count, 31_038);
+    assert_eq!(v3_rule_count, 1_473);
 
     // High-elevation alpine lake (>= 0.4 / 1,380 m) is accepted under v3 and rejected under v1.
     assert!(is_non_land_nav_lake_candidate(
