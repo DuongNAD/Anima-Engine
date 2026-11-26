@@ -615,6 +615,25 @@ QD-FOCUS  = release 0.9 and get one scientific result before the living world gr
             FOCUS-6 (A): STATE §3.00 gains two counters, updated at each STATE-SYNC:
             - designs proposed against designs implemented;
             - experiments with a RESULT.md, conclusive against not conclusive.
+QD-SEL2P2-RUN = the code SEL2-P2 runs on. Owner in chat, 2026-11-27 00:15 ICT: "Chọn (a) mã ghim".
+            Context: the frozen preregistration (#290, PR merged 81eb1e8e) pins commit f195a361, but no
+            SEL2-P2 runner existed, so FOCUS-3's single run could not start. anima-case reported this in a
+            BLOCKED mail on 2026-11-26. The lead answered it late and queued the run anyway. Option (a) was
+            chosen over (b), the trunk plus a runner plus a preregistration amendment, because the live
+            simulation code has drifted since f195a361.
+            (a) The run uses the pinned code f195a361, plus #290's twelve files copied byte for byte from
+            81eb1e8e (package.json excluded), plus one new runner:
+            - The runner is src-tauri/examples/run_sel2p2_experiment.rs plus src-tauri/tests/
+              sel2p2_runner_tests.rs, with zero edits under src-tauri/src/.
+            - It runs the steps in the preregistered order: the QD-SEL2g baseline-ref pre-smoke, the blind
+              smoke (C1..C5, a hard stop), then the confirmation. It stays blind to trait_mass.
+            - Card SEL2-P2-RUNNER, PR #330. anima-case writes it and anima-mac reviews it.
+            The run is made exactly once, at the VERIFIED runner head:
+            - the binary's sha256 is recorded before and after;
+            - outputs and RESULT.md are committed on top, citing the run commit's full sha;
+            - if the verifier rejects the run, the result is a BLOCKED, never an edit to the verifier.
+            The trunk is merged into the branch only after the run is VERIFIED. The compile fix for the
+            trunk's newer struct fields is a separate commit that comes after the results.
 MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
             4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
             (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
@@ -660,6 +679,29 @@ MAP-D6a   = amends MAP-D6 after WV2-PHYS3-FINISH Round 7 (anima-mac, BLOCKED of 
             on the same platform. No test is edited or loosened. A PHYS4 candidate is likewise a
             parameter set. (Lead ruling LR-PHYS3-1; owner in chat, 2026-11-25 evening: "Agree, keep
             defaults".)
+MAP-D8    = WV2-BIG-3, FOCUS-2 step 2: the provisional C01 is replaced once by BIG_4096_v2, the 81.92 km
+            world at 4096^2 and 20 m cells.
+            The world is accepted at 9/15 gates under the 81.92km verifier profile. The six that fail are
+            G-SHAPE.2, .3, .4, .5 and .7, and G-COMP-v2.C4.
+            - Seed 0x57563201 (1465266689).
+            - Preset src-tauri/crates/anima-worldgen/presets/wv2_big_81920.toml, copied to
+              artifacts/world-v2/preset_v2.toml.
+            - Code: the trunk after WV2-BIG-HYDRO (#327, 69746175) and WV2-BIG-FLORA (#320, 6bf7148d).
+            - Evidence (BIG-3-EVIDENCE: anima-mac on macOS arm64, VERIFIED by anima-case on Windows 1):
+              world_sha256 01956959..., sim_world_identity 1d313005... (1,445,892 B), look-only pack archive
+              190,071,986 B.
+            gates.json records "status": "accepted" and "decision": "MAP-D8", with every measured field as
+            written, overall_pass false included. The all-15-gates test stays #[ignore]d by name, with a
+            MAP-D8 reason in scripts/test_target_policy.mjs. Gates and thresholds are unchanged.
+            The FOCUS-2 order is kept: WV2-LOOK lands after the public tile release.
+            Not decided here: publishing the tile pack, or any GitHub Release. Each needs its own owner yes
+            naming the asset and its size.
+            A later world change gives the desktop a new sim_world_identity again, so saves made on
+            BIG_4096_v2 are then refused, as WV2-7 does.
+            Card docs/ai/planning/2026-11-26-wv2-big-3-card.md; anima-mac builds it and anima-case reviews
+            it.
+            (Owner in chat, 2026-11-27 02:16 ICT, "Duyệt như đề xuất", on the lead's proposal: accept at
+            9/15 under a new decision id, this seed and preset, keep the FOCUS-2 order.)
 QD-WV2-6-PREVIEW = a dev-only WV2-6 preview with locally baked tiles (PR #278, titled "[PREVIEW — do not
             merge]"), so the owner can see World v2 C01 in a viewer before the full card. It is never
             merged and ships in no build. The full WV2-6 card keeps its two owner gates: the public tile
