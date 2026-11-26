@@ -27,6 +27,15 @@ pub const FLORA_INSTANCE_LEN: usize = 8;
 /// Mandatory decorative-only flag bit (`ADR-0010 §4`).
 pub const FLORA_FLAG_DECORATIVE: u8 = 0x01;
 
+/// Reference cell spacing (`10 m`, `C01` `4096²` over `40.96 km`) anchoring flora density per km².
+const REFERENCE_DX_M: f32 = 10.0;
+/// Target sampling span in metres (`20 m` = `2 × 10 m` stride in legacy `C01`).
+const REFERENCE_SAMPLE_SPAN_M: f32 = 20.0;
+/// Legacy `2 × 2` stride area in `10 m × 10 m` cells (`4.0`).
+const REFERENCE_AREA_CELLS: f32 = 4.0;
+/// Maximum per-draw Bernoulli placement probability (`0.35`).
+const MAX_FLORA_DRAW_PROB: f32 = 0.35;
+
 /// Canonical decorative vegetation species archetype encoded per instance.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -227,6 +236,30 @@ fn pick_flora_for_cell(
     ))
 }
 
+fn flora_sampling_plan(dx_m: f32) -> Result<(bool, usize, usize, f32), BakeError> {
+    if !dx_m.is_finite() || dx_m <= 0.0 {
+        return Err(BakeError::new(format!(
+            "flora placement requires finite positive dx_m, got {dx_m}"
+        )));
+    }
+    if (dx_m - REFERENCE_DX_M).abs() <= 1e-6 {
+        return Ok((true, 2, 1, 1.0));
+    }
+    // Pick the largest power-of-two stride dividing `FLORA_SECTOR_SIZE` with sample span <= 20 m,
+    // keeping per-draw probability near the 10 m reference so the 0.35 clamp does not saturate.
+    let mut stride = 1_usize;
+    while stride < FLORA_SECTOR_SIZE
+        && ((stride * 2) as f32) * dx_m <= REFERENCE_SAMPLE_SPAN_M + 1e-6
+    {
+        stride *= 2;
+    }
+    let span_ratio = (stride as f32 * dx_m) / REFERENCE_DX_M;
+    let area_ratio_10m = span_ratio * span_ratio;
+    let draws = (libm::ceilf(area_ratio_10m / REFERENCE_AREA_CELLS) as usize).max(1);
+    let per_draw_area_scale = area_ratio_10m / (REFERENCE_AREA_CELLS * draws as f32);
+    Ok((false, stride, draws, per_draw_area_scale))
+}
+
 /// Deterministically places decorative foliage instances per `256²` sector (row-strip compatible).
 #[allow(clippy::too_many_arguments)]
 pub fn generate_decorative_flora_sectors(
@@ -249,6 +282,7 @@ pub fn generate_decorative_flora_sectors(
             "flora placement requires grid {width}x{height} divisible by {FLORA_SECTOR_SIZE}"
         )));
     }
+    let (legacy_dx10, stride, draws, per_draw_area_scale) = flora_sampling_plan(dx_m)?;
     let sx_count = width / FLORA_SECTOR_SIZE;
     let sz_count = height / FLORA_SECTOR_SIZE;
     let (sz_start, sz_end) = sector_z_range.unwrap_or((0, sz_count));
@@ -268,12 +302,13 @@ pub fn generate_decorative_flora_sectors(
 
             let r0 = sz * FLORA_SECTOR_SIZE;
             let c0 = sx * FLORA_SECTOR_SIZE;
-            // Subsample every 2 cells (`4` m..`20` m spacing) for organic canopy clustering.
-            for lr in (0..FLORA_SECTOR_SIZE).step_by(2) {
+            // Legacy C01 (`dx_m == 10`) keeps exact `step_by(2)` (`20 m` sample spacing);
+            // other resolutions adapt stride and draw count to preserve density per km².
+            for lr in (0..FLORA_SECTOR_SIZE).step_by(stride) {
                 let gr = r0 + lr;
                 let r_prev = gr.saturating_sub(1);
                 let r_next = (gr + 1).min(height - 1);
-                for lc in (0..FLORA_SECTOR_SIZE).step_by(2) {
+                for lc in (0..FLORA_SECTOR_SIZE).step_by(stride) {
                     let gc = c0 + lc;
                     let idx = gr * width + gc;
                     if total_h_m[idx] <= 0.0
@@ -299,34 +334,42 @@ pub fn generate_decorative_flora_sectors(
                     ) else {
                         continue;
                     };
-                    // Compensate for 2x2 stride step (`4x` probability per sampled cell, capped).
-                    let eff_prob = (prob * 4.0).clamp(0.0, 0.35);
-                    if rng.gen::<f32>() >= eff_prob {
-                        continue;
-                    }
-                    let jx: f32 = rng.gen_range(-0.45..0.45);
-                    let jz: f32 = rng.gen_range(-0.45..0.45);
-                    let x_norm =
-                        ((lc as f32 + 0.5 + jx) / FLORA_SECTOR_SIZE as f32).clamp(0.0, 1.0);
-                    let z_norm =
-                        ((lr as f32 + 0.5 + jz) / FLORA_SECTOR_SIZE as f32).clamp(0.0, 1.0);
-                    let x_local_u16 = (x_norm * 65_535.0).round() as u16;
-                    let z_local_u16 = (z_norm * 65_535.0).round() as u16;
-                    let scale_u8 = rng.gen_range(96_u8..=240_u8);
-                    let yaw_u8 = rng.gen::<u8>();
+                    let eff_prob = if legacy_dx10 {
+                        // Exact legacy C01 arithmetic (`4x` for 2x2 stride, clamped to 0.35).
+                        (prob * 4.0).clamp(0.0, 0.35)
+                    } else {
+                        let ref_eff_prob =
+                            (prob * REFERENCE_AREA_CELLS).clamp(0.0, MAX_FLORA_DRAW_PROB);
+                        (ref_eff_prob * per_draw_area_scale).clamp(0.0, MAX_FLORA_DRAW_PROB)
+                    };
+                    for _ in 0..draws {
+                        if rng.gen::<f32>() >= eff_prob {
+                            continue;
+                        }
+                        let jx: f32 = rng.gen_range(-0.45..0.45);
+                        let jz: f32 = rng.gen_range(-0.45..0.45);
+                        let x_norm =
+                            ((lc as f32 + 0.5 + jx) / FLORA_SECTOR_SIZE as f32).clamp(0.0, 1.0);
+                        let z_norm =
+                            ((lr as f32 + 0.5 + jz) / FLORA_SECTOR_SIZE as f32).clamp(0.0, 1.0);
+                        let x_local_u16 = (x_norm * 65_535.0).round() as u16;
+                        let z_local_u16 = (z_norm * 65_535.0).round() as u16;
+                        let scale_u8 = rng.gen_range(96_u8..=240_u8);
+                        let yaw_u8 = rng.gen::<u8>();
 
-                    instances.push(FloraInstance {
-                        x_local_u16,
-                        z_local_u16,
-                        species_id: spec_id,
-                        scale_u8,
-                        yaw_u8,
-                        flags_u8: FLORA_FLAG_DECORATIVE,
-                    });
-                    total_instances += 1;
-                    *by_species
-                        .entry(species_name(spec_id).to_owned())
-                        .or_insert(0) += 1;
+                        instances.push(FloraInstance {
+                            x_local_u16,
+                            z_local_u16,
+                            species_id: spec_id,
+                            scale_u8,
+                            yaw_u8,
+                            flags_u8: FLORA_FLAG_DECORATIVE,
+                        });
+                        total_instances += 1;
+                        *by_species
+                            .entry(species_name(spec_id).to_owned())
+                            .or_insert(0) += 1;
+                    }
                 }
             }
 

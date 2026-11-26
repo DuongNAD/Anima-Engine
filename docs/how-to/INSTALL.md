@@ -2,26 +2,30 @@
 title: Installing and Running Anima Engine (0.9)
 status: active
 owner: maintainers
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-26
 review_cycle: per-release
 ---
 
 # Installing and Running Anima Engine (0.9)
 
-This guide explains how to download, install, and try an unsigned single-machine `0.9` pre-release build of **Anima Engine** from GitHub Actions workflow artifacts, or build it locally from source. See [`0.9.0.md`](../release/0.9.0.md) for current release scope, verified scientific limits, and open release gates.
+This guide explains how to download, install, and try an unsigned single-machine `0.9` release candidate (`v0.9.0-rc.1` workflow artifact) or final `v0.9.0` release of **Anima Engine**, or build it locally from source. See [`0.9.0.md`](../release/0.9.0.md) for current release scope (`QD-FOCUS FOCUS-2`, `#314`), verified scientific limits, and open release items.
 
 ---
 
-## 1. Downloading an Installer from Workflow Artifacts
+## 1. Downloading an Installer and World v2 Tile Pack
 
-Pre-release installers are produced by the `.github/workflows/release-build.yml` GitHub Actions workflow (added in PR `#233`, pending merge/review) and uploaded only as workflow artifacts with a **14-day retention window** (there are no public signed releases yet).
+Under `QD-REL09` (`#255`) and `QD-FOCUS FOCUS-2` (`#314`), installer distribution happens in two steps:
 
-1. Sign in to GitHub (GitHub requires authentication to download workflow run artifacts).
-2. Open the repository's **Actions** tab (`https://github.com/DuongNAD/Anima-Engine/actions`) and select the green **Release Build** workflow run for the target commit or release candidate.
+- **For `v0.9.0-rc.1` (`MP-5.1` trial sessions):** produced by the merged `.github/workflows/release-build.yml` GitHub Actions workflow (`#233`; verified green on `windows-latest` and `macos-latest` in run `45268921473`) and uploaded as workflow artifacts with a **14-day retention window** (GitHub login required).
+- **For final `v0.9.0`:** published to **GitHub Releases** once `MP-5.1` trial feedback is resolved (`QD-REL09` G1/G3). Pre-merge `WV2-6` developer trial builds with locally staged tiles remain internal only (`QD-TRIAL-V3`, `WB-D4 (a)` `#288`/`#295`) and are never published.
+
+1. Sign in to GitHub (required to download workflow run artifacts for `v0.9.0-rc.1`; final `v0.9.0` downloads will live on the repository's **Releases** page).
+2. Open the repository's **Actions** tab (`https://github.com/DuongNAD/Anima-Engine/actions`) and select the green **Release Build** workflow run for the target `v0.9.0-rc.1` commit.
 3. Scroll to **Artifacts** and download the bundle for your operating system:
    - **`anima-engine-windows-installers`** — contains the Windows installer(s): Windows Installer (`.msi`) and/or NSIS setup executable (`.exe`).
-   - **`anima-engine-macos-bundles`** — contains the macOS disk image (`.dmg`) and application bundle (`.app`).
-4. Verify the run link and commit SHA match the release note or test invitation before extracting or opening the archive.
+   - **`anima-engine-macos-bundles`** — contains the macOS disk image (`.dmg`) and application bundle (`.app`) when macOS unsigned builds ship under `QD-M4` (`#255`, contingent on `NM-2` checksum parity).
+4. **World v2 tile pack (`QD-1126AM`, `FOCUS-2` step 3):** after `WV2-BIG-3` and owner approval, the single public `81.92 km` (`4096² @ 20 m`) pre-baked tile pack (**about 190 MB, final size set at WV2-BIG-3**) is published once on GitHub Releases (`QD-GATES-1125 (4)` `#288`), with final `world_sha256`, `sim_world_identity`, and `release_archive_sha256` values **set at WV2-BIG-3**.
+5. Verify the run link, commit SHA, and release archive hash (`set at WV2-BIG-3`) match your release note or test invitation before extracting or opening the archive.
 
 ---
 
@@ -40,7 +44,7 @@ Pre-release installers are produced by the `.github/workflows/release-build.yml`
 
 ## 3. Proceeding Past Unsigned-Build Warnings
 
-`0.9` trial installers are **unsigned** (code-signing and auto-update decision `QD-M8` remains open; see [`0.9.0.md`](../release/0.9.0.md)). Because the binaries have no Authenticode signature or Apple Developer notarization, both operating systems will block first launch by default. **Only proceed after confirming you downloaded the archive directly from an expected GitHub Actions run in this repository.**
+Under owner decisions `QD-REL09` G2 and `QD-OPENC` (`#255`), `0.9` installers ship **unsigned** (`QD-M8` signing and auto-update decisions are deferred until before `v1.0.0`; see [`0.9.0.md`](../release/0.9.0.md)). Because the binaries have no Authenticode signature or Apple Developer notarization, both operating systems warn on first launch (`QD-M4` covers unsigned macOS if `NM-2` checksums match the Windows class). **Only proceed after confirming you downloaded the archive directly from an expected GitHub Actions run or GitHub Release in this repository.**
 
 ### Windows (Microsoft Defender SmartScreen)
 
@@ -62,9 +66,9 @@ Pre-release installers are produced by the `.github/workflows/release-build.yml`
 
 As noted in [`CLAUDE.md`](../../CLAUDE.md#gotchas) and [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md), the full Bevy/Tauri desktop application is resource-intensive and has previously frozen or shut down constrained dev laptops when run alongside heavy builds:
 
-- **Use Low quality on integrated GPUs:** Select the **Low** graphics tier on integrated graphics (e.g., Intel Iris Xe) and leave **High** for discrete GPUs.
-- **Initial 3D map startup delay:** The **Start Simulation** button remains disabled briefly at first launch while the shared `2048²` world is generated; allow startup to finish before clicking repeatedly.
-- **Founding population (`ANIMA_FOUNDING_POPULATION`):** Defaults to `10` if unset (`10,000` ceiling). For interactive desktop trials, setting `ANIMA_FOUNDING_POPULATION=200` before launching populates the world visibly without overloading weaker laptops (see [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md)).
+- **Use Low quality on integrated GPUs:** Select the **Low** graphics tier on integrated graphics (e.g., Intel Iris Xe) and leave **High** for discrete GPUs. The `WV2-6` Intel Iris Xe target is `<= 8 GB` RSS, `<= 4 GB` VRAM, and `<= 60` draw calls ([`2026-11-26-wv2-6-iris-xe-runbook.md`](../ai/planning/2026-11-26-wv2-6-iris-xe-runbook.md), `#289`).
+- **World loading & startup delay:** Allow **Start Simulation** to enable before clicking repeatedly. On trunk `f684049d` (`WV2-7` `#279`), desktop simulation boots provisional `C01` and rejects legacy pre-World-v2 saves while the screen still renders the v1 map until `WV2-6` merges; in the target `v0.9.0-rc.1` / `v0.9.0` builds (`QD-FOCUS FOCUS-2` `#314`, `WV2-D2` `#295`), the viewer loads the pre-baked `81.92 km` (`4096² @ 20 m`) World v2 tile pack (**about 190 MB, final size set at WV2-BIG-3**; final hashes and sizes **set at WV2-BIG-3**).
+- **Founding population (`ANIMA_FOUNDING_POPULATION`):** Defaults to `10` if unset (`10,000` ceiling). Per `QD-SCALE-TRIAL` (`#255`), interactive shared trials/demos target **about `100` animals** (`~0.33 ms/tick` headless vs `5.64 ms/tick` at `1,000` agents); setting `ANIMA_FOUNDING_POPULATION=100` or `200` before launching populates the world visibly without overloading weaker laptops (see [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md)).
 - **Headless checks and experiments do not need the desktop app:** Automated Rust tests (`cargo test --features desktop`), Vitest suites, and `anima-lab` headless experiments run without spawning a Tauri window or WebGL renderer.
 
 ---
