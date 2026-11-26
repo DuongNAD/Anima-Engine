@@ -76,7 +76,7 @@ describe('World v2 codecs, fallbacks, and integrity (WV2-6)', () => {
     expect(sim.height).toBe(256);
     expect(sim.generatorVersion).toBe(3);
     expect(sim.worldScale).toBe(200);
-    expect(sim.caveEntrances.length).toBe(40);
+    expect(sim.caveEntrances.length).toBe(90);
     expect(peekAnmwV3Seed(raw)).toBe(deriveSimSeedU32(sim.seedU64));
 
     const reencoded = encodeAnmwV3Sim(sim);
@@ -265,7 +265,7 @@ describe('World v2 codecs, fallbacks, and integrity (WV2-6)', () => {
     if (existsSync(join(stagedDir, 'cave_network.bin'))) {
       const realCave = new Uint8Array(readFileSync(join(stagedDir, 'cave_network.bin')));
       const parsedCave = decodeCaveNetworkBin(realCave);
-      expect(parsedCave.entrances).toHaveLength(40);
+      expect(parsedCave.entrances).toHaveLength(90);
     }
   });
 });

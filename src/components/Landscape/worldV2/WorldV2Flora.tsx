@@ -8,7 +8,7 @@ import { getQualityTierConfig } from '../utils/qualityTiers';
 import { VEGETATION_BASE_SIZE } from '../utils/floraClearance';
 import { debugFloraDensityScale } from '../utils/diagnosticsWindow';
 import { CASTS_SHADOW } from '../utils/floraChunks';
-import { FLORA_SECTORS_PER_SIDE, type WorldV2LoadedBundle } from './types';
+import { resolveWorldV2FloraStride, type WorldV2LoadedBundle } from './types';
 import { WV2_SPECIES_TO_FLORA } from './worldV2Adapter';
 
 export interface WorldV2FloraProps {
@@ -43,7 +43,12 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   tier = 'high',
 }) => {
   const heightUnits = renderSize * heightRatio;
-  const baseStride = tier === 'high' ? 2 : tier === 'medium' ? 3 : 8;
+  const totalInstances = useMemo(() => {
+    let n = 0;
+    for (const sector of bundle.floraSectors) n += sector.instances.length;
+    return n;
+  }, [bundle.floraSectors]);
+  const effectiveStride = resolveWorldV2FloraStride(tier, totalInstances);
   // Test-only (RW-C4 negative control); `1` in every production build.
   const densityScale = useMemo(() => debugFloraDensityScale(), []);
   const shadowsEnabled = getQualityTierConfig(tier).shadows && tier === 'high';
@@ -62,21 +67,21 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
     const perSpecies: Array<Array<{ x: number; y: number; z: number; scale: number; yaw: number }>> =
       Array.from({ length: SPECIES_COUNT }, () => []);
 
-    const rate = densityScale / baseStride;
+    const rate = densityScale / effectiveStride;
     let idx = 0;
     for (const sector of bundle.floraSectors) {
       for (const inst of sector.instances) {
         const copies =
           densityScale === 1
-            ? idx % baseStride === 0
+            ? idx % effectiveStride === 0
               ? 1
               : 0
             : Math.ceil((idx + 1) * rate - 1e-9) - Math.ceil(idx * rate - 1e-9);
         idx += 1;
         if (copies <= 0) continue;
         const sid = inst.species_id < SPECIES_COUNT ? inst.species_id : 7;
-        const u = (sector.sectorX + inst.x_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
-        const v = (sector.sectorZ + inst.z_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
+        const u = (sector.sectorX + inst.x_local_u16 / 65535.0) / bundle.floraSectorsPerSide;
+        const v = (sector.sectorZ + inst.z_local_u16 / 65535.0) / bundle.floraSectorsPerSide;
         const wx = (u - 0.5) * renderSize;
         const wz = (v - 0.5) * renderSize;
         const wy = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
@@ -113,7 +118,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
       });
     }
     return out;
-  }, [bundle, world, renderSize, heightUnits, meshResolution, baseStride, densityScale]);
+  }, [bundle, world, renderSize, heightUnits, meshResolution, effectiveStride, densityScale]);
 
   useEffect(() => {
     return () => {

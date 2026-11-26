@@ -3,36 +3,36 @@
   "_generated": {
     "by": "scripts/gen_world_v2_manifest.ts",
     "seed": 1465266689,
-    "schemaTag": "ANMW3-SNSM-v1",
+    "schemaTag": "ANMW3-BIG-v1",
     "gridSize": 4096,
-    "extentM": 40960,
+    "extentM": 81920,
     "generatorVersion": 3
   },
   "identities": {
-    "simWorldIdentity": "cbdd3ba9f57725ada233d1b43f2f5804fe8cb0fe0b098ca5ef8ae0aae5784c4d",
-    "bundleIdentity": "2f002d1bf976131e3034f9d574a3b7089c291a0c6c0803236ee6817c0ab8cafe",
-    "releaseArchive": "v0.9.0-internal/world_v2_cbdd3ba9_tiles.tar.gz",
-    "releaseArchiveSha256": "4fa1c1544147347b161532509cc286ac93bf85b4e92f4ea9630c2c648548e20e",
-    "gatesSha256": "cd27e648b81535c8273f3fe788fb8abe4d384c65bfbcb1d4d60665e63a6ebe02",
-    "presetSha256": "f460fa73b5a9d458d1ce8eeef1ca7be47042ea38fba3162ece3d94ea92fd3f2e"
+    "simWorldIdentity": "1d3130054d6939425003817fccf78b284e34632b64b7443e5d6b380e60203e31",
+    "bundleIdentity": "bed9f8b6e777392a24733e4febd712584553d6d627a44feadd5c47a11fc4e66f",
+    "releaseArchive": "v0.9.0-internal/world_v2_1d313005_tiles.tar.gz",
+    "releaseArchiveSha256": "4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f",
+    "gatesSha256": "92c143dbfccc4e8cd54ab38bd825f83300e8c5e0c901ce51f3a68f4bdf058f0c",
+    "presetSha256": "6fd71256fb0434532dc5d81579c8bd34a7911f758ff5ae722482c92da0bd4f49"
   },
   "simBundle": {
     "path": "artifacts/world-v2/sim_256.anmw3",
-    "bytes": 1442804,
+    "bytes": 1445892,
     "width": 256,
     "height": 256,
     "seaLevelNorm": 0.20833333,
     "simSeedU32": 1465266689,
-    "waterfallCount": 0,
-    "caveEntranceCount": 40
+    "waterfallCount": 59,
+    "caveEntranceCount": 90
   },
   "indexSummary": {
     "path": "artifacts/world-v2/index.json",
-    "bytes": 929552,
-    "tileEntryCount": 3792
+    "bytes": 936863,
+    "tileEntryCount": 3817
   },
   "coordinateContract": {
-    "extentM": 40960,
+    "extentM": 81920,
     "elevMinM": -1500,
     "elevMaxM": 5700,
     "worldMinXZ": -100,
@@ -40,6 +40,123 @@
     "worldMinY": 0,
     "worldMaxY": 10,
     "simGridDim": 256
+  },
+  "canonicalPoses": {
+    "heightRatio": 0.1,
+    "views": {
+      "overview": {
+        "position": [
+          0,
+          112,
+          112
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "feature": "whole 82 km world from south overview",
+        "biome": "All"
+      },
+      "navigation": {
+        "position": [
+          70.89,
+          15.29,
+          -23.43
+        ],
+        "target": [
+          91.37,
+          4.77,
+          -30.2
+        ],
+        "feature": "river valley max-flow reach (flow=2.634)",
+        "biome": "River"
+      },
+      "collision": {
+        "position": [
+          18.67,
+          11.48,
+          -18.74
+        ],
+        "target": [
+          26,
+          6.01,
+          -31.86
+        ],
+        "feature": "karst cave entrance (clearance=6.1 m, elev=664.0 m)",
+        "biome": "Rock"
+      },
+      "lighting": {
+        "position": [
+          5.92,
+          29.12,
+          11.23
+        ],
+        "target": [
+          19.22,
+          19.85,
+          36.47
+        ],
+        "feature": "highest peak (elev_norm=0.9923)",
+        "biome": "Glacier"
+      },
+      "spawn": {
+        "position": [
+          -19.09,
+          10.32,
+          -4.68
+        ],
+        "target": [
+          -5.88,
+          4.17,
+          5.88
+        ],
+        "feature": "gentle coastal beach near landmass",
+        "biome": "Beach"
+      },
+      "water": {
+        "position": [
+          21.24,
+          10.73,
+          -87.94
+        ],
+        "target": [
+          33.47,
+          5.77,
+          -75.71
+        ],
+        "feature": "tallest waterfall of 59 (drop=88.7 m, q=0.3 m3/s)",
+        "biome": "Rock"
+      },
+      "biome_transition": {
+        "position": [
+          1.63,
+          16.52,
+          -6.09
+        ],
+        "target": [
+          -4.31,
+          4.31,
+          16.08
+        ],
+        "feature": "biome transition zone (8 distinct biomes in 9x9 window)",
+        "biome": "Grassland"
+      },
+      "ecosystem": {
+        "position": [
+          7.64,
+          14.54,
+          -68.15
+        ],
+        "target": [
+          9.8,
+          4.21,
+          -87.45
+        ],
+        "feature": "dense tropical forest cluster (49/49 canopy cells)",
+        "biome": "Jungle"
+      }
+    }
   },
   "ownerGates": {
     "publicTileRelease": "open",

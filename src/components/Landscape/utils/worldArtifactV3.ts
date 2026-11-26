@@ -669,6 +669,23 @@ export function expandNormalRgToRgba8(normalRg: Uint8Array, texelCount: number):
   return rgba;
 }
 
+export type WorldV2CanonicalViewId =
+  | 'overview'
+  | 'navigation'
+  | 'collision'
+  | 'lighting'
+  | 'spawn'
+  | 'water'
+  | 'biome_transition'
+  | 'ecosystem';
+
+export interface WorldV2CanonicalPose {
+  position: [number, number, number];
+  target: [number, number, number];
+  feature: string;
+  biome: string;
+}
+
 export interface WorldV2Manifest {
   $schema?: string;
   schemaVersion: number;
@@ -713,6 +730,10 @@ export interface WorldV2Manifest {
     worldMaxY: number;
     simGridDim: number;
   };
+  canonicalPoses: {
+    heightRatio: number;
+    views: Record<WorldV2CanonicalViewId, WorldV2CanonicalPose>;
+  };
   ownerGates: {
     publicTileRelease: string;
     irisXeBeforeAfterFps: string;
@@ -728,10 +749,35 @@ export interface WorldV2ActualEvidence {
   presetSha256: string;
   releaseArchiveSha256: string;
   tileEntryCount: number;
+  expectedHeightRatio?: number;
   decodedSim: Pick<
     AnmwV3Sim,
     'width' | 'height' | 'seaLevelNorm' | 'simSeedU32' | 'generatorVersion'
   > & { waterfallCount: number; caveEntranceCount: number };
+}
+
+const WORLD_V2_CANONICAL_VIEW_IDS: readonly WorldV2CanonicalViewId[] = [
+  'overview',
+  'navigation',
+  'collision',
+  'lighting',
+  'spawn',
+  'water',
+  'biome_transition',
+  'ecosystem',
+];
+
+function isFiniteTriple(v: unknown): v is [number, number, number] {
+  return (
+    Array.isArray(v) &&
+    v.length === 3 &&
+    typeof v[0] === 'number' &&
+    Number.isFinite(v[0]) &&
+    typeof v[1] === 'number' &&
+    Number.isFinite(v[1]) &&
+    typeof v[2] === 'number' &&
+    Number.isFinite(v[2])
+  );
 }
 
 export function validateWorldV2Manifest(
@@ -802,6 +848,50 @@ export function validateWorldV2Manifest(
   const cc = m.coordinateContract;
   if (!cc || cc.simGridDim !== 256 || cc.worldMinXZ !== -100 || cc.worldMaxXZ !== 100) {
     errors.push('coordinateContract mismatch against backend MapBounds');
+  }
+
+  const cp = m.canonicalPoses;
+  if (!cp || typeof cp !== 'object') {
+    errors.push('missing canonicalPoses block');
+  } else {
+    if (typeof cp.heightRatio !== 'number' || !Number.isFinite(cp.heightRatio) || cp.heightRatio <= 0) {
+      errors.push('canonicalPoses.heightRatio must be a positive finite number');
+    } else if (
+      typeof actual.expectedHeightRatio === 'number' &&
+      Math.abs(cp.heightRatio - actual.expectedHeightRatio) > 1e-6
+    ) {
+      errors.push(
+        `canonicalPoses.heightRatio mismatch: ${cp.heightRatio} != ${actual.expectedHeightRatio}`,
+      );
+    }
+    const views = cp.views as Partial<Record<WorldV2CanonicalViewId, WorldV2CanonicalPose>> | undefined;
+    if (!views || typeof views !== 'object') {
+      errors.push('missing canonicalPoses.views block');
+    } else {
+      for (const vid of WORLD_V2_CANONICAL_VIEW_IDS) {
+        const entry = views[vid];
+        if (!entry) {
+          errors.push(`canonicalPoses.views.${vid} is missing`);
+          continue;
+        }
+        if (!isFiniteTriple(entry.position)) {
+          errors.push(`canonicalPoses.views.${vid}.position must be a finite [x,y,z] triple`);
+        } else if (vid !== 'overview' && (Math.abs(entry.position[0]) > 100 || Math.abs(entry.position[2]) > 100)) {
+          errors.push(`canonicalPoses.views.${vid}.position XZ outside [-100, 100]`);
+        }
+        if (!isFiniteTriple(entry.target)) {
+          errors.push(`canonicalPoses.views.${vid}.target must be a finite [x,y,z] triple`);
+        } else if (Math.abs(entry.target[0]) > 100 || Math.abs(entry.target[2]) > 100) {
+          errors.push(`canonicalPoses.views.${vid}.target XZ outside [-100, 100]`);
+        }
+        if (typeof entry.feature !== 'string' || entry.feature.trim().length === 0) {
+          errors.push(`canonicalPoses.views.${vid}.feature must be non-empty`);
+        }
+        if (typeof entry.biome !== 'string' || entry.biome.trim().length === 0) {
+          errors.push(`canonicalPoses.views.${vid}.biome must be non-empty`);
+        }
+      }
+    }
   }
 
   return { ok: errors.length === 0, errors };

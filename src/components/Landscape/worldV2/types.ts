@@ -1,3 +1,4 @@
+import type { QualityTier } from '../utils/qualityTiers';
 import type { AnmwV3Sim, CaveNetwork, FloraSectorBlob } from '../utils/worldArtifactV3';
 import {
   WV2_ELEV_MAX_M,
@@ -17,8 +18,55 @@ export const ELEV_SPAN_M = WV2_ELEV_SPAN_M;
 export const SEA_LEVEL_M = WV2_SEA_LEVEL_M;
 export const SEA_LEVEL_NORM = WV2_SEA_LEVEL_NORM;
 
-export const WORLD_EXTENT_M = 40960.0;
-export const FLORA_SECTORS_PER_SIDE = 16;
+export const DEFAULT_HEIGHT_RATIO = 0.14;
+export const BIG_WORLD_EXTENT_M = 81_920;
+export const BIG_WORLD_HEIGHT_RATIO = 0.10;
+
+export function floraSectorsPerSideForGrid(gridSize: number): number {
+  if (!Number.isInteger(gridSize) || gridSize < TILE_ACTIVE_SIZE || gridSize % TILE_ACTIVE_SIZE !== 0) {
+    throw new Error(
+      `Invalid World v2 grid_size ${String(gridSize)} for flora sectors (expected positive multiple of ${TILE_ACTIVE_SIZE})`,
+    );
+  }
+  return gridSize / TILE_ACTIVE_SIZE;
+}
+
+export function resolveWorldHeightRatio(
+  worldSourceMode: 'v1' | 'v2',
+  extentM?: number | null,
+): number {
+  if (worldSourceMode === 'v2' && typeof extentM === 'number' && Number.isFinite(extentM) && extentM >= BIG_WORLD_EXTENT_M) {
+    return BIG_WORLD_HEIGHT_RATIO;
+  }
+  return DEFAULT_HEIGHT_RATIO;
+}
+
+export const WORLD_V2_FLORA_BASE_STRIDE: Readonly<Record<QualityTier, number>> = {
+  low: 8,
+  medium: 3,
+  high: 2,
+};
+
+/**
+ * Per-tier emitted instance ceiling for unchunked World v2 flora (`WorldV2Flora`).
+ * Keeps both `C01` (~41k instances) and `BIG_4096_v2` (~536k instances) strictly within
+ * §4a flora and total triangle budgets (even at worst-case 112 tris/inst, 224 with high
+ * shadows), while preserving `low` x4 negative-control trips (> 530k tris even at 44 tris/inst).
+ */
+export const WORLD_V2_FLORA_MAX_INSTANCES: Readonly<Record<QualityTier, number>> = {
+  low: 4_000,
+  medium: 13_500,
+  high: 20_000,
+};
+
+export function resolveWorldV2FloraStride(tier: QualityTier, totalInstances: number): number {
+  const baseStride = WORLD_V2_FLORA_BASE_STRIDE[tier];
+  if (!Number.isFinite(totalInstances) || totalInstances <= 0) {
+    return baseStride;
+  }
+  const capStride = Math.ceil(totalInstances / WORLD_V2_FLORA_MAX_INSTANCES[tier]);
+  return Math.max(baseStride, capStride);
+}
 
 export const WaterKind = {
   None: 0,
@@ -108,6 +156,8 @@ export interface WorldV2LoadedBundle {
   schemaTag: string;
   seed: number;
   extentM: number;
+  gridSize: number;
+  floraSectorsPerSide: number;
   mip: number;
   size: number;
   macroAlbedoSize: number;

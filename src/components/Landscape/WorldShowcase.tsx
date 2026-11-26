@@ -23,7 +23,10 @@ import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
 import { loadWorldV2Cached, resolveWorldSourceMode, resolveWorldV2Mip } from './worldV2/tileLoader';
 import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adapter';
-import type { WorldV2LoadedBundle } from './worldV2/types';
+import {
+  resolveWorldHeightRatio,
+  type WorldV2LoadedBundle,
+} from './worldV2/types';
 import WorldV2Flora from './worldV2/WorldV2Flora';
 import WorldV2ErrorPanel from './worldV2/WorldV2ErrorPanel';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
@@ -88,7 +91,6 @@ import { installFrameCounters, type FrameCountersHandle } from './utils/diagnost
 // map*. Changing the scene extent without changing those together silently resizes every tree
 // relative to the world.
 const RENDER_SIZE = FLORA_RADIUS_REFERENCE_EXTENT;
-const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
 // M3: opt-in chunked terrain (frustum-culls off-screen chunks; see WorldTerrainLod / chunkLod).
 // OFF by default = the proven single-mesh WorldTerrain. Turn on for a chunked terrain; add
@@ -538,7 +540,7 @@ export const WorldShowcase: React.FC = () => {
             Failed to load shared world: {errText}
           </div>
         ) : worldSourceMode === 'v2' ? (
-          `Loading verified World v2 C01 tiles (L${initialV2Mip})…`
+          `Loading verified World v2 tiles (L${initialV2Mip})…`
         ) : (
           'Generating a huge 2048² world… (first run only — cached afterwards)'
         )}
@@ -548,10 +550,11 @@ export const WorldShowcase: React.FC = () => {
 
   const sunDir = sunDirectionForTime(timeOfDay);
   const worldV2Meta = worldV2Bundle ? worldV2RenderMeta(worldV2Bundle) : null;
+  const activeHeightRatio = resolveWorldHeightRatio(worldSourceMode, worldV2Bundle?.extentM);
   // Canonical poses are published in the canonical [-100, 100] bounds; the scene is a different
   // span with its own vertical exaggeration. One conversion, in `mapManifest.ts`.
   const capturePose = capture
-    ? canonicalCameraToRender(capture.camera, RENDER_SIZE, HEIGHT_RATIO)
+    ? canonicalCameraToRender(capture.camera, RENDER_SIZE, activeHeightRatio)
     : null;
 
   return (
@@ -636,7 +639,7 @@ export const WorldShowcase: React.FC = () => {
             worldV2={worldV2Bundle}
             sunDir={sunDir}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
             chunksPerSide={TERRAIN_CHUNKS_PER_SIDE}
             lodDistances={TERRAIN_LOD_DISTANCES}
@@ -651,19 +654,19 @@ export const WorldShowcase: React.FC = () => {
             worldV2={worldV2Bundle}
             sunDir={sunDir}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
             tier={effectiveQuality}
           />
         )}
 
         {worldV2Bundle ? (
-          <WorldV2FrameDiagnostics renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+          <WorldV2FrameDiagnostics renderSize={RENDER_SIZE} heightRatio={activeHeightRatio} />
         ) : (
           <WorldVegetation
             world={world}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
             quality={legacyVegetationQuality(effectiveQuality)}
             tier={effectiveQuality}
@@ -677,14 +680,14 @@ export const WorldShowcase: React.FC = () => {
           worldV2={worldV2Bundle}
           showDecorativeLakes={capture !== null || showDecoration}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
           sunDir={sunDir}
         />
         <WorldWaterfalls
           world={world}
           worldV2={worldV2Bundle}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
         />
         {capture !== null || showDecoration ? (
           <>
@@ -693,7 +696,7 @@ export const WorldShowcase: React.FC = () => {
                 bundle={worldV2Bundle}
                 world={world}
                 renderSize={RENDER_SIZE}
-                heightRatio={HEIGHT_RATIO}
+                heightRatio={activeHeightRatio}
                 meshResolution={MESH_RES}
                 tier={effectiveQuality}
               />
@@ -702,15 +705,15 @@ export const WorldShowcase: React.FC = () => {
               world={world}
               worldV2={worldV2Bundle}
               renderSize={RENDER_SIZE}
-              heightRatio={HEIGHT_RATIO}
+              heightRatio={activeHeightRatio}
               meshResolution={MESH_RES}
             />
             <WorldBirds renderSize={RENDER_SIZE} />
-            <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+            <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={activeHeightRatio} />
             <WorldWildlife
               world={world}
               renderSize={RENDER_SIZE}
-              heightRatio={HEIGHT_RATIO}
+              heightRatio={activeHeightRatio}
               meshResolution={MESH_RES}
             />
           </>
@@ -722,7 +725,7 @@ export const WorldShowcase: React.FC = () => {
         <LiveAgents
           world={world}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
           meshResolution={MESH_RES}
           qualityTier={effectiveQuality}
           onEnvironmentalState={simEnvChannel.publish}
@@ -731,7 +734,7 @@ export const WorldShowcase: React.FC = () => {
           <LiveEnvironment
             world={world}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
             channel={simEnvChannel}
             onCountsChange={setSimEnvCounts}
@@ -742,7 +745,7 @@ export const WorldShowcase: React.FC = () => {
           mode={camMode}
           world={world}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
           meshResolution={MESH_RES}
           viewRef={viewRef}
           teleportRef={teleportRef}
@@ -756,7 +759,7 @@ export const WorldShowcase: React.FC = () => {
             evidence={evidence}
             world={world}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
           />
         ) : null}
@@ -1073,7 +1076,7 @@ const WorldHud: React.FC<{
         </div>
         {worldV2Meta ? (
           <div data-testid="world-v2-identity" style={{ opacity: 0.9, color: '#93c5fd' }}>
-            World v2 C01 · sim {worldV2Meta.simIdentity8} · bundle {worldV2Meta.bundleIdentity8} · L
+            World v2 {worldV2Meta.schemaTag} · sim {worldV2Meta.simIdentity8} · bundle {worldV2Meta.bundleIdentity8} · L
             {worldV2Meta.mip} {worldV2Meta.size}² ({worldV2Meta.tileCountVerified} verified)
           </div>
         ) : null}

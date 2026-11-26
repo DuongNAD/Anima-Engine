@@ -24,6 +24,7 @@ import {
 } from './ktx2Decoder';
 import { computeSha256Hex, verifyTileBytes } from './sha256';
 import {
+  floraSectorsPerSideForGrid,
   TILE_ACTIVE_SIZE,
   TILE_TOTAL_SIZE,
   TileIntegrityError,
@@ -226,6 +227,7 @@ export async function loadWorldV2Bundle(
   }
 
   const tilesPerSide = gridAtMip / TILE_ACTIVE_SIZE;
+  const floraSectorsPerSide = floraSectorsPerSideForGrid(index.grid_size);
   const size = tilesPerSide * TILE_ACTIVE_SIZE;
   const cellCount = size * size;
 
@@ -415,6 +417,8 @@ export async function loadWorldV2Bundle(
     schemaTag: index.schema_tag,
     seed: index.seed,
     extentM: index.extent_m,
+    gridSize: index.grid_size,
+    floraSectorsPerSide,
     mip,
     size,
     macroAlbedoSize,

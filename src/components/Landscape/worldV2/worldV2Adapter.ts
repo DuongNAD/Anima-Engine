@@ -2,7 +2,6 @@ import { FloraType, WORLD_GEN_VERSION, type LakeBasin, type World } from '../uti
 import {
   ELEV_MIN_M,
   ELEV_SPAN_M,
-  FLORA_SECTORS_PER_SIDE,
   SEA_LEVEL_NORM,
   WaterKind,
   type WorldV2LoadedBundle,
@@ -184,8 +183,8 @@ export function buildWorldFromV2Bundle(bundle: WorldV2LoadedBundle): World {
   let fi = 0;
   for (const sec of bundle.floraSectors) {
     for (const inst of sec.instances) {
-      const u = (sec.sectorX + inst.x_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
-      const v = (sec.sectorZ + inst.z_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
+      const u = (sec.sectorX + inst.x_local_u16 / 65535.0) / bundle.floraSectorsPerSide;
+      const v = (sec.sectorZ + inst.z_local_u16 / 65535.0) / bundle.floraSectorsPerSide;
       floraX[fi] = (u - 0.5) * size;
       floraZ[fi] = (v - 0.5) * size;
       floraScale[fi] = 0.35 + (inst.scale_u8 / 255.0) * 1.45;
