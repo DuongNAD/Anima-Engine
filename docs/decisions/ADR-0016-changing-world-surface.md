@@ -1,16 +1,16 @@
 ---
 title: ADR-0016 — Changing World Surface (Three Timescales, Process Laws, Era Transitions & Allopatry)
-status: proposed
+status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-11-24
-decision_date: pending
+last_reviewed: 2026-11-26
+decision_date: 2026-11-26
 supersedes: none
 superseded_by: none
 ---
 
 # ADR-0016 — Changing World Surface (Three Timescales, Process Laws, Era Transitions & Allopatry)
 
-> **Status: `proposed` — awaiting owner acceptance and decisions `D-WCHG-1`–`D-WCHG-6`.**
+> **Status: `accepted` (`2026-11-26`, `QD-WCHG` in [`docs/how-to/AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md), PR `#296` / `bbf05631`): owner approved all six gates `D-WCHG-1`–`D-WCHG-6` as recommended (Option A).**
 > Do **not** begin Rust or frontend implementation of world-surface change until the owner accepts
 > this ADR and resolves `D-WCHG-1`–`D-WCHG-6` (and note `QD-BIO-D2`: any new post-freeze `live.*` key or
 > observable must obey the merged `C12 E3B-PIN` `#260` default-to-legacy partition in
@@ -217,14 +217,16 @@ Landscape dynamics decompose by physical timescale and implementation order:
 
 ## 6. Open Owner Decision Gates (`D-WCHG-1`–`D-WCHG-6`)
 
+> **Resolved (`2026-11-26`, `QD-WCHG` in [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)):** Every gate `D-WCHG-1`–`D-WCHG-6` below is **decided Option (A)** as recommended.
+
 | D-Slot | Question | Options (Lead Recommendation First) |
 |---|---|---|
-| **`D-WCHG-1`** | Tier-2 `SurfaceDeltaOverlay` precision & memory cap | **(A) Recommended:** Compact `256²` sim-grid delta buffers (`f32` `delta_elev_m`, `delta_water_stage`, `u8` `cover_disturbance`, `f32` `burn_heat_timer`, dirty-chunk mask matching `WorldTerrainLod` chunk grid) + bounded `MAX_OVERLAY_EVENTS_PER_ERA` log (`~1 MiB` total fixed allocation). **(B)** Full high-res `4096²` runtime overlay (`~192 MiB+` — rejected for CPU/RAM bounds). |
-| **`D-WCHG-2`** | Tier-2 vs Tier-3 scale thresholds (`H_era`, `A_era`, new island trigger) | **(A) Recommended:** Trigger Tier-3 era transition when localized event peak displacement `max(\|Δh\|) >= 120 m`, or affected walkable/coastal area fraction `>= 5%` of total land, or cumulative Tier-2 `\|Δh\|` drift reaches threshold, or any submarine/coastal event creates/submerges an isolated landmass (`>= 8` connected sim cells). **(B)** Only manual/host-triggered era transitions (automatic Tier 2 always stays in overlay). |
-| **`D-WCHG-3`** | Earthquake / offshore landslide tsunami physics in Tier 2 | **(A) Recommended:** Include bounded coastal wave runup as a Tier-2 surface-water pulse routed through `DynamicFields` water conservation (adding saltwater stress + coastal erosion) after core `W2`/`W3` fault landslides land. **(B)** Defer tsunamis until dedicated oceanic/hydrodynamic phase after Tier 2. |
-| **`D-WCHG-4`** | Cross-era organism migration & habitat-loss policy during Tier-3 era jumps | **(A) Recommended:** Classify existing cells post-bake: cells remaining safe walkable land carry creatures/plants directly (phenotype/brain intact); organisms stranded on newly flooded abyssal/active lava cells suffer realistic mortality to `Detritus` unless within coastal/short-range retreat radius `R_flee` where mobile animals relocate cleanly to nearest walkable land (`ADR-0001` phenotype preserved, `0` re-rolls). **(B)** Relocate 100% of organisms to nearest valid cell with zero era mortality. |
-| **`D-WCHG-5`** | Natural hazard frequency on default shared islands (`1 day = 20 min`, `1 year = 90 min`) | **(A) Recommended:** Low natural Tier-2 disturbance cadence (subtle landslides/fire/floods on rare multi-day ecological intervals) and Tier-3 era transitions triggered only over multi-hour cumulative drift or explicit catastrophic scenario / host event. **(B)** High-frequency rapid eruptions every few real minutes (catastrophic showcase preset only). |
-| **`D-WCHG-6`** | `G-SHAPE`, `G-COMP v2` & `G-SIM` verifier handling on post-era artifacts | **(A) Recommended:** Always execute `G-SHAPE`, `G-COMP v2`, and `G-SIM` offline after every Tier-3 bake and attach `gates.json` provenance honestly (`G-SIM` GS-1/GS-2 walkability & EU bounds required hard; geomorphic/biome `G-SHAPE`/`G-COMP v2` shifts vs baseline Sierra Nevada massif reported transparently, never tuned, since a newly built volcanic island legitimately shifts biome fractions). **(B)** Require every post-catastrophe era to pass original continental `G-COMP v2` biome ratios cleanly (risks blocking valid volcanic islands). |
+| **`D-WCHG-1`**<br>*Decided: (A), `QD-WCHG`* | Tier-2 `SurfaceDeltaOverlay` precision & memory cap | **(A) Recommended:** Compact `256²` sim-grid delta buffers (`f32` `delta_elev_m`, `delta_water_stage`, `u8` `cover_disturbance`, `f32` `burn_heat_timer`, dirty-chunk mask matching `WorldTerrainLod` chunk grid) + bounded `MAX_OVERLAY_EVENTS_PER_ERA` log (`~1 MiB` total fixed allocation). **(B)** Full high-res `4096²` runtime overlay (`~192 MiB+` — rejected for CPU/RAM bounds). |
+| **`D-WCHG-2`**<br>*Decided: (A), `QD-WCHG`* | Tier-2 vs Tier-3 scale thresholds (`H_era`, `A_era`, new island trigger) | **(A) Recommended:** Trigger Tier-3 era transition when localized event peak displacement `max(\|Δh\|) >= 120 m`, or affected walkable/coastal area fraction `>= 5%` of total land, or cumulative Tier-2 `\|Δh\|` drift reaches threshold, or any submarine/coastal event creates/submerges an isolated landmass (`>= 8` connected sim cells). **(B)** Only manual/host-triggered era transitions (automatic Tier 2 always stays in overlay). |
+| **`D-WCHG-3`**<br>*Decided: (A), `QD-WCHG`* | Earthquake / offshore landslide tsunami physics in Tier 2 | **(A) Recommended:** Include bounded coastal wave runup as a Tier-2 surface-water pulse routed through `DynamicFields` water conservation (adding saltwater stress + coastal erosion) after core `W2`/`W3` fault landslides land. **(B)** Defer tsunamis until dedicated oceanic/hydrodynamic phase after Tier 2. |
+| **`D-WCHG-4`**<br>*Decided: (A), `QD-WCHG`* | Cross-era organism migration & habitat-loss policy during Tier-3 era jumps | **(A) Recommended:** Classify existing cells post-bake: cells remaining safe walkable land carry creatures/plants directly (phenotype/brain intact); organisms stranded on newly flooded abyssal/active lava cells suffer realistic mortality to `Detritus` unless within coastal/short-range retreat radius `R_flee` where mobile animals relocate cleanly to nearest walkable land (`ADR-0001` phenotype preserved, `0` re-rolls). **(B)** Relocate 100% of organisms to nearest valid cell with zero era mortality. |
+| **`D-WCHG-5`**<br>*Decided: (A), `QD-WCHG`* | Natural hazard frequency on default shared islands (`1 day = 20 min`, `1 year = 90 min`) | **(A) Recommended:** Low natural Tier-2 disturbance cadence (subtle landslides/fire/floods on rare multi-day ecological intervals) and Tier-3 era transitions triggered only over multi-hour cumulative drift or explicit catastrophic scenario / host event. **(B)** High-frequency rapid eruptions every few real minutes (catastrophic showcase preset only). |
+| **`D-WCHG-6`**<br>*Decided: (A), `QD-WCHG`* | `G-SHAPE`, `G-COMP v2` & `G-SIM` verifier handling on post-era artifacts | **(A) Recommended:** Always execute `G-SHAPE`, `G-COMP v2`, and `G-SIM` offline after every Tier-3 bake and attach `gates.json` provenance honestly (`G-SIM` GS-1/GS-2 walkability & EU bounds required hard; geomorphic/biome `G-SHAPE`/`G-COMP v2` shifts vs baseline Sierra Nevada massif reported transparently, never tuned, since a newly built volcanic island legitimately shifts biome fractions). **(B)** Require every post-catastrophe era to pass original continental `G-COMP v2` biome ratios cleanly (risks blocking valid volcanic islands). |
 
 ---
 
