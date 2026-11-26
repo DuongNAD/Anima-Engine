@@ -602,11 +602,11 @@ fn eval_multi_strat_and_envelope(
     let d_ridge1_c = 22_000.0 + (p.ridge_bend * 18_500.0 * libm::cos(v_rot * 3.1 + p.phase_x))
         - 10_500.0 * cliff_arc;
     let d_ridge1_m = smooth_d_coast_m - d_ridge1_c - 1_100.0 * fbm_broad;
-    let dv1 = (z_r_m - 0.70 * extent_m) / 10_500.0;
+    let dv1 = (z_r_m - 0.70 * extent_m) / 12_200.0;
     let env1 = libm::exp(-0.55 * dv1 * dv1);
     let flank_w1 = (1.0 - sech2(d_ridge1_m / 3_800.0)).clamp(0.0, 1.0);
     let d_ridge1_warped = d_ridge1_m + 1_150.0 * spur_wave * flank_w1;
-    let w1 = 7_400.0;
+    let w1 = 8_800.0;
     let flank_spur1 = flank_w1 * 0.24 * spur_wave;
     let uplift1 = piedmont_gate1
         * sech2(d_ridge1_warped / w1)
@@ -614,7 +614,7 @@ fn eval_multi_strat_and_envelope(
         * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur1).max(0.45);
     let crest1 = piedmont_gate1 * sech2(d_ridge1_m / 3_400.0) * env1;
     let base_massif1_h = piedmont_gate1
-        * (5_380.0 * uplift1
+        * (5_050.0 * uplift1
             + 420.0 * env1 * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
             + 260.0 * crest1);
     let tayrona_t = ((d_coast_m + 260.0) / 950.0).clamp(0.0, 1.0);
@@ -627,21 +627,21 @@ fn eval_multi_strat_and_envelope(
     let piedmont_gate2 = t_pied2 * t_pied2 * (3.0 - 2.0 * t_pied2);
     let d_ridge2_c = 23_500.0 + 1_800.0 * libm::sin(v_rot * TAU + p.phase_z);
     let d_ridge2_m = smooth_d_coast_m - d_ridge2_c - 900.0 * fbm_broad;
-    let dv2 = (z_r_m - 0.22 * extent_m) / 8_500.0;
+    let dv2 = (z_r_m - 0.22 * extent_m) / 11_200.0;
     let env2 = libm::exp(-0.55 * dv2 * dv2);
     let flank_w2 = (1.0 - sech2(d_ridge2_m / 3_200.0)).clamp(0.0, 1.0);
     let d_ridge2_warped = d_ridge2_m + 950.0 * spur_wave * flank_w2;
     let w2 = if d_ridge2_warped < 0.0 {
-        5_200.0
+        7_400.0
     } else {
-        5_800.0
+        8_000.0
     };
     let uplift2 = piedmont_gate2
         * sech2(d_ridge2_warped / w2)
         * (0.05 + 0.95 * env2)
         * (1.0 + 0.18 * fbm_broad.max(-0.15) + flank_w2 * 0.20 * spur_wave).max(0.45);
     let massif2_h =
-        piedmont_gate2 * (3_150.0 * uplift2 + 220.0 * env2 * sech2(d_ridge2_m / 3_000.0));
+        piedmont_gate2 * (3_950.0 * uplift2 + 220.0 * env2 * sech2(d_ridge2_m / 3_000.0));
 
     let (massif_h, massif_uplift, active_ridge_m, active_ridge_u) = if massif1_h >= massif2_h {
         (
@@ -749,7 +749,7 @@ fn eval_cell_multi_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) 
         shelf_drop + slope_drop + coast_ria_2d
     } else {
         let plain_ramp = 48.0 * (d_coast_m / 12_000.0).clamp(0.0, 1.0);
-        let inland_ramp = 185.0 * libm::tanh((d_coast_m - 12_000.0).max(0.0) / 16_000.0);
+        let inland_ramp = 560.0 * libm::tanh((d_coast_m - 14_000.0).max(0.0) / 11_000.0);
         plain_ramp + inland_ramp + coast_ria_2d
     };
 
