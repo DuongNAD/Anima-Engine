@@ -777,7 +777,7 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
     cfg.validate().expect("preset_v2.toml must be valid");
     assert_eq!(cfg.seed, 0x5756_3201);
     assert_eq!(cfg.grid_size, 4096);
-    assert_eq!(cfg.schema_tag, "ANMW3-SNSM-v1");
+    assert_eq!(cfg.schema_tag, "ANMW3-BIG-v1");
 
     let sim_bytes = std::fs::read(v2_dir.join("sim_256.anmw3"))
         .expect("read committed artifacts/world-v2/sim_256.anmw3");
@@ -811,8 +811,9 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
         .expect("read committed artifacts/world-v2/gates.json");
     let gates: VerificationReport =
         serde_json::from_slice(&gates_bytes).expect("parse artifacts/world-v2/gates.json");
-    assert_eq!(gates.status.as_deref(), Some("provisional"));
-    assert_eq!(gates.decision.as_deref(), Some("MAP-D4"));
+    assert_eq!(gates.status.as_deref(), Some("accepted"));
+    assert_eq!(gates.decision.as_deref(), Some("MAP-D8"));
+    assert_eq!(gates.verifier_profile, Some(VerifierProfileKind::Large82Km));
     assert_eq!(
         gates.sim_world_identity.as_deref(),
         Some(idx.sim_world_identity.as_str())
@@ -821,22 +822,53 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
     assert_eq!(gates.height, 4096);
     assert_eq!(gates.seed, Some(0x5756_3201));
 
+    assert!(
+        gates.g_shape.metric_1_strahler_horton.passed,
+        "MAP-D8 BIG_4096_v2 passes G-SHAPE.1 Strahler-Horton"
+    );
+
     let endo = &gates.g_shape.metric_6_endorheic_spillways;
     assert!(
         endo.passed,
-        "provisional C01 passes G-SHAPE.6 endorheic spillways"
+        "MAP-D8 BIG_4096_v2 passes G-SHAPE.6 endorheic spillways"
     );
     assert_eq!(endo.unmodeled_micro_pits, 0);
     assert_eq!(endo.severed_humid_spillways, 0);
     assert_eq!(endo.endorheic_humid_fraction, 0.0);
 
+    assert!(
+        gates.g_shape.metric_4_2_shoreline_fractal.passed,
+        "MAP-D8 BIG_4096_v2 passes G-SHAPE.4_2 shoreline fractal"
+    );
+
     let comp = gates.g_comp_v2.as_ref().expect("g_comp_v2 present");
     assert!(
+        comp.c1_partition.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C1 partition"
+    );
+    assert!(
         comp.c2_ecotone.passed,
-        "provisional C01 passes G-COMP-v2.C2 ecotone continuity"
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C2 ecotone continuity"
+    );
+    assert!(
+        comp.c3_lakes.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C3 lakes"
+    );
+    assert!(
+        comp.c5_coastal_sightlines.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C5 coastal sightlines"
+    );
+    let c5b = comp
+        .c5b_coastal_plain_profile
+        .as_ref()
+        .expect("c5b_coastal_plain_profile present");
+    assert!(
+        c5b.gated && c5b.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C5b coastal plain profile"
     );
 
     let sim_rep = gates.g_sim_raw.as_ref().expect("g_sim_raw present");
+    assert!(sim_rep.passed, "MAP-D8 BIG_4096_v2 passes G-SIM.Raw");
     assert!(sim_rep.round_trip_ok);
     assert!(sim_rep.max_mean_norm_elev_diff <= 1e-5);
     assert!(sim_rep.all_biomes_in_range);
@@ -854,7 +886,7 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
 }
 
 #[test]
-#[ignore = "MAP-D4: G-SHAPE (1-5, 7, 4.2), G-COMP v2 (C1, C3-C5), and G-SIM (GS-1, GS-2) not met by provisional C01, see docs/ai/planning/2026-11-24-wv2-4.md"]
+#[ignore = "MAP-D8: G-SHAPE (2, 3, 4, 5, 7) and G-COMP-v2.C4 not met by accepted BIG_4096_v2 (9/15 pass under 81.92km profile), see docs/ai/planning/2026-11-26-wv2-big-3-card.md"]
 fn official_world_v2_c01_passes_all_15_g_shape_g_comp_and_g_sim_gates() {
     let v2_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../artifacts/world-v2");
     let gates_bytes = std::fs::read(v2_dir.join("gates.json"))

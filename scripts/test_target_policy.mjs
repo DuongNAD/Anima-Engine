@@ -153,11 +153,10 @@ export const IGNORED_TESTS = [
     target: 'tests/wv2_4_g_shape_comp_tests.rs',
     profiles: ['worldgen-cpu'],
     reason:
-      'MAP-D4: G-SHAPE (1-5, 7, 4.2), G-COMP v2 (C1, C3-C5), and G-SIM (GS-1, GS-2) not met by ' +
-      'provisional C01 (2/15 pass; channel truncation at omega_max = 3, 0 waterfalls at 4096^2, ' +
-      'low lake area, smooth coastline, 10 m spikes); deferred to WV2-PHYS2. See ' +
-      'docs/ai/planning/2026-11-24-wv2-4.md §5. Passing C01 artifact integrity, identity, and ' +
-      'G-SHAPE.6/C2 invariants keep running in ' +
+      'MAP-D8: G-SHAPE (2, 3, 4, 5, 7) and G-COMP-v2.C4 not met by accepted BIG_4096_v2 ' +
+      '(9/15 pass under 81.92km profile); see docs/ai/planning/2026-11-26-wv2-big-3-card.md. ' +
+      'Passing BIG_4096_v2 artifact integrity, identity, and all 9 passing gates ' +
+      '(G-SHAPE.1, G-SHAPE.6, G-SHAPE.4_2, C1, C2, C3, C5, C5b, G-SIM.Raw) keep running in ' +
       '`official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates`.',
   },
 ];

@@ -253,10 +253,22 @@ mod tests {
     #[test]
     fn default_layout_is_single_massif_and_legacy_toml_defaults_to_it() {
         assert_eq!(WorldV2Config::default().layout, WorldLayout::SingleMassif);
-        let legacy_toml = include_str!("../../../../artifacts/world-v2/preset_v2.toml");
+        let legacy_toml = include_str!("../presets/wv2_c01_40960.toml");
         let parsed: WorldV2Config = toml::from_str(legacy_toml).expect("parse legacy preset");
         assert_eq!(parsed.layout, WorldLayout::SingleMassif);
         assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn shipped_preset_v2_is_the_wv2_big_81920_preset() {
+        let shipped_toml = include_str!("../../../../artifacts/world-v2/preset_v2.toml");
+        let big_toml = include_str!("../presets/wv2_big_81920.toml");
+        let shipped: WorldV2Config =
+            toml::from_str(shipped_toml).expect("parse shipped preset_v2.toml");
+        let big: WorldV2Config = toml::from_str(big_toml).expect("parse wv2_big_81920.toml");
+        assert_eq!(shipped, big);
+        assert_eq!(shipped.layout, WorldLayout::MultiEnvironment);
+        assert!(shipped.validate().is_ok());
     }
 
     #[test]
