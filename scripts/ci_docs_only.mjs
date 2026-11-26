@@ -42,6 +42,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import nodePath from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const READ_BY_RUST = Object.freeze([
   'docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md',
@@ -175,6 +176,8 @@ function main(argv) {
   writeOutput(docsOnly);
 }
 
+// fileURLToPath, not URL.pathname: on Windows the pathname is "/D:/...", which never equals argv[1], so the script
+// silently did nothing there (anima-case's review of #315, verdict CI-FASTPATH_e1161c85).
 const invokedDirectly =
-  process.argv[1] && nodePath.resolve(process.argv[1]) === nodePath.resolve(new URL(import.meta.url).pathname);
+  process.argv[1] && nodePath.resolve(process.argv[1]) === nodePath.resolve(fileURLToPath(import.meta.url));
 if (invokedDirectly) main(process.argv.slice(2));
