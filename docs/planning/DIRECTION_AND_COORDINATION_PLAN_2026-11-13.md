@@ -2,7 +2,7 @@
 title: Kế hoạch định hướng và điều phối — từ một cây xanh tới thế giới nhiều máy
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-26
 review_cycle: monthly  # và sau mỗi chặng
 ---
 
@@ -226,6 +226,12 @@ Bản 0.9 là bản **một máy**. Bốn dự án cùng loại mà nghiên cứ
 có bất kỳ tính năng nhiều máy nào (bản tổng hợp §12).
 
 **Cổng ra:** tag `v0.9.0`, bản cài tải được, ít nhất ba buổi MP-5.1 có ghi chép.
+
+**Cập nhật 2026-11-26 ([QD-FOCUS](../how-to/AGENT_WORKFLOW.md)):**
+
+- Đường tới `v0.9.0` đi theo đúng thứ tự FOCUS-2.
+- Phạm vi thế giới sống đóng băng tới tag này (FOCUS-1).
+- Thí nghiệm kế tiếp là SEL2-P2, chạy đúng một lần, xen giữa các thẻ phát hành (FOCUS-3).
 
 ### Chặng 6 — Bản 1.0: lát cắt dọc hoàn chỉnh
 

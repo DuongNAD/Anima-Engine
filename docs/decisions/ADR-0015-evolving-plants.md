@@ -1,16 +1,16 @@
 ---
 title: ADR-0015 — Evolving Plants (Organisms, Fields, Plant Genesis, Coevolution & Inhabiting)
-status: proposed
+status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-11-24
-decision_date: pending
+last_reviewed: 2026-11-26
+decision_date: 2026-11-26
 supersedes: none
 superseded_by: none
 ---
 
 # ADR-0015 — Evolving Plants (Organisms, Fields, Plant Genesis, Coevolution & Inhabiting)
 
-> **Status: `proposed` — awaiting owner acceptance and decisions `D-PLANT-EVO-1`–`D-PLANT-EVO-6`.**
+> **Status: `accepted` (`2026-11-26`, `QD-PLANT` in [`docs/how-to/AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md), PR `#305` / `31a45f9f`): owner approved all six gates `D-PLANT-EVO-1`–`D-PLANT-EVO-6` as recommended (Option A).**
 > Do **not** begin Rust or frontend implementation of evolving plants until the owner accepts this
 > ADR and answers `D-PLANT-EVO-1`–`D-PLANT-EVO-6` (per `QD-BIO-D2`, `C12 E3B-PIN` `#260` @ `7e383b8b` is now
 > merged at `src-tauri/tests/prereg_e3b_manifest_tests.rs:84, 120, 574-603, 754-761`, permitting opt-in
@@ -236,16 +236,18 @@ Extending trunk DTOs cleanly without dictating meshes, shaders, or visual style:
 
 ## 10. Open Owner Decision Gates (`D-PLANT-EVO-1`–`D-PLANT-EVO-6`)
 
+> **Resolved (`2026-11-26`, `QD-PLANT` in [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)):** Every gate `D-PLANT-EVO-1`–`D-PLANT-EVO-6` below is **decided Option (A)** as recommended.
+
 The design principles in §2–§9 implement `QD-LIFE`, `QD-GENESIS`, and `QD-PLAYRULES`. Before implementation cards (`P1`–`P8`) start, the owner decides six scoped parameters on acceptance of `ADR-0015`:
 
 | D-Slot | Question | Options (Lead Recommendation First) |
 |---|---|---|
-| **`D-PLANT-EVO-1`** | Scale representation architecture (§3) | **(A) Recommended:** Hybrid Two-Tier (`Individual` trees/shrubs + `Population Field` evolving grass trait distributions). **(B)** All-individual plants (blocked on `scaling.md` 60 Hz budget). **(C)** Field-only plants (drops `QD-LIFE` individual inhabiting). |
-| **`D-PLANT-EVO-2`** | Maximum active individual tree/shrub pool ceiling & `BENCH-ENTITIES` threshold | **(A) Recommended:** Hard 60 Hz frame budget gate via `P1` (`BENCH-ENTITIES`, matching `5.643 ms` headless floor -> target default cap `~256–500` active trees/shrubs depending on benchmark knee, overriding legacy flat `50` at `resources.rs:1218` only when opt-in law is enabled). **(B)** Keep flat cap `50` across all islands. |
-| **`D-PLANT-EVO-3`** | Per-cell evolving grass trait encoding (`EvolvingGrassField`) | **(A) Recommended:** Mean + bounded genetic variance (`mu[k][i]`, `var[k][i]`) over quantized key life-history traits (`growth_rate`, `drought_tolerance`, `defence`, `palatability`, `seed_dispersal`) — fixed `O(K * N_cells)` memory, strided with `REGROWTH_STRIDE = 4`. **(B)** Discretized `M`-morph competition histogram per cell (e.g., `M = 4..8` morph biomass columns summing to `ResourceField::r[i]`). |
-| **`D-PLANT-EVO-4`** | Plant self-fertilization inbreeding/viability cost (`QD-PLAYRULES` #2, `B7`) | **(A) Recommended:** Configurable genetic-load germination/vigor penalty in `PlantEvolutionLaw` (default e.g. `30%` viability reduction / extra embryonic EU cost per selfed seed, tuned so colonizers can still found new patches while outcrossed populations outcompete inbred stands). **(B)** Flat germination rate regardless of selfing vs outcrossing (risks neutralizing sexual selection). |
-| **`D-PLANT-EVO-5`** | Post-Milestone-1 grass-cell `"patch"` inhabit mode (`QD-LIFE`, `MSG_20261124_131500`) | **(A) Recommended:** Defer `"patch"` allocation control for grass tiles until after Milestone 1 (`Trees`/`Shrubs` individual-only in M1, grass watch/chronicle-only). **(B)** Include experimental patch-controller allocation in Milestone 1 `P8`. |
-| **`D-PLANT-EVO-6`** | Shared island time speed when *only* plant guests are active (`MSG_20261124_131500`) | **(A) Recommended:** Keep shared island clock fixed at `1 day = 20 min` / `1 year = 90 min` whenever any guest is connected (animal or plant), reserving speedup solely for empty/prehistory islands (`QD-PLAYRULES` #1). **(B)** Allow host-configured shared fast-forward (e.g., `2x–10x`) strictly when 100% of connected active `Inhabit` guests are plants and all guests consent. |
+| **`D-PLANT-EVO-1`**<br>*Decided: (A), `QD-PLANT`* | Scale representation architecture (§3) | **(A) Recommended:** Hybrid Two-Tier (`Individual` trees/shrubs + `Population Field` evolving grass trait distributions). **(B)** All-individual plants (blocked on `scaling.md` 60 Hz budget). **(C)** Field-only plants (drops `QD-LIFE` individual inhabiting). |
+| **`D-PLANT-EVO-2`**<br>*Decided: (A), `QD-PLANT`* | Maximum active individual tree/shrub pool ceiling & `BENCH-ENTITIES` threshold | **(A) Recommended:** Hard 60 Hz frame budget gate via `P1` (`BENCH-ENTITIES`, matching `5.643 ms` headless floor -> target default cap `~256–500` active trees/shrubs depending on benchmark knee, overriding legacy flat `50` at `resources.rs:1218` only when opt-in law is enabled). **(B)** Keep flat cap `50` across all islands. |
+| **`D-PLANT-EVO-3`**<br>*Decided: (A), `QD-PLANT`* | Per-cell evolving grass trait encoding (`EvolvingGrassField`) | **(A) Recommended:** Mean + bounded genetic variance (`mu[k][i]`, `var[k][i]`) over quantized key life-history traits (`growth_rate`, `drought_tolerance`, `defence`, `palatability`, `seed_dispersal`) — fixed `O(K * N_cells)` memory, strided with `REGROWTH_STRIDE = 4`. **(B)** Discretized `M`-morph competition histogram per cell (e.g., `M = 4..8` morph biomass columns summing to `ResourceField::r[i]`). |
+| **`D-PLANT-EVO-4`**<br>*Decided: (A), `QD-PLANT`* | Plant self-fertilization inbreeding/viability cost (`QD-PLAYRULES` #2, `B7`) | **(A) Recommended:** Configurable genetic-load germination/vigor penalty in `PlantEvolutionLaw` (default e.g. `30%` viability reduction / extra embryonic EU cost per selfed seed, tuned so colonizers can still found new patches while outcrossed populations outcompete inbred stands). **(B)** Flat germination rate regardless of selfing vs outcrossing (risks neutralizing sexual selection). |
+| **`D-PLANT-EVO-5`**<br>*Decided: (A), `QD-PLANT`* | Post-Milestone-1 grass-cell `"patch"` inhabit mode (`QD-LIFE`, `MSG_20261124_131500`) | **(A) Recommended:** Defer `"patch"` allocation control for grass tiles until after Milestone 1 (`Trees`/`Shrubs` individual-only in M1, grass watch/chronicle-only). **(B)** Include experimental patch-controller allocation in Milestone 1 `P8`. |
+| **`D-PLANT-EVO-6`**<br>*Decided: (A), `QD-PLANT`* | Shared island time speed when *only* plant guests are active (`MSG_20261124_131500`) | **(A) Recommended:** Keep shared island clock fixed at `1 day = 20 min` / `1 year = 90 min` whenever any guest is connected (animal or plant), reserving speedup solely for empty/prehistory islands (`QD-PLAYRULES` #1). **(B)** Allow host-configured shared fast-forward (e.g., `2x–10x`) strictly when 100% of connected active `Inhabit` guests are plants and all guests consent. |
 
 ---
 

@@ -3,7 +3,7 @@
 
 //! Deterministic World v2 offline CLI (`anima-worldgen generate | verify`).
 
-use anima_worldgen::config::WorldV2Config;
+use anima_worldgen::config::{WorldLayout, WorldV2Config};
 use anima_worldgen::pipeline::run_worldgen_to_dir;
 use anima_worldgen::verify::{verify_dem_file, verify_raw_dir};
 use serde::Deserialize;
@@ -46,6 +46,7 @@ enum CliAction {
 struct WorldV2PresetOverride {
     seed: Option<u64>,
     schema_tag: Option<String>,
+    layout: Option<WorldLayout>,
     grid_size: Option<u32>,
     extent_m: Option<f32>,
     elev_min_m: Option<f32>,
@@ -334,6 +335,9 @@ fn load_config(args: &GenerateArgs) -> Result<WorldV2Config, String> {
     if let Some(ov) = preset_ov {
         if let Some(v) = ov.schema_tag {
             cfg.schema_tag = v;
+        }
+        if let Some(v) = ov.layout {
+            cfg.layout = v;
         }
         if let Some(v) = ov.extent_m {
             cfg.extent_m = v;
@@ -715,5 +719,64 @@ mod tests {
         } else {
             panic!("expected Generate");
         }
+    }
+
+    #[test]
+    fn preset_layout_override_defaults_and_rejects_unknown_fields() {
+        let preset_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("presets")
+            .join("wv2_big_81920.toml");
+        let cfg_big = load_config(&GenerateArgs {
+            seed: None,
+            size: None,
+            out: PathBuf::from("/tmp/out_big"),
+            preset: Some(preset_path),
+        })
+        .expect("wv2_big_81920.toml preset must load cleanly");
+        assert_eq!(cfg_big.layout, WorldLayout::MultiEnvironment);
+        assert!((cfg_big.extent_m - 81_920.0).abs() < f32::EPSILON);
+        assert_eq!(cfg_big.grid_size, 4096);
+
+        let cfg_no_preset = load_config(&GenerateArgs {
+            seed: Some(42),
+            size: Some(128),
+            out: PathBuf::from("/tmp/out_default"),
+            preset: None,
+        })
+        .expect("default generate args must load cleanly");
+        assert_eq!(cfg_no_preset.layout, WorldLayout::SingleMassif);
+
+        let pid = std::process::id();
+        let default_toml =
+            std::env::temp_dir().join(format!("anima_wv2_layout_default_{pid}.toml"));
+        fs::write(&default_toml, "seed = 42\ngrid_size = 128\n").unwrap();
+        let cfg_omitted_layout = load_config(&GenerateArgs {
+            seed: None,
+            size: None,
+            out: PathBuf::from("/tmp/out_omitted"),
+            preset: Some(default_toml.clone()),
+        })
+        .expect("preset without layout must default to SingleMassif");
+        let _ = fs::remove_file(&default_toml);
+        assert_eq!(cfg_omitted_layout.layout, WorldLayout::SingleMassif);
+
+        let unknown_toml =
+            std::env::temp_dir().join(format!("anima_wv2_layout_unknown_{pid}.toml"));
+        fs::write(
+            &unknown_toml,
+            "seed = 42\ngrid_size = 128\nunknown_field = true\n",
+        )
+        .unwrap();
+        let err_unknown = load_config(&GenerateArgs {
+            seed: None,
+            size: None,
+            out: PathBuf::from("/tmp/out_unknown"),
+            preset: Some(unknown_toml.clone()),
+        });
+        let _ = fs::remove_file(&unknown_toml);
+        assert!(
+            err_unknown.is_err(),
+            "deny_unknown_fields must still reject unknown keys"
+        );
     }
 }

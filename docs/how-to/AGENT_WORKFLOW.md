@@ -464,6 +464,28 @@ QD-BIO-D4 = a brain-body interface ADR (per-segment CPG drive by the brain) come
             (genotype.rs:253).
             (D1-D4: owner in chat, 2026-11-24: "Duyệt D1–D4", on the lead's review of the six Gemini Deep
             Research reports, hub RESEARCH_REVIEW_2026-11-24_modern_biology.md.)
+QD-WCHG   = ADR-0016 (changing world surface; natural disasters) has its six open gates decided, all as
+            recommended (owner in chat, 2026-11-26 night: "Approve as recommended", after asking for
+            natural disasters):
+            D-WCHG-1 (A): a compact Tier-2 SurfaceDeltaOverlay on the 256^2 sim grid (delta elevation,
+            water stage, cover disturbance, burn timer, dirty-chunk mask) with a bounded per-era event
+            log, about 1 MiB fixed.
+            D-WCHG-2 (A): a Tier-3 era transition when an event's peak |dh| >= 120 m, or it touches
+            >= 5% of land, or cumulative Tier-2 drift crosses its threshold, or an island is created or
+            submerged.
+            D-WCHG-3 (A): bounded tsunami runup as a Tier-2 surface-water pulse through the
+            DynamicFields water budget, after the W2/W3 fault and landslide work.
+            D-WCHG-4 (A): after an era bake, creatures on safe land carry over intact; those stranded on
+            new deep water or active lava die to Detritus unless within R_flee, where mobile animals move
+            to the nearest walkable land (ADR-0001 phenotype kept, no re-rolls).
+            D-WCHG-5 (A): natural hazards are rare by default; frequent eruptions only in an explicit
+            catastrophe scenario.
+            D-WCHG-6 (A): G-SHAPE, G-COMP v2 and G-SIM run after every Tier-3 bake; G-SIM is hard, and
+            geomorphic or biome shifts are reported honestly, never tuned.
+            The cards are W1-W7 (docs/ai/planning/2026-11-24-world-change-cards.md), in their dependency
+            order. Hazards are opt-in world laws (the EVOLUTION_EXPERIMENT_CONTRACT rule): the frozen
+            SEL2-P2 and every prereg_* stay bit-identical. Suffocation by volcanic gas or drowning goes
+            through the respiration design RESP-D, not through these cards.
 QD-ADR0014 = ADR-0014 (shared island, host and guests; PR #256) is accepted with all 24 D-slots as recommended:
             immediate release on disconnect; exclusive possession; bincode quantized deltas at about 20 Hz with a
             LAN cap of 16 guests; interest-area culling with a low-rate global summary; guest-input overflow
@@ -516,6 +538,83 @@ QD-GENESIS = first organisms in three phases: G1 fixed, declared founders for th
             modelled. Every run declares its phase in the genesis manifest; experiments never mix phases.
             (Owner in chat, 2026-11-24: "hướng 1 đặt 1 fix cứng để làm được demo đã, tiếp theo sẽ sàng lọc
             1 số để lấy mẫu nâng cấp, cuối cùng làm thật sự sinh vật khởi đầu".)
+QD-PLANT  = ADR-0015 (evolving plants) has its six open gates decided, all as recommended (owner in chat,
+            2026-11-26 night: "Approve as recommended", after asking for plant evolution):
+            D-PLANT-EVO-1 (A): a hybrid of two tiers: individual trees and shrubs, and grass as per-cell
+            populations carrying trait distributions.
+            D-PLANT-EVO-2 (A): the individual tree/shrub cap comes from the P1 BENCH-ENTITIES 60 Hz budget
+            (about 256-500); it overrides the flat max_tree_count of 50 (resources.rs:1218) only when the opt-in law
+            is on.
+            D-PLANT-EVO-3 (A): each grass cell keeps a mean and a bounded genetic variance for quantized
+            life-history traits (growth rate, drought tolerance, defence, palatability, seed dispersal),
+            with fixed memory, strided with REGROWTH_STRIDE.
+            D-PLANT-EVO-4 (A): selfing is allowed with a configurable genetic-load cost in the plant law
+            (for example 30% lower viability or extra embryonic EU per selfed seed), so one seed can found
+            a patch while outcrossed stands outcompete inbred ones.
+            D-PLANT-EVO-5 (A): the grass "patch" inhabit mode waits until after Milestone 1; in M1 only
+            trees and shrubs can be inhabited.
+            D-PLANT-EVO-6 (A): the shared island clock stays fixed whenever any guest is connected,
+            plant or animal; speed-up is only for empty or prehistory islands.
+            ADR-0015 stays proposed until the follow-up that sets it to accepted. The plant law is opt-in;
+            with it off the trunk is bit-identical, and SEL2-P2 and every prereg_* are unchanged.
+QD-1126AM = morning of 2026-11-26 (owner in chat: "Approve as recommended", after the lead's morning report;
+            hub OWNER_APPROVALS_2026-11-26_morning.md):
+            - WV2-BIG-3 replaces C01 only after WV2-BIG-HYDRO and WV2-BIG-FLORA merge, and then needs its own
+              owner yes.
+            - These lead rulings are confirmed:
+              - LR-RNG-1: one RNG-stream registry card comes before any new sim-feature design is implemented.
+              - LR-LOOK-1: the prototype may exceed check:bundle; the real WV2-LOOK card code-splits or carries
+                an explicit, reasoned budget raise.
+              - LR-AUTH-BIG1-BIN.
+              - LR-SCOPE-NIGHT.
+              - LR-AUTH-FLORA-AREA: WV2-BIG-FLORA may edit bake/flora_place.rs plus its own test and note,
+                with C01 bit-identical.
+            - WV2-6 CI takes option 1: the tile pack is published once, and CI fetches and caches it. No ci.yml
+              change now. This is not an approval to publish.
+            - Still open: how WB-D8's coast mix is measured; the D-gates of the night's eight sim-feature
+              designs and of the gap and reverse-evolution notes; the Iris Xe run.
+QD-FOCUS  = release 0.9 and get one scientific result before the living world grows. Owner in chat, 2026-11-26:
+            "Duyệt như đề xuất", on the lead's proposal (hub DECISION_PROPOSAL_QD-FOCUS_2026-11-26.md).
+            FOCUS-1 (A): a hard scope freeze until the v0.9.0 tag.
+            - No new sim-feature design or ADR.
+            - No code for RESP-D, INVERT-D, AERO-D, AQUA-D, FOSS-D, WX-D, PATHO-D, MICRO-D, ADR-0017 or
+              ADR-0018; they stay proposed.
+            - Bug fixes, the release path, the next experiment, and documents that record measurements or
+              decisions continue.
+            - The owner can open an exception with one decision line.
+            - DIRECTION rule L7 is enforced again: a new planning or design document needs a code PR merged
+              since the previous one.
+            FOCUS-2 (A): the 0.9 path, in this order:
+            1. WV2-BIG-HYDRO and WV2-BIG-FLORA, plus the G-SHAPE diagnosis.
+            2. WV2-BIG-3 replaces C01 once, with its own owner yes.
+            3. One public tile release, after the owner's final yes naming the asset and its size.
+            4. WV2-6 merges after the Iris Xe gate.
+            5. The real WV2-LOOK card (QD-WV2-LOOK, LR-LOOK-1).
+            6. v0.9.0-rc.1, then three MP-5.1 sessions, then v0.9.0.
+            WB-D4 (a) stands.
+            FOCUS-3 (A):
+            - The frozen SEL2-P2 (#290) runs once on Windows 1, between release cards, and gets its RESULT.md.
+            - A REPLAY-1 preregistration is drafted, docs only: many seeds forked from one checkpoint, one factor
+              changed against a control arm, measuring whether lineages converge or diverge.
+            - QD-LAW1 is unchanged. The order of REPLAY-1 and LAW1 is set when both are ready to freeze.
+            - REPLAY-1 serves QD-ISLAND (owner in chat, 2026-11-26: "Phục vụ QD-ISLAND"). QD-ISLAND stays the
+              flagship question. REPLAY-1 replays island worlds from one checkpoint, to test whether the island
+              rule's outcome repeats across replays. The lead's proposal had called REPLAY-1 the flagship
+              without checking QD-ISLAND.
+            FOCUS-4 (A): the living world reopens after v0.9.0, in this order:
+            1. The RNG-stream registry card (LR-RNG-1).
+            2. The time-law card: P0 in the gap note, since 1 day = 20 min and 1 year = 90 min.
+            3. One feature at a time. Each needs its design's D-gates decided, a preregistered question that it
+               serves, and an opt-in flag that keeps the baselines and SEL2-P2 bit-identical.
+            QD-REALMS (after the SEL2-P result; water, then sky, then underground) and QD-SCOPE still apply.
+            FOCUS-5 (A): one card (anima-case, reviewer anima-mac) lets the Rust (src-tauri) job pass fast on a
+            docs-only diff.
+            - The required check names stay the same.
+            - The card defines "docs-only" only after listing every Rust test that reads docs/ or *.md.
+            - Negative control: a .rs change still runs in full.
+            FOCUS-6 (A): STATE §3.00 gains two counters, updated at each STATE-SYNC:
+            - designs proposed against designs implemented;
+            - experiments with a RESULT.md, conclusive against not conclusive.
 MAP-D4    = World v2 WV2-4 official artifact (PR #249): no pre-registered candidate passes the 15 gates at
             4096^2 (C01 passes 2/15, C08 1/15); the root cause is a truncated channel network
             (omega_max = 3), which cascades into zero waterfalls, lake area 11-31x below the floor, a
@@ -586,6 +685,55 @@ QD-GATES-1125 = the owner delegated the open release and world gates to the lead
             (5) C16 SEL2P2-FREEZE: anima-case opens the win/sel2p2-freeze draft PR, a peer verifies that
             it freezes exactly QD-SEL2P2-D1..D7 and the VIAB-2 settings, and the lead merges it when it
             is VERIFIED at the head and green. That merge is the preregistration freeze.
+QD-WV2-LOOK = after the owner judged the World v2 C01 scene not yet realistic (2026-11-25 evening),
+            the lead prototyped a rendering-only realism pass on mac/wv2-look-proto, on top of #291 at
+            2693116c: slope/altitude terrain shading with side-plane projection on steep faces, aerial
+            perspective, real-scale flora with a flora-driven canopy term, ocean depth colour and
+            natural cave mouths, at 23-29 draw calls on both tiers. It becomes a card, WV2-LOOK, after
+            WV2-6 (#291) merges, and only then: the trunk is merged into the branch (never rebased),
+            a PR is opened and peer-verified with capture:map before/after plus npm run test:e2e with
+            the C01 tiles staged, and the Dell Iris Xe runbook protocol measures it before it merges.
+            The coast is judged against G-REF group 9 (CST-01..CST-04 in the reference board). The
+            prototype's side effects are fixed or recorded in the card: floraClearance canopy radii
+            larger than the rendered trees, the map-edge band lowered visually while colliders keep
+            data heights, and frozen-lake quads hidden on v2. Rendering only: no simulation, world
+            data, verifier or gate change. (Owner in chat, 2026-11-25 evening: "Yes, after WV2-6";
+            on the coast: "tôi nghĩ bạn cần tham khảo bờ biển á".)
+QD-WV2-BIG = World v2 grows. The owner, offered "keep 40.96 km and fix how it reads" or "make the
+            map really larger, e.g. 82 km, four times the area", chose the larger map with more
+            environments (owner in chat, 2026-11-25 night: "cách 2 đi và làm nhiều môi trường hơn").
+            Until a design card settles the details:
+            (1) MAP-D7 is suspended: C01 is not replaced by a 40.96 km candidate.
+            (2) WV2-PHYS4 continues, because its river, valley and lake physics carry over to a larger
+            world; it prefers changes that scale with dx_m and extent_m over 40.96 km-specific tuning.
+            (3) Design card WV2-D2 (anima-dell, docs only, status proposed) proposes: the extent and
+            cell size (8192^2 at 10 m or 4096^2 at 20 m, with pack size, generate time, memory and Iris
+            Xe costs); the environment set, mapped to the G-REF groups and to the generator mechanism
+            that would make each one; every place that assumes 40.96 km, 10 m cells or the 200x200 sim
+            box; which gate thresholds depend on scale; and the release order. The owner decides its
+            open points.
+            Unchanged: LD-1 creature scale, the 256^2 sim grid and MapBounds 200x200 (Stage 4 science
+            does not use C01), C01 as the provisional world until the new one passes its gates, and
+            the tile pack published once, for the final world.
+QD-WV2-D2 = the owner accepted every recommendation of design card WV2-D2 (PR #294,
+            docs/ai/design/2026-11-26-world-v2-scale-up-design.md, section 8) (owner in chat,
+            2026-11-25 night: "Approve as recommended"):
+            WB-D1 (B): 81.92 km at 4096^2 and 20 m cells for v0.9.0; 8192^2 at 10 m waits for P2/P3.
+            WB-D2 (a): one coherent ~11 N tropical world with environments E1-E9; boreal, arctic and
+            temperate-autumn environments wait for a second regional preset after 0.9.
+            WB-D3: a separate 81.92 km verifier profile with the section 5 ranges; the 40.96 km
+            profile and its tests stay unchanged.
+            WB-D4 (a): the public tile release and v0.9.0-rc.1 wait for the 81.92 km world; #291 stays
+            internal under QD-TRIAL-V3.
+            WB-D5 (c): viewer HEIGHT_RATIO 0.10 at 81.92 km, confirmed by eye in WV2-BIG-4; C01 keeps
+            0.14.
+            WB-D6 (a): the 44-byte ANMW v3 header stays; extent_m is read from index.json.
+            WB-D7 (a): the desktop sim stays 256^2 with MapBounds 200x200 (320 m per cell).
+            WB-D8: coastline shares of 55-65% plain-backed, 20-30% fan, delta or mangrove, and a
+            10-20% steep minority, checked by C5b.CoastalPlainProfile in the 81.92 km profile, with
+            the C01, PHYS2 and PHYS3 baselines measured first in WV2-BIG-2.
+            The work follows the design's cards WV2-BIG-1..WV2-BIG-5 plus WV2-LOOK. WV2-BIG-3 replaces
+            C01 once, which supersedes MAP-D7 (suspended by QD-WV2-BIG).
 QD-VIAB2-R = SEL2-P2 VIAB-2 needs a blind 12-seed x 200,000-tick runner that the trunk lacks (the SEL2-P
             runner rejects drift_reset_ticks, runs one seed and emits trait_mass). It is written as one new
             example src-tauri/examples/run_viab2_probe.rs with its own test, on the trunk's

@@ -891,11 +891,17 @@ pub fn apply_deposition(
 
     mouth_cands.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let mouth_sp_sq = 2_000.0_f32 * 2_000.0_f32;
+    let domain_extent_m = (w.max(h) as f32) * cfg.dx_m;
+    let effective_max_mouths = if domain_extent_m >= 60_000.0 {
+        cfg.delta_max_mouths.max(8)
+    } else {
+        cfg.delta_max_mouths
+    };
     let mut delta_count = 0usize;
     let mut selected_mouths: Vec<(f32, usize, f32, f32)> = Vec::new();
 
     for cand in mouth_cands {
-        if selected_mouths.len() >= cfg.delta_max_mouths {
+        if selected_mouths.len() >= effective_max_mouths {
             break;
         }
         let mr = (cand.1 / w) as f32 * cfg.dx_m;
