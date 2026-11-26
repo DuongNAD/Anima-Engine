@@ -1860,3 +1860,5 @@ Theo yêu cầu tham khảo mô hình 3D mới (phong cách Papercraft/Low-poly 
    py -m http.server 8000
    ```
 3. Mở trình duyệt truy cập: `http://localhost:8000/` để xem và tương tác trực tiếp với mô hình thỏ mà không tốn tài nguyên hệ thống.
+
+<!-- positive-control: hardening-fastpath docs-only skip check -->
