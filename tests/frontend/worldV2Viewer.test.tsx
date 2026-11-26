@@ -10,7 +10,10 @@ import * as worldTerrainTextures from '../../src/components/Landscape/utils/worl
 import * as diagnosticsWindow from '../../src/components/Landscape/utils/diagnosticsWindow';
 import * as THREE from 'three';
 import WorldV2Flora from '../../src/components/Landscape/worldV2/WorldV2Flora';
-import { buildWorldFromV2Bundle } from '../../src/components/Landscape/worldV2/worldV2Adapter';
+import {
+  buildWorldFromV2Bundle,
+  WV2_SPECIES_TO_FLORA,
+} from '../../src/components/Landscape/worldV2/worldV2Adapter';
 import { decodeFloraSectorAnmf } from '../../src/components/Landscape/utils/worldArtifactV3';
 import type { WorldV2LoadedBundle } from '../../src/components/Landscape/worldV2/types';
 import {
@@ -413,11 +416,102 @@ describe('WorldShowcase World v2 integration (WV2-6)', () => {
     expect(diagnosticsWindow.classifySceneObjectLayer(child)).toBe('flora');
     baseRender.unmount();
 
+    // Verify tier stride ordering on the 16-instance fixture: high (8) > medium (6) > low (2).
+    window.history.replaceState({}, '', '?world=v2&quality=medium');
+    const medRender = render(React.createElement(WorldV2Flora, { bundle, world, tier: 'medium' }));
+    const medArgs = medRender.container.querySelector('instancedmesh')?.getAttribute('args') ?? '';
+    expect(medArgs.endsWith(',6')).toBe(true); // ceil(16 / 3) = 6
+    medRender.unmount();
+
+    window.history.replaceState({}, '', '?world=v2&quality=high');
+    const highRender = render(React.createElement(WorldV2Flora, { bundle, world, tier: 'high' }));
+    const highArgs = highRender.container.querySelector('instancedmesh')?.getAttribute('args') ?? '';
+    expect(highArgs.endsWith(',8')).toBe(true); // 16 / 2 = 8
+    highRender.unmount();
+
     // Negative-control multiplier (?floraDensityScale=4) scales emitted instances 4x at low tier.
     window.history.replaceState({}, '', '?world=v2&quality=low&floraDensityScale=4');
     const scaledRender = render(React.createElement(WorldV2Flora, { bundle, world, tier: 'low' }));
     const scaledMesh = scaledRender.container.querySelector('instancedmesh');
     const scaledArgs = scaledMesh?.getAttribute('args') ?? '';
     expect(scaledArgs.endsWith(',8')).toBe(true); // 16 * (4 / 8) = 8
+  });
+
+  it('maps FloraSpeciesId 0..7 to ecologically accurate FloraType meshes', () => {
+    const expected: ReadonlyArray<worldGen.FloraType> = [
+      worldGen.FloraType.Jungle, // 0 RainforestCanopy
+      worldGen.FloraType.Round, // 1 MontaneBroadleaf
+      worldGen.FloraType.Pine, // 2 ElfinConifer
+      worldGen.FloraType.Cactus, // 3 DryThornScrub
+      worldGen.FloraType.Palm, // 4 MangroveProp
+      worldGen.FloraType.Acacia, // 5 SavannaAcacia
+      worldGen.FloraType.Bush, // 6 ParamoEspeletia
+      worldGen.FloraType.Round, // 7 RiparianWillow
+    ];
+    expect(WV2_SPECIES_TO_FLORA).toEqual(expected);
+
+    const floraBin = encodeFloraSectorAnmf({
+      sectorX: 8,
+      sectorZ: 8,
+      decorativeOnly: true,
+      instances: expected.map((_, speciesId) => ({
+        x_local_u16: ((speciesId + 1) * 4000) & 0xffff,
+        z_local_u16: ((speciesId + 1) * 4000) & 0xffff,
+        scale_u8: 120,
+        yaw_u8: 64,
+        species_id: speciesId,
+        flags_u8: ANMF_FLAG_DECORATIVE,
+      })),
+    });
+    const sector = decodeFloraSectorAnmf(floraBin);
+    const n256 = 256 * 256;
+    const cells = TILE_TOTAL_SIZE * TILE_TOTAL_SIZE;
+    const bundle: WorldV2LoadedBundle = {
+      simWorldIdentity: 'a'.repeat(64),
+      bundleIdentity: 'b'.repeat(64),
+      schemaTag: 'anima-world-v2-c01-v1',
+      seed: 42,
+      extentM: 40960,
+      mip: 2,
+      size: 1024,
+      macroAlbedoSize: TILE_TOTAL_SIZE,
+      tileCountVerified: 1,
+      sim: {
+        width: 256,
+        height: 256,
+        seaLevelNorm: 1500 / 7200,
+        simSeedU32: 42,
+        seedU64: 42n,
+        generatorVersion: 3,
+        worldScale: 200,
+        flags: 0,
+        elevation: new Float32Array(n256).fill(0.45),
+        moisture: new Float32Array(n256).fill(0.5),
+        temperature: new Float32Array(n256).fill(0.55),
+        flow: new Float32Array(n256),
+        slope: new Float32Array(n256).fill(0.05),
+        biome22: new Uint8Array(n256).fill(4),
+        waterKind: new Uint8Array(n256),
+        waterfalls: [],
+        caveEntrances: [],
+      },
+      heightM: new Float32Array(cells).fill(420),
+      normalRg: new Uint8Array(cells * 2).fill(128),
+      macroAlbedoRgba: new Uint8Array(cells * 4).fill(128),
+      biomeIdsRgba: new Uint8Array(cells * 4),
+      biomeWeightsRgba: new Uint8Array(cells * 4),
+      lightingRgba: new Uint8Array(cells * 4),
+      horizonRgba: new Uint8Array(cells * 4),
+      hydroFlowRgba: new Uint8Array(cells * 4),
+      shoreSdfRg: new Uint8Array(cells),
+      waterHeightM: new Float32Array(cells),
+      waterKind: new Uint8Array(cells),
+      caveMask: new Uint8Array(cells),
+      caveNetwork: null,
+      floraSectors: [sector],
+    };
+    const world = buildWorldFromV2Bundle(bundle);
+    expect(world.floraCount).toBe(expected.length);
+    expect(Array.from(world.floraType)).toEqual(expected);
   });
 });

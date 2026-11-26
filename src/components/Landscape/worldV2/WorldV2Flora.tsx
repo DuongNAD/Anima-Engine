@@ -43,7 +43,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   tier = 'high',
 }) => {
   const heightUnits = renderSize * heightRatio;
-  const baseStride = tier === 'high' ? 1 : tier === 'medium' ? 2 : 8;
+  const baseStride = tier === 'high' ? 2 : tier === 'medium' ? 3 : 8;
   // Test-only (RW-C4 negative control); `1` in every production build.
   const densityScale = useMemo(() => debugFloraDensityScale(), []);
   const shadowsEnabled = getQualityTierConfig(tier).shadows && tier === 'high';
@@ -68,7 +68,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
       for (const inst of sector.instances) {
         const copies =
           densityScale === 1
-            ? baseStride === 1 || idx % baseStride === 0
+            ? idx % baseStride === 0
               ? 1
               : 0
             : Math.ceil((idx + 1) * rate - 1e-9) - Math.ceil(idx * rate - 1e-9);

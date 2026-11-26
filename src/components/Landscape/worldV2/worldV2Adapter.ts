@@ -9,14 +9,14 @@ import {
 } from './types';
 
 export const WV2_SPECIES_TO_FLORA: ReadonlyArray<FloraType> = [
-  FloraType.Pine, // 0
-  FloraType.Round, // 1
-  FloraType.Jungle, // 2
-  FloraType.Cactus, // 3
-  FloraType.Rock, // 4
-  FloraType.Acacia, // 5
-  FloraType.Palm, // 6
-  FloraType.Bush, // 7
+  FloraType.Jungle, // 0: RainforestCanopy
+  FloraType.Round, // 1: MontaneBroadleaf
+  FloraType.Pine, // 2: ElfinConifer
+  FloraType.Cactus, // 3: DryThornScrub
+  FloraType.Palm, // 4: MangroveProp
+  FloraType.Acacia, // 5: SavannaAcacia
+  FloraType.Bush, // 6: ParamoEspeletia
+  FloraType.Round, // 7: RiparianWillow
 ];
 
 export interface WorldV2RenderMeta {
