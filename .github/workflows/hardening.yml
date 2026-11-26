@@ -10,7 +10,32 @@ on:
   pull_request:
 
 jobs:
+  # Docs-only fast path (QD-FOCUS FOCUS-5, HARDENING-FASTPATH): reuse scripts/ci_docs_only.mjs so
+  # hardening.yml and ci.yml share one definition of docs-only and one drift guard. Fail-safe: if
+  # `scope` fails or is cancelled, `docs_only` is empty, `!= 'true'` holds, and `determinism` runs
+  # in full. Pushes to main, feat/ecological-selection and hardening/** always run in full.
+  scope:
+    name: Change scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify the change (docs-only fast path)
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci_docs_only.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
+
   determinism:
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
