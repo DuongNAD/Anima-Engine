@@ -587,6 +587,47 @@ fn eval_multi_strat_and_envelope(
         (cliff_arc * (0.72 + 0.28 * raw_cc) * c_share).clamp(0.0, 1.0)
     };
 
+    let f_d = f64::from(cfg.foothill_dissection);
+    let p_d = f64::from(cfg.plateau_dissection);
+    let cliff_arc_inland = if f_d > 0.0 {
+        let v_cliff_w = v_rot + 0.025 * fbm_broad;
+        let dv_ci = (v_cliff_w - 0.72) / 0.145;
+        let smooth_ci = libm::exp(-(dv_ci * dv_ci));
+        let shore_keep = 0.55 * (1.0 - ((d_coast_m - 1_500.0) / 3_500.0).clamp(0.0, 1.0));
+        smooth_ci.max(cliff_arc * shore_keep)
+    } else {
+        cliff_arc
+    };
+    let (valley_trough, combined_trough) = if f_d > 0.0 {
+        let wx = fbm_4(
+            p.seed_u64 ^ 0xE3B4_1111_2222_3333,
+            u_rot * 3.4 * freq_scale,
+            v_rot * 3.4 * freq_scale,
+        );
+        let wy = fbm_4(
+            p.seed_u64 ^ 0xE3B4_4444_5555_6666,
+            u_rot * 3.4 * freq_scale,
+            v_rot * 3.4 * freq_scale,
+        );
+        let n_major = libm::fabs(fbm_4(
+            p.seed_u64 ^ 0xE3B4_7777_8888_9999,
+            (u_rot + 0.14 * wx) * 4.2 * freq_scale,
+            (v_rot + 0.14 * wy) * 5.2 * freq_scale,
+        ));
+        let n_branch = libm::fabs(fbm_4(
+            p.seed_u64 ^ 0xE3B4_AAAA_BBBB_CCCC,
+            ((u_rot * 0.80 + v_rot * 0.60) + 0.10 * wy) * 8.0 * freq_scale,
+            ((-u_rot * 0.60 + v_rot * 0.80) - 0.10 * wx) * 8.0 * freq_scale,
+        ));
+        let vt_m = 1.0 - (n_major / 0.36).clamp(0.0, 1.0);
+        let vt = vt_m * vt_m * (3.0 - 2.0 * vt_m);
+        let st_m = 1.0 - (n_branch / 0.32).clamp(0.0, 1.0);
+        let st = st_m * st_m;
+        (vt, (0.72 * vt + 0.28 * st).clamp(0.0, 1.0))
+    } else {
+        (0.0, 0.0)
+    };
+
     // 2A. Primary Southern Massif (~5,550 m peak) with 14.5 km plain setback (400 m + steep spur in cliff arc).
     let spur_fbm = fbm_4(
         p.seed_u64 ^ 0x5902_1122_3344_5566,
@@ -596,11 +637,29 @@ fn eval_multi_strat_and_envelope(
     let spur_wave = 0.55 * spur_fbm
         + 0.45 * libm::sin(v_rot * TAU * 3.5 * freq_scale + p.phase_z + 2.2 * fbm_broad);
 
-    let d_setback1_m = 14_500.0 - 14_100.0 * cliff_arc;
-    let t_pied1 = ((smooth_d_coast_m - d_setback1_m) / 3_500.0).clamp(0.0, 1.0);
+    let d_setback1_m = 14_500.0 - 14_100.0 * cliff_arc_inland;
+    let d_setback1_eff = if f_d > 0.0 {
+        let pied_warp1 = fbm_4(
+            p.seed_u64 ^ 0x91ED_1111_2222_3333,
+            u_rot * 5.2 * freq_scale,
+            v_rot * 6.4 * freq_scale,
+        );
+        let embay_shift1_m =
+            ((valley_trough - 0.42) * 7_500.0 + 1_800.0 * pied_warp1) * f_d.min(1.5);
+        (d_setback1_m + (1.0 - cliff_arc_inland) * embay_shift1_m)
+            .max(8_500.0 * (1.0 - cliff_arc_inland) + 400.0)
+    } else {
+        d_setback1_m
+    };
+    let pied_ramp1_m = if f_d > 0.0 {
+        3_500.0 + 6_500.0 * f_d
+    } else {
+        3_500.0
+    };
+    let t_pied1 = ((smooth_d_coast_m - d_setback1_eff) / pied_ramp1_m).clamp(0.0, 1.0);
     let piedmont_gate1 = t_pied1 * t_pied1 * (3.0 - 2.0 * t_pied1);
     let d_ridge1_c = 22_000.0 + (p.ridge_bend * 18_500.0 * libm::cos(v_rot * 3.1 + p.phase_x))
-        - 10_500.0 * cliff_arc;
+        - 10_500.0 * cliff_arc_inland;
     let d_ridge1_m = smooth_d_coast_m - d_ridge1_c - 1_100.0 * fbm_broad;
     let dv1 = (z_r_m - 0.70 * extent_m) / 10_500.0;
     let env1 = libm::exp(-0.55 * dv1 * dv1);
@@ -608,22 +667,149 @@ fn eval_multi_strat_and_envelope(
     let d_ridge1_warped = d_ridge1_m + 1_150.0 * spur_wave * flank_w1;
     let w1 = 7_400.0;
     let flank_spur1 = flank_w1 * 0.24 * spur_wave;
-    let uplift1 = piedmont_gate1
+    let mut uplift1 = piedmont_gate1
         * sech2(d_ridge1_warped / w1)
         * (0.05 + 0.95 * env1)
         * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur1).max(0.45);
     let crest1 = piedmont_gate1 * sech2(d_ridge1_m / 3_400.0) * env1;
-    let base_massif1_h = piedmont_gate1
+    let mut base_massif1_h = piedmont_gate1
         * (5_380.0 * uplift1
             + 420.0 * env1 * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
             + 260.0 * crest1);
+    let shipped_uplift1 = uplift1;
+    let shipped_massif1_h = base_massif1_h;
+    if cfg.uplift_roughness > 0.0 {
+        let r = f64::from(cfg.uplift_roughness);
+        let fault_fbm = fbm_4(
+            p.seed_u64 ^ 0xF417_1111_2222_3333,
+            u_rot * 9.5 * freq_scale,
+            v_rot * 9.5 * freq_scale,
+        );
+        let block_fbm = fbm_4(
+            p.seed_u64 ^ 0xB10C_4444_5555_6666,
+            (u_rot + 0.35 * v_rot) * 11.5 * freq_scale,
+            (v_rot - 0.35 * u_rot) * 11.5 * freq_scale,
+        );
+        let ridge_freq = if f_d > 0.0 { 6.5 } else { 16.0 };
+        let ridge_noise = fbm_4(
+            p.seed_u64 ^ 0xC2E5_7777_8888_9999,
+            u_rot * ridge_freq * freq_scale,
+            v_rot * ridge_freq * freq_scale,
+        );
+        let d_fault1 = d_ridge1_m + (2_600.0 * r) * fault_fbm + 1_150.0 * spur_wave * flank_w1;
+        let lee_damp1 = 1.0 / (1.0 + libm::exp((d_fault1 - 500.0) / 1_600.0));
+        let lee_scale1 = 0.20 + 0.80 * lee_damp1;
+        let sub_ridge = if f_d > 0.0 {
+            let sr_warp = fbm_4(
+                p.seed_u64 ^ 0x5B21_1111_2222_3333,
+                u_rot * 3.8 * freq_scale,
+                v_rot * 4.2 * freq_scale,
+            );
+            sech2((d_fault1 + 3_400.0 * sr_warp.abs()) / 2_800.0) * env1 * lee_damp1
+        } else {
+            sech2((d_fault1 - 5_200.0 * libm::sin(v_rot * TAU * 4.5 + p.phase_z)) / 2_800.0) * env1
+        };
+        let cross_rib = if f_d > 0.0 {
+            let cr_n = 1.0
+                - libm::fabs(fbm_4(
+                    p.seed_u64 ^ 0xC205_1111_2222_3333,
+                    (u_rot * 0.78 + v_rot * 0.62) * 5.8 * freq_scale + 0.45 * fault_fbm,
+                    (-u_rot * 0.62 + v_rot * 0.78) * 5.8 * freq_scale,
+                ));
+            cr_n * flank_w1 * lee_scale1
+        } else {
+            let ob_coord = (d_ridge1_m * 0.707 + (z_r_m - 0.70 * extent_m) * 0.707) / 4_400.0;
+            (0.5 + 0.5 * libm::sin(ob_coord + 2.4 * fault_fbm)) * flank_w1
+        };
+        let crest_cols = if f_d > 0.0 {
+            (0.90 + 0.10 * fbm_broad).clamp(0.80, 1.02)
+        } else {
+            1.0
+        };
+        let block_gain = if f_d > 0.0 { 0.32 } else { 0.55 };
+        let block_term1 = if f_d > 0.0 {
+            let summit_core1 = sech2(d_fault1 / 3_400.0) * env1;
+            let b = block_gain * r * block_fbm;
+            b.max(-0.14 * summit_core1 - 0.85 * (1.0 - summit_core1)) * lee_scale1
+        } else {
+            block_gain * r * block_fbm
+        };
+        let west_flank1 = if f_d > 0.0 {
+            let w_side = 1.0 / (1.0 + libm::exp((d_fault1 - 1_500.0) / 2_200.0));
+            let off_crest = (1.0 - sech2(d_fault1 / 3_600.0)).clamp(0.0, 1.0);
+            w_side * off_crest * (1.0 - 0.25 * cliff_arc_inland)
+        } else {
+            0.0
+        };
+        let flank_carve1 = if f_d > 0.0 {
+            (1.0 - (0.58 * f_d.min(1.35)) * west_flank1 * combined_trough).clamp(0.28, 1.0)
+        } else {
+            1.0
+        };
+        uplift1 = (piedmont_gate1
+            * (sech2(d_fault1 / (w1 * (1.0 - 0.14 * r.min(1.0)))) + 0.42 * r * sub_ridge)
+            * (0.05 + 0.95 * env1)
+            * crest_cols
+            * (1.0 + 0.20 * fbm_broad.max(-0.15) + block_term1 + 0.35 * r * cross_rib).max(0.20)
+            * flank_carve1)
+            .max(0.0);
+        if f_d > 0.0 {
+            base_massif1_h = (5_380.0 * uplift1
+                + piedmont_gate1
+                    * (420.0 * 0.45 * env1 * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
+                        + 260.0 * crest1
+                        + 420.0
+                            * r
+                            * ridge_noise
+                            * env1
+                            * (0.25 + 0.75 * sech2(d_fault1 / 6_200.0))
+                            * lee_scale1
+                            * flank_carve1))
+                .max(0.0);
+            let summit_t = ((shipped_massif1_h - 3_400.0) / 1_100.0).clamp(0.0, 1.0);
+            let summit_keep = 0.88 * summit_t * summit_t * (3.0 - 2.0 * summit_t);
+            uplift1 = uplift1 * (1.0 - summit_keep) + shipped_uplift1 * summit_keep;
+            base_massif1_h =
+                base_massif1_h * (1.0 - summit_keep) + shipped_massif1_h * summit_keep;
+        } else {
+            base_massif1_h = piedmont_gate1
+                * (5_380.0 * uplift1
+                    + 420.0
+                        * (1.0 - 0.65 * r).max(0.0)
+                        * env1
+                        * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
+                    + 260.0 * crest1
+                    + 420.0 * r * ridge_noise * env1 * (0.25 + 0.75 * sech2(d_fault1 / 6_200.0)))
+                .max(0.0);
+        }
+    }
+    if (cfg.init_bedrock_frac - 1.0).abs() > 1e-6 {
+        base_massif1_h *= f64::from(cfg.init_bedrock_frac);
+    }
     let tayrona_t = ((d_coast_m + 260.0) / 950.0).clamp(0.0, 1.0);
     let tayrona_gate = tayrona_t * tayrona_t * (3.0 - 2.0 * tayrona_t);
     let tayrona_spur = 1_850.0 * cliff_arc * tayrona_gate * sech2((d_coast_m - 1_550.0) / 1_650.0);
-    let massif1_h = base_massif1_h.max(tayrona_spur);
+    let mut massif1_h = base_massif1_h.max(tayrona_spur);
 
     // 2B. Secondary Northern Massif (~3,500-4,150 m) with full 15.5 km plain setback.
-    let t_pied2 = ((smooth_d_coast_m - 15_500.0) / 3_500.0).clamp(0.0, 1.0);
+    let d_setback2_eff = if f_d > 0.0 {
+        let pied_warp2 = fbm_4(
+            p.seed_u64 ^ 0x91ED_4444_5555_6666,
+            u_rot * 5.2 * freq_scale,
+            v_rot * 6.4 * freq_scale,
+        );
+        let embay_shift2_m =
+            ((valley_trough - 0.42) * 7_500.0 + 1_800.0 * pied_warp2) * f_d.min(1.5);
+        (15_500.0 + embay_shift2_m).max(9_500.0)
+    } else {
+        15_500.0
+    };
+    let pied_ramp2_m = if f_d > 0.0 {
+        3_500.0 + 6_500.0 * f_d
+    } else {
+        3_500.0
+    };
+    let t_pied2 = ((smooth_d_coast_m - d_setback2_eff) / pied_ramp2_m).clamp(0.0, 1.0);
     let piedmont_gate2 = t_pied2 * t_pied2 * (3.0 - 2.0 * t_pied2);
     let d_ridge2_c = 23_500.0 + 1_800.0 * libm::sin(v_rot * TAU + p.phase_z);
     let d_ridge2_m = smooth_d_coast_m - d_ridge2_c - 900.0 * fbm_broad;
@@ -636,12 +822,132 @@ fn eval_multi_strat_and_envelope(
     } else {
         5_800.0
     };
-    let uplift2 = piedmont_gate2
+    let mut uplift2 = piedmont_gate2
         * sech2(d_ridge2_warped / w2)
         * (0.05 + 0.95 * env2)
         * (1.0 + 0.18 * fbm_broad.max(-0.15) + flank_w2 * 0.20 * spur_wave).max(0.45);
-    let massif2_h =
+    let mut massif2_h =
         piedmont_gate2 * (3_150.0 * uplift2 + 220.0 * env2 * sech2(d_ridge2_m / 3_000.0));
+    if cfg.uplift_roughness > 0.0 {
+        let r = f64::from(cfg.uplift_roughness);
+        let fault_fbm2 = fbm_4(
+            p.seed_u64 ^ 0xF417_AAAA_BBBB_CCCC,
+            u_rot * (if f_d > 0.0 { 6.5 } else { 10.0 }) * freq_scale,
+            v_rot * (if f_d > 0.0 { 6.5 } else { 10.0 }) * freq_scale,
+        );
+        let block_fbm2 = fbm_4(
+            p.seed_u64 ^ 0xB10C_DDDD_EEEE_FFFF,
+            (u_rot - 0.35 * v_rot) * (if f_d > 0.0 { 7.5 } else { 12.0 }) * freq_scale,
+            (v_rot + 0.35 * u_rot) * (if f_d > 0.0 { 7.5 } else { 12.0 }) * freq_scale,
+        );
+        let d_fault2 = d_ridge2_m + (2_100.0 * r) * fault_fbm2 + 950.0 * spur_wave * flank_w2;
+        if f_d > 0.0 {
+            let sr_warp2 = fbm_4(
+                p.seed_u64 ^ 0x5B22_3333_4444_5555,
+                u_rot * 3.8 * freq_scale,
+                v_rot * 4.2 * freq_scale,
+            );
+            let lee_damp2 = 1.0 / (1.0 + libm::exp((d_fault2 - 500.0) / 1_600.0));
+            let lee_scale2 = 0.20 + 0.80 * lee_damp2;
+            let sub_ridge2 =
+                sech2((d_fault2 + 3_000.0 * sr_warp2.abs()) / 2_600.0) * env2 * lee_damp2;
+            let cross_rib2 =
+                (1.0 - libm::fabs(fbm_4(
+                    p.seed_u64 ^ 0xC205_6666_7777_8888,
+                    (u_rot * 0.74 - v_rot * 0.67) * 5.6 * freq_scale + 0.45 * fault_fbm2,
+                    (u_rot * 0.67 + v_rot * 0.74) * 5.6 * freq_scale,
+                ))) * flank_w2;
+            let west_flank2 = {
+                let w_side = 1.0 / (1.0 + libm::exp((d_fault2 - 1_500.0) / 2_200.0));
+                let off_crest = (1.0 - sech2(d_fault2 / 3_200.0)).clamp(0.0, 1.0);
+                w_side * off_crest
+            };
+            let flank_carve2 =
+                (1.0 - (0.62 * f_d.min(1.35)) * west_flank2 * combined_trough).clamp(0.24, 1.0);
+            uplift2 = (piedmont_gate2
+                * (sech2(d_fault2 / w2) + 0.36 * r * sub_ridge2)
+                * (0.05 + 0.95 * env2)
+                * (1.0
+                    + 0.18 * fbm_broad.max(-0.15)
+                    + 0.32 * r * block_fbm2 * lee_scale2
+                    + 0.30 * r * cross_rib2 * lee_scale2)
+                    .max(0.20)
+                * flank_carve2)
+                .max(0.0);
+            massif2_h = (3_150.0 * uplift2
+                + piedmont_gate2
+                    * (300.0
+                        * r
+                        * block_fbm2
+                        * env2
+                        * sech2(d_fault2 / 4_500.0)
+                        * lee_scale2
+                        * flank_carve2))
+                .max(0.0);
+        } else {
+            uplift2 = (piedmont_gate2
+                * sech2(d_fault2 / w2)
+                * (0.05 + 0.95 * env2)
+                * (1.0 + 0.18 * fbm_broad.max(-0.15) + 0.50 * r * block_fbm2).max(0.20))
+            .max(0.0);
+            massif2_h = piedmont_gate2
+                * (3_150.0 * uplift2
+                    + 220.0 * (1.0 - 0.65 * r).max(0.0) * env2 * sech2(d_ridge2_m / 3_000.0)
+                    + 300.0 * r * block_fbm2 * env2 * sech2(d_fault2 / 4_500.0))
+                .max(0.0);
+        }
+    }
+    if (cfg.init_bedrock_frac - 1.0).abs() > 1e-6 {
+        massif2_h *= f64::from(cfg.init_bedrock_frac);
+    }
+    if f_d > 0.0 {
+        // Oblique mid-elevation foothill spurs & valleys strictly east of the coastal setback
+        // (and zero inside cliff_arc offshore spur), breaking the N-S piedmont wall and lifting HI.
+        let fh_gate_m = 10_500.0 - 7_500.0 * cliff_arc_inland;
+        let fh_t = ((smooth_d_coast_m - fh_gate_m) / 5_500.0).clamp(0.0, 1.0);
+        let fh_gate = fh_t * fh_t * (3.0 - 2.0 * fh_t) * (1.0 - 0.55 * cliff_arc_inland);
+        let east_decay = 1.0 / (1.0 + libm::exp((smooth_d_coast_m - 21_500.0) / 2_600.0));
+        let ob_a = (u_rot * 0.82 + v_rot * 0.57) * 7.5 * freq_scale;
+        let ob_b = (-u_rot * 0.57 + v_rot * 0.82) * 6.5 * freq_scale;
+        let warp_f = fbm_4(p.seed_u64 ^ 0xF007_1111_2222_3333, ob_a, ob_b);
+        let r_spur1 = 1.0
+            - libm::fabs(fbm_4(
+                p.seed_u64 ^ 0xF007_4444_5555_6666,
+                ob_a + 0.55 * warp_f,
+                ob_b - 0.45 * warp_f,
+            ));
+        let r_spur2 = 1.0
+            - libm::fabs(fbm_4(
+                p.seed_u64 ^ 0xF007_7777_8888_9999,
+                (-u_rot * 0.64 + v_rot * 0.77) * 9.5 * freq_scale + 0.4 * warp_f,
+                (u_rot * 0.77 + v_rot * 0.64) * 8.5 * freq_scale,
+            ));
+        let spur_net = (0.55 * r_spur1 * r_spur1 + 0.45 * r_spur2 - 0.30).max(0.0);
+        // Attenuate foothill spurs smoothly above 3,200 m so Alpine/Tundra upper belts stay intact.
+        let alt_fade1 = 1.0 / (1.0 + libm::exp((massif1_h - 2_800.0) / 550.0));
+        let alt_fade2 = 1.0 / (1.0 + libm::exp((massif2_h - 2_400.0) / 550.0));
+        let ridge_mod = 1.0 - 0.78 * valley_trough;
+        let fh_h1 = 1_350.0
+            * f_d
+            * fh_gate
+            * east_decay
+            * (0.20 + 0.80 * env1)
+            * spur_net
+            * alt_fade1
+            * ridge_mod;
+        let fh_h2 = 950.0
+            * f_d
+            * fh_gate
+            * east_decay
+            * (0.20 + 0.80 * env2)
+            * spur_net
+            * alt_fade2
+            * ridge_mod;
+        massif1_h += fh_h1;
+        massif2_h += fh_h2;
+        uplift1 += 0.34 * (fh_h1 / 1_350.0);
+        uplift2 += 0.34 * (fh_h2 / 1_350.0);
+    }
 
     let (massif_h, massif_uplift, active_ridge_m, active_ridge_u) = if massif1_h >= massif2_h {
         (
@@ -679,10 +985,38 @@ fn eval_multi_strat_and_envelope(
     // 4. Metre-sized dissected sandstone caprock plateau (~19-21 km wide behind primary massif).
     let plat_u_c = smooth_coast + 31_500.0 / extent_m;
     let plat_v_c = 0.62 + 0.04 * (p.plateau_v - 0.61);
-    let du_plat = ((u - plat_u_c) * extent_m) / 9_800.0;
-    let dv_plat = ((v - plat_v_c) * extent_m) / 10_600.0;
-    let r_plat = libm::hypot(du_plat, dv_plat);
-    let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat - 1.0) * 14.0));
+    let (r_plat_eff, plat_rim_k) = if p_d > 0.0 {
+        let uw = 0.045
+            * p_d
+            * fbm_4(
+                p.seed_u64 ^ 0x504C_1111_2222_3333,
+                u * 5.5 * freq_scale,
+                v * 5.5 * freq_scale,
+            );
+        let vw = 0.045
+            * p_d
+            * fbm_4(
+                p.seed_u64 ^ 0x504C_2222_3333_4444,
+                u * 5.5 * freq_scale,
+                v * 5.5 * freq_scale,
+            );
+        let du_p = ((u + uw - plat_u_c) * extent_m) / 10_600.0;
+        let dv_p = ((v + vw - plat_v_c) * extent_m) / 11_400.0;
+        let rad_n = fbm_4(
+            p.seed_u64 ^ 0x504C_3333_4444_5555,
+            u * 7.5 * freq_scale,
+            v * 7.5 * freq_scale,
+        );
+        (
+            libm::hypot(du_p, dv_p) * (1.0 + 0.24 * p_d * rad_n).max(0.55),
+            14.0 / (1.0 + 1.4 * p_d),
+        )
+    } else {
+        let du_plat = ((u - plat_u_c) * extent_m) / 9_800.0;
+        let dv_plat = ((v - plat_v_c) * extent_m) / 10_600.0;
+        (libm::hypot(du_plat, dv_plat), 14.0)
+    };
+    let plateau_mask = 1.0 / (1.0 + libm::exp((r_plat_eff - 1.0) * plat_rim_k));
     let land_gate = 1.0 / (1.0 + libm::exp(-(smooth_d_coast_m - 14_000.0) / 1_600.0));
     let core_gate = 1.0 / (1.0 + libm::exp((massif_h - 2_050.0) / 260.0));
     let plateau_blend = plateau_mask * land_gate * core_gate;
@@ -813,8 +1147,30 @@ fn eval_cell_multi_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) 
         u * subtile_freq,
         v * subtile_freq,
     );
-    let plateau_surface =
+    let mut plateau_surface =
         caprock_target_m + 10.0 * fbm_detail + 14.0 * plateau_subtile + 260.0 * (plat_u_c - u);
+    if cfg.plateau_dissection > 0.0 {
+        let p_d = f64::from(cfg.plateau_dissection);
+        let plat_warp = fbm_4(
+            p.seed_u64 ^ 0x504C_4449_5331_0001,
+            u * 5.2 * freq_scale,
+            v * 5.2 * freq_scale,
+        );
+        let plat_canyon_raw = libm::fabs(fbm_4(
+            p.seed_u64 ^ 0x504C_4449_5332_0002,
+            (u * 0.78 + v * 0.62) * 6.8 * freq_scale + 0.45 * plat_warp,
+            (-u * 0.62 + v * 0.78) * 6.2 * freq_scale - 0.35 * plat_warp,
+        ));
+        let canyon_t = 1.0 - (plat_canyon_raw / 0.24).clamp(0.0, 1.0);
+        let canyon_trough = canyon_t * canyon_t;
+        let cuesta_undul = fbm_4(
+            p.seed_u64 ^ 0x504C_4449_5333_0003,
+            u * 7.5 * freq_scale,
+            v * 7.5 * freq_scale,
+        );
+        plateau_surface +=
+            p_d * (140.0 + 360.0 * (plat_u_c - u) + 85.0 * cuesta_undul - 115.0 * canyon_trough);
+    }
 
     let detail_gate = ((d_coast_m - 2_000.0) / 3_000.0).clamp(0.0, 1.0);
     let detail_amp = 20.0 + 75.0 * (massif_h / 2_000.0).clamp(0.0, 1.0);
@@ -837,6 +1193,13 @@ fn eval_cell_multi_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) 
     };
 
     let mut raw_h_m = pre_basin_h + rift_mod;
+    if cfg.init_jitter_m > 0.0 && d_coast_m > 3_500.0 {
+        let j_t = ((d_coast_m - 3_500.0) / 3_000.0).clamp(0.0, 1.0);
+        let j_gate = j_t * j_t * (3.0 - 2.0 * j_t);
+        let j_freq = f64::from(cfg.grid_size).max(64.0) * 0.5;
+        let jitter = value_noise(p.seed_u64 ^ 0x9E37_4A11_55AA_CC33, u * j_freq, v * j_freq);
+        raw_h_m += f64::from(cfg.init_jitter_m) * j_gate * jitter;
+    }
     if d_coast_m > 12_000.0 {
         let rift_floor = pre_basin_h.min(180.0);
         if raw_h_m < rift_floor {

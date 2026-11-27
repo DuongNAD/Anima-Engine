@@ -67,6 +67,16 @@ struct WorldV2PresetOverride {
     coast_frac_amp: Option<f32>,
     coast_cliff_share: Option<f32>,
     talus_substeps: Option<usize>,
+    fine_steps_mult: Option<f32>,
+    fluvial_dt_mult: Option<f32>,
+    fluvial_m: Option<f32>,
+    hillslope_d_mult: Option<f32>,
+    force_pure_d8: Option<bool>,
+    uplift_roughness: Option<f32>,
+    init_bedrock_frac: Option<f32>,
+    foothill_dissection: Option<f32>,
+    plateau_dissection: Option<f32>,
+    init_jitter_m: Option<f32>,
 }
 
 fn usage_text() -> &'static str {
@@ -395,6 +405,36 @@ fn load_config(args: &GenerateArgs) -> Result<WorldV2Config, String> {
         }
         if let Some(v) = ov.talus_substeps {
             cfg.talus_substeps = v;
+        }
+        if let Some(v) = ov.fine_steps_mult {
+            cfg.fine_steps_mult = v;
+        }
+        if let Some(v) = ov.fluvial_dt_mult {
+            cfg.fluvial_dt_mult = v;
+        }
+        if let Some(v) = ov.fluvial_m {
+            cfg.fluvial_m = v;
+        }
+        if let Some(v) = ov.hillslope_d_mult {
+            cfg.hillslope_d_mult = v;
+        }
+        if let Some(v) = ov.force_pure_d8 {
+            cfg.force_pure_d8 = v;
+        }
+        if let Some(v) = ov.uplift_roughness {
+            cfg.uplift_roughness = v;
+        }
+        if let Some(v) = ov.init_bedrock_frac {
+            cfg.init_bedrock_frac = v;
+        }
+        if let Some(v) = ov.foothill_dissection {
+            cfg.foothill_dissection = v;
+        }
+        if let Some(v) = ov.plateau_dissection {
+            cfg.plateau_dissection = v;
+        }
+        if let Some(v) = ov.init_jitter_m {
+            cfg.init_jitter_m = v;
         }
     }
     cfg.validate()

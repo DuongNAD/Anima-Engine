@@ -91,6 +91,36 @@ pub struct WorldV2Config {
     /// Substeps for fine-scale (`< 30 m`) Stage S3 thermal/talus relaxation (`1..=64`).
     #[serde(default = "default_talus_substeps")]
     pub talus_substeps: usize,
+    /// Opt-in multiplier for Stage S2/S3 multigrid steps at levels `>= 1024` (`1.0` = trunk).
+    #[serde(default = "default_one_f32")]
+    pub fine_steps_mult: f32,
+    /// Opt-in multiplier on Stage S2 Fastscape-SD `dt_yr` (`1.0` = trunk).
+    #[serde(default = "default_one_f32")]
+    pub fluvial_dt_mult: f32,
+    /// Opt-in stream-power area exponent `m` (`0.45` = trunk; concavity proxy `m/n` with `n = 1.0`).
+    #[serde(default = "default_fluvial_m")]
+    pub fluvial_m: f32,
+    /// Opt-in multiplier on Stage S3 hillslope diffusivity `D` (`1.0` = trunk).
+    #[serde(default = "default_one_f32")]
+    pub hillslope_d_mult: f32,
+    /// Opt-in hydrology routing diagnostic forcing pure D8 on hillslopes (`false` = trunk Hybrid MFD->D8).
+    #[serde(default)]
+    pub force_pure_d8: bool,
+    /// Opt-in multi-scale ridge/fault roughness factor on `MultiEnvironment` massif uplift (`0.0` = trunk).
+    #[serde(default)]
+    pub uplift_roughness: f32,
+    /// Opt-in initial massif bedrock fraction (`1.0` = trunk pre-formed massifs; `< 1.0` grows from lower initial relief).
+    #[serde(default = "default_one_f32")]
+    pub init_bedrock_frac: f32,
+    /// Opt-in scalloped piedmont & oblique foothill dissection for `MultiEnvironment` (`0.0` = trunk).
+    #[serde(default)]
+    pub foothill_dissection: f32,
+    /// Opt-in boundary warp and canyon/cuesta dissection on `MultiEnvironment` caprock plateau (`0.0` = trunk).
+    #[serde(default)]
+    pub plateau_dissection: f32,
+    /// Opt-in initial surface random height perturbation amplitude in metres on `MultiEnvironment` (`0.0` = trunk).
+    #[serde(default)]
+    pub init_jitter_m: f32,
 }
 
 const fn default_channel_init() -> f32 {
@@ -123,6 +153,12 @@ const fn default_coast_cliff_share() -> f32 {
 const fn default_talus_substeps() -> usize {
     20
 }
+const fn default_one_f32() -> f32 {
+    1.0
+}
+const fn default_fluvial_m() -> f32 {
+    0.45
+}
 
 impl Default for WorldV2Config {
     fn default() -> Self {
@@ -150,6 +186,16 @@ impl Default for WorldV2Config {
             coast_frac_amp: default_coast_frac_amp(),
             coast_cliff_share: default_coast_cliff_share(),
             talus_substeps: default_talus_substeps(),
+            fine_steps_mult: default_one_f32(),
+            fluvial_dt_mult: default_one_f32(),
+            fluvial_m: default_fluvial_m(),
+            hillslope_d_mult: default_one_f32(),
+            force_pure_d8: false,
+            uplift_roughness: 0.0,
+            init_bedrock_frac: default_one_f32(),
+            foothill_dissection: 0.0,
+            plateau_dissection: 0.0,
+            init_jitter_m: 0.0,
         }
     }
 }
@@ -242,6 +288,34 @@ impl WorldV2Config {
         if !(1..=64).contains(&self.talus_substeps) {
             return Err(err("talus_substeps must lie within [1, 64]"));
         }
+        if !self.fine_steps_mult.is_finite() || !(0.25..=16.0).contains(&self.fine_steps_mult) {
+            return Err(err("fine_steps_mult must lie within [0.25, 16.0]"));
+        }
+        if !self.fluvial_dt_mult.is_finite() || !(0.1..=20.0).contains(&self.fluvial_dt_mult) {
+            return Err(err("fluvial_dt_mult must lie within [0.1, 20.0]"));
+        }
+        if !self.fluvial_m.is_finite() || !(0.20..=0.80).contains(&self.fluvial_m) {
+            return Err(err("fluvial_m must lie within [0.20, 0.80]"));
+        }
+        if !self.hillslope_d_mult.is_finite() || !(0.0..=16.0).contains(&self.hillslope_d_mult) {
+            return Err(err("hillslope_d_mult must lie within [0.0, 16.0]"));
+        }
+        if !self.uplift_roughness.is_finite() || !(0.0..=2.0).contains(&self.uplift_roughness) {
+            return Err(err("uplift_roughness must lie within [0.0, 2.0]"));
+        }
+        if !self.init_bedrock_frac.is_finite() || !(0.05..=1.0).contains(&self.init_bedrock_frac) {
+            return Err(err("init_bedrock_frac must lie within [0.05, 1.0]"));
+        }
+        if !self.foothill_dissection.is_finite() || !(0.0..=2.0).contains(&self.foothill_dissection)
+        {
+            return Err(err("foothill_dissection must lie within [0.0, 2.0]"));
+        }
+        if !self.plateau_dissection.is_finite() || !(0.0..=2.0).contains(&self.plateau_dissection) {
+            return Err(err("plateau_dissection must lie within [0.0, 2.0]"));
+        }
+        if !self.init_jitter_m.is_finite() || !(0.0..=25.0).contains(&self.init_jitter_m) {
+            return Err(err("init_jitter_m must lie within [0.0, 25.0]"));
+        }
         Ok(())
     }
 }
@@ -279,5 +353,36 @@ mod tests {
         assert!((parsed.extent_m - 81_920.0).abs() < 1e-3);
         assert_eq!(parsed.grid_size, 4096);
         assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn shipped_presets_deserialize_with_exact_opt_in_diagnostic_defaults() {
+        for raw in [
+            include_str!("../presets/wv2_c01_40960.toml"),
+            include_str!("../presets/wv2_big_81920.toml"),
+        ] {
+            let cfg: WorldV2Config = toml::from_str(raw).expect("parse shipped preset");
+            assert_eq!(cfg.fine_steps_mult.to_bits(), 1.0_f32.to_bits());
+            assert_eq!(cfg.fluvial_dt_mult.to_bits(), 1.0_f32.to_bits());
+            assert_eq!(cfg.fluvial_m.to_bits(), 0.45_f32.to_bits());
+            assert_eq!(cfg.hillslope_d_mult.to_bits(), 1.0_f32.to_bits());
+            assert!(!cfg.force_pure_d8);
+            assert_eq!(cfg.uplift_roughness.to_bits(), 0.0_f32.to_bits());
+            assert_eq!(cfg.init_bedrock_frac.to_bits(), 1.0_f32.to_bits());
+            assert_eq!(cfg.foothill_dissection.to_bits(), 0.0_f32.to_bits());
+            assert_eq!(cfg.plateau_dissection.to_bits(), 0.0_f32.to_bits());
+            assert_eq!(cfg.init_jitter_m.to_bits(), 0.0_f32.to_bits());
+        }
+    }
+
+    #[test]
+    fn shape_exp_preset_toml_parses_and_validates() {
+        let raw = include_str!("../presets/wv2_big_81920_shape_exp.toml");
+        let cfg: WorldV2Config = toml::from_str(raw).expect("parse wv2_big_81920_shape_exp.toml");
+        assert_eq!(cfg.layout, WorldLayout::MultiEnvironment);
+        assert!((cfg.extent_m - 81_920.0).abs() < 1e-3);
+        assert!(cfg.foothill_dissection > 0.0);
+        assert!(cfg.plateau_dissection > 0.0);
+        assert!(cfg.validate().is_ok());
     }
 }

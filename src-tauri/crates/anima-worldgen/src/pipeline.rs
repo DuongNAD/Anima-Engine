@@ -447,6 +447,7 @@ fn worldgen_hydro_config(cfg: &WorldV2Config, dx_m: f32) -> HydrologyConfig {
         dx_m,
         mfd_exponent_p: f64::from(cfg.mfd_p),
         channel_init_threshold: f64::from(cfg.channel_init),
+        force_pure_d8: cfg.force_pure_d8,
         seasonal_storm_runoff_coeff: cfg.storm_runoff,
         bankfull_q_mult: 5.5,
         ..HydrologyConfig::default()
@@ -466,6 +467,7 @@ fn apply_caprock_knickpoint_sapping(
     dx_m: f32,
     extent_m: f32,
     sapping_gain: f32,
+    opt_in_bench_sapping: bool,
 ) {
     let n = lvl * lvl;
     if lvl < 64 || sapping_gain <= 0.0 || bedrock_h.len() != n || lithology_id.len() != n {
@@ -545,6 +547,27 @@ fn apply_caprock_knickpoint_sapping(
     } else {
         ((run_limit / dx_m).round() as usize).clamp(1, 3)
     };
+    let gorge_steps = if opt_in_bench_sapping && is_large_82km && dx_m >= 20.0 {
+        ((200.0 / dx_m).round() as usize).clamp(4, 12)
+    } else if is_large_82km && dx_m >= 20.0 {
+        ((100.0 / dx_m).round() as usize).clamp(4, 10)
+    } else {
+        10
+    };
+    let gorge_end_elev = |start: usize| -> f32 {
+        let mut g_cur = start;
+        for _ in 0..gorge_steps {
+            let d = d8_dir[g_cur];
+            let Some(nxt) = step_nb(g_cur, d) else {
+                break;
+            };
+            if total[nxt] <= 2.5 {
+                break;
+            }
+            g_cur = nxt;
+        }
+        total[g_cur]
+    };
     let mut cands: Vec<(f32, usize, usize, f32)> = Vec::new();
 
     for r in 3..(lvl - 3) {
@@ -560,6 +583,7 @@ fn apply_caprock_knickpoint_sapping(
             let mut cur = u;
             let mut dist_m = 0.0_f32;
             let mut soft_cell = None;
+            let mut ledge_cell = None;
             for _ in 0..k_steps {
                 let d = d8_dir[cur];
                 let Some(nxt) = step_nb(cur, d) else {
@@ -580,18 +604,50 @@ fn apply_caprock_knickpoint_sapping(
                     {
                         break;
                     }
+                } else if opt_in_bench_sapping
+                    && (dist_m >= 1.5 * dx_m
+                        || if is_large_82km {
+                            dx_m >= 20.0
+                        } else {
+                            dx_m > 20.0
+                        })
+                {
+                    ledge_cell = Some((nxt, dist_m));
                 }
                 cur = nxt;
             }
-            if let Some((base_v, d_uv)) = soft_cell {
-                cands.push((a_tilde[u], u, base_v, d_uv));
+            if !opt_in_bench_sapping {
+                if let Some((base_v, d_uv)) = soft_cell {
+                    cands.push((a_tilde[u], u, base_v, d_uv));
+                }
+            } else if let Some((base_v, d_uv)) = soft_cell {
+                if total[u] - gorge_end_elev(base_v) >= 10.0 {
+                    cands.push((a_tilde[u], u, base_v, d_uv));
+                }
+            } else if let Some((base_v, d_uv)) = ledge_cell {
+                let up_ok = best_up[u] == u32::MAX
+                    || total[best_up[u] as usize] - total[u] <= 24.0;
+                if up_ok
+                    && total[u] - total[base_v] >= 9.0
+                    && total[u] - gorge_end_elev(base_v) >= 18.0
+                {
+                    cands.push((a_tilde[u], u, base_v, d_uv));
+                }
             }
         }
     }
 
     cands.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let min_sp_sq = 310.0_f32 * 310.0_f32;
-    let accepted_cap = if is_large_82km { 135 } else { 54 };
+    let accepted_cap = if is_large_82km {
+        if opt_in_bench_sapping {
+            260
+        } else {
+            135
+        }
+    } else {
+        54
+    };
     let mut accepted: Vec<(usize, usize, f32)> = Vec::new();
     for (_, u, v, d_uv) in cands {
         if accepted.len() >= accepted_cap {
@@ -674,11 +730,6 @@ fn apply_caprock_knickpoint_sapping(
         // Propagate downstream plunge-gorge floor monotonically (no micro-pits).
         let mut prev_h = total[base_v];
         let mut g_cur = base_v;
-        let gorge_steps = if is_large_82km && dx_m >= 20.0 {
-            ((100.0 / dx_m).round() as usize).clamp(4, 10)
-        } else {
-            10
-        };
         for _ in 0..gorge_steps {
             let d = d8_dir[g_cur];
             let Some(nxt) = step_nb(g_cur, d) else {
@@ -1470,7 +1521,16 @@ pub fn run_worldgen_to_dir(
     cfg: &WorldV2Config,
     out_dir: &Path,
 ) -> Result<RawWorldMeta, PipelineError> {
-    let schedule = compute_multigrid_schedule(cfg.grid_size);
+    let mut schedule = compute_multigrid_schedule(cfg.grid_size);
+    if (cfg.fine_steps_mult - 1.0).abs() > 1e-6 {
+        for &mut (sz, ref mut steps) in &mut schedule {
+            if sz >= 1024 {
+                *steps = ((*steps as f64) * f64::from(cfg.fine_steps_mult))
+                    .round()
+                    .max(1.0) as usize;
+            }
+        }
+    }
     run_worldgen_to_dir_with_schedule(cfg, out_dir, &schedule)
 }
 
@@ -1575,27 +1635,45 @@ pub fn run_worldgen_to_dir_with_schedule(
         // 2-pass S7 climate-erosion coupling + Step 0 Exp. B multigrid `dt_yr` & incision cap:
         // - `512²` (`80 × 1,000 yr`), `1024²` (`40 × 1,000 yr`),
         //   `2048²` (`25 × 200 yr = 5.0 kyr`), `4096²` (`40 × 100 yr = 4.0 kyr`), `G = 0.85` kept.
+        let base_dt_yr = if lvl_dx <= 12.0 {
+            100.0
+        } else if lvl_dx <= 25.0 {
+            200.0
+        } else if lvl_dx <= 45.0 {
+            750.0
+        } else {
+            FLUVIAL_DT_YR
+        };
+        let dt_yr = if (cfg.fluvial_dt_mult - 1.0).abs() > 1e-6 {
+            base_dt_yr * f64::from(cfg.fluvial_dt_mult)
+        } else {
+            base_dt_yr
+        };
+        let fluvial_m = if (cfg.fluvial_m - 0.45).abs() <= 1e-6 {
+            0.45
+        } else {
+            f64::from(cfg.fluvial_m)
+        };
         let fluvial_params = FluvialParams {
             dx_m: f64::from(lvl_dx),
-            dt_yr: if lvl_dx <= 12.0 {
-                100.0
-            } else if lvl_dx <= 25.0 {
-                200.0
-            } else if lvl_dx <= 45.0 {
-                750.0
-            } else {
-                FLUVIAL_DT_YR
-            },
+            dt_yr,
+            m: fluvial_m,
             g_deposition: 0.85,
             max_gs_iters: 64,
             gs_tol_m: 5.0e-4,
             max_incision_cap_m: Some(0.25 * STRAT_MIN_BED_THICKNESS_M),
             ..FluvialParams::default()
         };
+        let base_diffusivity_d = if lvl_dx < 30.0 { 0.018 } else { 0.025 };
+        let diffusivity_d = if (cfg.hillslope_d_mult - 1.0).abs() > 1e-6 {
+            base_diffusivity_d * cfg.hillslope_d_mult
+        } else {
+            base_diffusivity_d
+        };
         let thermal_params = ThermalHillslopeParams {
             dx_m: lvl_dx,
             dt_yr: if lvl_dx < 30.0 { 45.0 } else { 120.0 },
-            diffusivity_d: if lvl_dx < 30.0 { 0.018 } else { 0.025 },
+            diffusivity_d,
             talus_rate: if lvl_dx < 30.0 { 0.52 } else { 0.45 },
             substeps: if lvl_dx < 30.0 {
                 cfg.talus_substeps
@@ -1904,6 +1982,9 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &mut lithology_id,
             )?;
             if lvl_u32 >= 512 && cfg.sapping_gain > 0.0 {
+                let opt_in_bench_sapping = cfg.uplift_roughness > 0.0
+                    || cfg.foothill_dissection > 0.0
+                    || cfg.plateau_dissection > 0.0;
                 apply_caprock_knickpoint_sapping(
                     &mut cur_bedrock,
                     &mut cur_sediment,
@@ -1913,6 +1994,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     lvl_dx,
                     cfg.extent_m,
                     cfg.sapping_gain,
+                    opt_in_bench_sapping,
                 );
             }
             apply_late_quaternary_piedmont_subsidence(
