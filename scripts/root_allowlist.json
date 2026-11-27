@@ -27,6 +27,7 @@
     "PROJECT.md": "Project specification and interface contracts",
     "README.md": "README in English, the default GitHub shows",
     "README.vi.md": "README in Vietnamese",
+    "SECURITY.md": "Security vulnerability reporting policy (MP-5.2)",
     "SIMULATION_RULES.md": "Invariants of the simulation",
     "TODO.md": "Work log in reverse chronological order",
     "WORLD_DESIGN.md": "World design document linked from both READMEs",
