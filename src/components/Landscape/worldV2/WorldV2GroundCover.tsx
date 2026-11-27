@@ -712,18 +712,18 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
   tier = 'high',
 }) => {
   const useCells = tier !== 'low';
-  const fineCount = tier === 'high' ? 34000 : tier === 'medium' ? 18000 : 14000;
+  const fineCount = tier === 'high' ? 28000 : tier === 'medium' ? 18000 : 14000;
   const fineRadiusM = tier === 'high' ? 22 : tier === 'medium' ? 18 : 16;
   const fineCellSideM = tier === 'high' ? 28 : 24;
   const fineBlades = tier === 'high' ? 6 : 5;
   const fineSegs = tier === 'low' ? 2 : tier === 'medium' ? 2 : 3;
-  const tussockCount = tier === 'high' ? 26000 : tier === 'medium' ? 14000 : 7000;
-  const tussockRadiusM = tier === 'high' ? 115 : tier === 'medium' ? 90 : 60;
-  const tussockCellSideM = tier === 'high' ? 140 : 112;
+  const tussockCount = tier === 'high' ? 20000 : tier === 'medium' ? 14000 : 7000;
+  const tussockRadiusM = tier === 'high' ? 110 : tier === 'medium' ? 90 : 60;
+  const tussockCellSideM = tier === 'high' ? 132 : 112;
   const tussockBlades = 4;
-  const tussockSegs = tier === 'high' ? 2 : 1;
+  const tussockSegs = 1;
   const tussockSeedCulm = tier === 'high';
-  const herbCount = tier === 'high' ? 3600 : tier === 'medium' ? 2000 : 0;
+  const herbCount = tier === 'high' ? 3200 : tier === 'medium' ? 2000 : 0;
   const herbRadiusM = tier === 'high' ? 22 : 18;
   const herbCellSideM = tier === 'high' ? 28 : 24;
   const heightUnits = renderSize * heightRatio;

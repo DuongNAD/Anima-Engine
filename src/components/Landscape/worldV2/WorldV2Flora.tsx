@@ -472,7 +472,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   const treeFar = tier === 'high' ? 350 : tier === 'medium' ? 280 : FLORA_FAR_UNITS_LOW;
   const scrubFar = tier === 'high' ? 145 : tier === 'medium' ? 115 : FLORA_FAR_UNITS_LOW;
   const nearCrownUnits = tier === 'high' ? 26 : 18;
-  const impostorUnits = tier === 'high' ? 42 : 30;
+  const impostorUnits = tier === 'high' ? 36 : 30;
   // WV2-LOOK: at real-world size a tree is under one texel of the 2048 shadow map spread over
   // the whole map, so its cast shadow was aliased noise that cost ~25-35% of the high-tier
   // frame. The canopy layer in the terrain shader carries the dark gaps instead.
