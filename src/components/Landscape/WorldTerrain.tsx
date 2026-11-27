@@ -116,6 +116,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       hydroFlowMap: null as THREE.DataTexture | null,
       lookMaskMap: null as THREE.DataTexture | null,
       lookNoiseMap: null as THREE.DataTexture | null,
+      lookGrassMap: null as THREE.DataTexture | null,
     };
   }, [world, worldV2, renderSize, heightRatio, meshResolution]);
 
@@ -131,6 +132,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         horizonMap: textures.horizonMap,
         lookMaskMap: textures.lookMaskMap,
         lookNoiseMap: textures.lookNoiseMap,
+        lookGrassMap: textures.lookGrassMap,
         lookShoreMap: textures.shoreSdfMap,
         elevMinM: ELEV_MIN_M,
         elevSpanM: ELEV_SPAN_M,
@@ -178,6 +180,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       textures.hydroFlowMap?.dispose();
       textures.lookMaskMap?.dispose();
       textures.lookNoiseMap?.dispose();
+      textures.lookGrassMap?.dispose();
       terrainMat.handle.dispose();
       geometry.dispose();
     };

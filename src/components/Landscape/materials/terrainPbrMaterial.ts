@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { TerrainPbrArrays } from '../assets/worldAssets';
 import { ATMOSPHERE_FRAGMENT_PARS, bindAtmosphereUniforms } from './atmosphere';
 import { glslFloat, replaceOnce } from '../worldV2/worldScale';
+import { GRASS_PATCH_GLSL } from '../worldV2/grassTables';
 
 // prototype, to be replaced — W3-lite 6-layer biome/slope/height PBR splat terrain material with seamless procedural fallback.
 
@@ -23,6 +24,8 @@ export interface TerrainPbrMaterialParams {
    */
   lookMaskMap?: THREE.Texture | null;
   lookNoiseMap?: THREE.Texture | null;
+  /** WV2-LOOK r10: 512^2 grass suitability mask (R=cover, G=height/2, B=dryness, A=herbs). */
+  lookGrassMap?: THREE.Texture | null;
   /** WV2-LOOK coast: baked shore SDF (R = (sdf_m + 500) / 1000, + on land; G = wave exposure). */
   lookShoreMap?: THREE.Texture | null;
   elevMinM?: number;
@@ -71,9 +74,11 @@ function makeDummyLayerArray(r: number, g: number, b: number, a: number): THREE.
 const WV2_LOOK_PARS = /* glsl */ `
 uniform sampler2D uLookMask;
 uniform sampler2D uLookNoise;
+uniform sampler2D uLookGrass;
 uniform sampler2D uLookShore;
 uniform float uElevMinM;
 uniform float uElevSpanM;
+${GRASS_PATCH_GLSL}
 `;
 
 const WV2_LOOK_MAP_FRAGMENT = /* glsl */ `
@@ -160,9 +165,34 @@ vec3 lkGround=lkMacro
   // ...and lose some value too: sunlit pale meadow was the brightest, flattest thing in frame.
   `lkGround*=mix(1.0,0.84,smoothstep(0.05,0.14,lkGLum));
 ` +
-  // Meadows: mottled, slightly dry tufts so open grass does not read as smooth plastic.
+  // Meadows: mottled, slightly dry tufts so open grass does not read as smooth plastic, plus
+  // WV2-LOOK r10 turf understory shading synced to the 3D grass dry/lush patch map.
   `lkGround*=mix(0.86,1.10,lkNHi.r)*mix(0.92,1.06,lkNVHi.a);
 lkGround=mix(lkGround,lkGround*vec3(1.12,1.0,0.72),smoothstep(0.55,0.85,lkNHi.g)*0.45);
+vec4 lkGrassM=texture2D(uLookGrass,vMapUv);
+float lkGrassCov=lkGrassM.r*(1.0-lkMask.r)*(1.0-lkMask.g)*(1.0-lkMask.a*0.85);
+float lkTurfDist=1.0-smoothstep(55.0,165.0,lkCamDist);
+float lkTurfDry=clamp(lkGrassM.b+lkGrassPatch(lkP)*0.24,0.0,1.0);
+float lkTurfSlope=0.0;
+vec2 lkTurfTilt=vec2(0.0);
+if(lkGrassCov>0.01){
+float turfBlade=0.5;
+if(lkTurfDist>0.01){
+vec4 tLo=textureGrad(uLookNoise,lkP*1.9+vec2(0.19,0.41),lkWdx.xz*1.9,lkWdy.xz*1.9);
+vec4 tHi=textureGrad(uLookNoise,lkP*6.7+vec2(0.63,0.11),lkWdx.xz*6.7,lkWdy.xz*6.7);
+turfBlade=clamp(tLo.g*0.45+tHi.r*0.55+(tHi.b-0.5)*0.25,0.0,1.0);
+lkTurfTilt=(vec2(tHi.g,tLo.b)-0.5)*0.36*lkGrassCov*lkTurfDist;
+}else{
+turfBlade=clamp(lkNHi.g*0.65+lkNMid.b*0.35,0.0,1.0);
+}
+vec3 lkTurfLush=mix(vec3(0.032,0.072,0.018),vec3(0.078,0.145,0.036),turfBlade);
+vec3 lkTurfDryCol=mix(vec3(0.084,0.074,0.026),vec3(0.165,0.130,0.046),turfBlade);
+vec3 lkTurfCol=mix(lkTurfLush,lkTurfDryCol,lkTurfDry)*mix(0.86,1.12,lkNHi.b);
+lkTurfCol*=mix(1.0,0.86+0.22*turfBlade,lkTurfDist*lkGrassCov);
+float turfBlend=clamp(lkGrassCov*(0.62+0.30*lkTurfDist),0.0,0.92);
+lkGround=mix(lkGround,lkTurfCol,turfBlend);
+lkTurfSlope=lkGrassCov;
+}
 ` +
   // Closed canopy where the baked trees are (lookMask B is built from the flora points): dark
   // crown texture with sunlit tops and shadowed gaps, ragged at the edge. The 3D trees stand on it.
@@ -176,9 +206,9 @@ vec3 lkCanopyCol=mix(vec3(0.012,0.023,0.011),vec3(0.043,0.074,0.026),lkCrown);
 lkCanopyCol*=mix(vec3(0.85,1.0,1.08),vec3(1.15,1.04,0.85),lkDry)*mix(0.85,1.15,lkNMid.g);
 lkGround=mix(lkGround,lkCanopyCol,lkCanopy*(1.0-lkMask.g));
 ` +
-  // Soil showing through on moderately steep vegetated ground.
+  // Soil showing through on moderately steep vegetated ground (held back under thick turf).
   `float lkSoil=smoothstep(0.09,0.24,lkSlope+(lkNMid.b-0.5)*0.14)
-*(1.0-lkMask.g)*(1.0-lkMask.a*0.8);
+*(1.0-lkMask.g)*(1.0-lkMask.a*0.8)*(1.0-lkTurfSlope*0.72);
 vec3 lkSoilCol=mix(vec3(0.075,0.056,0.040),vec3(0.15,0.115,0.080),lkNHi.r);
 lkGround=mix(lkGround,lkSoilCol,lkSoil*0.6);
 ` +
@@ -362,7 +392,7 @@ float lkNf=1.0-smoothstep(15.0,140.0,lkCamDist);
 if(lkNf>0.01){
 vec2 g=lkG;
 float rough=0.20+lkRock*0.8+lkMask.r*0.3-lkSnow*0.15;
-mapN.xy+=g*0.16*rough*lkNf+lkRipple;
+mapN.xy+=g*0.16*rough*lkNf+lkRipple+lkTurfTilt;
 normal=normalize(tbn*mapN);
 }
 }
@@ -507,6 +537,14 @@ export function createTerrainPbrMaterial(
     THREE.UnsignedByteType,
   );
   dummyShore.needsUpdate = true;
+  const dummyGrass = new THREE.DataTexture(
+    new Uint8Array([0, 128, 100, 0]),
+    1,
+    1,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType,
+  );
+  dummyGrass.needsUpdate = true;
   const hasHorizon = Boolean(params.horizonMap);
   const look = Boolean(params.lookMaskMap && params.lookNoiseMap);
   const edgeScale = params.edgeScale ?? 1;
@@ -540,6 +578,7 @@ export function createTerrainPbrMaterial(
   const lookUniforms = {
     uLookMask: { value: params.lookMaskMap ?? params.detailMap },
     uLookNoise: { value: params.lookNoiseMap ?? params.detailMap },
+    uLookGrass: { value: params.lookGrassMap ?? dummyGrass },
     uLookShore: { value: params.lookShoreMap ?? dummyShore },
     uElevMinM: { value: params.elevMinM ?? -1500 },
     uElevSpanM: { value: params.elevSpanM ?? 7200 },
@@ -571,6 +610,7 @@ export function createTerrainPbrMaterial(
     if (look) {
       shader.uniforms.uLookMask = lookUniforms.uLookMask;
       shader.uniforms.uLookNoise = lookUniforms.uLookNoise;
+      shader.uniforms.uLookGrass = lookUniforms.uLookGrass;
       shader.uniforms.uLookShore = lookUniforms.uLookShore;
       shader.uniforms.uElevMinM = lookUniforms.uElevMinM;
       shader.uniforms.uElevSpanM = lookUniforms.uElevSpanM;
@@ -786,6 +826,7 @@ normal=normalize(tbn*mapN);
       dummyNormal.dispose();
       dummyHorizon.dispose();
       dummyShore.dispose();
+      dummyGrass.dispose();
       material.dispose();
     },
   };

@@ -830,6 +830,8 @@ export function buildSplatTexture(world: World): THREE.DataTexture {
   return tex;
 }
 
+import { buildWorldV2GrassMask } from '../worldV2/grassTables';
+
 export interface WorldV2TerrainTextures {
   colorMap: THREE.DataTexture;
   normalMap: THREE.DataTexture;
@@ -844,6 +846,8 @@ export interface WorldV2TerrainTextures {
   lookMaskMap: THREE.DataTexture;
   /** WV2-LOOK: tileable 4-channel value noise (independent octaves per channel). */
   lookNoiseMap: THREE.DataTexture;
+  /** WV2-LOOK r10: 512^2 RGBA grass suitability (R=cover, G=height/2, B=dryness, A=herbs). */
+  lookGrassMap: THREE.DataTexture;
 }
 
 // prototype, to be replaced — WV2-LOOK per-biome surface classes, weighted by `biome_weights`.
@@ -1174,5 +1178,6 @@ export function buildWorldV2TerrainTextures(
     hydroFlowMap: createRgbaTex(new Uint8Array(bundle.hydroFlowRgba), size, THREE.NoColorSpace, false),
     lookMaskMap: buildWorldV2LookMask(bundle),
     lookNoiseMap: buildLookNoiseTexture(),
+    lookGrassMap: buildWorldV2GrassMask(bundle, world),
   };
 }
