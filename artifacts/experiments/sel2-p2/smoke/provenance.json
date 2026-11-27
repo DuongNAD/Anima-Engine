@@ -1,0 +1,64 @@
+{
+  "baseline_computed_before_scarce": true,
+  "baseline_seeds": [
+    970501,
+    970502,
+    970503,
+    970504,
+    970505,
+    970506,
+    970507,
+    970508,
+    970509,
+    970510,
+    970511,
+    970512
+  ],
+  "body_mass_consulted": false,
+  "build": {
+    "binary_sha256": "5217be55851b1389afcb6d4078df6f1630c3ac335095cccb8cc5b39cfc661186",
+    "git_commit": "247abf42c8fffaf96a756342a60e1b5c2cab49cb",
+    "git_describe": "247abf4-dirty",
+    "git_dirty_paths": [
+      "src-tauri/gen/schemas/desktop-schema.json",
+      "src-tauri/gen/schemas/windows-schema.json"
+    ],
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "duration_ticks": 200000,
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "kind": "sel2p2-blind-smoke-provenance",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "preregistration_id": "sel2-p2-food-scarcity-body-mass",
+  "preregistration_status": "FROZEN",
+  "sample_period": 50,
+  "smoke_seed": 999931,
+  "terrain_source": "generated",
+  "timing": {
+    "baseline_ended_utc": "2026-11-26T18:40:29Z",
+    "baseline_started_utc": "2026-11-26T18:13:14Z",
+    "scarce_ended_utc": "2026-11-26T18:50:34Z",
+    "scarce_started_utc": "2026-11-26T18:40:29Z"
+  },
+  "warmup_ticks": 20000,
+  "world_artifact_prerun_check": {
+    "anima_world_artifact_unset": true,
+    "temp_artifact_absent": true,
+    "temp_artifact_filename": "anima_world_artifact.anmw",
+    "temp_artifact_path": "C:/Users/Admin/AppData/Local/Temp/anima_world_artifact.anmw"
+  },
+  "world_identity_observed": {
+    "checksum": 3152323152,
+    "generator_version": 1,
+    "height": 256,
+    "seed": 1337,
+    "width": 256
+  }
+}
