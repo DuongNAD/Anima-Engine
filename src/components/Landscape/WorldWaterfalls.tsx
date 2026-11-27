@@ -6,6 +6,7 @@ import type { QualityTier } from './utils/qualityTiers';
 import { driveTimeUniform } from './utils/sceneClock';
 import type { WorldV2LoadedBundle } from './worldV2/types';
 import { evaluateDrawnWaterfall } from './worldV2/waterfallFit';
+import { getActiveNearPatchVersion, sampleActiveNearPatchY } from './worldV2/terrainNearPatch';
 
 // ---------------------------------------------------------------------------------------
 // WorldWaterfalls — foam curtains hung over the steep river drops the generator detected
@@ -94,14 +95,14 @@ void main(){
 float r=length(vLocalXZ);
 float n=noise(vLocalXZ*3.6+vec2(uTime*0.45,-uTime*0.35));
 float ripple=0.5+0.5*sin(r*14.0-uTime*4.6+n*4.2);
-float outerFade=1.0-smoothstep(0.14,0.74+(n-0.5)*0.10,r);
-float core=1.0-smoothstep(0.0,0.42,r);
+float outerFade=1.0-smoothstep(0.18,0.82+(n-0.5)*0.12,r);
+float core=1.0-smoothstep(0.0,0.58,r);
 vec3 viewDir=normalize(cameraPosition-vWorldPos);
 float grazing=smoothstep(0.04,0.22,abs(viewDir.y));
 float dist=distance(cameraPosition,vWorldPos);
 float distFade=1.0-smoothstep(uTerrainSize*0.18,uTerrainSize*0.48,dist);
-float foam=clamp((core*0.64+ripple*0.36)*outerFade,0.0,1.0);
-float alpha=clamp(foam*outerFade*grazing*distFade,0.0,0.86);
+float foam=clamp((core*0.48+ripple*0.34)*outerFade,0.0,1.0);
+float alpha=clamp(foam*outerFade*grazing*distFade,0.0,0.72);
 if(alpha<0.015)discard;
 vec3 poolCol=vec3(0.04,0.18,0.25);
 vec3 foamCol=vec3(0.94,0.98,1.0);
@@ -237,19 +238,9 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     [renderSize],
   );
 
-  useFrame((state) => {
-    driveTimeUniform(curtainMat, state.clock);
-    driveTimeUniform(foamMat, state.clock);
-    if (showMist) driveTimeUniform(mistMat, state.clock);
-    const fog = state.scene.fog as THREE.Fog | null;
-    if (fog && fog.color) {
-      (curtainMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
-      (foamMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
-      if (showMist) (mistMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
-    }
-  });
+  const nearVerRef = useRef(-1);
 
-  useLayoutEffect(() => {
+  const placeWaterfalls = React.useCallback(() => {
     const curtain = curtainRef.current;
     const foam = foamRef.current;
     const mist = mistRef.current;
@@ -270,7 +261,15 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       let spanOffset = 1.0;
 
       if (worldV2 && meshResolution) {
-        const fit = evaluateDrawnWaterfall(world, worldV2, meshResolution, renderSize, heightUnits, i);
+        const fit = evaluateDrawnWaterfall(
+          world,
+          worldV2,
+          meshResolution,
+          renderSize,
+          heightUnits,
+          i,
+          sampleActiveNearPatchY,
+        );
         if (!fit.keep) {
           dummy.position.set(0, -1e6, 0);
           dummy.rotation.set(0, 0, 0);
@@ -303,7 +302,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       if (typeof curtain.setMatrixAt === 'function') curtain.setMatrixAt(i, dummy.matrix);
 
       const poolPush = spanOffset + Math.sin(pitchRad) * (dropY * 0.45) + width * 0.14;
-      const poolY = topY - dropY + 0.22;
+      const poolY = topY - dropY + 0.14;
       dummy.position.set(x + dirX * poolPush, poolY, z + dirZ * poolPush);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(width * 0.54, 1, width * 0.44);
@@ -332,7 +331,33 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     if (curtain.instanceMatrix) curtain.instanceMatrix.needsUpdate = true;
     if (foam.instanceMatrix) foam.instanceMatrix.needsUpdate = true;
     if (mist && mist.instanceMatrix) mist.instanceMatrix.needsUpdate = true;
-  }, [world, worldV2, count, renderSize, heightUnits, meshResolution, showMist]);
+  }, [world, worldV2, meshResolution, count, renderSize, heightUnits]);
+
+  useFrame((state) => {
+    driveTimeUniform(curtainMat, state.clock);
+    driveTimeUniform(foamMat, state.clock);
+    if (showMist) driveTimeUniform(mistMat, state.clock);
+    const fog = state.scene.fog as THREE.Fog | null;
+    if (fog && fog.color) {
+      (curtainMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
+      (foamMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
+      if (showMist) (mistMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
+    }
+    if (worldV2 && tier !== 'low') {
+      const ver = getActiveNearPatchVersion();
+      if (ver !== nearVerRef.current) {
+        nearVerRef.current = ver;
+        placeWaterfalls();
+      }
+    }
+  });
+
+  useLayoutEffect(() => {
+    placeWaterfalls();
+    if (worldV2 && tier !== 'low') {
+      nearVerRef.current = getActiveNearPatchVersion();
+    }
+  }, [placeWaterfalls, worldV2, tier, showMist]);
 
   useEffect(() => {
     return () => {

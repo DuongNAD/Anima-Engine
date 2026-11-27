@@ -9,6 +9,7 @@ import {
   TREELINE_M,
   chooseLookShape,
   chooseUnderstoryShape,
+  makeFloraImpostorGeometry,
   type FloraHabitat,
 } from './floraLook';
 
@@ -104,5 +105,17 @@ describe('flora look: habitat rules', () => {
     expect(new Set(DRAWS.map((r) => chooseUnderstoryShape(BAKE_SPECIES.RainforestCanopy, strand, r)))).toEqual(
       new Set([-1]),
     );
+  });
+
+  it('builds closed <= 8 triangle impostor silhouettes for every species', () => {
+    for (const speciesId of Object.values(LOOK_SPECIES)) {
+      const geom = makeFloraImpostorGeometry(speciesId);
+      const triCount = geom.index ? geom.index.count / 3 : geom.attributes.position.count / 3;
+      expect(triCount).toBeGreaterThanOrEqual(4);
+      expect(triCount).toBeLessThanOrEqual(8);
+      expect(geom.attributes.normal).toBeDefined();
+      expect(geom.attributes.color).toBeDefined();
+      geom.dispose();
+    }
   });
 });

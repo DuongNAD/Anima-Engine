@@ -376,11 +376,20 @@ function pageSetPose(pose) {
 function pageWaitFrames({ minFrames, minMs, capMs }) {
   return new Promise((resolve) => {
     const t0 = performance.now();
+    const dts = [];
+    let last = null;
     let n = 0;
-    const done = () => resolve({ frames: n, ms: performance.now() - t0 });
+    const done = () => {
+      const r1 = (v) => Math.round(v * 10) / 10;
+      const maxFrameMs = dts.length ? r1(Math.max(...dts)) : 0;
+      const hitchesOver20ms = dts.filter((d) => d > 20).map(r1);
+      resolve({ frames: n, ms: performance.now() - t0, maxFrameMs, hitchesOver20ms });
+    };
     const cap = setTimeout(done, capMs);
     const tick = (now) => {
       n++;
+      if (last !== null) dts.push(now - last);
+      last = now;
       if ((n >= minFrames && now - t0 >= minMs) || now - t0 >= capMs) {
         clearTimeout(cap);
         done();
@@ -388,6 +397,101 @@ function pageWaitFrames({ minFrames, minMs, capMs }) {
     };
     requestAnimationFrame(tick);
   });
+}
+
+function pageReseatOnNearPatch(viewId) {
+  const scene = window.__worldScene;
+  const st = window.__mapCapture;
+  if (!scene || !st || !st.pose) return false;
+  const near = scene.getObjectByName('world-terrain-near');
+  if (!near || !near.visible || !near.userData) return false;
+  const ud = near.userData;
+  const geom = near.geometry;
+  const posAttr = geom?.attributes?.position;
+  if (!posAttr || !ud.patchRes || ud.maxX <= ud.minX) return false;
+  const sampleNear = (x, z) => {
+    if (x < ud.minX || x > ud.maxX || z < ud.minZ || z > ud.maxZ) return null;
+    const res = ud.patchRes;
+    const side = res + 1;
+    const fx = Math.min(res - 1e-6, Math.max(0, ((x - ud.minX) / (ud.maxX - ud.minX)) * res));
+    const fz = Math.min(res - 1e-6, Math.max(0, ((z - ud.minZ) / (ud.maxZ - ud.minZ)) * res));
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    const tx = fx - ix;
+    const tz = fz - iz;
+    const a = posAttr.array;
+    const h00 = a[(iz * side + ix) * 3 + 1];
+    const h10 = a[(iz * side + ix + 1) * 3 + 1];
+    const h01 = a[((iz + 1) * side + ix) * 3 + 1];
+    const h11 = a[((iz + 1) * side + ix + 1) * 3 + 1];
+    return tx + tz < 1 ? h00 + (h10 - h00) * tx + (h01 - h00) * tz : h11 + (h01 - h11) * (1 - tx) + (h10 - h11) * (1 - tz);
+  };
+  const scale = window.__mapCaptureScale || { renderSize: 2400, heightUnits: 168 };
+  const R = scale.renderSize;
+  const H = scale.heightUnits;
+  const w = window.__world;
+  const metrics = window.__mapCaptureWorld || { extentM: 81920, elevSpanM: 7200 };
+  const unitsPerM = R / (metrics.extentM || 81920);
+  const uYc = H / (metrics.elevSpanM || 7200);
+  const px = st.pose.position[0];
+  const pz = st.pose.position[2];
+  const npY = sampleNear(px, pz);
+  if (npY === null) return false;
+  if (viewId === 'meadow' || viewId === 'meadowsun') {
+    const eyeH = viewId === 'meadow' ? 2.2 * uYc : 1.6 * uYc;
+    const curY = st.pose.position[1];
+    const nextY = npY + eyeH;
+    const dy = nextY - curY;
+    if (Math.abs(dy) > 0.02) {
+      st.pose.position[1] = nextY;
+      st.pose.target[1] += dy;
+      return true;
+    }
+  } else if (viewId === 'riverbank') {
+    const curY = st.pose.position[1];
+    const nextY = Math.max(curY, npY + 2.4 * Math.max(uYc, unitsPerM));
+    if (Math.abs(nextY - curY) > 0.02) {
+      st.pose.position[1] = nextY;
+      return true;
+    }
+  } else if (viewId === 'waterfall' || viewId === 'waterfallup') {
+    const curtains = scene.getObjectByName('waterfall-curtains');
+    if (curtains && curtains.instanceMatrix && w && w.waterfallCount) {
+      // Match camera target to whichever waterfall curtain is closest to the previous target
+      const prevT = st.pose.target;
+      let bestK = -1;
+      let bestD2 = Infinity;
+      let bestC = null;
+      let bestDrop = 1;
+      const e = curtains.instanceMatrix.array;
+      for (let k = 0; k < curtains.count; k++) {
+        const o = k * 16;
+        const sy = Math.hypot(e[o + 4], e[o + 5], e[o + 6]);
+        if (sy < 0.05 || e[o + 13] < -1e4) continue;
+        const cx = e[o + 12];
+        const cy = e[o + 13];
+        const cz = e[o + 14];
+        const d2 = (cx - prevT[0]) ** 2 + (cz - prevT[2]) ** 2;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          bestK = k;
+          bestC = [cx, cy, cz];
+          bestDrop = Math.max(0.1, sy - 0.5);
+        }
+      }
+      if (bestK >= 0 && bestC && bestD2 < 25) {
+        if (viewId === 'waterfallup') {
+          st.pose.target = [bestC[0], bestC[1] + bestDrop * 0.12, bestC[2]];
+        } else {
+          st.pose.target = bestC;
+        }
+        const safeY = npY + (viewId === 'waterfallup' ? 0.35 : 0.8);
+        if (st.pose.position[1] < safeY) st.pose.position[1] = safeY;
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** rAF timestamps over `ms`, plus the frame counters seen on each frame. */
@@ -729,10 +833,22 @@ function pageAnalyseWorld() {
     const GRASSY = new Set([3, 4, 17]); // Savanna, Grassland, Steppe
     let g = null;
     let gBest = Infinity;
-    for (let gy = 0; gy < N; gy += 4) {
-      for (let gx = 0; gx < N; gx += 4) {
+    for (let gy = 4; gy < N - 4; gy += 4) {
+      for (let gx = 4; gx < N - 4; gx += 4) {
         const i = gy * N + gx;
         if (!GRASSY.has(w.biome[i]) || w.elevation[i] < sea + 0.01 || (w.slope && w.slope[i] > 0.12)) continue;
+        if ((w.riverAmt && w.riverAmt[i] > 0) || (w.water && w.water[i] > 0)) continue;
+        let wetNear = false;
+        for (let dz = -2; dz <= 2 && !wetNear; dz++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const ni = (gy + dz) * N + (gx + dx);
+            if ((w.riverAmt && w.riverAmt[ni] > 20) || (w.water && w.water[ni] > 0)) {
+              wetNear = true;
+              break;
+            }
+          }
+        }
+        if (wetNear) continue;
         const x = cellToR(gx);
         const z = cellToR(gy);
         const d = x * x + z * z;
@@ -1515,8 +1631,13 @@ async function main() {
     );
     report.timings.worldReadyMs = Date.now() - tWorld;
     log(`world ready after ${(report.timings.worldReadyMs / 1000).toFixed(1)} s`);
-    // Let instanced flora and the first shadow pass upload, and the synthetic replay start.
-    await page.evaluate(pageWaitFrames, { minFrames: 30, minMs: 1500, capMs: 30_000 });
+    // Let instanced flora and the first shadow pass upload, and measure initial warm-up frames.
+    const loadWarmup = await page.evaluate(pageWaitFrames, { minFrames: 30, minMs: 1500, capMs: 30_000 });
+    report.timings.loadWarmup = {
+      frames: loadWarmup.frames,
+      maxFrameMs: loadWarmup.maxFrameMs,
+      hitchesOver20ms: loadWarmup.hitchesOver20ms,
+    };
     if (!(await page.evaluate(pageInstallPin))) throw new Error('window.__worldScene missing: cannot place the camera');
     if (opts.agents > 0) {
       const t = Date.now();
@@ -1580,11 +1701,27 @@ async function main() {
       } else {
         await page.evaluate(pageSetPose, spec.pose);
       }
-      // Settle: chunks, impostors and shadow cascades follow the camera; give them frames.
-      await page.evaluate(pageWaitFrames, { minFrames: 40, minMs: 1500, capMs: 20_000 });
-      const png = `${String(report.views.length).padStart(2, '0')}-${id}.png`;
-      await page.screenshot({ path: path.join(outDir, png) });
-      entry.png = png;
+      // Settle: chunks, impostors, L0 near patch and shadow cascades follow camera; measure warm-up separately.
+      const settle = await page.evaluate(pageWaitFrames, { minFrames: 40, minMs: 1500, capMs: 20_000 });
+      await page
+        .waitForFunction(
+          () => {
+            const near = window.__worldScene?.getObjectByName('world-terrain-near');
+            return !near || !near.visible || near.userData?.l0Ready !== false;
+          },
+          null,
+          { timeout: 6000, polling: 100 },
+        )
+        .catch(() => {});
+      await page.evaluate(pageReseatOnNearPatch, id);
+      await page.evaluate(pageWaitFrames, { minFrames: 12, minMs: 200, capMs: 5000 });
+      entry.warmup = {
+        frames: settle.frames,
+        settledMs: Math.round(settle.ms),
+        maxFrameMs: settle.maxFrameMs,
+        hitchesOver20ms: settle.hitchesOver20ms,
+      };
+      // Measure steady-state FPS BEFORE screenshot readback so PNG capture never injects a hitch.
       const s = await page.evaluate(pageSampleFrames, opts.seconds * 1000);
       entry.fps = frameStats(s.times);
       if (s.counters) {
@@ -1596,11 +1733,14 @@ async function main() {
       } else if (s.rendererInfo) {
         entry.counters = { source: 'renderer.info (main pass only)', total: s.rendererInfo };
       }
+      const png = `${String(report.views.length).padStart(2, '0')}-${id}.png`;
+      await page.screenshot({ path: path.join(outDir, png) });
+      entry.png = png;
       if (id === 'creature') {
         const followed = await page.evaluate(() => window.__mapCapture.followed);
         if (followed) entry.pose = { position: null, target: followed.map((n) => Math.round(n * 10) / 10) };
       }
-      log(`${id}: ${entry.fps.medianFps ?? '–'} fps median, ${entry.fps.p5Fps ?? '–'} p5, ${entry.counters?.total?.calls ?? '–'} calls, ${fmt(entry.counters?.total?.triangles)} tris`);
+      log(`${id}: ${entry.fps.medianFps ?? '–'} fps median, ${entry.fps.p5Fps ?? '–'} p5 (warmup max ${entry.warmup.maxFrameMs} ms), ${entry.counters?.total?.calls ?? '–'} calls, ${fmt(entry.counters?.total?.triangles)} tris`);
     }
     phase = 'end';
     await page.evaluate(pageWaitFrames, { minFrames: 2, minMs: 200, capMs: 5000 });

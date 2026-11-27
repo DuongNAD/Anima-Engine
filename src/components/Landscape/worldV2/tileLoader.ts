@@ -252,6 +252,7 @@ export async function loadWorldV2Bundle(
   const macroAlbedoSize = macroAlbedoPerSide * TILE_ACTIVE_SIZE;
 
   const mipEntryMap = new Map<string, TileManifestEntry>();
+  const l0HeightEntries = new Map<string, TileManifestEntry>();
   let caveNetworkEntry: TileManifestEntry | null = null;
   const floraEntries: TileManifestEntry[] = [];
 
@@ -260,8 +261,13 @@ export async function loadWorldV2Bundle(
       caveNetworkEntry = entry;
     } else if (entry.layer === 'flora_tiles') {
       floraEntries.push(entry);
-    } else if (entry.mip === mip || (entry.layer === 'macro_albedo' && entry.mip === macroAlbedoMip)) {
-      mipEntryMap.set(tileKey(entry.layer, entry.mip, entry.tx, entry.ty), entry);
+    } else {
+      if (entry.layer === 'height' && entry.mip === 0) {
+        l0HeightEntries.set(`${entry.tx}:${entry.ty}`, entry);
+      }
+      if (entry.mip === mip || (entry.layer === 'macro_albedo' && entry.mip === macroAlbedoMip)) {
+        mipEntryMap.set(tileKey(entry.layer, entry.mip, entry.tx, entry.ty), entry);
+      }
     }
   }
 
@@ -454,6 +460,15 @@ export async function loadWorldV2Bundle(
     caveMask,
     caveNetwork,
     floraSectors,
+    l0HeightManifest:
+      l0HeightEntries.size > 0
+        ? {
+            tilesBaseUrl,
+            gridSize: index.grid_size,
+            tilesPerSide: Math.max(1, Math.floor(index.grid_size / TILE_ACTIVE_SIZE)),
+            entries: l0HeightEntries,
+          }
+        : undefined,
   };
 }
 

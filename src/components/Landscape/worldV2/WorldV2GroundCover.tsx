@@ -12,6 +12,7 @@ import {
   atmosphereFragmentApply,
   bindAtmosphereUniforms,
 } from '../materials/atmosphere';
+import { NEAR_PATCH_SAMPLER_GLSL, bindNearPatchUniforms } from './terrainNearPatch';
 
 // prototype, to be replaced — WV2-LOOK r12 realistic instanced ground cover:
 //   1. `fine`    (near camera): multi-segment quadratic Bézier tapered blades with rounded
@@ -322,6 +323,8 @@ interface GroundCoverLayerProps {
   kind: CoverKind;
   count: number;
   radiusM: number;
+  cellSideM?: number;
+  useCells: boolean;
   innerFadeM?: number;
   bladeCount: number;
   segments: number;
@@ -347,6 +350,8 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
   kind,
   count,
   radiusM,
+  cellSideM,
+  useCells,
   innerFadeM = 0,
   bladeCount,
   segments,
@@ -361,18 +366,20 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
 }) => {
   const radiusUnits = radiusM * unitsPerM;
   const innerUnits = innerFadeM * unitsPerM;
+  const tileUnits = useCells ? (cellSideM ?? radiusM * 1.4) * unitsPerM : radiusUnits * 2;
+  const instCount = useCells ? Math.ceil(count / 4) : count;
 
   const instances = useMemo(() => {
     const rnd = seeded(seed);
-    const tile = radiusUnits * 2;
-    const matrices = new Float32Array(count * 16);
-    const colors = new Float32Array(count * 3);
+    const tile = tileUnits;
+    const matrices = new Float32Array(instCount * 16);
+    const colors = new Float32Array(instCount * 3);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
     const sc = new THREE.Vector3();
     const p = new THREE.Vector3();
-    for (let k = 0; k < count; k += 1) {
+    for (let k = 0; k < instCount; k += 1) {
       let hM: number;
       let wM: number;
       if (kind === 'fine') {
@@ -419,7 +426,7 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
       colors,
       tile,
     };
-  }, [kind, bladeCount, segments, withSeedCulm, seed, count, radiusUnits, unitsPerM]);
+  }, [kind, bladeCount, segments, withSeedCulm, seed, instCount, tileUnits, unitsPerM]);
 
   const timeUniform = useMemo(() => ({ value: 0 }), []);
 
@@ -440,6 +447,7 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
       uGcRender: { value: renderSize },
       uGcMPerUnit: { value: mPerUnit },
       uGcTile: { value: instances.tile },
+      uGcUseCells: { value: useCells ? 1 : 0 },
       uGcRadius: { value: radiusUnits },
       uGcInner: { value: innerUnits },
       uGcIsHerb: { value: kind === 'herbs' ? 1 : 0 },
@@ -449,6 +457,7 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
     };
     mat.onBeforeCompile = (shader) => {
       bindAtmosphereUniforms(shader.uniforms);
+      bindNearPatchUniforms(shader.uniforms);
       Object.assign(shader.uniforms, uniforms);
       shader.vertexShader =
         `
@@ -461,6 +470,7 @@ uniform float uGcMeshRes;
 uniform float uGcRender;
 uniform float uGcMPerUnit;
 uniform float uGcTile;
+uniform float uGcUseCells;
 uniform float uGcRadius;
 uniform float uGcInner;
 uniform float uGcIsHerb;
@@ -468,6 +478,7 @@ uniform float uGcIsTussock;
 uniform float uGcTime;
 uniform float uGcSway;
 uniform float uAtmoSeaY;
+${NEAR_PATCH_SAMPLER_GLSL}
 varying vec3 vLkGcWp;
 varying float vGcDry;
 varying float vGcTip;
@@ -489,7 +500,9 @@ ${GRASS_FIELD_GLSL}
 vec2 gcP0=instanceMatrix[3].xz;
 float gcSeed=instanceMatrix[3].y;
 vec2 gcCam=cameraPosition.xz;
-vec2 gcPw=gcP0+uGcTile*floor((gcCam-gcP0)/uGcTile+0.5);
+vec2 gcPw=uGcUseCells>0.5
+?(gcP0+vec2(modelMatrix[3].x,modelMatrix[3].z))
+:(gcP0+uGcTile*floor((gcCam-gcP0)/uGcTile+0.5));
 vec2 gcUv=gcPw/uGcRender+0.5;
 vec2 gcG=clamp(gcUv,0.0,1.0)*uGcMeshRes;
 vec2 gcI=floor(gcG);
@@ -501,6 +514,9 @@ float hD=gcH((gcI+vec2(1.0,1.0))/uGcMeshRes);
 float gcY=(gcF.x+gcF.y<1.0)
 ?hA+(hB-hA)*gcF.x+(hC-hA)*gcF.y
 :hD+(hC-hD)*(1.0-gcF.x)+(hB-hD)*(1.0-gcF.y);
+if(uNearPatchBounds.z>uNearPatchBounds.x&&gcPw.x>=uNearPatchBounds.x&&gcPw.x<=uNearPatchBounds.z&&gcPw.y>=uNearPatchBounds.y&&gcPw.y<=uNearPatchBounds.w){
+gcY=sampleNearPatch(gcPw).r;
+}
 vec4 gcM=texture2D(uGcMask,clamp(gcUv,0.0,1.0));
 vec4 gcRiv=texture2D(uGcRiver,clamp(gcUv,0.0,1.0));
 float gcRivSdf=gcRiv.r*255.0-80.0;
@@ -616,43 +632,74 @@ diffuseColor.rgb=mix(finalGrass,petalCol,vGcFlower)*cloudVis;
           )
           .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkGcWp'));
     };
-    mat.customProgramCacheKey = () => `wv2-look-groundcover-v7-${kind}`;
+    mat.customProgramCacheKey = () => `wv2-look-groundcover-v8-${kind}`;
     return mat;
-  }, [textures, instances, meshResolution, renderSize, radiusUnits, innerUnits, unitsPerM, timeUniform, kind]);
+  }, [textures, instances, meshResolution, renderSize, radiusUnits, innerUnits, unitsPerM, timeUniform, kind, useCells]);
 
   useEffect(() => () => instances.geometry.dispose(), [instances]);
   useEffect(() => () => material.dispose(), [material]);
 
-  const meshRef = useRef<THREE.InstancedMesh | null>(null);
+  const cellRefs = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const cellSlots = useCells ? 4 : 1;
+  const sphereRadius = Math.hypot(tileUnits * 0.5, tileUnits * 0.5, 4);
+
   useFrame((state) => {
     setUniformValue(timeUniform, state.clock.elapsedTime);
-    const mesh = meshRef.current;
-    if (!mesh) return;
     const cam = state.camera.position;
     const u = cam.x / renderSize + 0.5;
     const v = cam.z / renderSize + 0.5;
     const ground = u >= 0 && u <= 1 && v >= 0 && v <= 1 ? sampleElevation(world, u, v) * heightUnits : 0;
-    setVisible(mesh, cam.y - ground < radiusUnits);
+    const altOk = cam.y - ground < radiusUnits;
+    if (!useCells) {
+      const m = cellRefs.current[0];
+      if (m) setVisible(m, altOk);
+      return;
+    }
+    const cx0 = Math.floor(cam.x / tileUnits - 0.5);
+    const cz0 = Math.floor(cam.z / tileUnits - 0.5);
+    for (let idx = 0; idx < 4; idx += 1) {
+      const m = cellRefs.current[idx];
+      if (!m) continue;
+      setVisible(m, altOk);
+      if (!altOk) continue;
+      const ox = idx & 1;
+      const oz = (idx >> 1) & 1;
+      const wx = (cx0 + ox) * tileUnits;
+      const wz = (cz0 + oz) * tileUnits;
+      m.position.set(wx, 0, wz);
+      const cu = (wx + tileUnits * 0.5) / renderSize + 0.5;
+      const cv = (wz + tileUnits * 0.5) / renderSize + 0.5;
+      const cellY =
+        cu >= 0 && cu <= 1 && cv >= 0 && cv <= 1 ? sampleElevation(world, cu, cv) * heightUnits : ground;
+      if (!m.boundingSphere) m.boundingSphere = new THREE.Sphere();
+      m.boundingSphere.center.set(tileUnits * 0.5, cellY + 0.5, tileUnits * 0.5);
+      m.boundingSphere.radius = sphereRadius;
+    }
   });
 
   return (
-    <instancedMesh
-      name={`world-v2-flora-groundcover-${kind}`}
-      args={[instances.geometry, material, count]}
-      frustumCulled={false}
-      castShadow={false}
-      receiveShadow={false}
-      userData={{ decorative: true, rwLayer: 'flora' }}
-      ref={(mesh: THREE.InstancedMesh | null) => {
-        meshRef.current = mesh;
-        if (!mesh || !mesh.instanceMatrix) return;
-        mesh.instanceMatrix.array.set(instances.matrices);
-        mesh.instanceMatrix.needsUpdate = true;
-        if (!mesh.instanceColor || mesh.instanceColor.count !== count) {
-          mesh.instanceColor = new THREE.InstancedBufferAttribute(instances.colors, 3);
-        }
-      }}
-    />
+    <>
+      {Array.from({ length: cellSlots }, (_, idx) => (
+        <instancedMesh
+          key={idx}
+          name={`world-v2-flora-groundcover-${kind}${useCells ? `-c${idx}` : ''}`}
+          args={[instances.geometry, material, instCount]}
+          frustumCulled={useCells}
+          castShadow={false}
+          receiveShadow={false}
+          userData={{ decorative: true, rwLayer: 'flora' }}
+          ref={(mesh: THREE.InstancedMesh | null) => {
+            cellRefs.current[idx] = mesh;
+            if (!mesh || !mesh.instanceMatrix) return;
+            mesh.instanceMatrix.array.set(instances.matrices);
+            mesh.instanceMatrix.needsUpdate = true;
+            if (!mesh.instanceColor || mesh.instanceColor.count !== instCount) {
+              mesh.instanceColor = new THREE.InstancedBufferAttribute(instances.colors, 3);
+            }
+          }}
+        />
+      ))}
+    </>
   );
 };
 
@@ -664,17 +711,21 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
   meshResolution = 384,
   tier = 'high',
 }) => {
-  const fineCount = tier === 'high' ? 62000 : tier === 'medium' ? 32000 : 14000;
-  const fineRadiusM = tier === 'high' ? 32 : tier === 'medium' ? 24 : 16;
-  const fineBlades = tier === 'high' ? 7 : 5;
-  const fineSegs = tier === 'low' ? 2 : 3;
-  const tussockCount = tier === 'high' ? 42000 : tier === 'medium' ? 18000 : 7000;
-  const tussockRadiusM = tier === 'high' ? 145 : tier === 'medium' ? 110 : 60;
-  const tussockBlades = tier === 'low' ? 4 : 5;
-  const tussockSegs = tier === 'low' ? 1 : 2;
+  const useCells = tier !== 'low';
+  const fineCount = tier === 'high' ? 34000 : tier === 'medium' ? 18000 : 14000;
+  const fineRadiusM = tier === 'high' ? 22 : tier === 'medium' ? 18 : 16;
+  const fineCellSideM = tier === 'high' ? 28 : 24;
+  const fineBlades = tier === 'high' ? 6 : 5;
+  const fineSegs = tier === 'low' ? 2 : tier === 'medium' ? 2 : 3;
+  const tussockCount = tier === 'high' ? 26000 : tier === 'medium' ? 14000 : 7000;
+  const tussockRadiusM = tier === 'high' ? 115 : tier === 'medium' ? 90 : 60;
+  const tussockCellSideM = tier === 'high' ? 140 : 112;
+  const tussockBlades = 4;
+  const tussockSegs = tier === 'high' ? 2 : 1;
   const tussockSeedCulm = tier === 'high';
-  const herbCount = tier === 'high' ? 6500 : tier === 'medium' ? 3500 : 0;
-  const herbRadiusM = tier === 'high' ? 32 : 24;
+  const herbCount = tier === 'high' ? 3600 : tier === 'medium' ? 2000 : 0;
+  const herbRadiusM = tier === 'high' ? 22 : 18;
+  const herbCellSideM = tier === 'high' ? 28 : 24;
   const heightUnits = renderSize * heightRatio;
   const unitsPerM = renderSize / (bundle.extentM || WORLD_EXTENT_M);
 
@@ -719,6 +770,8 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
         kind="fine"
         count={fineCount}
         radiusM={fineRadiusM}
+        cellSideM={fineCellSideM}
+        useCells={useCells}
         bladeCount={fineBlades}
         segments={fineSegs}
         withSeedCulm={false}
@@ -729,7 +782,9 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
         kind="tussock"
         count={tussockCount}
         radiusM={tussockRadiusM}
-        innerFadeM={14}
+        cellSideM={tussockCellSideM}
+        useCells={useCells}
+        innerFadeM={tier === 'medium' ? 12 : 14}
         bladeCount={tussockBlades}
         segments={tussockSegs}
         withSeedCulm={tussockSeedCulm}
@@ -741,6 +796,8 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
           kind="herbs"
           count={herbCount}
           radiusM={herbRadiusM}
+          cellSideM={herbCellSideM}
+          useCells={useCells}
           bladeCount={4}
           segments={2}
           withSeedCulm={true}

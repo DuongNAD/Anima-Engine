@@ -258,6 +258,52 @@ function finish(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 /**
+ * Compact 4-to-6 triangle closed volumetric crown impostor for distant trees (> ~1 km).
+ * Uses each species' foliage gradient and outward-biased `crownNormals` with zero alpha-discard
+ * overdraw so far forests match 3D crowns in lighting and tint at 7-10x fewer triangles.
+ */
+export function makeFloraImpostorGeometry(speciesId: number): THREE.BufferGeometry {
+  const w = LOOK_SPECIES_SIZE[speciesId]?.widthRatio ?? 0.8;
+  const r = w * 0.5;
+  if (speciesId === LOOK_SPECIES.Pine || speciesId === LOOK_SPECIES.Cactus || speciesId === LOOK_SPECIES.Rosette) {
+    const [lo, hi, cy] =
+      speciesId === LOOK_SPECIES.Pine
+        ? ['#0d1c12', '#1d3520', 0.45]
+        : speciesId === LOOK_SPECIES.Cactus
+          ? ['#3a5230', '#5d7a45', 0.5]
+          : ['#6d7a5e', '#a9b79a', 0.65];
+    const h = speciesId === LOOK_SPECIES.Pine ? 0.94 : 0.92;
+    const rad = speciesId === LOOK_SPECIES.Cactus ? 0.14 : r * 0.96;
+    const cone = new THREE.ConeGeometry(rad, h, 5, 1, true).translate(0, 0.08 + h * 0.5, 0);
+    const p = paintGradient(cone, lo, hi, 0.08, 1.0);
+    crownNormals(p, 0, cy, 0, 0.55);
+    return finish([p]);
+  }
+  const palette: Readonly<Record<number, readonly [string, string, number, number]>> = {
+    [LOOK_SPECIES.Broadleaf]: ['#16290f', '#304a1d', 0.68, 0.34],
+    [LOOK_SPECIES.Jungle]: ['#0e2410', '#2d5320', 0.72, 0.36],
+    [LOOK_SPECIES.Acacia]: ['#253313', '#5a6b2b', 0.82, 0.2],
+    [LOOK_SPECIES.Palm]: ['#1c3a16', '#355626', 0.86, 0.18],
+    [LOOK_SPECIES.Rock]: ['#353330', '#5a5650', 0.25, 0.22],
+    [LOOK_SPECIES.Mangrove]: ['#14260f', '#2c4a1a', 0.58, 0.26],
+    [LOOK_SPECIES.Willow]: ['#2a3d17', '#58702c', 0.56, 0.34],
+    [LOOK_SPECIES.TreeFern]: ['#24401a', '#4f7a2c', 0.76, 0.2],
+    [LOOK_SPECIES.Bush]: ['#1e2912', '#3a4820', 0.36, 0.22],
+  };
+  const [lo, hi, cy, halfH] = palette[speciesId] ?? ['#1e2912', '#3a4820', 0.55, 0.3];
+  const crownR = r * (speciesId === LOOK_SPECIES.Acacia ? 0.95 : 0.88);
+  const topCap = new THREE.ConeGeometry(crownR, halfH * 1.15, 3, 1, true).translate(0, cy + halfH * 0.575, 0);
+  const botCap = new THREE.ConeGeometry(crownR, halfH * 0.85, 3, 1, true)
+    .rotateX(Math.PI)
+    .translate(0, cy - halfH * 0.425, 0);
+  const pt = paintGradient(topCap, lo, hi, cy - halfH, cy + halfH);
+  const pb = paintGradient(botCap, lo, hi, cy - halfH, cy + halfH);
+  crownNormals(pt, 0, cy - halfH * 0.15, 0, 0.55);
+  crownNormals(pb, 0, cy - halfH * 0.15, 0, 0.55);
+  return finish([pt, pb]);
+}
+
+/**
  * Unit-height (y 0..1) plant geometry, canopy radius ~0.5 * widthRatio, for bake species id.
  * `lite` (low tier): trunk plus the main crown mass only (palms keep three fronds), so the low
  * tier can afford twice the trees for about the same triangles.

@@ -388,16 +388,15 @@ rivSdf+=(lkNHi.r-0.5)*3.2*(1.0-smoothstep(250.0,900.0,lkCamDist));
 float flowEnergy=rivMask.a;
 // Leopold-Maddock creek narrowing inside the unbroken L1 SDF envelope, plus cliff narrowing so
 // vertical waterfall walls don't paint wide horizontal polygons down 60 m drops.
-float wallSlope=max(lkSlope,lkGSlope*0.72);
 float creekShrink=(1.0-smoothstep(0.16,0.44,flowEnergy))*13.5;
-float cliffPinch=smoothstep(0.16,0.34,wallSlope)*16.0;
+float cliffPinch=smoothstep(0.18,0.36,lkSlope)*15.0;
 float cSdf=rivSdf+creekShrink+cliffPinch;
 if(cSdf<16.0&&lkHm<3650.0){
   float lkNoGlacier=1.0-smoothstep(2850.0,3650.0,lkHm);
   float lkRivAllow=(1.0-lkSnow*0.85)*lkNoGlacier;
   float lkRivAA=max(1.3,fwidth(cSdf)*1.15);
   float headFade=smoothstep(0.10,0.28,flowEnergy);
-  float cliffFade=1.0-smoothstep(0.26,0.44,wallSlope)*0.80;
+  float cliffFade=1.0-smoothstep(0.28,0.46,lkSlope)*0.75;
   lkRivWater=(1.0-smoothstep(-lkRivAA,lkRivAA,cSdf))*lkRivAllow*mix(0.62,1.0,headFade)*cliffFade;
   lkRivBank=smoothstep(-0.5,0.8,cSdf)*(1.0-smoothstep(1.5,4.2,cSdf))*lkRivAllow;
   float bankAo=1.0-smoothstep(0.0,11.0,max(0.0,cSdf))*0.12*uCarveBanks*lkRivAllow;
@@ -416,20 +415,21 @@ if(cSdf<16.0&&lkHm<3650.0){
   if(lkRivWater>0.01){
     vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
     float flowLen=length(rawFlow);
-    float validFlow=smoothstep(0.12,0.50,flowEnergy)*step(0.15,flowLen);
-    vec2 flowDir=flowLen>0.15?(rawFlow/flowLen):vec2(0.7,0.7);
+    float validFlow=smoothstep(0.12,0.50,flowEnergy)*smoothstep(0.05,0.45,flowLen);
+    vec2 flowDir=flowLen>0.05?(rawFlow/flowLen):vec2(0.7,0.7);
     vec2 flowPerp=vec2(-flowDir.y,flowDir.x);
-    vec2 fUv=vec2(dot(lkP,flowDir),dot(lkP,flowPerp));
-    // Speed scales with baked bed slope + flow energy; calm valley rivers stay dark and glossy.
     float bedSlope=clamp(lkSlope,0.0,0.55);
     float speed=mix(0.24,1.15,smoothstep(0.025,0.16,bedSlope))+flowEnergy*0.18;
     float p0=fract(uTime*speed*0.45);
     float p1=fract(p0+0.5);
     float blend=abs(2.0*p0-1.0);
-    // Anisotropic streaks aligned 4:1 along flow direction (replaces polka-dot uDetail).
-    float st0=texture2D(uLookNoise,fUv*vec2(0.55,2.4)-vec2(p0*1.4,0.0)).g;
-    float st1=texture2D(uLookNoise,fUv*vec2(0.55,2.4)-vec2(p1*1.4,0.0)+vec2(0.37,0.19)).g;
-    float ripFine=texture2D(uLookNoise,fUv*vec2(1.2,5.2)-vec2(uTime*speed*0.9,0.0)).b;
+    // Directional multi-tap advection in continuous world XZ avoids multiplying 8-bit quantized flowDir by large lkP.
+    vec2 adv0=flowDir*(p0*1.65);
+    vec2 adv1=flowDir*(p1*1.65);
+    vec2 sStep=flowDir*0.55;
+    float st0=0.5*(texture2D(uLookNoise,lkP*0.72-adv0).g+texture2D(uLookNoise,lkP*0.72-adv0+sStep).g);
+    float st1=0.5*(texture2D(uLookNoise,lkP*0.72-adv1+vec2(0.37,0.19)).g+texture2D(uLookNoise,lkP*0.72-adv1+sStep+vec2(0.37,0.19)).g);
+    float ripFine=texture2D(uLookNoise,lkP*2.2-flowDir*(uTime*speed*0.7)).b;
     float flowStreak=mix(st0,st1,blend)*0.65+ripFine*0.35;
     float depthCue=clamp(flowEnergy*1.15,0.0,1.0);
     vec3 calmCol=mix(vec3(0.010,0.044,0.062),vec3(0.022,0.084,0.100),depthCue);

@@ -23,6 +23,7 @@ export function evaluateDrawnWaterfall(
   renderSize: number,
   heightUnits: number,
   i: number,
+  sampleSurfaceY?: (sx: number, sz: number) => number | null | undefined,
 ): DrawnWaterfallFit {
   const x = world.waterfallX[i] * (renderSize / world.size);
   const z = world.waterfallZ[i] * (renderSize / world.size);
@@ -32,8 +33,11 @@ export function evaluateDrawnWaterfall(
   const dirZ = Math.sin(yaw);
   const mPerUnitH = (worldV2.extentM || WORLD_EXTENT_M) / renderSize;
   const baseSpanUnits = 1.6;
-  const sampleAt = (sx: number, sz: number) =>
-    sampleMeshHeight(world, sx / renderSize + 0.5, sz / renderSize + 0.5, meshResolution) * heightUnits;
+  const sampleAt = (sx: number, sz: number) => {
+    const patchY = sampleSurfaceY?.(sx, sz);
+    if (typeof patchY === 'number' && Number.isFinite(patchY)) return patchY;
+    return sampleMeshHeight(world, sx / renderSize + 0.5, sz / renderSize + 0.5, meshResolution) * heightUnits;
+  };
 
   const lipY = sampleAt(x, z);
   const upY = sampleAt(x - dirX * 1.4, z - dirZ * 1.4);

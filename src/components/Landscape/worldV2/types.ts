@@ -102,6 +102,13 @@ export interface DecodedKtx2 {
   level0: Uint8Array;
 }
 
+export interface L0HeightManifest {
+  tilesBaseUrl: string;
+  gridSize: number;
+  tilesPerSide: number;
+  entries: ReadonlyMap<string, TileManifestEntry>;
+}
+
 export interface WorldV2LoadedBundle {
   simWorldIdentity: string;
   bundleIdentity: string;
@@ -127,6 +134,7 @@ export interface WorldV2LoadedBundle {
   caveMask: Uint8Array;
   caveNetwork: CaveNetwork | null;
   floraSectors: FloraSectorBlob[];
+  l0HeightManifest?: L0HeightManifest;
 }
 
 export class TileIntegrityError extends Error {

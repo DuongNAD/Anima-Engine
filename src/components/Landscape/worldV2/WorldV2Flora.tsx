@@ -17,6 +17,7 @@ import {
   LOOK_SPECIES_SIZE,
   chooseLookShape,
   chooseUnderstoryShape,
+  makeFloraImpostorGeometry,
   makeLookFloraGeometry,
   type FloraHabitat,
 } from './floraLook';
@@ -26,6 +27,7 @@ import {
   atmosphereFragmentApply,
   bindAtmosphereUniforms,
 } from '../materials/atmosphere';
+import { NEAR_PATCH_SAMPLER_GLSL, bindNearPatchUniforms } from './terrainNearPatch';
 
 export interface WorldV2FloraProps {
   bundle: WorldV2LoadedBundle;
@@ -52,6 +54,10 @@ interface SpeciesBatch {
   cellMaxY: Float32Array;
   /** Mutually exclusive near/far cell partition for close-range sculpted crowns (`all` = single batch). */
   lodBand: 'all' | 'near' | 'far';
+  /** Squared boundary radius (scene units) separating `near` vs `far` cells (`0` for `all`). */
+  splitRadiusSq: number;
+  /** Maximum draw distance (scene units) for cells in this batch. */
+  farUnits: number;
 }
 
 // prototype, to be replaced — WV2-LOOK r8 flora distance culling.
@@ -65,10 +71,10 @@ interface SpeciesBatch {
 // so a plant outside the view or past the radius draws no pixel: the picture is the same, only
 // the triangle count and the vertex work change.
 
-/** Plant fade-out distance: 0.35 of C01's map (~14.3 km), the same in metres at every extent. */
-const FLORA_FAR_UNITS = C01_RENDER_SIZE * 0.35;
-/** Grid cell size in scene units (~2 km). */
-const FLORA_CELL_UNITS = 60;
+/** Plant fade-out distance on low tier (~14.3 km), matching C01's 0.35 reference fraction. */
+const FLORA_FAR_UNITS_LOW = C01_RENDER_SIZE * 0.35;
+/** Grid cell size in scene units (~1 km). */
+const FLORA_CELL_UNITS = 30;
 /** Re-pick the cells once the camera has moved this far; the radius test pads by the same amount. */
 const FLORA_REPICK_UNITS = FLORA_CELL_UNITS * 0.5;
 /** Re-pick once the view has turned this far; the pick frustum is widened by 4x as much. */
@@ -76,9 +82,6 @@ const FLORA_REPICK_DEG = 5;
 const FLORA_FOV_MARGIN_DEG = 20;
 /** Box padding around a cell's plant origins: a 38 m tree is ~1.1 units tall, ~0.8 wide. */
 const FLORA_BOX_PAD = 3;
-/** Close-range crown LOD boundary (~3.2 km around camera) for Acacia and Jungle. */
-const NEAR_CROWN_UNITS = 95;
-const NEAR_CROWN_UNITS_SQ = NEAR_CROWN_UNITS * NEAR_CROWN_UNITS;
 
 const _pickProj = new THREE.Matrix4();
 const _pickFrustum = new THREE.Frustum();
@@ -151,7 +154,7 @@ function writeNearCells(
 ): number {
   const { grid } = batch;
   const half = grid.renderSize / 2;
-  const reach = FLORA_FAR_UNITS + FLORA_REPICK_UNITS;
+  const reach = batch.farUnits + FLORA_REPICK_UNITS;
   const reach2 = reach * reach;
   const dstM = mesh.instanceMatrix.array as Float32Array;
   const dstC = mesh.instanceColor ? (mesh.instanceColor.array as Float32Array) : null;
@@ -169,7 +172,7 @@ function writeNearCells(
       if (batch.lodBand !== 'all') {
         const cX = x0 + grid.cellSize * 0.5 - cam.x;
         const cZ = z0 + grid.cellSize * 0.5 - cam.z;
-        const isNearCell = cX * cX + cZ * cZ <= NEAR_CROWN_UNITS_SQ;
+        const isNearCell = cX * cX + cZ * cZ <= batch.splitRadiusSq;
         if (batch.lodBand === 'near' && !isNearCell) continue;
         if (batch.lodBand === 'far' && isNearCell) continue;
       }
@@ -258,12 +261,13 @@ const FloraBatchMesh = memo(function FloraBatchMesh({
       if (!mesh.instanceColor || mesh.instanceColor.count !== batch.count) {
         mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(batch.count * 3), 3);
       }
-      // Start with every plant (what the batch drew before r8) until the first pick lands.
+      // Avoid dumping 500k unfiltered trees before the first camera frustum pick lands.
       mesh.instanceMatrix.array.set(batch.matrices);
       mesh.instanceMatrix.needsUpdate = true;
       (mesh.instanceColor.array as Float32Array).set(batch.colors);
       mesh.instanceColor.needsUpdate = true;
-      mesh.count = batch.count;
+      mesh.count = 0;
+      mesh.visible = true;
       const state = stateRef.current;
       state.last = null;
       state.lastDir = null;
@@ -387,28 +391,36 @@ function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
   const uFloraFar = { value: farUnits };
   material.onBeforeCompile = (shader) => {
     bindAtmosphereUniforms(shader.uniforms);
+    bindNearPatchUniforms(shader.uniforms);
     shader.uniforms.uFloraFar = uFloraFar;
     // Past ~14 km a plant is under a pixel and the terrain's canopy layer already carries the
     // forest; shrink instances to their origin over the last 30% of the range so the GPU
     // rasterises nothing for them (degenerate triangles), with no visible pop.
     shader.vertexShader =
-      'varying vec3 vLkFloraWp;\nuniform float uFloraFar;\n' +
+      `varying vec3 vLkFloraWp;\nuniform float uFloraFar;\n${NEAR_PATCH_SAMPLER_GLSL}\n` +
       shader.vertexShader.replace(
         '#include <project_vertex>',
         `
+float lkNpDeltaY=0.0;
 #ifdef USE_INSTANCING
 {
 vec3 lkOrigin=(modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0)).xyz;
 float lkKeep=1.0-smoothstep(uFloraFar*0.7,uFloraFar,distance(lkOrigin,cameraPosition));
 transformed*=lkKeep;
+lkNpDeltaY=sampleNearPatch(lkOrigin.xz).g;
 }
 #endif
 #include <project_vertex>
+if(abs(lkNpDeltaY)>1e-5){
+mvPosition+=(viewMatrix*vec4(0.0,lkNpDeltaY,0.0,0.0));
+gl_Position=projectionMatrix*mvPosition;
+}
 vec4 lkFloraWp4=vec4(transformed,1.0);
 #ifdef USE_INSTANCING
 lkFloraWp4=instanceMatrix*lkFloraWp4;
 #endif
 vLkFloraWp=(modelMatrix*lkFloraWp4).xyz;
+vLkFloraWp.y+=lkNpDeltaY;
 `,
       );
     // Rocks in the swash band are wet: darker (CST-04).
@@ -436,7 +448,7 @@ diffuseColor.rgb*=mix(0.6,1.0,atmoCloudShadow(vLkFloraWp));
         )
         .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
   };
-  material.customProgramCacheKey = () => 'wv2-look-flora-v5';
+  material.customProgramCacheKey = () => 'wv2-look-flora-v6';
   return material;
 }
 
@@ -457,11 +469,16 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   const stride = tier === 'high' ? 1 : 2;
   const standScale = tier === 'high' ? 1 : tier === 'medium' ? 0.8 : 0.65;
   const lite = tier === 'low';
+  const treeFar = tier === 'high' ? 350 : tier === 'medium' ? 280 : FLORA_FAR_UNITS_LOW;
+  const scrubFar = tier === 'high' ? 145 : tier === 'medium' ? 115 : FLORA_FAR_UNITS_LOW;
+  const nearCrownUnits = tier === 'high' ? 26 : 18;
+  const impostorUnits = tier === 'high' ? 42 : 30;
   // WV2-LOOK: at real-world size a tree is under one texel of the 2048 shadow map spread over
   // the whole map, so its cast shadow was aliased noise that cost ~25-35% of the high-tier
   // frame. The canopy layer in the terrain shader carries the dark gaps instead.
 
-  const material = useMemo(() => makeFloraLookMaterial(FLORA_FAR_UNITS), []);
+  const treeMaterial = useMemo(() => makeFloraLookMaterial(treeFar), [treeFar]);
+  const scrubMaterial = useMemo(() => makeFloraLookMaterial(scrubFar), [scrubFar]);
   // Map-edge band skipped below, as a fraction of the map: 0.085 on C01, the same metres elsewhere.
   const edgeSkip = 0.085 * worldRenderScale(bundle.extentM).edgeScale;
 
@@ -608,25 +625,39 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
       const list = perShape[shape];
       if (list.length === 0) continue;
       const sorted = sortIntoGrid(new Float32Array(list), new Float32Array(perShapeColor[shape]), grid);
-      const splitNear = !lite && (shape === LOOK_SPECIES.Acacia || shape === LOOK_SPECIES.Jungle);
-      if (splitNear) {
+      const isScrub =
+        shape === LOOK_SPECIES.Bush ||
+        shape === LOOK_SPECIES.TreeFern ||
+        shape === LOOK_SPECIES.Rosette ||
+        shape === LOOK_SPECIES.Cactus ||
+        shape === LOOK_SPECIES.Rock;
+      const batchFar = isScrub ? scrubFar : treeFar;
+      const isSculpted = shape === LOOK_SPECIES.Acacia || shape === LOOK_SPECIES.Jungle;
+      const splitRadius = isSculpted ? nearCrownUnits : impostorUnits;
+      const useImpostorSplit = !lite && shape !== LOOK_SPECIES.Cactus && shape !== LOOK_SPECIES.Rock;
+      if (useImpostorSplit) {
+        const splitRadiusSq = splitRadius * splitRadius;
         out.push({
           key: `${shape}-near`,
           speciesId: shape,
-          geometry: makeLookFloraGeometry(shape, false, true),
+          geometry: makeLookFloraGeometry(shape, false, isSculpted),
           count: list.length / 16,
           grid,
           ...sorted,
           lodBand: 'near',
+          splitRadiusSq,
+          farUnits: batchFar,
         });
         out.push({
           key: `${shape}-far`,
           speciesId: shape,
-          geometry: makeLookFloraGeometry(shape, false, false),
+          geometry: makeFloraImpostorGeometry(shape),
           count: list.length / 16,
           grid,
           ...sorted,
           lodBand: 'far',
+          splitRadiusSq,
+          farUnits: batchFar,
         });
       } else {
         out.push({
@@ -637,11 +668,13 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           grid,
           ...sorted,
           lodBand: 'all',
+          splitRadiusSq: 0,
+          farUnits: batchFar,
         });
       }
     }
     return out;
-  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale, lite, edgeSkip]);
+  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale, lite, edgeSkip, treeFar, scrubFar, nearCrownUnits, impostorUnits]);
 
   useEffect(() => {
     return () => {
@@ -651,17 +684,30 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
 
   useEffect(() => {
     return () => {
-      material.dispose();
+      treeMaterial.dispose();
+      scrubMaterial.dispose();
     };
-  }, [material]);
+  }, [treeMaterial, scrubMaterial]);
 
   if (batches.length === 0) return null;
 
   return (
     <group name="world-v2-flora" userData={{ decorative: true, rwLayer: 'flora' }}>
-      {batches.map((batch) => (
-        <FloraBatchMesh key={batch.key} batch={batch} material={material} />
-      ))}
+      {batches.map((batch) => {
+        const isScrub =
+          batch.speciesId === LOOK_SPECIES.Bush ||
+          batch.speciesId === LOOK_SPECIES.TreeFern ||
+          batch.speciesId === LOOK_SPECIES.Rosette ||
+          batch.speciesId === LOOK_SPECIES.Cactus ||
+          batch.speciesId === LOOK_SPECIES.Rock;
+        return (
+          <FloraBatchMesh
+            key={batch.key}
+            batch={batch}
+            material={isScrub ? scrubMaterial : treeMaterial}
+          />
+        );
+      })}
     </group>
   );
 };
