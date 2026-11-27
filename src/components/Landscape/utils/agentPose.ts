@@ -146,9 +146,7 @@ export function buildMorphologyRestLayout(
     .sort((a, b) => (a.isRoot === b.isRoot ? a.segmentId - b.segmentId : a.isRoot ? -1 : 1));
 
   const indexBySegId = new Map<number, number>();
-  for (let i = 0; i < ordered.length; i++) {
-    indexBySegId.set(ordered[i].segmentId, i);
-  }
+  for (let i = 0; i < ordered.length; i++) indexBySegId.set(ordered[i].segmentId, i);
 
   const nodes: MorphologyRestNode[] = ordered.map((s, boneIdx) => ({
     boneIdx,
@@ -165,9 +163,24 @@ export function buildMorphologyRestLayout(
     jointPos: [0, 0, 0],
   }));
 
-  // Resolve parent positions before children regardless of segment_id ordering.
   const placed = new Uint8Array(nodes.length);
   placed[0] = 1;
+  const placeFrom = (
+    node: MorphologyRestNode,
+    ref: MorphologyRestNode,
+    rawA: readonly [number, number, number] | null,
+  ) => {
+    const pr = ref.restPos;
+    const ax = rawA ? finiteOr(rawA[0]) : 0;
+    const ay = rawA ? finiteOr(rawA[1]) : 0;
+    const az = rawA ? finiteOr(rawA[2]) : 0;
+    const axial = Math.hypot(ax, ay, az) <= 1e-5;
+    const jx = axial ? pr[0] : pr[0] + ax;
+    const jy = axial ? pr[1] : pr[1] + ay;
+    const jz = axial ? pr[2] + ref.length * 0.5 : pr[2] + az;
+    node.jointPos = [jx, jy, jz];
+    node.restPos = [jx, jy, jz + node.length * 0.5];
+  };
   let progress = true;
   while (progress) {
     progress = false;
@@ -176,42 +189,16 @@ export function buildMorphologyRestLayout(
       const node = nodes[i];
       const pIdx = node.parentBoneIdx ?? 0;
       if (!placed[pIdx] && i !== pIdx) continue;
-      const parent = nodes[pIdx === i ? 0 : pIdx];
-      const rawA = ordered[i].jointAnchor;
-      const ax = Number.isFinite(rawA[0]) ? rawA[0] : 0;
-      const ay = Number.isFinite(rawA[1]) ? rawA[1] : 0;
-      const az = Number.isFinite(rawA[2]) ? rawA[2] : 0;
-      const mag = Math.hypot(ax, ay, az);
-
-      // Exact Rust kinematics equilibrium (`src-tauri/src/evolution/genotype.rs:194-199,266` &
-      // `src-tauri/src/physics/dynamics.rs:80-82`):
-      // P_child = P_parent + anchor_offset + (0, 0, +child.length / 2).
-      if (mag <= 1e-5) {
-        const jz = parent.restPos[2] + parent.length * 0.5;
-        node.jointPos = [parent.restPos[0], parent.restPos[1], jz];
-        node.restPos = [parent.restPos[0], parent.restPos[1], jz + node.length * 0.5];
-      } else {
-        const jx = parent.restPos[0] + ax;
-        const jy = parent.restPos[1] + ay;
-        const jz = parent.restPos[2] + az;
-        node.jointPos = [jx, jy, jz];
-        node.restPos = [jx, jy, jz + node.length * 0.5];
-      }
+      placeFrom(node, nodes[pIdx === i ? 0 : pIdx], ordered[i].jointAnchor);
       placed[i] = 1;
       progress = true;
     }
   }
 
   for (let i = 1; i < nodes.length; i++) {
-    if (!placed[i]) {
-      const prev = nodes[i - 1];
-      const jz = prev.restPos[2] + prev.length * 0.5;
-      nodes[i].jointPos = [prev.restPos[0], prev.restPos[1], jz];
-      nodes[i].restPos = [prev.restPos[0], prev.restPos[1], jz + nodes[i].length * 0.5];
-    }
+    if (!placed[i]) placeFrom(nodes[i], nodes[i - 1], null);
   }
 
-  // Primary spine chain starting at root along non-lateral first children.
   const childrenByParent = new Map<number, MorphologyRestNode[]>();
   for (let i = 1; i < nodes.length; i++) {
     const pIdx = nodes[i].parentBoneIdx ?? 0;
@@ -227,10 +214,11 @@ export function buildMorphologyRestLayout(
   while (true) {
     const kids = childrenByParent.get(cursor.boneIdx);
     if (!kids || kids.length === 0) break;
+    const cx = cursor.restPos[0];
     let best = kids[0];
-    let bestLateral = Math.abs(best.jointPos[0] - cursor.restPos[0]);
+    let bestLateral = Math.abs(best.jointPos[0] - cx);
     for (let i = 1; i < kids.length; i++) {
-      const lat = Math.abs(kids[i].jointPos[0] - cursor.restPos[0]);
+      const lat = Math.abs(kids[i].jointPos[0] - cx);
       if (lat < bestLateral) {
         bestLateral = lat;
         best = kids[i];
@@ -244,60 +232,25 @@ export function buildMorphologyRestLayout(
 
   const firstNode = spineChain[0];
   const lastNode = spineChain[spineChain.length - 1];
-  let headAttachment: MorphologyHeadAttachment;
+  let headNode = firstNode;
+  let headForward: [number, number, number] = [0, 0, 1];
   let usesRootAxialCap = false;
 
-  if (spineChain.length === 1) {
-    headAttachment = {
-      boneIdx: firstNode.boneIdx,
-      segmentId: firstNode.segmentId,
-      frontShoulderDist: firstNode.length * 0.5,
-      headRadius: firstNode.radius,
-      localForward: [0, 0, 1],
-    };
-  } else {
-    const startDir = normalizeVec3Or(
-      spineChain[1].restPos[0] - firstNode.restPos[0],
-      spineChain[1].restPos[1] - firstNode.restPos[1],
-      spineChain[1].restPos[2] - firstNode.restPos[2],
-      0,
-      0,
-      1,
-    );
-    const endDir = normalizeVec3Or(
-      lastNode.restPos[0] - spineChain[spineChain.length - 2].restPos[0],
-      lastNode.restPos[1] - spineChain[spineChain.length - 2].restPos[1],
-      lastNode.restPos[2] - spineChain[spineChain.length - 2].restPos[2],
-      0,
-      0,
-      1,
-    );
+  if (spineChain.length > 1) {
+    const fr = firstNode.restPos;
+    const sr = spineChain[1].restPos;
+    const lr = lastNode.restPos;
+    const plr = spineChain[spineChain.length - 2].restPos;
+    const startDir = normalizeVec3Or(sr[0] - fr[0], sr[1] - fr[1], sr[2] - fr[2], 0, 0, 1);
+    const endDir = normalizeVec3Or(lr[0] - plr[0], lr[1] - plr[1], lr[2] - plr[2], 0, 0, 1);
 
     if (startDir[2] < -0.7) {
-      headAttachment = {
-        boneIdx: firstNode.boneIdx,
-        segmentId: firstNode.segmentId,
-        frontShoulderDist: firstNode.length * 0.5,
-        headRadius: firstNode.radius,
-        localForward: [-startDir[0], -startDir[1], -startDir[2]],
-      };
+      headForward = [-startDir[0], -startDir[1], -startDir[2]];
     } else if (Math.abs(startDir[2]) <= 0.7) {
       usesRootAxialCap = true;
-      headAttachment = {
-        boneIdx: firstNode.boneIdx,
-        segmentId: firstNode.segmentId,
-        frontShoulderDist: firstNode.length * 0.5,
-        headRadius: firstNode.radius,
-        localForward: [0, 0, 1],
-      };
     } else {
-      headAttachment = {
-        boneIdx: lastNode.boneIdx,
-        segmentId: lastNode.segmentId,
-        frontShoulderDist: lastNode.length * 0.5,
-        headRadius: lastNode.radius,
-        localForward: [endDir[0], endDir[1], endDir[2]],
-      };
+      headNode = lastNode;
+      headForward = endDir;
     }
   }
 
@@ -305,7 +258,13 @@ export function buildMorphologyRestLayout(
     nodes,
     spineChain,
     inSpine,
-    headAttachment,
+    headAttachment: {
+      boneIdx: headNode.boneIdx,
+      segmentId: headNode.segmentId,
+      frontShoulderDist: headNode.length * 0.5,
+      headRadius: headNode.radius,
+      localForward: headForward,
+    },
     usesRootAxialCap,
   };
 }
@@ -318,11 +277,6 @@ const FALLBACK_UP = new THREE.Vector3(1, 0, 0);
 
 function finiteOr(value: number, fallback = 0): number {
   return Number.isFinite(value) ? value : fallback;
-}
-
-function positiveDimOr(value: number, fallback: number, min: number): number {
-  if (!Number.isFinite(value) || value <= 0) return fallback;
-  return Math.max(min, value);
 }
 
 /**
@@ -400,6 +354,23 @@ export function computeCreatureColor(
   return out.multiplyScalar(brightness);
 }
 
+function trySetUnitVec3(v: readonly number[] | undefined, out: THREE.Vector3): boolean {
+  if (
+    Array.isArray(v) &&
+    v.length >= 3 &&
+    Number.isFinite(v[0]) &&
+    Number.isFinite(v[1]) &&
+    Number.isFinite(v[2])
+  ) {
+    out.set(v[0], v[1], v[2]);
+    if (out.lengthSq() > 1e-8) {
+      out.normalize();
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Resolve normalized forward heading for a creature root segment (`headDirections` map ->
  * `root.head_direction` -> root forward vector rotated by `rootQuat`).
@@ -410,33 +381,14 @@ export function resolveHeadDirectionVector(
   headDirections?: Readonly<Record<number, [number, number, number] | undefined>>,
   out = new THREE.Vector3(),
 ): THREE.Vector3 {
-  const mapped = headDirections?.[root.agent_id];
   if (
-    Array.isArray(mapped) &&
-    mapped.length >= 3 &&
-    Number.isFinite(mapped[0]) &&
-    Number.isFinite(mapped[1]) &&
-    Number.isFinite(mapped[2])
+    trySetUnitVec3(headDirections?.[root.agent_id], out) ||
+    trySetUnitVec3(root.head_direction, out)
   ) {
-    out.set(mapped[0], mapped[1], mapped[2]);
-    if (out.lengthSq() > 1e-8) return out.normalize();
+    return out;
   }
-
-  const embedded = root.head_direction;
-  if (
-    Array.isArray(embedded) &&
-    embedded.length >= 3 &&
-    Number.isFinite(embedded[0]) &&
-    Number.isFinite(embedded[1]) &&
-    Number.isFinite(embedded[2])
-  ) {
-    out.set(embedded[0], embedded[1], embedded[2]);
-    if (out.lengthSq() > 1e-8) return out.normalize();
-  }
-
   out.copy(LOCAL_FORWARD).applyQuaternion(rootQuat);
-  if (out.lengthSq() > 1e-8) return out.normalize();
-  return out.set(0, 0, 1);
+  return out.lengthSq() > 1e-8 ? out.normalize() : out.set(0, 0, 1);
 }
 
 /**
@@ -457,6 +409,462 @@ export function computeHeadBasis(
   outUp.crossVectors(forward, outRight).normalize();
 }
 
+export function copy3(
+  src: readonly [number, number, number],
+  dst: [number, number, number],
+): void {
+  dst[0] = src[0];
+  dst[1] = src[1];
+  dst[2] = src[2];
+}
+
+export function set3(
+  dst: [number, number, number],
+  x: number,
+  y: number,
+  z: number,
+): void {
+  dst[0] = x;
+  dst[1] = y;
+  dst[2] = z;
+}
+
+export function set4(
+  dst: [number, number, number, number],
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+): void {
+  dst[0] = x;
+  dst[1] = y;
+  dst[2] = z;
+  dst[3] = w;
+}
+
+export interface AgentPosePool {
+  readonly poses: AgentRenderPose[];
+  readonly jointBufs: Array<Array<[number, number, number]>>;
+}
+
+export interface AgentPoseScratch {
+  run(
+    segments: readonly SegmentState[],
+    renderSize: number,
+    sampleGroundY: GroundHeightSampler,
+    outPoses: AgentRenderPose[],
+    pool: AgentPosePool,
+    headDirections?: Readonly<Record<number, [number, number, number] | undefined>>,
+    bodyScaleFactor?: number,
+  ): AgentRenderPose[];
+}
+
+// Tuple types keep internal pool slots property-free so minification drops every field name.
+// [stamp, count, segs]
+type GroupBucket = [number, number, SegmentState[]];
+// [stamp, key, headSegId, fwd0, fwd1, fwd2, count, sig]
+type CachedMorph = [
+  number,
+  string,
+  number,
+  number,
+  number,
+  number,
+  number,
+  Array<number | null>,
+];
+
+function createEmptySegPose(): SegmentRenderPose {
+  return {
+    segmentId: 0,
+    parentSegmentId: null,
+    isRoot: false,
+    renderPosition: [0, 0, 0],
+    quaternion: [0, 0, 0, 1],
+    renderLength: 0,
+    renderRadius: 0,
+    jointAnchor: [0, 0, 0],
+    matrixElements: new Array<number>(16).fill(0),
+    jointRenderPosition: null,
+    jointRenderRadius: 0,
+  };
+}
+
+function createEmptyAgentPose(): AgentRenderPose {
+  return {
+    agentId: 0,
+    agentType: null,
+    energy: 0,
+    hydration: 0,
+    segmentCount: 0,
+    groundY: 0,
+    rootPosition: [0, 0, 0],
+    rootQuaternion: [0, 0, 0, 1],
+    rootRenderLength: 0,
+    rootRenderRadius: 0,
+    boundingRadius: 0,
+    morphologyKey: '',
+    headSegmentId: 0,
+    headLocalForward: [0, 0, 1],
+    headDirection: [0, 0, 1],
+    segments: [],
+  };
+}
+
+export function createAgentPosePool(): AgentPosePool {
+  return { poses: [], jointBufs: [] };
+}
+
+/**
+ * Allocate reusable scratch state closed over local bindings so `buildAgentPosesInto` performs
+ * zero per-tick allocations while adding minimal minified bundle bytes.
+ */
+export function createAgentPoseScratch(): AgentPoseScratch {
+  const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const quat = new THREE.Quaternion();
+  const rootQuat = new THREE.Quaternion();
+  const posVec = new THREE.Vector3();
+  const scaleVec = new THREE.Vector3();
+  const halfBackVec = new THREE.Vector3();
+  const headVec = new THREE.Vector3();
+  const matrix = new THREE.Matrix4();
+  const grouped = new Map<number, GroupBucket>();
+  const groupIds: number[] = [];
+  const validSegs: SegmentState[] = [];
+  const sortedSegs: SegmentRenderPose[] = [];
+  const keyParts: string[] = [];
+  const morphCache = new Map<number, CachedMorph>();
+  let groupStamp = 0;
+
+  const dropStale = <T extends [number, ...unknown[]]>(
+    map: Map<number, T>,
+    max: number,
+    st: number,
+  ): void => {
+    if (map.size > max) {
+      map.forEach((v, id) => {
+        if (v[0] !== st) map.delete(id);
+      });
+    }
+  };
+  const clearSlots = (arr: unknown[], n: number): void => {
+    for (let i = 0; i < n; i++) arr[i] = undefined;
+  };
+  const syncMorph = (
+    sig: Array<number | null>,
+    b: number,
+    sp: SegmentRenderPose,
+    ja: readonly [number, number, number],
+  ): boolean => {
+    const isR = sp.isRoot ? 1 : 0;
+    const ok =
+      sig[b] === sp.segmentId &&
+      sig[b + 1] === sp.parentSegmentId &&
+      sig[b + 2] === isR &&
+      sig[b + 3] === sp.renderLength &&
+      sig[b + 4] === sp.renderRadius &&
+      sig[b + 5] === ja[0] &&
+      sig[b + 6] === ja[1] &&
+      sig[b + 7] === ja[2];
+    if (!ok) {
+      sig[b] = sp.segmentId;
+      sig[b + 1] = sp.parentSegmentId;
+      sig[b + 2] = isR;
+      sig[b + 3] = sp.renderLength;
+      sig[b + 4] = sp.renderRadius;
+      sig[b + 5] = ja[0];
+      sig[b + 6] = ja[1];
+      sig[b + 7] = ja[2];
+    }
+    return ok;
+  };
+  const segDim = (v: number, isRad: boolean, s: number) =>
+    (!Number.isFinite(v) || v <= 0
+      ? isRad
+        ? DEFAULT_FALLBACK_RADIUS
+        : DEFAULT_FALLBACK_LENGTH
+      : Math.max(isRad ? MIN_SIM_SEGMENT_RADIUS : MIN_SIM_SEGMENT_LENGTH, v)) * s;
+
+  return {
+    run(segments, renderSize, sampleGroundY, outPoses, pool, headDirections, bodyScaleFactor = 1) {
+      const scale = simScale(renderSize);
+      const stamp = ++groupStamp;
+      if (!Array.isArray(segments) || segments.length === 0 || !Number.isFinite(scale) || scale <= 0) {
+        dropStale(grouped, 0, stamp);
+        dropStale(morphCache, 0, stamp);
+        if (outPoses.length !== 0) outPoses.length = 0;
+        return outPoses;
+      }
+
+      const safeBodyFactor =
+        Number.isFinite(bodyScaleFactor) && bodyScaleFactor > 0 ? bodyScaleFactor : 1;
+      const bodyScale = scale * safeBodyFactor;
+
+      let groupCount = 0;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        if (!seg || typeof seg.agent_id !== 'number' || !Number.isFinite(seg.agent_id)) continue;
+        let bucket = grouped.get(seg.agent_id);
+        if (!bucket) {
+          bucket = [0, 0, []];
+          grouped.set(seg.agent_id, bucket);
+        }
+        if (bucket[0] !== stamp) {
+          bucket[0] = stamp;
+          bucket[1] = 0;
+          groupIds[groupCount++] = seg.agent_id;
+        }
+        bucket[2][bucket[1]++] = seg;
+      }
+
+      const childExtentBound = SIM_BOUNDS_HALF * 1.5;
+      let poseCount = 0;
+
+      for (let g = 0; g < groupCount; g++) {
+        const agentId = groupIds[g];
+        const bucket = grouped.get(agentId)!;
+        const rawList = bucket[2];
+        const rawLen = bucket[1];
+
+        let root = rawList[0];
+        for (let i = 0; i < rawLen; i++) {
+          const candidate = rawList[i];
+          if (candidate.parent_segment_id === null || candidate.parent_segment_id === undefined) {
+            root = candidate;
+            break;
+          }
+        }
+
+        let validCount = 0;
+        if (isInsideSimBounds(root.x, root.z)) {
+          for (let i = 0; i < rawLen; i++) {
+            const s = rawList[i];
+            if (
+              !Number.isFinite(s.x) ||
+              !Number.isFinite(s.z) ||
+              Math.abs(s.x) > childExtentBound ||
+              Math.abs(s.z) > childExtentBound
+            ) {
+              continue;
+            }
+            validSegs[validCount++] = s;
+          }
+        }
+        clearSlots(rawList, rawLen);
+        bucket[1] = 0;
+        if (validCount === 0) continue;
+
+        const rootRx = simToRender(root.x, renderSize);
+        const rootRz = simToRender(root.z, renderSize);
+        const sampledGroundY = sampleGroundY(rootRx, rootRz);
+        const groundY = Number.isFinite(sampledGroundY) ? sampledGroundY : 0;
+
+        const rootY = finiteOr(root.y);
+        const rootRenderLength = segDim(root.length, false, bodyScale);
+        const rootRenderRadius = segDim(root.radius, true, bodyScale);
+
+        let minBottomOffset = -rootRenderRadius;
+        for (let i = 0; i < validCount; i++) {
+          const s = validSegs[i];
+          const bottomOffset =
+            (finiteOr(s.y, rootY) - rootY) * bodyScale - segDim(s.radius, true, bodyScale);
+          if (bottomOffset < minBottomOffset) minBottomOffset = bottomOffset;
+        }
+        const rootRy = groundY - minBottomOffset;
+
+        eulerYXZToQuaternion(root.yaw, root.pitch, root.roll, rootQuat, euler);
+        resolveHeadDirectionVector(root, rootQuat, headDirections, headVec);
+
+        while (pool.poses.length <= poseCount) {
+          pool.poses.push(createEmptyAgentPose());
+          pool.jointBufs.push([]);
+        }
+        const agentPose = pool.poses[poseCount];
+        const jointBufs = pool.jointBufs[poseCount];
+        const segmentPoses = agentPose.segments;
+        while (segmentPoses.length < validCount) {
+          segmentPoses.push(createEmptySegPose());
+          jointBufs.push([0, 0, 0]);
+        }
+        if (segmentPoses.length !== validCount) segmentPoses.length = validCount;
+
+        let boundingRadius = Math.max(
+          rootRenderLength * 0.5 + rootRenderRadius,
+          rootRenderRadius * 2,
+          1.5,
+        );
+        for (let i = 0; i < validCount; i++) {
+          const s = validSegs[i];
+          const segLength = segDim(s.length, false, bodyScale);
+          const segRadius = segDim(s.radius, true, bodyScale);
+
+          const rx = rootRx + (s.x - root.x) * bodyScale;
+          const ry = rootRy + (finiteOr(s.y, rootY) - rootY) * bodyScale;
+          const rz = rootRz + (s.z - root.z) * bodyScale;
+
+          eulerYXZToQuaternion(s.yaw, s.pitch, s.roll, quat, euler);
+          posVec.set(rx, ry, rz);
+          scaleVec.set(segRadius, segRadius, segLength);
+          matrix.compose(posVec, quat, scaleVec);
+
+          const isRootSeg = s === root;
+          const segReach =
+            Math.hypot(rx - rootRx, ry - rootRy, rz - rootRz) + segLength * 0.5 + segRadius;
+          if (segReach > boundingRadius) boundingRadius = segReach;
+
+          const segPose = segmentPoses[i];
+          if (!isRootSeg) {
+            halfBackVec.set(0, 0, segLength * 0.5).applyQuaternion(quat);
+            const jb = jointBufs[i];
+            set3(jb, rx - halfBackVec.x, ry - halfBackVec.y, rz - halfBackVec.z);
+            segPose.jointRenderPosition = jb;
+            let parentRadius = rootRenderRadius;
+            if (s.parent_segment_id !== null && s.parent_segment_id !== undefined) {
+              for (let j = validCount - 1; j >= 0; j--) {
+                if (validSegs[j].segment_id === s.parent_segment_id) {
+                  parentRadius = segDim(validSegs[j].radius, true, bodyScale);
+                  break;
+                }
+              }
+            }
+            segPose.jointRenderRadius = Math.min(parentRadius, segRadius) * 0.92;
+            set3(
+              segPose.jointAnchor,
+              finiteOr(s.joint_anchor_x) * bodyScale,
+              finiteOr(s.joint_anchor_y) * bodyScale,
+              finiteOr(s.joint_anchor_z) * bodyScale,
+            );
+          } else {
+            segPose.jointRenderPosition = null;
+            segPose.jointRenderRadius = 0;
+            set3(segPose.jointAnchor, 0, 0, 0);
+          }
+
+          segPose.segmentId = s.segment_id;
+          segPose.parentSegmentId = s.parent_segment_id ?? null;
+          segPose.isRoot = isRootSeg;
+          set3(segPose.renderPosition, rx, ry, rz);
+          set4(segPose.quaternion, quat.x, quat.y, quat.z, quat.w);
+          segPose.renderLength = segLength;
+          segPose.renderRadius = segRadius;
+          const me = matrix.elements;
+          const dstM = segPose.matrixElements;
+          for (let m = 0; m < 16; m++) dstM[m] = me[m];
+
+          sortedSegs[i] = segPose;
+        }
+
+        clearSlots(validSegs, validCount);
+
+        for (let i = 1; i < validCount; i++) {
+          const cur = sortedSegs[i];
+          let j = i - 1;
+          while (j >= 0) {
+            const prev = sortedSegs[j];
+            if ((prev.isRoot === cur.isRoot ? prev.segmentId - cur.segmentId : prev.isRoot ? -1 : 1) <= 0) {
+              break;
+            }
+            sortedSegs[j + 1] = prev;
+            j--;
+          }
+          sortedSegs[j + 1] = cur;
+        }
+
+        let mc = morphCache.get(agentId);
+        let same = mc !== undefined && mc[6] === validCount;
+        if (!mc) {
+          mc = [stamp, '', 0, 0, 0, 1, 0, []];
+          morphCache.set(agentId, mc);
+          same = false;
+        }
+        const sig = mc[7];
+        for (let i = 0; i < validCount; i++) {
+          const sp = sortedSegs[i];
+          if (!syncMorph(sig, i * 8, sp, sp.jointAnchor)) same = false;
+        }
+
+        mc[0] = stamp;
+        if (!same) {
+          if (keyParts.length !== validCount) keyParts.length = validCount;
+          for (let i = 0; i < validCount; i++) {
+            const sp = sortedSegs[i];
+            let pSlot = -1;
+            if (sp.parentSegmentId !== null) {
+              for (let j = validCount - 1; j >= 0; j--) {
+                if (sortedSegs[j].segmentId === sp.parentSegmentId) {
+                  pSlot = j;
+                  break;
+                }
+              }
+            }
+            keyParts[i] = `${pSlot}:${Math.round(sp.renderLength * 100)}:${Math.round(sp.renderRadius * 100)}:${Math.round(sp.jointAnchor[0] * 100)}:${Math.round(sp.jointAnchor[1] * 100)}:${Math.round(sp.jointAnchor[2] * 100)}`;
+          }
+          const { headAttachment } = buildMorphologyRestLayout(segmentPoses);
+          const lf = headAttachment.localForward;
+          mc[1] = keyParts.join('|');
+          mc[2] = headAttachment.segmentId;
+          mc[3] = lf[0];
+          mc[4] = lf[1];
+          mc[5] = lf[2];
+          mc[6] = validCount;
+        }
+        agentPose.morphologyKey = mc[1];
+        agentPose.headSegmentId = mc[2];
+        set3(agentPose.headLocalForward, mc[3], mc[4], mc[5]);
+
+        clearSlots(sortedSegs, validCount);
+
+        agentPose.agentId = agentId;
+        agentPose.agentType = root.agent_type ?? null;
+        agentPose.energy = finiteOr(root.energy);
+        agentPose.hydration = finiteOr(root.hydration);
+        agentPose.segmentCount = validCount;
+        agentPose.groundY = groundY;
+        set3(agentPose.rootPosition, rootRx, rootRy, rootRz);
+        set4(agentPose.rootQuaternion, rootQuat.x, rootQuat.y, rootQuat.z, rootQuat.w);
+        agentPose.rootRenderLength = rootRenderLength;
+        agentPose.rootRenderRadius = rootRenderRadius;
+        agentPose.boundingRadius = boundingRadius;
+        set3(agentPose.headDirection, headVec.x, headVec.y, headVec.z);
+
+        outPoses[poseCount++] = agentPose;
+      }
+
+      if (outPoses.length !== poseCount) outPoses.length = poseCount;
+      dropStale(grouped, groupCount, stamp);
+      dropStale(morphCache, poseCount, stamp);
+
+      return outPoses;
+    },
+  };
+}
+
+/**
+ * Pooled multi-segment pose builder (`FE-MEM-2`): writes grounded poses into `outPoses` reusing
+ * `pool` slots and `scratch` working buffers so steady-state ticks allocate zero JS objects/arrays
+ * while matching `buildAgentPoses` output value for value.
+ */
+export function buildAgentPosesInto(
+  segments: readonly SegmentState[],
+  renderSize: number,
+  sampleGroundY: GroundHeightSampler,
+  outPoses: AgentRenderPose[],
+  pool: AgentPosePool,
+  scratch: AgentPoseScratch,
+  headDirections?: Readonly<Record<number, [number, number, number] | undefined>>,
+  bodyScaleFactor = 1,
+): AgentRenderPose[] {
+  return scratch.run(
+    segments,
+    renderSize,
+    sampleGroundY,
+    outPoses,
+    pool,
+    headDirections,
+    bodyScaleFactor,
+  );
+}
+
 /**
  * Pure multi-segment pose builder (`RW2-1`):
  * Groups flat segments by `agent_id`, grounds the lowest point of each creature on `surfaceHeight`,
@@ -470,193 +878,16 @@ export function buildAgentPoses(
   headDirections?: Readonly<Record<number, [number, number, number] | undefined>>,
   bodyScaleFactor = 1,
 ): AgentRenderPose[] {
-  if (!Array.isArray(segments) || segments.length === 0) return [];
-  const scale = simScale(renderSize);
-  if (!Number.isFinite(scale) || scale <= 0) return [];
-  const safeBodyFactor =
-    Number.isFinite(bodyScaleFactor) && bodyScaleFactor > 0 ? bodyScaleFactor : 1;
-  const bodyScale = scale * safeBodyFactor;
-
-  const grouped = new Map<number, SegmentState[]>();
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (!seg || typeof seg.agent_id !== 'number' || !Number.isFinite(seg.agent_id)) continue;
-    let bucket = grouped.get(seg.agent_id);
-    if (!bucket) {
-      bucket = [];
-      grouped.set(seg.agent_id, bucket);
-    }
-    bucket.push(seg);
-  }
-
-  const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-  const quat = new THREE.Quaternion();
-  const rootQuat = new THREE.Quaternion();
-  const posVec = new THREE.Vector3();
-  const scaleVec = new THREE.Vector3();
-  const halfBackVec = new THREE.Vector3();
-  const headVec = new THREE.Vector3();
-  const matrix = new THREE.Matrix4();
-
-  const poses: AgentRenderPose[] = [];
-  const childExtentBound = SIM_BOUNDS_HALF * 1.5;
-
-  grouped.forEach((rawList, agentId) => {
-    let root = rawList[0];
-    for (let i = 0; i < rawList.length; i++) {
-      const candidate = rawList[i];
-      if (candidate.parent_segment_id === null || candidate.parent_segment_id === undefined) {
-        root = candidate;
-        break;
-      }
-    }
-
-    if (!isInsideSimBounds(root.x, root.z)) return;
-
-    const validSegs: SegmentState[] = [];
-    for (let i = 0; i < rawList.length; i++) {
-      const s = rawList[i];
-      if (
-        !Number.isFinite(s.x) ||
-        !Number.isFinite(s.z) ||
-        Math.abs(s.x) > childExtentBound ||
-        Math.abs(s.z) > childExtentBound
-      ) {
-        continue;
-      }
-      validSegs.push(s);
-    }
-    if (validSegs.length === 0) return;
-
-    const rootRx = simToRender(root.x, renderSize);
-    const rootRz = simToRender(root.z, renderSize);
-    const sampledGroundY = sampleGroundY(rootRx, rootRz);
-    const groundY = Number.isFinite(sampledGroundY) ? sampledGroundY : 0;
-
-    const rootY = finiteOr(root.y);
-    const rootRenderLength =
-      positiveDimOr(root.length, DEFAULT_FALLBACK_LENGTH, MIN_SIM_SEGMENT_LENGTH) * bodyScale;
-    const rootRenderRadius =
-      positiveDimOr(root.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale;
-
-    // Ground the lowest segment sphere/body bottom onto terrain surfaceHeight while preserving exact
-    // scaled intra-creature vertical differences `(seg.y - root.y) * bodyScale`.
-    let minBottomOffset = -rootRenderRadius;
-    const segById = new Map<number, SegmentState>();
-    for (let i = 0; i < validSegs.length; i++) {
-      const s = validSegs[i];
-      segById.set(s.segment_id, s);
-      const r = positiveDimOr(s.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale;
-      const bottomOffset = (finiteOr(s.y, rootY) - rootY) * bodyScale - r;
-      if (bottomOffset < minBottomOffset) minBottomOffset = bottomOffset;
-    }
-    const rootRy = groundY - minBottomOffset;
-
-    eulerYXZToQuaternion(root.yaw, root.pitch, root.roll, rootQuat, euler);
-    resolveHeadDirectionVector(root, rootQuat, headDirections, headVec);
-
-    const segmentPoses: SegmentRenderPose[] = [];
-    let boundingRadius = Math.max(rootRenderLength * 0.5 + rootRenderRadius, rootRenderRadius * 2, 1.5);
-    for (let i = 0; i < validSegs.length; i++) {
-      const s = validSegs[i];
-      const segLength =
-        positiveDimOr(s.length, DEFAULT_FALLBACK_LENGTH, MIN_SIM_SEGMENT_LENGTH) * bodyScale;
-      const segRadius =
-        positiveDimOr(s.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale;
-
-      const rx = rootRx + (s.x - root.x) * bodyScale;
-      const ry = rootRy + (finiteOr(s.y, rootY) - rootY) * bodyScale;
-      const rz = rootRz + (s.z - root.z) * bodyScale;
-
-      eulerYXZToQuaternion(s.yaw, s.pitch, s.roll, quat, euler);
-      posVec.set(rx, ry, rz);
-      scaleVec.set(segRadius, segRadius, segLength);
-      matrix.compose(posVec, quat, scaleVec);
-
-      const isRootSeg = s === root;
-      const anchorX = isRootSeg ? 0 : finiteOr(s.joint_anchor_x) * bodyScale;
-      const anchorY = isRootSeg ? 0 : finiteOr(s.joint_anchor_y) * bodyScale;
-      const anchorZ = isRootSeg ? 0 : finiteOr(s.joint_anchor_z) * bodyScale;
-
-      const segReach = Math.hypot(rx - rootRx, ry - rootRy, rz - rootRz) + segLength * 0.5 + segRadius;
-      if (segReach > boundingRadius) boundingRadius = segReach;
-
-      let jointRenderPosition: [number, number, number] | null = null;
-      let jointRenderRadius = 0;
-      if (!isRootSeg) {
-        halfBackVec.set(0, 0, segLength * 0.5).applyQuaternion(quat);
-        jointRenderPosition = [
-          rx - halfBackVec.x,
-          ry - halfBackVec.y,
-          rz - halfBackVec.z,
-        ];
-        const parent =
-          s.parent_segment_id !== null && s.parent_segment_id !== undefined
-            ? segById.get(s.parent_segment_id)
-            : undefined;
-        const parentRadius = parent
-          ? positiveDimOr(parent.radius, DEFAULT_FALLBACK_RADIUS, MIN_SIM_SEGMENT_RADIUS) * bodyScale
-          : rootRenderRadius;
-        jointRenderRadius = Math.min(parentRadius, segRadius) * 0.92;
-      }
-
-      segmentPoses.push({
-        segmentId: s.segment_id,
-        parentSegmentId: s.parent_segment_id ?? null,
-        isRoot: isRootSeg,
-        renderPosition: [rx, ry, rz],
-        quaternion: [quat.x, quat.y, quat.z, quat.w],
-        renderLength: segLength,
-        renderRadius: segRadius,
-        jointAnchor: [anchorX, anchorY, anchorZ],
-        matrixElements: Array.from(matrix.elements),
-        jointRenderPosition,
-        jointRenderRadius,
-      });
-    }
-
-    const sortedSegs = segmentPoses
-      .slice()
-      .sort((a, b) => (a.isRoot === b.isRoot ? a.segmentId - b.segmentId : a.isRoot ? -1 : 1));
-    const slotBySegId = new Map<number, number>();
-    for (let i = 0; i < sortedSegs.length; i++) {
-      slotBySegId.set(sortedSegs[i].segmentId, i);
-    }
-    const keyParts: string[] = new Array(sortedSegs.length);
-    for (let i = 0; i < sortedSegs.length; i++) {
-      const sp = sortedSegs[i];
-      const pSlot =
-        sp.parentSegmentId !== null ? (slotBySegId.get(sp.parentSegmentId) ?? -1) : -1;
-      keyParts[i] = `${pSlot}:${Math.round(sp.renderLength * 100)}:${Math.round(sp.renderRadius * 100)}:${Math.round(sp.jointAnchor[0] * 100)}:${Math.round(sp.jointAnchor[1] * 100)}:${Math.round(sp.jointAnchor[2] * 100)}`;
-    }
-    const morphologyKey = keyParts.join('|');
-    const restLayout = buildMorphologyRestLayout(segmentPoses);
-
-    poses.push({
-      agentId,
-      agentType: root.agent_type ?? null,
-      energy: finiteOr(root.energy),
-      hydration: finiteOr(root.hydration),
-      segmentCount: validSegs.length,
-      groundY,
-      rootPosition: [rootRx, rootRy, rootRz],
-      rootQuaternion: [rootQuat.x, rootQuat.y, rootQuat.z, rootQuat.w],
-      rootRenderLength,
-      rootRenderRadius,
-      boundingRadius,
-      morphologyKey,
-      headSegmentId: restLayout.headAttachment.segmentId,
-      headLocalForward: [
-        restLayout.headAttachment.localForward[0],
-        restLayout.headAttachment.localForward[1],
-        restLayout.headAttachment.localForward[2],
-      ],
-      headDirection: [headVec.x, headVec.y, headVec.z],
-      segments: segmentPoses,
-    });
-  });
-
-  return poses;
+  return buildAgentPosesInto(
+    segments,
+    renderSize,
+    sampleGroundY,
+    [],
+    createAgentPosePool(),
+    createAgentPoseScratch(),
+    headDirections,
+    bodyScaleFactor,
+  );
 }
 
 /** Distance beyond which a creature simplifies to a billboarded flat overview marker (RW2-6). */

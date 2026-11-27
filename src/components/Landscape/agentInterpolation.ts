@@ -1,7 +1,13 @@
 import type { AgentType } from '../../types/generated/AgentType';
 import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
 import {
-  buildAgentPoses,
+  buildAgentPosesInto,
+  copy3,
+  createAgentPosePool,
+  createAgentPoseScratch,
+  set3,
+  set4,
+  type AgentPoseScratch,
   type AgentRenderPose,
   type GroundHeightSampler,
   type SegmentRenderPose,
@@ -65,6 +71,10 @@ export function lerpAngle(fromDeg: number, toDeg: number, alpha: number): number
   return (((fromDeg + delta * t) % 360) + 360) % 360;
 }
 
+function lerpNum(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
 /** In-place 3-tuple linear interpolation (`alpha` clamped in `[0, 1]`, zero allocations). */
 export function lerpTuple3Into(
   a: readonly [number, number, number],
@@ -73,9 +83,7 @@ export function lerpTuple3Into(
   out: [number, number, number],
 ): [number, number, number] {
   const t = clamp01(alpha);
-  out[0] = a[0] + (b[0] - a[0]) * t;
-  out[1] = a[1] + (b[1] - a[1]) * t;
-  out[2] = a[2] + (b[2] - a[2]) * t;
+  set3(out, lerpNum(a[0], b[0], t), lerpNum(a[1], b[1], t), lerpNum(a[2], b[2], t));
   return out;
 }
 
@@ -132,15 +140,9 @@ export function slerpQuatTupleInto(
   const lenSq = ox * ox + oy * oy + oz * oz + ow * ow;
   if (lenSq > 1e-12) {
     const inv = 1 / Math.sqrt(lenSq);
-    out[0] = ox * inv;
-    out[1] = oy * inv;
-    out[2] = oz * inv;
-    out[3] = ow * inv;
+    set4(out, ox * inv, oy * inv, oz * inv, ow * inv);
   } else {
-    out[0] = 0;
-    out[1] = 0;
-    out[2] = 0;
-    out[3] = 1;
+    set4(out, 0, 0, 0, 1);
   }
   return out;
 }
@@ -160,17 +162,11 @@ export function slerpDirection3Into(
   const blen = Math.hypot(b[0], b[1], b[2]);
   if (alen <= 1e-8 || blen <= 1e-8) {
     if (blen > 1e-8) {
-      out[0] = b[0] / blen;
-      out[1] = b[1] / blen;
-      out[2] = b[2] / blen;
+      set3(out, b[0] / blen, b[1] / blen, b[2] / blen);
     } else if (alen > 1e-8) {
-      out[0] = a[0] / alen;
-      out[1] = a[1] / alen;
-      out[2] = a[2] / alen;
+      set3(out, a[0] / alen, a[1] / alen, a[2] / alen);
     } else {
-      out[0] = 0;
-      out[1] = 0;
-      out[2] = 1;
+      set3(out, 0, 0, 1);
     }
     return out;
   }
@@ -202,9 +198,7 @@ export function slerpDirection3Into(
         len = 1;
       }
     }
-    out[0] = lx / len;
-    out[1] = ly / len;
-    out[2] = lz / len;
+    set3(out, lx / len, ly / len, lz / len);
     return out;
   }
 
@@ -217,13 +211,9 @@ export function slerpDirection3Into(
   const oz = s0 * az + s1 * bz;
   const len = Math.hypot(ox, oy, oz);
   if (len > 1e-8) {
-    out[0] = ox / len;
-    out[1] = oy / len;
-    out[2] = oz / len;
+    set3(out, ox / len, oy / len, oz / len);
   } else {
-    out[0] = bx;
-    out[1] = by;
-    out[2] = bz;
+    set3(out, bx, by, bz);
   }
   return out;
 }
@@ -235,12 +225,115 @@ export function packAgentSegmentKey(agentId: number, segmentId: number): number 
   return Math.trunc(agentId) * 65536 + (Math.trunc(segmentId) & 0xffff);
 }
 
+const EMPTY_POSES: readonly AgentRenderPose[] = [];
+const EMPTY_TICK_PAYLOAD: SimulationTickPayload = {
+  segments: [],
+  environmental_state: { elements: [] },
+  head_directions: {},
+};
+
 export interface PreparedPoseSnapshot {
   receivedAtMs: number;
   payload: SimulationTickPayload;
   poses: AgentRenderPose[];
   agentById: Map<number, AgentRenderPose>;
   segmentByKey: Map<number, SegmentRenderPose>;
+}
+
+function copy4(
+  src: readonly [number, number, number, number],
+  dst: [number, number, number, number],
+): void {
+  dst[0] = src[0];
+  dst[1] = src[1];
+  dst[2] = src[2];
+  dst[3] = src[3];
+}
+
+export interface PoseSnapshotSlot {
+  readonly snapshot: PreparedPoseSnapshot;
+  fill(
+    payload: SimulationTickPayload,
+    receivedAtMs: number,
+    renderSize: number,
+    sampleGroundY: GroundHeightSampler,
+    bodyScaleFactor: number,
+    scratch: AgentPoseScratch,
+  ): PreparedPoseSnapshot;
+}
+
+export function createPoseSnapshotSlot(): PoseSnapshotSlot {
+  const agentById = new Map<number, AgentRenderPose>();
+  const segmentByKey = new Map<number, SegmentRenderPose>();
+  const snapshot: PreparedPoseSnapshot = {
+    receivedAtMs: 0,
+    payload: EMPTY_TICK_PAYLOAD,
+    poses: [],
+    agentById,
+    segmentByKey,
+  };
+  const pool = createAgentPosePool();
+
+  return {
+    snapshot,
+    fill(payload, receivedAtMs, renderSize, sampleGroundY, bodyScaleFactor, scratch) {
+      snapshot.receivedAtMs = receivedAtMs;
+      snapshot.payload = payload;
+      const poses = buildAgentPosesInto(
+        payload.segments,
+        renderSize,
+        sampleGroundY,
+        snapshot.poses,
+        pool,
+        scratch,
+        payload.head_directions,
+        bodyScaleFactor,
+      );
+
+      for (let pass = 0; pass < 2; pass++) {
+        let totalSegs = 0;
+        for (let i = 0; i < poses.length; i++) {
+          const pose = poses[i];
+          agentById.set(pose.agentId, pose);
+          for (let s = 0; s < pose.segments.length; s++) {
+            const seg = pose.segments[s];
+            segmentByKey.set(packAgentSegmentKey(pose.agentId, seg.segmentId), seg);
+            totalSegs++;
+          }
+        }
+        if (agentById.size === poses.length && segmentByKey.size === totalSegs) break;
+        if (pass === 0) {
+          agentById.clear();
+          segmentByKey.clear();
+        }
+      }
+
+      return snapshot;
+    },
+  };
+}
+
+/**
+ * Pooled snapshot preparation (`FE-MEM-2`): writes poses and `(agent_id, segment_id)` lookup
+ * maps into `slot` reusing existing arrays/objects/Maps with zero steady-state heap allocations.
+ */
+export function preparePoseSnapshotInto(
+  slot: PoseSnapshotSlot,
+  payload: SimulationTickPayload,
+  receivedAtMs: number,
+  renderSize: number,
+  sampleGroundY: GroundHeightSampler,
+  bodyScaleFactor = 1,
+  scratch = createAgentPoseScratch(),
+): PreparedPoseSnapshot {
+  return slot.fill(
+    payload,
+    receivedAtMs,
+    renderSize,
+    sampleGroundY,
+    bodyScaleFactor,
+    scratch,
+  );
 }
 
 /**
@@ -254,30 +347,14 @@ export function preparePoseSnapshot(
   sampleGroundY: GroundHeightSampler,
   bodyScaleFactor = 1,
 ): PreparedPoseSnapshot {
-  const poses = buildAgentPoses(
-    payload.segments,
+  return preparePoseSnapshotInto(
+    createPoseSnapshotSlot(),
+    payload,
+    receivedAtMs,
     renderSize,
     sampleGroundY,
-    payload.head_directions,
     bodyScaleFactor,
   );
-  const agentById = new Map<number, AgentRenderPose>();
-  const segmentByKey = new Map<number, SegmentRenderPose>();
-  for (let i = 0; i < poses.length; i++) {
-    const pose = poses[i];
-    agentById.set(pose.agentId, pose);
-    for (let s = 0; s < pose.segments.length; s++) {
-      const seg = pose.segments[s];
-      segmentByKey.set(packAgentSegmentKey(pose.agentId, seg.segmentId), seg);
-    }
-  }
-  return {
-    receivedAtMs,
-    payload,
-    poses,
-    agentById,
-    segmentByKey,
-  };
 }
 
 export interface InterpolatedSegmentView {
@@ -362,23 +439,14 @@ function copySegmentInto(src: SegmentRenderPose, dst: InterpolatedSegmentView): 
   dst.segmentId = src.segmentId;
   dst.parentSegmentId = src.parentSegmentId;
   dst.isRoot = src.isRoot;
-  dst.renderPosition[0] = src.renderPosition[0];
-  dst.renderPosition[1] = src.renderPosition[1];
-  dst.renderPosition[2] = src.renderPosition[2];
-  dst.quaternion[0] = src.quaternion[0];
-  dst.quaternion[1] = src.quaternion[1];
-  dst.quaternion[2] = src.quaternion[2];
-  dst.quaternion[3] = src.quaternion[3];
+  copy3(src.renderPosition, dst.renderPosition);
+  copy4(src.quaternion, dst.quaternion);
   dst.renderLength = src.renderLength;
   dst.renderRadius = src.renderRadius;
-  dst.jointAnchor[0] = src.jointAnchor[0];
-  dst.jointAnchor[1] = src.jointAnchor[1];
-  dst.jointAnchor[2] = src.jointAnchor[2];
+  copy3(src.jointAnchor, dst.jointAnchor);
   if (src.jointRenderPosition) {
     dst.hasJoint = true;
-    dst.jointRenderPosition[0] = src.jointRenderPosition[0];
-    dst.jointRenderPosition[1] = src.jointRenderPosition[1];
-    dst.jointRenderPosition[2] = src.jointRenderPosition[2];
+    copy3(src.jointRenderPosition, dst.jointRenderPosition);
     dst.jointRenderRadius = src.jointRenderRadius;
   } else {
     dst.hasJoint = false;
@@ -393,21 +461,15 @@ function copyAgentInto(src: AgentRenderPose, dst: InterpolatedAgentView): number
   dst.hydration = src.hydration;
   dst.segmentCount = src.segmentCount;
   dst.groundY = src.groundY;
-  dst.rootPosition[0] = src.rootPosition[0];
-  dst.rootPosition[1] = src.rootPosition[1];
-  dst.rootPosition[2] = src.rootPosition[2];
+  copy3(src.rootPosition, dst.rootPosition);
   dst.rootRenderLength = src.rootRenderLength;
   dst.rootRenderRadius = src.rootRenderRadius;
   dst.boundingRadius = src.boundingRadius;
   dst.morphologyKey = src.morphologyKey;
   dst.morphologySegments = src.segments;
   dst.headSegmentId = src.headSegmentId;
-  dst.headLocalForward[0] = src.headLocalForward[0];
-  dst.headLocalForward[1] = src.headLocalForward[1];
-  dst.headLocalForward[2] = src.headLocalForward[2];
-  dst.headDirection[0] = src.headDirection[0];
-  dst.headDirection[1] = src.headDirection[1];
-  dst.headDirection[2] = src.headDirection[2];
+  copy3(src.headLocalForward, dst.headLocalForward);
+  copy3(src.headDirection, dst.headDirection);
   const n = src.segments.length;
   for (let i = 0; i < n; i++) {
     copySegmentInto(src.segments[i], dst.segments[i]);
@@ -422,12 +484,18 @@ function writeRearJointPositionInto(dst: InterpolatedSegmentView): void {
   const qy = dst.quaternion[1];
   const qz = dst.quaternion[2];
   const qw = dst.quaternion[3];
-  const backX = halfLen * 2 * (qx * qz + qw * qy);
-  const backY = halfLen * 2 * (qy * qz - qw * qx);
-  const backZ = halfLen * (1 - 2 * (qx * qx + qy * qy));
-  dst.jointRenderPosition[0] = dst.renderPosition[0] - backX;
-  dst.jointRenderPosition[1] = dst.renderPosition[1] - backY;
-  dst.jointRenderPosition[2] = dst.renderPosition[2] - backZ;
+  set3(
+    dst.jointRenderPosition,
+    dst.renderPosition[0] - halfLen * 2 * (qx * qz + qw * qy),
+    dst.renderPosition[1] - halfLen * 2 * (qy * qz - qw * qx),
+    dst.renderPosition[2] - halfLen * (1 - 2 * (qx * qx + qy * qy)),
+  );
+}
+
+function maxSegLen(arr: readonly AgentRenderPose[]): number {
+  let m = 0;
+  for (let i = 0; i < arr.length; i++) if (arr[i].segments.length > m) m = arr[i].segments.length;
+  return m;
 }
 
 export interface TickInterpolationBufferOptions {
@@ -443,8 +511,11 @@ export class TickInterpolationBuffer {
   readonly renderDelayMs: number;
   readonly snapDistanceSim: number;
 
-  private prev: PreparedPoseSnapshot | null = null;
-  private curr: PreparedPoseSnapshot | null = null;
+  private readonly slotA: PoseSnapshotSlot = createPoseSnapshotSlot();
+  private readonly slotB: PoseSnapshotSlot = createPoseSnapshotSlot();
+  private readonly poseScratch: AgentPoseScratch = createAgentPoseScratch();
+  private prevSlot: PoseSnapshotSlot | null = null;
+  private currSlot: PoseSnapshotSlot | null = null;
   private windowStartMs = 0;
   private windowEndMs = 0;
   private lastBodyScaleFactor = 1;
@@ -472,35 +543,37 @@ export class TickInterpolationBuffer {
   }
 
   hasSnapshots(): boolean {
-    return this.curr !== null;
+    return this.currSlot !== null;
   }
 
   hasActiveAgents(): boolean {
-    return (this.curr !== null && this.curr.poses.length > 0) ||
-      (this.prev !== null && this.prev.poses.length > 0);
+    return (this.currSlot !== null && this.currSlot.snapshot.poses.length > 0) ||
+      (this.prevSlot !== null && this.prevSlot.snapshot.poses.length > 0);
+  }
+
+  private resetView(): InterpolatedFrameView {
+    const view = this.view;
+    view.agentCount = 0;
+    view.totalSegments = 0;
+    view.alpha = 1;
+    return view;
   }
 
   clear(): void {
-    this.prev = null;
-    this.curr = null;
+    this.prevSlot = null;
+    this.currSlot = null;
+    this.slotA.snapshot.payload = EMPTY_TICK_PAYLOAD;
+    this.slotB.snapshot.payload = EMPTY_TICK_PAYLOAD;
     this.windowStartMs = 0;
     this.windowEndMs = 0;
-    this.view.agentCount = 0;
-    this.view.totalSegments = 0;
-    this.view.alpha = 1;
+    this.resetView();
   }
 
   private ensurePoolCapacity(): void {
-    const prevAgents = this.prev?.poses ?? [];
-    const currAgents = this.curr?.poses ?? [];
+    const prevAgents = this.prevSlot !== null ? this.prevSlot.snapshot.poses : EMPTY_POSES;
+    const currAgents = this.currSlot !== null ? this.currSlot.snapshot.poses : EMPTY_POSES;
     const maxAgentSlots = prevAgents.length + currAgents.length;
-    let maxSegs = 0;
-    for (let i = 0; i < prevAgents.length; i++) {
-      if (prevAgents[i].segments.length > maxSegs) maxSegs = prevAgents[i].segments.length;
-    }
-    for (let i = 0; i < currAgents.length; i++) {
-      if (currAgents[i].segments.length > maxSegs) maxSegs = currAgents[i].segments.length;
-    }
+    const maxSegs = Math.max(maxSegLen(prevAgents), maxSegLen(currAgents));
 
     const pool = this.view.agents;
     while (pool.length < maxAgentSlots) {
@@ -527,7 +600,8 @@ export class TickInterpolationBuffer {
   ): boolean {
     if (!Number.isFinite(receivedAtMs)) return false;
 
-    if (this.curr !== null && receivedAtMs < this.curr.receivedAtMs) {
+    const prevCurr = this.currSlot;
+    if (prevCurr !== null && receivedAtMs < prevCurr.snapshot.receivedAtMs) {
       // Out-of-order packet arrives earlier in wall time than current snapshot: ignore (`RW3-2`).
       return false;
     }
@@ -537,29 +611,25 @@ export class TickInterpolationBuffer {
         ? bodyScaleFactor
         : this.lastBodyScaleFactor;
     this.lastBodyScaleFactor = safeFactor;
-    const nextSnap = preparePoseSnapshot(
+    const targetSlot = prevCurr === this.slotA ? this.slotB : this.slotA;
+    targetSlot.fill(
       payload,
       receivedAtMs,
       renderSize,
       sampleGroundY,
       safeFactor,
+      this.poseScratch,
     );
 
-    if (this.curr === null) {
-      this.prev = null;
-      this.curr = nextSnap;
-      this.windowStartMs = receivedAtMs;
-      this.windowEndMs = receivedAtMs;
-    } else if (receivedAtMs === this.curr.receivedAtMs) {
-      // Same-millisecond replacement (e.g. synchronous test ticks without clock advance).
-      this.prev = null;
-      this.curr = nextSnap;
+    if (prevCurr === null || receivedAtMs === prevCurr.snapshot.receivedAtMs) {
+      this.prevSlot = null;
+      this.currSlot = targetSlot;
       this.windowStartMs = receivedAtMs;
       this.windowEndMs = receivedAtMs;
     } else {
-      this.prev = this.curr;
-      this.curr = nextSnap;
-      this.windowStartMs = Math.max(this.prev.receivedAtMs, receivedAtMs - this.renderDelayMs);
+      this.prevSlot = prevCurr;
+      this.currSlot = targetSlot;
+      this.windowStartMs = Math.max(prevCurr.snapshot.receivedAtMs, receivedAtMs - this.renderDelayMs);
       this.windowEndMs = receivedAtMs;
     }
 
@@ -578,24 +648,20 @@ export class TickInterpolationBuffer {
         ? bodyScaleFactor
         : this.lastBodyScaleFactor;
     this.lastBodyScaleFactor = safeFactor;
-    if (this.prev) {
-      this.prev = preparePoseSnapshot(
-        this.prev.payload,
-        this.prev.receivedAtMs,
-        renderSize,
-        sampleGroundY,
-        safeFactor,
-      );
-    }
-    if (this.curr) {
-      this.curr = preparePoseSnapshot(
-        this.curr.payload,
-        this.curr.receivedAtMs,
-        renderSize,
-        sampleGroundY,
-        safeFactor,
-      );
-    }
+    const rebuildSlot = (slot: PoseSnapshotSlot | null): void => {
+      if (slot) {
+        slot.fill(
+          slot.snapshot.payload,
+          slot.snapshot.receivedAtMs,
+          renderSize,
+          sampleGroundY,
+          safeFactor,
+          this.poseScratch,
+        );
+      }
+    };
+    rebuildSlot(this.prevSlot);
+    rebuildSlot(this.currSlot);
     this.ensurePoolCapacity();
   }
 
@@ -605,13 +671,8 @@ export class TickInterpolationBuffer {
    */
   sampleLatest(): InterpolatedFrameView {
     const view = this.view;
-    if (this.curr === null) {
-      view.agentCount = 0;
-      view.totalSegments = 0;
-      view.alpha = 1;
-      return view;
-    }
-    const poses = this.curr.poses;
+    if (this.currSlot === null) return this.resetView();
+    const poses = this.currSlot.snapshot.poses;
     const dstAgents = view.agents;
     let totalSegments = 0;
     for (let i = 0; i < poses.length; i++) {
@@ -633,15 +694,10 @@ export class TickInterpolationBuffer {
     sampleGroundY: GroundHeightSampler,
   ): InterpolatedFrameView {
     const view = this.view;
-    const curr = this.curr;
-    if (curr === null) {
-      view.agentCount = 0;
-      view.totalSegments = 0;
-      view.alpha = 1;
-      return view;
-    }
+    if (this.currSlot === null) return this.resetView();
 
-    const prev = this.prev;
+    const curr = this.currSlot.snapshot;
+    const prev = this.prevSlot !== null ? this.prevSlot.snapshot : null;
     let alpha = 1;
     if (prev !== null && this.windowEndMs > this.windowStartMs && Number.isFinite(nowMs)) {
       const renderTimeMs = nowMs - this.renderDelayMs;
@@ -667,20 +723,17 @@ export class TickInterpolationBuffer {
       const dst = dstAgents[outAgentCount];
       const prevAgent = prevById.get(currAgent.agentId);
 
-      if (!prevAgent) {
-        // Newborn creature (`RW3-2`): snap directly to current spawn without sliding from origin.
-        totalSegments += copyAgentInto(currAgent, dst);
-        outAgentCount++;
-        continue;
-      }
-
-      const rdx = currAgent.rootPosition[0] - prevAgent.rootPosition[0];
-      const rdz = currAgent.rootPosition[2] - prevAgent.rootPosition[2];
+      const cr = currAgent.rootPosition;
+      const pr = prevAgent?.rootPosition;
+      const rdx = pr ? cr[0] - pr[0] : 0;
+      const rdz = pr ? cr[2] - pr[2] : 0;
       if (
+        !prevAgent ||
+        !pr ||
         rdx * rdx + rdz * rdz > snapDistSq ||
         prevAgent.morphologyKey !== currAgent.morphologyKey
       ) {
-        // Teleport, large jump, or morphology change (`RW3-2`, `N6`): snap directly without blending.
+        // Newborn, teleport, large jump, or morphology change (`RW3-2`, `N6`): snap directly.
         totalSegments += copyAgentInto(currAgent, dst);
         outAgentCount++;
         continue;
@@ -694,34 +747,25 @@ export class TickInterpolationBuffer {
 
       dst.agentId = currAgent.agentId;
       dst.agentType = currAgent.agentType;
-      dst.energy = prevAgent.energy + (currAgent.energy - prevAgent.energy) * alpha;
-      dst.hydration = prevAgent.hydration + (currAgent.hydration - prevAgent.hydration) * alpha;
+      dst.energy = lerpNum(prevAgent.energy, currAgent.energy, alpha);
+      dst.hydration = lerpNum(prevAgent.hydration, currAgent.hydration, alpha);
       dst.segmentCount = currAgent.segmentCount;
 
-      const rx = prevAgent.rootPosition[0] + rdx * alpha;
-      const rz = prevAgent.rootPosition[2] + rdz * alpha;
+      const rx = pr[0] + rdx * alpha;
+      const rz = pr[2] + rdz * alpha;
       const gY = sampleGroundY(rx, rz);
-      const prevLift = prevAgent.rootPosition[1] - prevAgent.groundY;
-      const currLift = currAgent.rootPosition[1] - currAgent.groundY;
-      const ry = gY + prevLift + (currLift - prevLift) * alpha;
-      const blendedGroundY = prevAgent.groundY + (currAgent.groundY - prevAgent.groundY) * alpha;
-      const groundDelta = gY - blendedGroundY;
+      const ry = gY + lerpNum(pr[1] - prevAgent.groundY, cr[1] - currAgent.groundY, alpha);
+      const groundDelta = gY - lerpNum(prevAgent.groundY, currAgent.groundY, alpha);
 
       dst.groundY = gY;
-      dst.rootPosition[0] = rx;
-      dst.rootPosition[1] = ry;
-      dst.rootPosition[2] = rz;
-      dst.rootRenderLength =
-        prevAgent.rootRenderLength + (currAgent.rootRenderLength - prevAgent.rootRenderLength) * alpha;
-      dst.rootRenderRadius =
-        prevAgent.rootRenderRadius + (currAgent.rootRenderRadius - prevAgent.rootRenderRadius) * alpha;
+      set3(dst.rootPosition, rx, ry, rz);
+      dst.rootRenderLength = lerpNum(prevAgent.rootRenderLength, currAgent.rootRenderLength, alpha);
+      dst.rootRenderRadius = lerpNum(prevAgent.rootRenderRadius, currAgent.rootRenderRadius, alpha);
       dst.boundingRadius = Math.max(prevAgent.boundingRadius, currAgent.boundingRadius);
       dst.morphologyKey = currAgent.morphologyKey;
       dst.morphologySegments = currAgent.segments;
       dst.headSegmentId = currAgent.headSegmentId;
-      dst.headLocalForward[0] = currAgent.headLocalForward[0];
-      dst.headLocalForward[1] = currAgent.headLocalForward[1];
-      dst.headLocalForward[2] = currAgent.headLocalForward[2];
+      copy3(currAgent.headLocalForward, dst.headLocalForward);
       slerpDirection3Into(prevAgent.headDirection, currAgent.headDirection, alpha, dst.headDirection);
 
       const currSegs = currAgent.segments;
@@ -730,36 +774,31 @@ export class TickInterpolationBuffer {
         const cSeg = currSegs[sIdx];
         const dSeg = dstSegs[sIdx];
         const pSeg = prevSegByKey.get(packAgentSegmentKey(currAgent.agentId, cSeg.segmentId));
-        if (!pSeg) {
-          copySegmentInto(cSeg, dSeg);
-          continue;
-        }
-        const sdx = cSeg.renderPosition[0] - pSeg.renderPosition[0];
-        const sdz = cSeg.renderPosition[2] - pSeg.renderPosition[2];
-        if (sdx * sdx + sdz * sdz > snapDistSq) {
+        const crp = cSeg.renderPosition;
+        const prp = pSeg?.renderPosition;
+        const sdx = prp ? crp[0] - prp[0] : 0;
+        const sdz = prp ? crp[2] - prp[2] : 0;
+        if (!pSeg || !prp || sdx * sdx + sdz * sdz > snapDistSq) {
           copySegmentInto(cSeg, dSeg);
           continue;
         }
 
+        const drp = dSeg.renderPosition;
         dSeg.segmentId = cSeg.segmentId;
         dSeg.parentSegmentId = cSeg.parentSegmentId;
         dSeg.isRoot = cSeg.isRoot;
-        lerpTuple3Into(pSeg.renderPosition, cSeg.renderPosition, alpha, dSeg.renderPosition);
-        dSeg.renderPosition[1] += groundDelta;
+        lerpTuple3Into(prp, crp, alpha, drp);
+        drp[1] += groundDelta;
         slerpQuatTupleInto(pSeg.quaternion, cSeg.quaternion, alpha, dSeg.quaternion);
-        dSeg.renderLength =
-          pSeg.renderLength + (cSeg.renderLength - pSeg.renderLength) * alpha;
-        dSeg.renderRadius =
-          pSeg.renderRadius + (cSeg.renderRadius - pSeg.renderRadius) * alpha;
-        dSeg.jointAnchor[0] = cSeg.jointAnchor[0];
-        dSeg.jointAnchor[1] = cSeg.jointAnchor[1];
-        dSeg.jointAnchor[2] = cSeg.jointAnchor[2];
+        dSeg.renderLength = lerpNum(pSeg.renderLength, cSeg.renderLength, alpha);
+        dSeg.renderRadius = lerpNum(pSeg.renderRadius, cSeg.renderRadius, alpha);
+        copy3(cSeg.jointAnchor, dSeg.jointAnchor);
 
         if (!cSeg.isRoot) {
           dSeg.hasJoint = true;
           writeRearJointPositionInto(dSeg);
-          const pJR = pSeg.jointRenderPosition ? pSeg.jointRenderRadius : cSeg.jointRenderRadius;
-          dSeg.jointRenderRadius = pJR + (cSeg.jointRenderRadius - pJR) * alpha;
+          const cjr = cSeg.jointRenderRadius;
+          dSeg.jointRenderRadius = lerpNum(pSeg.jointRenderPosition ? pSeg.jointRenderRadius : cjr, cjr, alpha);
         } else {
           dSeg.hasJoint = false;
           dSeg.jointRenderRadius = 0;
