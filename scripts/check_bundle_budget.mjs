@@ -94,7 +94,8 @@ const CHUNK_BUDGET_KIB = {
  * (`28.8 KiB`, vs trunk `28.93 kB`) rather than a separate lazy chunk because `WorldMinimap` and
  * sibling components statically import `Biome`/`FloraType`/`WORLD_GEN_VERSION` from `worldGen.ts`.
  */
-const TOTAL_BUDGET_KIB = 2006;
+// WV2-6-INSTR in-app frame recorder (QD-GATES-1127 (3)), lazy-loaded; owner approved option 2 on 2026-11-27
+const TOTAL_BUDGET_KIB = 2022;
 
 export const ENTRY_HTML = {
   'index.html': '2D dashboard',
