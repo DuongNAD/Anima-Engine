@@ -20,7 +20,7 @@ import WorldCameraRig, { type CameraMode } from './WorldCameraRig';
 import type { World } from './utils/worldGen';
 import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
-import { findSpawn } from './utils/worldSample';
+import { findSpawn, sampleElevation } from './utils/worldSample';
 import {
   loadWorldV2Cached,
   resolveWorldSourceMode,
@@ -138,6 +138,33 @@ const CAM_MODES: Array<{ key: CameraMode; label: string }> = [
  * parameter type is the one field this touches rather than the whole renderer, so the signature
  * says what it does to what.
  */
+function setCameraNearClip(camera: THREE.Camera, near: number): void {
+  if (!(camera instanceof THREE.PerspectiveCamera)) return;
+  if (Math.abs(camera.near - near) < 0.002) return;
+  camera.near = near;
+  camera.updateProjectionMatrix();
+}
+
+const DynamicNearClip: React.FC<{
+  world: World;
+  renderSize: number;
+  heightRatio: number;
+  enabled: boolean;
+}> = ({ world, renderSize, heightRatio, enabled }) => {
+  const heightUnits = renderSize * heightRatio;
+  useFrame((state) => {
+    if (!enabled) return;
+    const cam = state.camera;
+    const u = cam.position.x / renderSize + 0.5;
+    const v = cam.position.z / renderSize + 0.5;
+    const ground = u >= 0 && u <= 1 && v >= 0 && v <= 1 ? sampleElevation(world, u, v) * heightUnits : 0;
+    const alt = Math.max(0, cam.position.y - ground);
+    const targetNear = alt < 2.2 ? 0.018 : alt < 10 ? 0.12 : 0.6;
+    setCameraNearClip(cam, targetNear);
+  });
+  return null;
+};
+
 function applyShadowPass(
   gl: { shadowMap: Pick<THREE.WebGLShadowMap, 'enabled'> },
   scene: THREE.Scene,
@@ -647,6 +674,12 @@ export const WorldShowcase: React.FC = () => {
         }}
       >
         <QualityApplier tier={effectiveQuality} dprOverride={activeDprOverride} />
+        <DynamicNearClip
+          world={world}
+          renderSize={renderSize}
+          heightRatio={heightRatio}
+          enabled={capture === null && Boolean(worldV2Bundle)}
+        />
         {isAutoQualityAllowed(capture) && qualitySelection === 'auto' ? (
           <AutoQualityMonitor onChange={setAutoQuality} />
         ) : null}

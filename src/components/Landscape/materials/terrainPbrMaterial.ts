@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { TerrainPbrArrays } from '../assets/worldAssets';
 import { ATMOSPHERE_FRAGMENT_PARS, bindAtmosphereUniforms } from './atmosphere';
 import { glslFloat, replaceOnce } from '../worldV2/worldScale';
-import { GRASS_PATCH_GLSL } from '../worldV2/grassTables';
+import { GRASS_FIELD_GLSL, GRASS_PATCH_GLSL } from '../worldV2/grassTables';
 
 // prototype, to be replaced — W3-lite 6-layer biome/slope/height PBR splat terrain material with seamless procedural fallback.
 
@@ -79,6 +79,7 @@ uniform sampler2D uLookShore;
 uniform float uElevMinM;
 uniform float uElevSpanM;
 ${GRASS_PATCH_GLSL}
+${GRASS_FIELD_GLSL}
 `;
 
 const WV2_LOOK_MAP_FRAGMENT = /* glsl */ `
@@ -165,31 +166,54 @@ vec3 lkGround=lkMacro
   // ...and lose some value too: sunlit pale meadow was the brightest, flattest thing in frame.
   `lkGround*=mix(1.0,0.84,smoothstep(0.05,0.14,lkGLum));
 ` +
-  // Meadows: mottled, slightly dry tufts so open grass does not read as smooth plastic, plus
-  // WV2-LOOK r10 turf understory shading synced to the 3D grass dry/lush patch map.
+  // Meadows: synchronized with the 3D grass blades across near-to-far range (WV2-LOOK r12).
+  // Matches Voronoi clump dryness/tint, adds anisotropic wind-aligned fibre grain beyond the
+  // instanced blades, and carries rolling gust-sheen waves so there is zero cutoff seam.
   `lkGround*=mix(0.86,1.10,lkNHi.r)*mix(0.92,1.06,lkNVHi.a);
 lkGround=mix(lkGround,lkGround*vec3(1.12,1.0,0.72),smoothstep(0.55,0.85,lkNHi.g)*0.45);
 vec4 lkGrassM=texture2D(uLookGrass,vMapUv);
 float lkGrassCov=lkGrassM.r*(1.0-lkMask.r)*(1.0-lkMask.g)*(1.0-lkMask.a*0.85);
-float lkTurfDist=1.0-smoothstep(55.0,165.0,lkCamDist);
-float lkTurfDry=clamp(lkGrassM.b+lkGrassPatch(lkP)*0.24,0.0,1.0);
+float lkCamDistM=lkCamDist*uAtmoMPerUnit;
+float lkTurfDist=1.0-smoothstep(450.0,1600.0,lkCamDistM);
+vec2 lkWorldM=lkP*uAtmoMPerUnit;
+float lkTurfDry=clamp(lkGrassM.b+lkGrassPatch(lkP)*0.22,0.0,1.0);
 float lkTurfSlope=0.0;
 vec2 lkTurfTilt=vec2(0.0);
 if(lkGrassCov>0.01){
 float turfBlade=0.5;
-if(lkTurfDist>0.01){
+float lkAniso=0.5;
+float lkGustSheen=0.0;
+float lkClumpSh=0.5;
+if(lkCamDistM<1100.0){
+vec4 lkClump=lkGrassClump(lkWorldM);
+float clumpFade=1.0-smoothstep(140.0,320.0,lkCamDistM);
+lkTurfDry=clamp(lkTurfDry+(lkClump.x-0.5)*0.28*clumpFade,0.0,1.0);
+lkClumpSh=mix(0.5,lkClump.y,clumpFade);
+vec2 wDir=vec2(0.8805,0.4741);
+vec2 wPerp=vec2(-wDir.y,wDir.x);
+vec2 wUv=vec2(dot(lkWorldM,wDir),dot(lkWorldM,wPerp));
+float fineFade=1.0-smoothstep(90.0,240.0,lkCamDistM);
+float gFine=lkGrassVNoise(wUv*vec2(0.24,1.65));
+float gCoarse=lkGrassVNoise(wUv*vec2(0.085,0.52)+vec2(3.1,1.7));
+float gMacro=lkGrassVNoise(wUv*vec2(0.025,0.14)+vec2(1.7,4.9));
+float anisoRaw=(gFine*0.45*fineFade+gCoarse*0.40+gMacro*0.35)/max(0.75,0.45*fineFade+0.75);
+float farGrain=smoothstep(12.0,32.0,lkCamDistM)*(1.0-smoothstep(550.0,1100.0,lkCamDistM));
+lkAniso=mix(0.5,clamp(anisoRaw,0.0,1.0),farGrain);
+vec3 fWind=lkGrassWind(lkWorldM,uTime);
+lkGustSheen=fWind.z*farGrain;
 vec4 tLo=textureGrad(uLookNoise,lkP*1.9+vec2(0.19,0.41),lkWdx.xz*1.9,lkWdy.xz*1.9);
 vec4 tHi=textureGrad(uLookNoise,lkP*6.7+vec2(0.63,0.11),lkWdx.xz*6.7,lkWdy.xz*6.7);
-turfBlade=clamp(tLo.g*0.45+tHi.r*0.55+(tHi.b-0.5)*0.25,0.0,1.0);
-lkTurfTilt=(vec2(tHi.g,tLo.b)-0.5)*0.36*lkGrassCov*lkTurfDist;
+float nearVar=clamp(tLo.g*0.42+tHi.r*0.58+(tHi.b-0.5)*0.22,0.0,1.0);
+turfBlade=mix(nearVar,lkAniso,farGrain*0.72);
+lkTurfTilt=(vec2(tHi.g,tLo.b)-0.5)*0.36*lkGrassCov*(1.0-smoothstep(140.0,420.0,lkCamDistM));
 }else{
 turfBlade=clamp(lkNHi.g*0.65+lkNMid.b*0.35,0.0,1.0);
 }
-vec3 lkTurfLush=mix(vec3(0.032,0.072,0.018),vec3(0.078,0.145,0.036),turfBlade);
-vec3 lkTurfDryCol=mix(vec3(0.084,0.074,0.026),vec3(0.165,0.130,0.046),turfBlade);
-vec3 lkTurfCol=mix(lkTurfLush,lkTurfDryCol,lkTurfDry)*mix(0.86,1.12,lkNHi.b);
-lkTurfCol*=mix(1.0,0.86+0.22*turfBlade,lkTurfDist*lkGrassCov);
-float turfBlend=clamp(lkGrassCov*(0.62+0.30*lkTurfDist),0.0,0.92);
+float tMean=mix(0.28,0.48,smoothstep(10.0,65.0,lkCamDistM));
+vec3 lkTurfCol=lkGrassAlbedo(lkTurfDry,clamp(tMean+(turfBlade-0.5)*0.30,0.06,0.90),lkClumpSh);
+lkTurfCol*=0.84*mix(0.84,1.14,turfBlade)*mix(0.88,1.12,lkNHi.b);
+lkTurfCol*=1.0+lkGustSheen*0.24;
+float turfBlend=clamp(lkGrassCov*(0.72+0.20*lkTurfDist),0.0,0.92);
 lkGround=mix(lkGround,lkTurfCol,turfBlend);
 lkTurfSlope=lkGrassCov;
 }

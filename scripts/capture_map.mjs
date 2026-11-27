@@ -44,7 +44,7 @@ const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'wa
 //   vista      low oblique (~2.2 km above the sea) along the main massif, sky and horizon in frame.
 //   meadow     eye height (~2.2 m) in the grassland or savanna nearest the map centre, looking
 //              towards the highest peak: the ground cover (grass) at walking range.
-const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow'];
+const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -701,7 +701,30 @@ function pageAnalyseWorld() {
     };
   }
 
-  // meadow (opt-in): standing in the grassland or savanna nearest the centre, at eye height.
+  // Exact triangle height on the drawn terrain mesh (used by eye-level close-ups and waterfalls).
+  const tGeom = terrain && terrain.geometry && terrain.geometry.attributes && terrain.geometry.attributes.position;
+  const tSide = tGeom ? Math.round(Math.sqrt(tGeom.count)) : 0;
+  const meshSurfAt = (x, z) => {
+    if (!tGeom || tSide * tSide !== tGeom.count) return -Infinity;
+    const gx = Math.min(tSide - 1, Math.max(0, (x / R + 0.5) * (tSide - 1)));
+    const gz = Math.min(tSide - 1, Math.max(0, (z / R + 0.5) * (tSide - 1)));
+    const x0 = Math.floor(gx);
+    const z0 = Math.floor(gz);
+    const x1 = Math.min(tSide - 1, x0 + 1);
+    const z1 = Math.min(tSide - 1, z0 + 1);
+    const fx = gx - x0;
+    const fz = gz - z0;
+    const a = tGeom.array;
+    const h00 = a[(z0 * tSide + x0) * 3 + 1];
+    const h10 = a[(z0 * tSide + x1) * 3 + 1];
+    const h01 = a[(z1 * tSide + x0) * 3 + 1];
+    const h11 = a[(z1 * tSide + x1) * 3 + 1];
+    return fx + fz < 1
+      ? h00 + (h10 - h00) * fx + (h01 - h00) * fz
+      : h11 + (h01 - h11) * (1 - fx) + (h10 - h11) * (1 - fz);
+  };
+
+  // meadow / meadowsun (opt-in): standing in the grassland or savanna nearest the centre.
   {
     const GRASSY = new Set([3, 4, 17]); // Savanna, Grassland, Steppe
     let g = null;
@@ -719,8 +742,11 @@ function pageAnalyseWorld() {
         }
       }
     }
-    if (!g || !metrics.extentM) skip('meadow', g ? 'no World v2 manifest: map extent unknown' : 'no gentle grassland or savanna cell');
-    else {
+    if (!g || !metrics.extentM) {
+      const reason = g ? 'no World v2 manifest: map extent unknown' : 'no gentle grassland or savanna cell';
+      skip('meadow', reason);
+      skip('meadowsun', reason);
+    } else {
       const unitsPerM = R / metrics.extentM;
       const uYc = H / (metrics.elevSpanM || 7200);
       // The drawn mesh is coarser than the elevation grid: stand on the highest ground within one
@@ -737,6 +763,27 @@ function pageAnalyseWorld() {
         'meadow',
         { position: eye, target: [tx, surfAt(tx, tz) + 1.0 * uYc, tz], azimuthDeg: deg(az), pitchDeg: 0, lineOfSight: 'unchecked (eye height)' },
         `standing in ${biomeAt(g[0], g[1])} near the map centre at ~2.2 m, facing the highest peak`,
+      );
+      // meadowsun: true 1.6 m above the drawn terrain surface, looking into the sun azimuth so
+      // forward-scattered grass backlight glows cleanly across close-up blades.
+      const sunObj = scene.getObjectByName('world-sun-light');
+      const sp = sunObj ? sunObj.position : { x: 0.2588, y: 0.7687, z: -0.5845 };
+      const sunAz = Math.atan2(sp.z, sp.x);
+      const groundExact = Math.max(elevAt(g[0], g[1]) * H, meshSurfAt(g[0], g[1]));
+      const eyeSun = [g[0], groundExact + 1.6 * uYc, g[1]];
+      const aheadSun = 120 * unitsPerM;
+      const stx = eyeSun[0] + aheadSun * Math.cos(sunAz);
+      const stz = eyeSun[2] + aheadSun * Math.sin(sunAz);
+      put(
+        'meadowsun',
+        {
+          position: eyeSun,
+          target: [stx, groundExact + 0.1 * uYc, stz],
+          azimuthDeg: deg(sunAz),
+          pitchDeg: -1,
+          lineOfSight: 'unchecked (1.6 m eye height toward sun)',
+        },
+        `standing in ${biomeAt(g[0], g[1])} at 1.6 m above drawn ground, looking toward sun`,
       );
     }
   }
@@ -981,30 +1028,7 @@ function pageAnalyseWorld() {
   if (!w.waterfallCount) skip('waterfall', 'world has no waterfalls');
   else {
     const order = Array.from({ length: w.waterfallCount }, (_, i) => i).sort((a, b) => w.waterfallDrop[b] - w.waterfallDrop[a]);
-    // The drawn terrain is a coarser mesh than the data (hundreds of metres per vertex), and in a
-    // gorge it sits well above the data floor: test against the higher of the two, read from the
-    // terrain geometry itself (a regular (res+1)^2 grid; max of the four corners, conservative).
-    const tGeom = terrain && terrain.geometry && terrain.geometry.attributes && terrain.geometry.attributes.position;
-    const side = tGeom ? Math.round(Math.sqrt(tGeom.count)) : 0;
-    const meshSurfAt = (x, z) => {
-      if (!tGeom || side * side !== tGeom.count) return -Infinity;
-      const gx = Math.min(side - 1, Math.max(0, (x / R + 0.5) * (side - 1)));
-      const gz = Math.min(side - 1, Math.max(0, (z / R + 0.5) * (side - 1)));
-      const x0 = Math.floor(gx);
-      const z0 = Math.floor(gz);
-      const x1 = Math.min(side - 1, x0 + 1);
-      const z1 = Math.min(side - 1, z0 + 1);
-      const fx = gx - x0;
-      const fz = gz - z0;
-      const a = tGeom.array;
-      const h00 = a[(z0 * side + x0) * 3 + 1];
-      const h10 = a[(z0 * side + x1) * 3 + 1];
-      const h01 = a[(z1 * side + x0) * 3 + 1];
-      const h11 = a[(z1 * side + x1) * 3 + 1];
-      return fx + fz < 1
-        ? h00 + (h10 - h00) * fx + (h01 - h00) * fz
-        : h11 + (h01 - h11) * (1 - fx) + (h10 - h11) * (1 - fz);
-    };
+    // Ground helper (`surfAt` vs drawn mesh triangle `meshSurfAt`, hoisted above).
     const groundAt = (x, z) => Math.max(surfAt(x, z), meshSurfAt(x, z));
     // Where each curtain is actually drawn (the renderer may seat or filter it on the drawn surface).
     const curtains = scene.getObjectByName('waterfall-curtains');

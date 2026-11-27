@@ -62,6 +62,79 @@ float lkGrassPatch(vec2 p){
 }
 `;
 
+/**
+ * prototype, to be replaced — WV2-LOOK r12 shared GLSL for Voronoi world-space grass clumps,
+ * metre-space scrolling wind gust waves, and synchronized linear lush/dry grass colours used
+ * across both 3D blades and far-field terrain turf.
+ */
+export const GRASS_FIELD_GLSL = /* glsl */ `
+float lkGrassHash12(vec2 p){
+  vec3 p3=fract(vec3(p.xyx)*0.1031);
+  p3+=dot(p3,p3.yzx+33.33);
+  return fract((p3.x+p3.y)*p3.z);
+}
+vec3 lkGrassHash32(vec2 p){
+  vec3 p3=fract(vec3(p.xyx)*vec3(0.1031,0.1030,0.0973));
+  p3+=dot(p3,p3.yxz+33.33);
+  return fract((p3.xxy+p3.yzz)*p3.zyx);
+}
+float lkGrassVNoise(vec2 p){
+  vec2 i=floor(p);
+  vec2 f=fract(p);
+  vec2 u=f*f*(3.0-2.0*f);
+  float a=lkGrassHash12(i);
+  float b=lkGrassHash12(i+vec2(1.0,0.0));
+  float c=lkGrassHash12(i+vec2(0.0,1.0));
+  float d=lkGrassHash12(i+vec2(1.0,1.0));
+  return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);
+}
+vec4 lkGrassClump(vec2 worldM){
+  vec2 p=worldM*0.46;
+  vec2 base=floor(p-0.5);
+  float minD=9.0;
+  vec3 bestH=vec3(0.5);
+  for(int dy=0;dy<=1;dy+=1){
+    for(int dx=0;dx<=1;dx+=1){
+      vec2 cell=base+vec2(float(dx),float(dy));
+      vec3 h=lkGrassHash32(cell);
+      vec2 pt=cell+vec2(0.18+0.64*h.x,0.18+0.64*h.y);
+      vec2 df=pt-p;
+      float d=dot(df,df);
+      if(d<minD){
+        minD=d;
+        bestH=h;
+      }
+    }
+  }
+  return vec4(bestH,sqrt(minD));
+}
+vec3 lkGrassWind(vec2 worldM,float timeSec){
+  vec2 wDir=vec2(0.8805,0.4741);
+  vec2 wPerp=vec2(-wDir.y,wDir.x);
+  float g1=lkGrassVNoise(worldM*0.052-wDir*(timeSec*3.6));
+  float g2=lkGrassVNoise(worldM*0.16-wDir*(timeSec*6.1)+vec2(5.3,2.7));
+  float gust=smoothstep(0.16,0.90,g1*0.66+g2*0.34);
+  float swerve=(g2-0.5)*0.42;
+  vec2 v=wDir*(0.16+0.84*gust)+wPerp*swerve*gust;
+  return vec3(v,gust);
+}
+vec3 lkGrassAlbedo(float dry,float t,float tintShift){
+  vec3 lushRoot=vec3(0.015,0.036,0.008);
+  vec3 lushMid=vec3(0.056,0.118,0.022);
+  vec3 lushTip=vec3(0.128,0.205,0.044);
+  vec3 dryRoot=vec3(0.042,0.035,0.011);
+  vec3 dryMid=vec3(0.138,0.110,0.035);
+  vec3 dryTip=vec3(0.255,0.202,0.078);
+  float tMid=smoothstep(0.0,0.52,t);
+  float tTip=smoothstep(0.42,1.0,t);
+  vec3 cLush=mix(mix(lushRoot,lushMid,tMid),lushTip,tTip);
+  vec3 cDry=mix(mix(dryRoot,dryMid,tMid),dryTip,tTip);
+  vec3 c=mix(cLush,cDry,clamp(dry,0.0,1.0));
+  c*=mix(vec3(0.92,1.03,0.96),vec3(1.08,0.98,0.88),clamp(tintShift,0.0,1.0));
+  return c;
+}
+`;
+
 function smoothstepJS(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
