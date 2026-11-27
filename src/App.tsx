@@ -30,6 +30,10 @@ const LandscapeShowcase = lazy(() => import("./components/Landscape/WorldShowcas
 const Map2Showcase = lazy(() => import("./components/Map2/Map2Showcase"));
 const ResearchDashboard = lazy(() => import("./components/ResearchDashboard").then((m) => ({ default: m.ResearchDashboard })));
 
+// Matches the "Bảng đo lường từ xa (5 Agents đầu tiên)" panel heading so 1,000+ simulated agents
+// do not materialize ~67,500 landing-page DOM nodes before 3D mode even opens.
+const MAX_TELEMETRY_AGENTS = 5;
+
 
 // ---------------------------------------------------------------------------------------
 // IPC payload types: imported from the generated bindings, not re-declared here.
@@ -762,7 +766,7 @@ export function App() {
               {hierarchies.length === 0 ? (
                 <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
               ) : (
-                hierarchies.map((hierarchy) => (
+                hierarchies.slice(0, MAX_TELEMETRY_AGENTS).map((hierarchy) => (
                   <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
                     <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
                       Agent #{hierarchy.agent_id} (Năng lượng: {safeToFixed(hierarchy.energy, 1)})
