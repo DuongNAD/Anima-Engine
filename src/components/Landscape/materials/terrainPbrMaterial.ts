@@ -84,6 +84,7 @@ uniform float uElevMinM;
 uniform float uElevSpanM;
 uniform float uCarveBanks;
 uniform float uHasRiverMesh;
+uniform float uRiverIdMaskMode;
 ${GRASS_PATCH_GLSL}
 ${GRASS_FIELD_GLSL}
 `;
@@ -325,6 +326,7 @@ vec2 lkUvDy=dFdy(vMapUv);
 float lkWet=0.0;
 float lkSpray=0.0;
 float lkRivWater=0.0;
+float lkRivTrunk=0.0;
 float lkRivBank=0.0;
 float lkRivBar=0.0;
 float lkRivFoam=0.0;
@@ -408,22 +410,33 @@ float maxBankVisM=mix(rivWidthM*680.0,220000.0,smoothstep(5.5,13.0,rivWidthM));
 maxBankVisM=max(maxBankVisM,smoothstep(0.11,0.22,lkSlope)*14000.0);
 float rivDistFade=1.0-smoothstep(maxBankVisM*0.44,maxBankVisM,lkCamDist*uAtmoMPerUnit);
 rivDistFade=max(rivDistFade,isTrunkCue);
-if(cSdf<74.0&&lkHm<3650.0&&rivHalfW>0.2&&rivDistFade>0.01){
+if(cSdf<152.0&&lkHm<3650.0&&rivHalfW>0.2&&rivDistFade>0.01){
   float lkNoGlacier=1.0-smoothstep(2850.0,3650.0,lkHm);
   float lkRivAllow=(1.0-lkSnow*0.85)*lkNoGlacier*rivDistFade;
   float isRockyReach=clamp(smoothstep(0.06,0.14,lkSlope)+smoothstep(0.76,0.92,flowEnergy),0.0,1.0);
   float marginLimit=mix(2.2,5.8,smoothstep(2.0,12.0,rivHalfW));
 
-  // Darker lush riparian green valley band along trunk rivers (reads cleanly from 300 m to overview).
-  float ripReachM=mix(22.0,68.0,clamp(rivHalfW/16.0+isTrunkCue*0.40,0.0,1.0));
-  float ripJitter=(lkNMid.b-0.5)*16.0+(lkNHi.r-0.5)*6.0;
+  // Lighter, flatter alluvial floodplain belt (28-142 m) flanking darker trunk riparian gallery.
+  float fpFlat=1.0-smoothstep(0.018,0.058,lkSlope);
+  float fpReachM=mix(56.0,142.0,clamp(rivHalfW/18.0+isTrunkCue*0.45,0.0,1.0));
+  float fpNoise=(lkNMid.r-0.5)*28.0+(lkNHi.b-0.5)*10.0;
+  float fpBand=smoothstep(18.0,42.0,cSdf)*(1.0-smoothstep(54.0,fpReachM+fpNoise,cSdf));
+  float fpWeight=fpBand*fpFlat*isTrunkCue*(1.0-lkRock*0.82)*(1.0-lkSnow*0.95)*(1.0-smoothstep(1300.0,2100.0,lkHm))*rivDistFade;
+  if(fpWeight>0.01){
+    vec3 floodCol=mix(vec3(0.088,0.128,0.044),vec3(0.142,0.156,0.068),lkNMid.g)*mix(0.88,1.14,lkNHi.r);
+    diffuseColor.rgb=mix(diffuseColor.rgb,floodCol,fpWeight*0.62);
+  }
+
+  // Darker lush riparian gallery valley band along trunk rivers (reads cleanly from 300 m to overview).
+  float ripReachM=mix(24.0,54.0,clamp(rivHalfW/16.0+isTrunkCue*0.42,0.0,1.0));
+  float ripJitter=(lkNMid.b-0.5)*14.0+(lkNHi.r-0.5)*5.0;
   float ripBand=(1.0-smoothstep(marginLimit*0.50,max(marginLimit+4.0,ripReachM+ripJitter),max(0.0,cSdf)))
     *(1.0-lkRock*0.65)*(1.0-lkSnow*0.92);
   float ripAlt=1.0-smoothstep(2250.0,3150.0,lkHm);
   float ripWeight=ripBand*isTrunkCue*ripAlt*rivDistFade;
   if(ripWeight>0.01){
-    vec3 ripDark=mix(vec3(0.011,0.038,0.012),vec3(0.024,0.060,0.018),lkNMid.g)*mix(0.84,1.14,lkNHi.b);
-    diffuseColor.rgb=mix(diffuseColor.rgb,ripDark,ripWeight*0.90);
+    vec3 ripDark=mix(vec3(0.008,0.030,0.010),vec3(0.020,0.050,0.015),lkNMid.g)*mix(0.84,1.12,lkNHi.b);
+    diffuseColor.rgb=mix(diffuseColor.rgb,ripDark,ripWeight*0.94);
   }
 
   // Low, curved inside-bend sand/gravel bars softly blended from under the waterline into bank grass (no flat triangles).
@@ -477,18 +490,26 @@ if(cSdf<74.0&&lkHm<3650.0&&rivHalfW>0.2&&rivDistFade>0.01){
       lkRivTilt+=-(gBank/gLen)*shoulder*(0.24+0.12*isRockyReach);
     }
   }
-  // Low-tier fallback (no 3D river ribbon mesh): draw clean un-beaded shader water.
+  // Low-tier fallback (no 3D river ribbon mesh): bridge bilinear 40 m SDF diagonal saddles + pixel-padded trunk channels (0 extra calls).
   if(uHasRiverMesh<0.5){
-    float lkRivAA=max(1.2,fwidth(cSdf)*1.15);
-    lkRivWater=(1.0-smoothstep(-lkRivAA,lkRivAA,cSdf))*lkRivAllow;
+    float lowCamM=lkCamDist*uAtmoMPerUnit;
+    float lowAer=smoothstep(160.0,550.0,lowCamM);
+    float lowPxM=max(length(lkWdx.xz),length(lkWdy.xz))*uAtmoMPerUnit;
+    float lowPxPad=isTrunkCue*clamp(lowPxM*1.15-rivHalfW,0.0,78.0);
+    float lowBridgePad=smoothstep(2.2,3.8,rivHalfW)*max(0.0,14.2-rivHalfW)*lowAer;
+    float lowPadM=max(lowPxPad,lowBridgePad);
+    float lowSdf=(rivSdf+rivWarp*(1.0-lowAer*0.85))-lowPadM;
+    float lkRivAA=max(1.2,fwidth(lowSdf)*1.15);
+    lkRivWater=(1.0-smoothstep(-lkRivAA,lkRivAA,lowSdf))*lkRivAllow;
     if(lkRivWater>0.01){
+      lkRivTrunk=isTrunkCue;
       float depthCue=clamp(flowEnergy*1.15,0.0,1.0);
-      vec3 calmCol=mix(vec3(0.014,0.048,0.068),vec3(0.025,0.086,0.102),depthCue);
+      vec3 calmCol=mix(vec3(0.022,0.072,0.098),vec3(0.042,0.135,0.165),depthCue);
       float rapids=max(smoothstep(0.08,0.20,lkSlope)*0.78,smoothstep(0.78,0.96,flowEnergy)*0.88);
       lkRivFoam=clamp(rapids*smoothstep(0.45,0.82,lkNHi.g),0.0,0.65);
       vec3 rivBody=mix(calmCol,vec3(0.62,0.72,0.78),lkRivFoam);
-      diffuseColor.rgb=mix(diffuseColor.rgb,rivBody,lkRivWater*0.92);
-      lkAoInd=mix(lkAoInd,0.84,lkRivWater*0.55);
+      diffuseColor.rgb=mix(diffuseColor.rgb,rivBody,lkRivWater*0.95);
+      lkAoInd=mix(lkAoInd,0.88,lkRivWater*0.60);
     }
   }
 }
@@ -543,12 +564,18 @@ vec3 lkWn=normalize(vec3(mix(lkBn.x*0.35,lkRivTilt.x,lkRivWater),1.0,mix(lkBn.y*
 float lkF=0.02+0.98*pow(1.0-max(dot(lkWn,lkV),0.0),5.0);
 vec3 lkR=reflect(-lkV,lkWn);
 lkR.y=abs(lkR.y);
-gl_FragColor.rgb=mix(gl_FragColor.rgb,atmoSkyColor(normalize(lkR)),clamp(lkF*1.6+0.12*lkRivWater+0.08*lkWet,0.0,0.75)*lkSurfWet);
+vec3 lkSky=atmoSkyColor(normalize(lkR));
+float lkRivAer=lkRivTrunk*smoothstep(200.0,900.0,length(vViewPosition)*uAtmoMPerUnit);
+lkSky=mix(lkSky,max(lkSky,vec3(0.56,0.74,0.92)),0.38*lkRivAer);
+gl_FragColor.rgb=mix(gl_FragColor.rgb,lkSky,clamp(lkF*1.5+0.14*lkRivWater+0.54*lkRivAer+0.08*lkWet,0.0,0.92)*lkSurfWet);
 }
 vec3 lkHd=normalize(vW3WorldPos-cameraPosition);
 vec3 lkHazeC=atmoSkyColor(normalize(vec3(lkHd.x,lkHd.y*0.2,lkHd.z)));
 if(lkSpray>0.0)gl_FragColor.rgb=mix(gl_FragColor.rgb,mix(lkHazeC,vec3(0.92),0.35),lkSpray*0.32);
-gl_FragColor.rgb=mix(gl_FragColor.rgb,lkHazeC,atmoHazeAmount(cameraPosition,vW3WorldPos));
+gl_FragColor.rgb=mix(gl_FragColor.rgb,lkHazeC,atmoHazeAmount(cameraPosition,vW3WorldPos)*(1.0-lkRivTrunk*0.52));
+if(uRiverIdMaskMode>0.5){
+gl_FragColor=vec4(step(0.35,lkRivTrunk)*step(0.05,lkRivWater),lkRivWater,step(0.05,lkRivWater),1.0);
+}
 }
 `;
 
@@ -719,6 +746,7 @@ export function createTerrainPbrMaterial(
     uElevSpanM: { value: params.elevSpanM ?? 7200 },
     uCarveBanks: { value: params.carveBanks ? 1 : 0 },
     uHasRiverMesh: { value: params.hasRiverMesh ? 1 : 0 },
+    uRiverIdMaskMode: { value: 0 },
   };
 
   const normScale = params.normalScale ?? 1;
@@ -730,6 +758,7 @@ export function createTerrainPbrMaterial(
     roughness: 1.0,
     metalness: 0.0,
   });
+  material.userData.riverIdUniform = lookUniforms.uRiverIdMaskMode;
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uDetail = uniforms.uDetail;
@@ -753,6 +782,7 @@ export function createTerrainPbrMaterial(
       shader.uniforms.uElevSpanM = lookUniforms.uElevSpanM;
       shader.uniforms.uCarveBanks = lookUniforms.uCarveBanks;
       shader.uniforms.uHasRiverMesh = lookUniforms.uHasRiverMesh;
+      shader.uniforms.uRiverIdMaskMode = lookUniforms.uRiverIdMaskMode;
       bindAtmosphereUniforms(shader.uniforms);
       applyWv2LookShader(shader, edgeScale);
       return;

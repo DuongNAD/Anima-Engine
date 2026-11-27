@@ -87,7 +87,7 @@ export function carveWorldV2RiverAndWaterfallChannels(
   const maxChanQ = new Uint8Array(vCount);
   const minDist = new Float32Array(vCount).fill(Infinity);
 
-  // Only major stems (q >= 22) seat subtly in the coarse 160 m mesh so small creeks never carve dark trenches.
+  // Only trunk/secondary stems (q >= 12) seat subtly in the coarse 160 m mesh so small creeks never carve dark trenches.
   const radiusV = Math.max(1, Math.ceil((res / size) * 2.0));
   for (let sy = 0; sy < size; sy += 1) {
     const vNorm = sy / Math.max(1, size - 1);
@@ -97,7 +97,7 @@ export function carveWorldV2RiverAndWaterfallChannels(
       const ci = row + sx;
       if (!isChannelWaterKind(waterKind[ci])) continue;
       const q = hydroFlowRgba[ci * 4 + 2];
-      if (q < 22) continue;
+      if (q < 12) continue;
       const uNorm = sx / Math.max(1, size - 1);
       const cx = uNorm * res;
       const chanY = ((heightM[ci] - ELEV_MIN_M) / mPerElev) * heightUnits;
@@ -127,9 +127,9 @@ export function carveWorldV2RiverAndWaterfallChannels(
     const d = minDist[vi];
     const coreWeight = d < 0.4 ? 1.0 : Math.max(0, 1 - (d - 0.4) / 0.6);
     if (coreWeight <= 0) continue;
-    const qFrac = Math.min(1, Math.max(0, (maxChanQ[vi] - 22) / 80));
+    const qFrac = Math.min(1, Math.max(0, (maxChanQ[vi] - 12) / 90));
     const carveM = 2.0 + Math.sqrt(qFrac) * 3.5;
-    const maxDropM = 16.0;
+    const maxDropM = 12.0;
     const desiredY = minChanY[vi] - carveM * uPerM;
     const clampedTarget = Math.max(seaY + 0.01, origY - maxDropM * uPerM, desiredY);
     if (clampedTarget < origY) {

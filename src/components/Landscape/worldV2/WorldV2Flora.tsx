@@ -28,7 +28,7 @@ import {
   bindAtmosphereUniforms,
 } from '../materials/atmosphere';
 import { NEAR_PATCH_SAMPLER_GLSL, bindNearPatchUniforms } from './terrainNearPatch';
-import { getCachedRiverNetwork } from './riverSmooth';
+import { getCachedRiverNetwork, isTrunkRiver } from './riverSmooth';
 
 export interface WorldV2FloraProps {
   bundle: WorldV2LoadedBundle;
@@ -562,8 +562,9 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           const pv = pz / renderSize + 0.5;
           if (pu < 0 || pu > 1 || pv < 0 || pv > 1) continue;
           const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
-          const rHit = riverNetwork.queryNearestRiver(pu, pv, 45);
-          if (rHit && rHit.distM < rHit.halfW + 3.2) continue;
+          const rHit = riverNetwork.queryNearestRiver(pu, pv, 60);
+          const rTrunk = rHit ? isTrunkRiver(rHit.halfW, rHit.strahler) : false;
+          if (rHit && rHit.distM < rHit.halfW + (rTrunk ? 6.5 : 3.2)) continue;
           env.elevM = (groundY - seaY) / unitsPerMY;
           const gx = Math.min(SEA_GRID - 1, Math.floor(pu * SEA_GRID));
           const gy = Math.min(SEA_GRID - 1, Math.floor(pv * SEA_GRID));
@@ -612,6 +613,14 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
             else tint.setRGB(1.95, 1.75, 0.6);
           } else {
             tint.setRGB(val * (0.9 + warm * 0.28), val * (0.98 + warm * 0.06), val * (1.06 - warm * 0.3));
+            if (rTrunk && rHit && rHit.distM < rHit.halfW + 52) {
+              const ripT = 1 - Math.min(1, Math.max(0, (rHit.distM - rHit.halfW) / 52));
+              tint.setRGB(
+                tint.r * (1 - ripT * 0.34),
+                tint.g * (1 - ripT * 0.16),
+                tint.b * (1 - ripT * 0.32),
+              );
+            }
           }
           perShapeColor[shape].push(tint.r, tint.g, tint.b);
         }
@@ -622,17 +631,25 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
     if (!lite) {
       const maxRiparian = tier === 'high' ? 16000 : 11000;
       const alongStepM = tier === 'high' ? 32 : 42;
+      const trunkAlongStepM = tier === 'high' ? 22 : 30;
       let ripPlaced = 0;
       const invSizeMinus1 = 1 / Math.max(1, size - 1);
+      // Prioritize trunk river corridors first so aerial gallery framing never starves under cap.
+      const orderedLines = [
+        ...riverNetwork.polylines.filter((l) => l.some((pt) => isTrunkRiver(pt.halfW, pt.strahler))),
+        ...riverNetwork.polylines.filter((l) => !l.some((pt) => isTrunkRiver(pt.halfW, pt.strahler))),
+      ];
 
-      for (let p = 0; p < riverNetwork.polylines.length && ripPlaced < maxRiparian; p += 1) {
-        const line = riverNetwork.polylines[p];
+      for (let p = 0; p < orderedLines.length && ripPlaced < maxRiparian; p += 1) {
+        const line = orderedLines[p];
         if (line.length < 3) continue;
         let nextStationM = 12;
         for (let k = 1; k < line.length && ripPlaced < maxRiparian; k += 1) {
           const pt = line[k];
           if (pt.halfW < 1.5 || pt.isWaterfall || pt.alongM < nextStationM) continue;
-          nextStationM = pt.alongM + alongStepM * (0.65 + rnd() * 0.7);
+          const isTrunkPt = isTrunkRiver(pt.halfW, pt.strahler);
+          const stepBaseM = isTrunkPt ? trunkAlongStepM : alongStepM;
+          nextStationM = pt.alongM + stepBaseM * (0.65 + rnd() * 0.7);
 
           const pPrev = line[k - 1];
           const dx = pt.x - pPrev.x;
@@ -642,11 +659,13 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           const rx = -dz / segLen;
           const rz = dx / segLen;
 
-          const sides = rnd() < 0.4 ? [-1, 1] : [rnd() < 0.5 ? -1 : 1];
+          const sides = isTrunkPt ? (rnd() < 0.72 ? [-1, 1] : [rnd() < 0.5 ? -1 : 1]) : (rnd() < 0.4 ? [-1, 1] : [rnd() < 0.5 ? -1 : 1]);
           for (const side of sides) {
             if (ripPlaced >= maxRiparian) break;
             const bendSide = side * pt.signedCurv;
-            const bankOffsetM = pt.halfW + 2.2 + rnd() * 22.0;
+            const bankOffsetM = isTrunkPt
+              ? pt.halfW + 6.8 + rnd() * 28.0
+              : pt.halfW + 2.2 + rnd() * 22.0;
             // Keep open gravel/sand point bars clear on inside of bends.
             if (bendSide > 0.32 && bankOffsetM < pt.halfW + 9.0) continue;
 
@@ -706,9 +725,13 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
             const list = perShape[shape];
             for (let j = 0; j < 16; j += 1) list.push(e[j]);
 
-            const val = 0.78 + rnd() * 0.36;
+            const val = isTrunkPt ? 0.56 + rnd() * 0.28 : 0.78 + rnd() * 0.36;
             const warm = rnd() * 0.55;
-            tint.setRGB(val * (0.88 + warm * 0.25), val * (1.02 + warm * 0.04), val * (0.94 - warm * 0.18));
+            tint.setRGB(
+              val * ((isTrunkPt ? 0.76 : 0.88) + warm * 0.20),
+              val * ((isTrunkPt ? 1.00 : 1.02) + warm * 0.04),
+              val * ((isTrunkPt ? 0.80 : 0.94) - warm * 0.16),
+            );
             perShapeColor[shape].push(tint.r, tint.g, tint.b);
             ripPlaced += 1;
           }

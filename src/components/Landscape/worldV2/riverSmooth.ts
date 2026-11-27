@@ -5,8 +5,8 @@ import { WaterKind, type WorldV2LoadedBundle } from './types';
 /** Byte value in `riverMaskMap.r` representing `signedDistM === 0` (shoreline). */
 export const RIVER_SDF_ZERO_BYTE = 80;
 
-/** Leopold-Maddock channel width coefficient `W = W_min + K * sqrt(Q_eff)`. */
-export const RIVER_WIDTH_COEFF_K = 2.6;
+/** Leopold-Maddock bankfull channel width coefficient `W = W_min + K * sqrt(Q_eff)`. */
+export const RIVER_WIDTH_COEFF_K = 3.0;
 export const RIVER_WIDTH_MIN_M = 1.2;
 export const RIVER_WIDTH_MAX_M = 68.0;
 
@@ -133,9 +133,12 @@ export function computeRiverWidthM(
   waterKind: number,
 ): number {
   const baseMipScale = Math.max(1, texelM / 20);
-  // 2x2 mip averaging mixes 1-texel L0 river trunks with 2-3 dry bank texels at L1+; boost
-  // reconstruction progressively for main stems (q > 10) while keeping headwaters in 1.2-4.8 m.
-  const stemBoost = baseMipScale > 1 ? 0.95 * smoothstep01(10, 62, qByte) : 0;
+  // 2x2 mip averaging mixes 1-texel L0 river trunks with 2-3 dry bank texels at L1+; gently
+  // recover mid-trunk dilution (q=14..55 -> ~10-22 m bankfull width) while tapering above q=60
+  // so main mouths stay realistic (~24-45 m) and headwaters stay narrow (1.2-4.8 m).
+  const stemBoost = baseMipScale > 1
+    ? 0.35 * smoothstep01(14, 42, qByte) * (1 - 0.50 * smoothstep01(60, 100, qByte))
+    : 0;
   const mipScale = baseMipScale + stemBoost;
   const log2Q = (Math.min(255, Math.max(0, qByte) * mipScale) / 255) * 10;
   const qEff = Math.pow(2, log2Q) - 1;
@@ -887,7 +890,7 @@ export function buildSmoothedRiverMaskData(bundle: RiverMaskInput): Uint8Array {
 
       const maxW = Math.max(a.halfW, b.halfW);
       const isTrunk = isTrunkRiver(maxW, Math.max(a.strahler, b.strahler));
-      const reachTex = Math.ceil((maxW + (isTrunk ? 76 : 36)) / texelM);
+      const reachTex = Math.ceil((maxW + (isTrunk ? 150 : 36)) / texelM);
       const minX = Math.max(0, Math.floor(Math.min(a.x, b.x)) - reachTex);
       const maxX = Math.min(size - 1, Math.ceil(Math.max(a.x, b.x)) + reachTex);
       const minY = Math.max(0, Math.floor(Math.min(a.y, b.y)) - reachTex);

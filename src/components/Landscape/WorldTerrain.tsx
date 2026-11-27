@@ -126,7 +126,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-    geom.setIndex(new THREE.BufferAttribute(fullIndices, 1));
+    geom.setIndex(new THREE.BufferAttribute(new Uint32Array(fullIndices), 1));
     geom.computeVertexNormals();
     const normals = geom.getAttribute('normal').array as Float32Array;
     return {

@@ -111,6 +111,26 @@ export function buildRiverRibbonGeometry(
         Math.max(0, Math.min(1, v + rz * halfU)),
       );
       const yCoarse = Math.max(yC, yL, yR);
+      // Lateral valley-wall lift: measure adjacent coarse terrain up to 36-55 m outside the bank so
+      // aerial river trunks clear coarse valley triangles without floating when viewed up close.
+      const wideHalfU = (Math.min(55, Math.max(36, pt.halfW * 2.5)) * unitsPerM) / renderSize;
+      const yLWide = sampleCoarseTriangleAttr(
+        coarseHeights,
+        1,
+        0,
+        meshResolution,
+        Math.max(0, Math.min(1, u - rx * wideHalfU)),
+        Math.max(0, Math.min(1, v - rz * wideHalfU)),
+      );
+      const yRWide = sampleCoarseTriangleAttr(
+        coarseHeights,
+        1,
+        0,
+        meshResolution,
+        Math.max(0, Math.min(1, u + rx * wideHalfU)),
+        Math.max(0, Math.min(1, v + rz * wideHalfU)),
+      );
+      const valleyLift = Math.min(1.4, Math.max(0, Math.max(yLWide, yRWide) - yCoarse));
 
       let wfFlag = 0;
       if (pt.isWaterfall && keptWfPts.length > 0) {
@@ -148,7 +168,7 @@ export function buildRiverRibbonGeometry(
         aRiverMeta[vo2 + 1] = pt.localGrade;
 
         uvs[vo2] = side;
-        uvs[vo2 + 1] = 0;
+        uvs[vo2 + 1] = valleyLift;
         vCur += 1;
       }
     }

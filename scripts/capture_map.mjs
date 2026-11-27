@@ -44,7 +44,7 @@ const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'wa
 //   vista      low oblique (~2.2 km above the sea) along the main massif, sky and horizon in frame.
 //   meadow     eye height (~2.2 m) in the grassland or savanna nearest the map centre, looking
 //              towards the highest peak: the ground cover (grass) at walking range.
-const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun', 'riverbank', 'waterfallup', 'riverbend', 'mountainstream'];
+const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun', 'riverbank', 'waterfallup', 'riverbend', 'mountainstream', 'aerial500', 'aerial3km'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -400,14 +400,165 @@ function pageWaitFrames({ minFrames, minMs, capMs }) {
   });
 }
 
-function pageMeasureTrunkVisibility() {
+function pageMeasureAerialRivers(quality) {
   const net = window.__wv2RiverNet;
+  const helpers = window.__wv2CaptureHelpers;
   const st = window.__mapCapture;
+  const scene = window.__worldScene;
   const w = window.__world;
-  if (!net || !net.polylines || !st || !st.camera || !w || !w.elevation) return null;
+  if (!net || !net.polylines || !st || !st.camera || !st.renderer || !scene || !w || !w.elevation) return null;
   const cam = st.camera;
+  const renderer = st.renderer;
+  const gl = renderer.getContext();
   cam.updateMatrixWorld(true);
   if (typeof cam.updateProjectionMatrix === 'function') cam.updateProjectionMatrix();
+
+  const bw = gl.drawingBufferWidth || window.innerWidth || 1280;
+  const bh = gl.drawingBufferHeight || window.innerHeight || 720;
+  const colorBuf = new Uint8Array(bw * bh * 4);
+  const prevTarget0 = renderer.getRenderTarget();
+  const prevAutoClear0 = renderer.autoClear;
+  renderer.setRenderTarget(null);
+  renderer.autoClear = true;
+  renderer.clear(true, true, true);
+  renderer.render(scene, cam);
+  gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, colorBuf);
+  renderer.setRenderTarget(prevTarget0);
+  renderer.autoClear = prevAutoClear0;
+
+  const idBuf = new Uint8Array(bw * bh * 4);
+  let hasIdMask = false;
+  if (helpers && helpers.createRenderTarget) {
+    const idRT = helpers.createRenderTarget(bw, bh);
+    const prevTarget = renderer.getRenderTarget();
+    const prevAutoClear = renderer.autoClear;
+    const prevToneMapping = renderer.toneMapping;
+    const riversMesh = scene.getObjectByName('world-v2-rivers');
+    const terrainRoot = scene.getObjectByName('world-terrain-lod') || scene.getObjectByName('world-terrain');
+
+    try {
+      renderer.toneMapping = 0;
+      renderer.autoClear = false;
+      if (riversMesh && riversMesh.material?.uniforms?.uRiverIdMaskMode && quality !== 'low') {
+        const savedVis = [];
+        scene.traverse((o) => savedVis.push([o, o.visible]));
+        riversMesh.visible = false;
+        renderer.setRenderTarget(idRT);
+        renderer.clear(true, true, true);
+        renderer.render(scene, cam);
+        renderer.clear(true, false, false);
+
+        scene.traverse((o) => {
+          if (o.isMesh || o.isPoints || o.isLine || o.isSprite) o.visible = false;
+        });
+        let cur = riversMesh;
+        while (cur) {
+          cur.visible = true;
+          cur = cur.parent;
+        }
+        const prevBlend = riversMesh.material.blending;
+        riversMesh.material.uniforms.uRiverIdMaskMode.value = 1;
+        riversMesh.material.blending = helpers.NoBlending;
+        renderer.render(scene, cam);
+        riversMesh.material.uniforms.uRiverIdMaskMode.value = 0;
+        riversMesh.material.blending = prevBlend;
+        for (const [o, v] of savedVis) o.visible = v;
+        hasIdMask = true;
+      } else if (terrainRoot) {
+        const blackMat = new helpers.MeshBasicMaterial({ color: 0x000000 });
+        const terrainMats = [];
+        const swappedMats = [];
+        const terrainObjs = new Set();
+        terrainRoot.traverse((o) => terrainObjs.add(o));
+        scene.traverse((o) => {
+          if (!o.isMesh) return;
+          if (terrainObjs.has(o)) {
+            const u = o.material?.userData?.riverIdUniform;
+            if (u) {
+              u.value = 1;
+              terrainMats.push(u);
+            }
+          } else if (o.material) {
+            swappedMats.push([o, o.material]);
+            o.material = blackMat;
+          }
+        });
+        renderer.setRenderTarget(idRT);
+        renderer.clear(true, true, true);
+        renderer.render(scene, cam);
+        for (const u of terrainMats) u.value = 0;
+        for (const [o, m] of swappedMats) o.material = m;
+        blackMat.dispose();
+        hasIdMask = true;
+      }
+      if (hasIdMask) {
+        renderer.readRenderTargetPixels(idRT, 0, 0, bw, bh, idBuf);
+      }
+    } finally {
+      renderer.setRenderTarget(prevTarget);
+      renderer.autoClear = prevAutoClear;
+      renderer.toneMapping = prevToneMapping;
+      idRT.dispose();
+    }
+  }
+
+  const pxN = bw * bh;
+  const isTrunkPx = new Uint8Array(pxN);
+  const isAnyRivPx = new Uint8Array(pxN);
+  const luma = new Float32Array(pxN);
+  for (let i = 0; i < pxN; i++) {
+    const o = i * 4;
+    luma[i] = (0.2126 * colorBuf[o] + 0.7152 * colorBuf[o + 1] + 0.0722 * colorBuf[o + 2]) / 255;
+    if (hasIdMask && idBuf[o + 1] >= 13) {
+      if (idBuf[o + 2] >= 128) isAnyRivPx[i] = 1;
+      if (idBuf[o] >= 128) isTrunkPx[i] = 1;
+    }
+  }
+
+  let trunkPixelCount = 0;
+  let sumRivL = 0;
+  let sumRingL = 0;
+  let sumSignedC = 0;
+  let sumAbsC = 0;
+  let sumWeberC = 0;
+  let contrastSamples = 0;
+  if (hasIdMask) {
+    for (let y = 0; y < bh; y++) {
+      const row = y * bw;
+      for (let x = 0; x < bw; x++) {
+        const i = row + x;
+        if (!isTrunkPx[i]) continue;
+        trunkPixelCount++;
+        let rSum = 0;
+        let rCnt = 0;
+        const y0 = Math.max(0, y - 3);
+        const y1 = Math.min(bh - 1, y + 3);
+        const x0 = Math.max(0, x - 3);
+        const x1 = Math.min(bw - 1, x + 3);
+        for (let ny = y0; ny <= y1; ny++) {
+          const nrow = ny * bw;
+          for (let nx = x0; nx <= x1; nx++) {
+            if (nx === x && ny === y) continue;
+            const ni = nrow + nx;
+            if (isAnyRivPx[ni]) continue;
+            rSum += luma[ni];
+            rCnt++;
+          }
+        }
+        if (rCnt > 0) {
+          const rL = luma[i];
+          const sL = rSum / rCnt;
+          sumRivL += rL;
+          sumRingL += sL;
+          sumSignedC += rL - sL;
+          sumAbsC += Math.abs(rL - sL);
+          sumWeberC += Math.abs(rL - sL) / Math.max(0.05, sL);
+          contrastSamples++;
+        }
+      }
+    }
+  }
+
   const vm = cam.matrixWorldInverse.elements;
   const pm = cam.projectionMatrix.elements;
   const cpos = cam.position;
@@ -418,8 +569,7 @@ function pageMeasureTrunkVisibility() {
   const invSize = 1 / Math.max(1, net.size - 1);
   const mPerUnit = extentM / R;
   const fovRad = ((cam.fov || 55) * Math.PI) / 180;
-  const viewH = Math.max(1, window.innerHeight || 720);
-  const pxPerUnit = (2 * Math.tan(fovRad * 0.5)) / viewH;
+  const pxPerUnit = (2 * Math.tan(fovRad * 0.5)) / bh;
   const N = w.size;
   const sea = w.seaLevel ?? 0;
 
@@ -444,15 +594,46 @@ function pageMeasureTrunkVisibility() {
     );
   };
 
-  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const smoothstep = (e0, e1, x) => {
-    const t = clamp01((x - e0) / Math.max(1e-6, e1 - e0));
-    return t * t * (3 - 2 * t);
+  const projectPt = (wx, wy, wz) => {
+    const vx = vm[0] * wx + vm[4] * wy + vm[8] * wz + vm[12];
+    const vy = vm[1] * wx + vm[5] * wy + vm[9] * wz + vm[13];
+    const vz = vm[2] * wx + vm[6] * wy + vm[10] * wz + vm[14];
+    const vw = vm[3] * wx + vm[7] * wy + vm[11] * wz + vm[15];
+    const cx = pm[0] * vx + pm[4] * vy + pm[8] * vz + pm[12] * vw;
+    const cy = pm[1] * vx + pm[5] * vy + pm[9] * vz + pm[13] * vw;
+    const cz = pm[2] * vx + pm[6] * vy + pm[10] * vz + pm[14] * vw;
+    const cw = pm[3] * vx + pm[7] * vy + pm[11] * vz + pm[15] * vw;
+    if (cw <= 0.1) return null;
+    const ndcX = cx / cw;
+    const ndcY = cy / cw;
+    const ndcZ = cz / cw;
+    if (Math.abs(ndcX) > 1.0 || Math.abs(ndcY) > 1.0 || ndcZ < -1.0 || ndcZ > 1.0) return null;
+    return {
+      px: Math.min(bw - 1, Math.max(0, Math.round((ndcX * 0.5 + 0.5) * bw))),
+      py: Math.min(bh - 1, Math.max(0, Math.round((ndcY * 0.5 + 0.5) * bh))),
+    };
+  };
+
+  const hasMaskNear = (px, py, rad = 2) => {
+    const x0 = Math.max(0, px - rad);
+    const x1 = Math.min(bw - 1, px + rad);
+    const y0 = Math.max(0, py - rad);
+    const y1 = Math.min(bh - 1, py + rad);
+    for (let y = y0; y <= y1; y++) {
+      const row = y * bw;
+      for (let x = x0; x <= x1; x++) {
+        if (isTrunkPx[row + x]) return true;
+      }
+    }
+    return false;
   };
 
   let totalMapTrunkM = 0;
   let inFrustumTrunkM = 0;
-  let visibleTrunkM = 0;
+  let drawnM = 0;
+  let hiddenByRidgeM = 0;
+  let hiddenByTerrainMeshM = 0;
+  let fadedOutM = 0;
 
   for (let p = 0; p < net.polylines.length; p++) {
     const line = net.polylines[p];
@@ -472,66 +653,107 @@ function pageMeasureTrunkVisibility() {
       if (e < sea - 0.002) continue;
       const wy = e * H;
 
+      const projMid = projectPt(wx, wy, wz);
+      if (!projMid) continue;
+
       const segM = Math.hypot(b.x - a.x, b.y - a.y) * (extentM / net.size);
       totalMapTrunkM += segM;
-
-      const vx = vm[0] * wx + vm[4] * wy + vm[8] * wz + vm[12];
-      const vy = vm[1] * wx + vm[5] * wy + vm[9] * wz + vm[13];
-      const vz = vm[2] * wx + vm[6] * wy + vm[10] * wz + vm[14];
-      const vw = vm[3] * wx + vm[7] * wy + vm[11] * wz + vm[15];
-      const cx = pm[0] * vx + pm[4] * vy + pm[8] * vz + pm[12] * vw;
-      const cy = pm[1] * vx + pm[5] * vy + pm[9] * vz + pm[13] * vw;
-      const cz = pm[2] * vx + pm[6] * vy + pm[10] * vz + pm[14] * vw;
-      const cw = pm[3] * vx + pm[7] * vy + pm[11] * vz + pm[15] * vw;
-      if (cw <= 0.1) continue;
-      const ndcX = cx / cw;
-      const ndcY = cy / cw;
-      const ndcZ = cz / cw;
-      if (Math.abs(ndcX) > 1.0 || Math.abs(ndcY) > 1.0 || ndcZ < -1.0 || ndcZ > 1.0) continue;
-
       inFrustumTrunkM += segM;
 
-      let occluded = false;
-      for (let s = 1; s <= 6; s++) {
-        const t = s / 7;
+      let drawnOnScreen = false;
+      if (hasIdMask) {
+        if (hasMaskNear(projMid.px, projMid.py, 2)) drawnOnScreen = true;
+        else {
+          for (const t of [0.25, 0.75]) {
+            const tu = (a.x + (b.x - a.x) * t) * invSize;
+            const tv = (a.y + (b.y - a.y) * t) * invSize;
+            const tx = (tu - 0.5) * R;
+            const tz = (tv - 0.5) * R;
+            const tp = projectPt(tx, elevAt(tx, tz) * H, tz);
+            if (tp && hasMaskNear(tp.px, tp.py, 2)) {
+              drawnOnScreen = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (drawnOnScreen) {
+        drawnM += segM;
+        continue;
+      }
+
+      let ridgeBlocked = false;
+      for (let s = 1; s <= 14; s++) {
+        const t = s / 16;
         const sx = cpos.x + (wx - cpos.x) * t;
         const sy = cpos.y + (wy - cpos.y) * t;
         const sz = cpos.z + (wz - cpos.z) * t;
-        if (elevAt(sx, sz) * H > sy + 0.55) {
-          occluded = true;
+        if (elevAt(sx, sz) * H > sy + 0.9) {
+          ridgeBlocked = true;
           break;
         }
       }
-      if (occluded) continue;
+      if (ridgeBlocked) {
+        hiddenByRidgeM += segM;
+        continue;
+      }
 
       const camDist = Math.hypot(wx - cpos.x, wy - cpos.y, wz - cpos.z);
-      const camDistM = camDist * mPerUnit;
       const pxWorldM = camDist * pxPerUnit * mPerUnit;
       const halfW = wM * 0.5;
-      const maxTrunkExpand = Math.max(halfW * 2.4, Math.min(115.0, Math.max(halfW * 7.0, pxWorldM * 0.92)));
-      const expandedHalfW = Math.min(maxTrunkExpand, pxWorldM * 0.92);
-      const geomHalfW = Math.max(halfW, expandedHalfW);
-      const rawCov = clamp01(halfW / Math.max(geomHalfW, 0.01));
-      const trunkCovFloor = 0.56 + 0.36 * clamp01((wM - 4.0) / 22.0 + (strahler >= 4 ? 0.36 : 0));
-      const cov = Math.max(trunkCovFloor, Math.pow(rawCov, 0.30));
-      const trunkFloor = 0.64 + 0.30 * clamp01((wM - 4.0) / 22.0 + (strahler >= 4 ? 0.35 : 0));
-      const maxVisM = Math.max(220000, wM * 680);
-      const distFade = Math.max(trunkFloor, 1 - smoothstep(maxVisM * 0.44, maxVisM, camDistM));
-      const haze = 1 - Math.exp(-camDistM / 35000);
-      const effVis = cov * distFade * (1 - haze * 0.34);
-      const onScreenPx = (geomHalfW * 2) / Math.max(1e-4, pxWorldM);
-      if (onScreenPx >= 0.75 && effVis >= 0.14) {
-        visibleTrunkM += segM;
+      const onScreenPx = (halfW * 2) / Math.max(1e-4, pxWorldM);
+      if (quality === 'low' ? onScreenPx < 0.45 : onScreenPx < 0.20) {
+        fadedOutM += segM;
+      } else {
+        hiddenByTerrainMeshM += segM;
       }
     }
   }
 
+  // Add out-of-frustum trunk length to totalMapTrunkM so totalMapTrunkKm matches whole map
+  // (re-scan cheaply or track above? Let's compute exact totalMapTrunkM across all segments).
+  totalMapTrunkM = 0;
+  for (let p = 0; p < net.polylines.length; p++) {
+    const line = net.polylines[p];
+    for (let k = 1; k < line.length; k++) {
+      const a = line[k - 1];
+      const b = line[k];
+      const strahler = Math.max(a.strahler || 1, b.strahler || 1);
+      const wM = a.halfW + b.halfW;
+      if (!(strahler >= 3 || wM >= 10.0)) continue;
+      const u = ((a.x + b.x) * 0.5) * invSize;
+      const v = ((a.y + b.y) * 0.5) * invSize;
+      if (Math.min(u, 1 - u, v, 1 - v) < 0.014 * edgeScale) continue;
+      const wx = (u - 0.5) * R;
+      const wz = (v - 0.5) * R;
+      if (elevAt(wx, wz) < sea - 0.002) continue;
+      totalMapTrunkM += Math.hypot(b.x - a.x, b.y - a.y) * (extentM / net.size);
+    }
+  }
+
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const pct = (part) => (inFrustumTrunkM > 0 ? r1((part / inFrustumTrunkM) * 100) : 0);
+
   return {
-    totalMapTrunkKm: Math.round(totalMapTrunkM / 100) / 10,
-    inFrustumTrunkKm: Math.round(inFrustumTrunkM / 100) / 10,
-    visibleTrunkKm: Math.round(visibleTrunkM / 100) / 10,
-    visibleShareInFrustumPct: inFrustumTrunkM > 0 ? Math.round((visibleTrunkM / inFrustumTrunkM) * 1000) / 10 : 0,
-    visibleShareOfMapPct: totalMapTrunkM > 0 ? Math.round((visibleTrunkM / totalMapTrunkM) * 1000) / 10 : 0,
+    totalMapTrunkKm: r1(totalMapTrunkM / 1000),
+    inFrustumTrunkKm: r1(inFrustumTrunkM / 1000),
+    drawnKm: r1(drawnM / 1000),
+    hiddenByRidgeKm: r1(hiddenByRidgeM / 1000),
+    hiddenByTerrainMeshKm: r1(hiddenByTerrainMeshM / 1000),
+    fadedOutKm: r1(fadedOutM / 1000),
+    drawnPct: pct(drawnM),
+    hiddenByRidgePct: pct(hiddenByRidgeM),
+    hiddenByTerrainMeshPct: pct(hiddenByTerrainMeshM),
+    fadedOutPct: pct(fadedOutM),
+    hasIdMask,
+    trunkPixelCount,
+    meanRiverLuma: contrastSamples > 0 ? r3(sumRivL / contrastSamples) : 0,
+    meanSurroundLuma: contrastSamples > 0 ? r3(sumRingL / contrastSamples) : 0,
+    meanSignedContrast: contrastSamples > 0 ? r3(sumSignedC / contrastSamples) : 0,
+    meanAbsContrast: contrastSamples > 0 ? r3(sumAbsC / contrastSamples) : 0,
+    meanWeberContrast: contrastSamples > 0 ? r3(sumWeberC / contrastSamples) : 0,
   };
 }
 
@@ -1530,6 +1752,100 @@ function pageAnalyseWorld() {
     }
   }
 
+  // aerial500 & aerial3km (opt-in): aerial views looking over main branching rivers (~500 m and ~3 km up).
+  {
+    const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
+    const uYc = H / (metrics.elevSpanM || 7200);
+    const rNet = window.__wv2RiverNet;
+    let a500 = null;
+    if (rNet && Array.isArray(rNet.polylines)) {
+      const nSize = rNet.size || 2048;
+      for (let p = 0; p < rNet.polylines.length; p++) {
+        const line = rNet.polylines[p];
+        if (line.length < 30) continue;
+        for (let k = 8; k < line.length - 18; k += 4) {
+          const pt = line[k];
+          if ((pt.strahler || 1) < 4 || pt.halfW * 2 < 12.0 || pt.isWaterfall) continue;
+          const rx = (pt.x / Math.max(1, nSize - 1) - 0.5) * R;
+          const rz = (pt.y / Math.max(1, nSize - 1) - 0.5) * R;
+          if (Math.abs(rx) > R * 0.40 || Math.abs(rz) > R * 0.40) continue;
+          const e = elevAt(rx, rz);
+          if (e < sea + 0.005) continue;
+          const pNext = line[Math.min(line.length - 1, k + 12)];
+          const dx = pNext.x - pt.x;
+          const dz = pNext.y - pt.y;
+          const dL = Math.hypot(dx, dz);
+          if (dL < 1e-3) continue;
+          const azDn = Math.atan2(dz, dx);
+          const remKm = ((line[line.length - 1].alongM || 0) - (pt.alongM || 0)) / 1000;
+          const score = pt.halfW * 2 * Math.min(18, remKm);
+          if (!a500 || score > a500.score) {
+            a500 = { x: rx, z: rz, widthM: pt.halfW * 2, ord: pt.strahler, azDn, score };
+          }
+        }
+      }
+    }
+    if (!a500) skip('aerial500', 'no Strahler >= 4 main river reach found');
+    else {
+      const gY = Math.max(surfAt(a500.x, a500.z), meshSurfAt(a500.x, a500.z));
+      const cY = gY + 500 * uYc;
+      const distUnits = 866 * unitsPerM; // ~30 deg below horizon
+      const tx = a500.x + distUnits * Math.cos(a500.azDn);
+      const tz = a500.z + distUnits * Math.sin(a500.azDn);
+      const tY = Math.max(surfAt(tx, tz), meshSurfAt(tx, tz));
+      const pos = [a500.x, cY, a500.z];
+      const tgt = [tx, tY, tz];
+      put(
+        'aerial500',
+        { position: pos, target: tgt, azimuthDeg: deg(azTo(pos, tgt)), pitchDeg: deg(Math.atan2(tY - cY, distUnits)), lineOfSight: 'unchecked (500 m aerial)' },
+        `500 m above main stem (Strahler ${a500.ord}, W~${a500.widthM.toFixed(0)} m) (${biomeAt(a500.x, a500.z)})`,
+      );
+    }
+
+    let sumX = 0;
+    let sumZ = 0;
+    let cnt = 0;
+    if (rNet && Array.isArray(rNet.polylines)) {
+      const nSize = rNet.size || 2048;
+      for (let p = 0; p < rNet.polylines.length; p++) {
+        const line = rNet.polylines[p];
+        for (let k = 0; k < line.length; k += 2) {
+          const pt = line[k];
+          if ((pt.strahler || 1) < 3) continue;
+          const u = pt.x / Math.max(1, nSize - 1);
+          const v = pt.y / Math.max(1, nSize - 1);
+          if (u < 0.66 || u > 0.92 || v < 0.22 || v > 0.78) continue;
+          const rx = (u - 0.5) * R;
+          const rz = (v - 0.5) * R;
+          const hM = (metrics.elevMinM ?? -1500) + elevAt(rx, rz) * (metrics.elevSpanM || 7200);
+          if (hM < 0 || hM > 900) continue;
+          const wt = pt.strahler >= 4 ? 3 : 1;
+          sumX += rx * wt;
+          sumZ += rz * wt;
+          cnt += wt;
+        }
+      }
+    }
+    if (cnt === 0) skip('aerial3km', 'no eastern lowland trunk network found');
+    else {
+      const tx = sumX / cnt;
+      const tz = sumZ / cnt;
+      const tY = Math.max(surfAt(tx, tz), meshSurfAt(tx, tz));
+      const offUnits = 5400 * unitsPerM;
+      const azFrom = Math.PI + 0.55; // looking ~ENE across eastern valleys & lowland trunks
+      const cx = Math.max(-R * 0.45, Math.min(R * 0.45, tx + offUnits * Math.cos(azFrom)));
+      const cz = Math.max(-R * 0.45, Math.min(R * 0.45, tz + offUnits * Math.sin(azFrom)));
+      const cY = Math.max(tY, surfAt(cx, cz), meshSurfAt(cx, cz)) + 3000 * uYc;
+      const pos = [cx, cY, cz];
+      const tgt = [tx, tY, tz];
+      put(
+        'aerial3km',
+        { position: pos, target: tgt, azimuthDeg: deg(azTo(pos, tgt)), pitchDeg: deg(Math.atan2(tY - cY, Math.hypot(tx - cx, tz - cz))), lineOfSight: 'unchecked (3 km aerial)' },
+        '3 km up oblique over eastern lowland trunk network',
+      );
+    }
+  }
+
   // 6. forest: the 32-unit square with the most trees.
   {
     const BIN = 32;
@@ -2129,11 +2445,11 @@ async function main() {
         const followed = await page.evaluate(() => window.__mapCapture.followed);
         if (followed) entry.pose = { position: null, target: followed.map((n) => Math.round(n * 10) / 10) };
       }
-      if (id === 'overview' || id === 'horizon' || id === 'river' || id === 'forest') {
-        const tv = await page.evaluate(pageMeasureTrunkVisibility);
-        if (tv) entry.trunkVisibility = tv;
+      if (id === 'overview' || id === 'horizon' || id === 'river' || id === 'forest' || id === 'vista' || id === 'aerial500' || id === 'aerial3km') {
+        const ar = await page.evaluate(pageMeasureAerialRivers, opts.quality);
+        if (ar) entry.aerialRivers = ar;
       }
-      log(`${id}: ${entry.fps.medianFps ?? '–'} fps median, ${entry.fps.p5Fps ?? '–'} p5 (warmup max ${entry.warmup.maxFrameMs} ms), ${entry.counters?.total?.calls ?? '–'} calls, ${fmt(entry.counters?.total?.triangles)} tris${entry.trunkVisibility ? ` · trunks ${entry.trunkVisibility.visibleShareInFrustumPct}% frustum (${entry.trunkVisibility.visibleTrunkKm}/${entry.trunkVisibility.inFrustumTrunkKm} km)` : ''}`);
+      log(`${id}: ${entry.fps.medianFps ?? '–'} fps median, ${entry.fps.p5Fps ?? '–'} p5 (warmup max ${entry.warmup.maxFrameMs} ms), ${entry.counters?.total?.calls ?? '–'} calls, ${fmt(entry.counters?.total?.triangles)} tris${entry.aerialRivers ? ` · drawn ${entry.aerialRivers.drawnPct}% (${entry.aerialRivers.drawnKm}/${entry.aerialRivers.inFrustumTrunkKm} km, px=${entry.aerialRivers.trunkPixelCount}, dL=${entry.aerialRivers.meanSignedContrast})` : ''}`);
     }
     phase = 'end';
     await page.evaluate(pageWaitFrames, { minFrames: 2, minMs: 200, capMs: 5000 });

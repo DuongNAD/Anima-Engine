@@ -29,6 +29,7 @@ import {
 } from './worldV2/tileLoader';
 import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adapter';
 import type { WorldV2LoadedBundle } from './worldV2/types';
+import { getCachedRiverNetwork } from './worldV2/riverSmooth';
 import WorldV2Flora from './worldV2/WorldV2Flora';
 import WorldV2Rivers from './worldV2/WorldV2Rivers';
 import WorldV2Spray from './worldV2/WorldV2Spray';
@@ -54,7 +55,7 @@ import {
 } from '../../utils/lodFocus';
 import { sunDirectionForTime, sunDirectionWithTilt } from './utils/skyParams';
 import { configureAtmosphere, setAtmosphereGround } from './materials/atmosphere';
-import { ELEV_SPAN_M, SEA_LEVEL_NORM } from './worldV2/types';
+import { ELEV_SPAN_M, SEA_LEVEL_NORM, WORLD_EXTENT_M } from './worldV2/types';
 import { ALWAYS_DAY_HOUR, sceneDelta, stepTimeOfDay } from './utils/sceneClock';
 import {
   QUALITY_SELECTIONS,
@@ -381,6 +382,29 @@ export const WorldShowcase: React.FC = () => {
   useEffect(() => {
     window.__world = world;
   }, [world]);
+
+  useEffect(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.__wv2CaptureHelpers = {
+      createRenderTarget: (width: number, height: number) =>
+        new THREE.WebGLRenderTarget(width, height, { depthBuffer: true }),
+      MeshBasicMaterial: THREE.MeshBasicMaterial,
+      NoBlending: THREE.NoBlending,
+      NormalBlending: THREE.NormalBlending,
+    };
+    if (!worldV2Bundle) return;
+    const net = getCachedRiverNetwork(worldV2Bundle);
+    w.__wv2RiverNet = {
+      polylines: net.polylines,
+      size: net.size,
+      extentM: worldV2Bundle.extentM || WORLD_EXTENT_M,
+      renderSize,
+      heightUnits: renderSize * heightRatio,
+    };
+    return () => {
+      if (w.__wv2RiverNet) delete w.__wv2RiverNet;
+    };
+  }, [worldV2Bundle, renderSize, heightRatio]);
 
   // The scenic patch of LAND the world opens on, rather than the origin (usually open ocean).
   //
