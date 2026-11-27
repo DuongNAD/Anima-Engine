@@ -608,15 +608,54 @@ fn eval_multi_strat_and_envelope(
     let d_ridge1_warped = d_ridge1_m + 1_150.0 * spur_wave * flank_w1;
     let w1 = 7_400.0;
     let flank_spur1 = flank_w1 * 0.24 * spur_wave;
-    let uplift1 = piedmont_gate1
+    let mut uplift1 = piedmont_gate1
         * sech2(d_ridge1_warped / w1)
         * (0.05 + 0.95 * env1)
         * (1.0 + 0.20 * fbm_broad.max(-0.15) + flank_spur1).max(0.45);
     let crest1 = piedmont_gate1 * sech2(d_ridge1_m / 3_400.0) * env1;
-    let base_massif1_h = piedmont_gate1
+    let mut base_massif1_h = piedmont_gate1
         * (5_380.0 * uplift1
             + 420.0 * env1 * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
             + 260.0 * crest1);
+    if cfg.uplift_roughness > 0.0 {
+        let r = f64::from(cfg.uplift_roughness);
+        let fault_fbm = fbm_4(
+            p.seed_u64 ^ 0xF417_1111_2222_3333,
+            u_rot * 9.5 * freq_scale,
+            v_rot * 9.5 * freq_scale,
+        );
+        let block_fbm = fbm_4(
+            p.seed_u64 ^ 0xB10C_4444_5555_6666,
+            (u_rot + 0.35 * v_rot) * 11.5 * freq_scale,
+            (v_rot - 0.35 * u_rot) * 11.5 * freq_scale,
+        );
+        let ridge_noise = fbm_4(
+            p.seed_u64 ^ 0xC2E5_7777_8888_9999,
+            u_rot * 16.0 * freq_scale,
+            v_rot * 16.0 * freq_scale,
+        );
+        let d_fault1 = d_ridge1_m + (2_600.0 * r) * fault_fbm + 1_150.0 * spur_wave * flank_w1;
+        let sub_ridge =
+            sech2((d_fault1 - 5_200.0 * libm::sin(v_rot * TAU * 4.5 + p.phase_z)) / 2_800.0) * env1;
+        let ob_coord = (d_ridge1_m * 0.707 + (z_r_m - 0.70 * extent_m) * 0.707) / 4_400.0;
+        let cross_rib = (0.5 + 0.5 * libm::sin(ob_coord + 2.4 * fault_fbm)) * flank_w1;
+        uplift1 = (piedmont_gate1
+            * (sech2(d_fault1 / (w1 * (1.0 - 0.18 * r.min(1.0)))) + 0.42 * r * sub_ridge)
+            * (0.05 + 0.95 * env1)
+            * (1.0 + 0.20 * fbm_broad.max(-0.15) + 0.55 * r * block_fbm + 0.35 * r * cross_rib)
+                .max(0.20))
+        .max(0.0);
+        let flat_cap_scale = (1.0 - 0.65 * r).max(0.0);
+        base_massif1_h = piedmont_gate1
+            * (5_380.0 * uplift1
+                + 420.0 * flat_cap_scale * env1 * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
+                + 260.0 * crest1
+                + 480.0 * r * ridge_noise * env1 * (0.25 + 0.75 * sech2(d_fault1 / 6_200.0)))
+            .max(0.0);
+    }
+    if (cfg.init_bedrock_frac - 1.0).abs() > 1e-6 {
+        base_massif1_h *= f64::from(cfg.init_bedrock_frac);
+    }
     let tayrona_t = ((d_coast_m + 260.0) / 950.0).clamp(0.0, 1.0);
     let tayrona_gate = tayrona_t * tayrona_t * (3.0 - 2.0 * tayrona_t);
     let tayrona_spur = 1_850.0 * cliff_arc * tayrona_gate * sech2((d_coast_m - 1_550.0) / 1_650.0);
@@ -636,12 +675,39 @@ fn eval_multi_strat_and_envelope(
     } else {
         5_800.0
     };
-    let uplift2 = piedmont_gate2
+    let mut uplift2 = piedmont_gate2
         * sech2(d_ridge2_warped / w2)
         * (0.05 + 0.95 * env2)
         * (1.0 + 0.18 * fbm_broad.max(-0.15) + flank_w2 * 0.20 * spur_wave).max(0.45);
-    let massif2_h =
+    let mut massif2_h =
         piedmont_gate2 * (3_150.0 * uplift2 + 220.0 * env2 * sech2(d_ridge2_m / 3_000.0));
+    if cfg.uplift_roughness > 0.0 {
+        let r = f64::from(cfg.uplift_roughness);
+        let fault_fbm2 = fbm_4(
+            p.seed_u64 ^ 0xF417_AAAA_BBBB_CCCC,
+            u_rot * 10.0 * freq_scale,
+            v_rot * 10.0 * freq_scale,
+        );
+        let block_fbm2 = fbm_4(
+            p.seed_u64 ^ 0xB10C_DDDD_EEEE_FFFF,
+            (u_rot - 0.35 * v_rot) * 12.0 * freq_scale,
+            (v_rot + 0.35 * u_rot) * 12.0 * freq_scale,
+        );
+        let d_fault2 = d_ridge2_m + (2_100.0 * r) * fault_fbm2 + 950.0 * spur_wave * flank_w2;
+        uplift2 = (piedmont_gate2
+            * sech2(d_fault2 / w2)
+            * (0.05 + 0.95 * env2)
+            * (1.0 + 0.18 * fbm_broad.max(-0.15) + 0.50 * r * block_fbm2).max(0.20))
+        .max(0.0);
+        massif2_h = piedmont_gate2
+            * (3_150.0 * uplift2
+                + 220.0 * (1.0 - 0.65 * r).max(0.0) * env2 * sech2(d_ridge2_m / 3_000.0)
+                + 320.0 * r * block_fbm2 * env2 * sech2(d_fault2 / 4_500.0))
+            .max(0.0);
+    }
+    if (cfg.init_bedrock_frac - 1.0).abs() > 1e-6 {
+        massif2_h *= f64::from(cfg.init_bedrock_frac);
+    }
 
     let (massif_h, massif_uplift, active_ridge_m, active_ridge_u) = if massif1_h >= massif2_h {
         (
