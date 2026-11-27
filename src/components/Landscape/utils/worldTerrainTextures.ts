@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import type { World } from './worldGen';
 import { Biome, BIOME_COUNT, BIOME_RGB } from './worldGen';
 import { sampleElevation, sampleMeshHeight } from './worldSample';
+import type { WorldV2LoadedBundle } from '../worldV2/types';
 
 /**
  * Enhanced display palette for the 22 biomes (`AMEND W3-lite`) — tuned so every adjacent
@@ -827,4 +828,138 @@ export function buildSplatTexture(world: World): THREE.DataTexture {
   tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.needsUpdate = true;
   return tex;
+}
+
+export interface WorldV2TerrainTextures {
+  colorMap: THREE.DataTexture;
+  normalMap: THREE.DataTexture;
+  roughnessMap: THREE.DataTexture;
+  detailMap: THREE.DataTexture;
+  riverMaskMap: THREE.DataTexture;
+  splatMap: THREE.DataTexture;
+  horizonMap: THREE.DataTexture;
+  shoreSdfMap: THREE.DataTexture;
+  hydroFlowMap: THREE.DataTexture;
+}
+
+function createRgbaTex(
+  data: Uint8Array,
+  size: number,
+  colorSpace: THREE.ColorSpace,
+  mipmap = true,
+): THREE.DataTexture {
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.colorSpace = colorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = mipmap ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+  tex.generateMipmaps = mipmap;
+  if (mipmap) tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Builds GPU terrain textures directly from verified C01 KTX2 tile layers (`WV2-6`, `§3.2`/`§7.1`).
+ * Never invokes `computeHorizonAoMap` — `terrain_lighting` and 4-azimuth `terrain_horizon` come
+ * straight from the offline bake.
+ */
+export function buildWorldV2TerrainTextures(
+  bundle: WorldV2LoadedBundle,
+  world: World,
+): WorldV2TerrainTextures {
+  const { size, macroAlbedoSize } = bundle;
+  const count = size * size;
+
+  const colorData = new Uint8Array(count * 4);
+  const invTarget = size > 1 ? 1 / (size - 1) : 1;
+  for (let y = 0; y < size; y += 1) {
+    const gy = y * invTarget * (macroAlbedoSize - 1);
+    const y0 = Math.floor(gy);
+    const y1 = Math.min(macroAlbedoSize - 1, y0 + 1);
+    const fy = gy - y0;
+    for (let x = 0; x < size; x += 1) {
+      const gx = x * invTarget * (macroAlbedoSize - 1);
+      const x0 = Math.floor(gx);
+      const x1 = Math.min(macroAlbedoSize - 1, x0 + 1);
+      const fx = gx - x0;
+
+      const idx00 = (y0 * macroAlbedoSize + x0) * 4;
+      const idx10 = (y0 * macroAlbedoSize + x1) * 4;
+      const idx01 = (y1 * macroAlbedoSize + x0) * 4;
+      const idx11 = (y1 * macroAlbedoSize + x1) * 4;
+
+      const i = y * size + x;
+      const o4 = i * 4;
+      const ao = bundle.lightingRgba[o4] / 255;
+      const svf = bundle.lightingRgba[o4 + 1] / 255;
+      const bounce = bundle.lightingRgba[o4 + 2] / 255;
+      const litScale = 0.56 + 0.44 * (ao * 0.72 + svf * 0.28) + bounce * 0.06;
+
+      for (let c = 0; c < 3; c += 1) {
+        const s00 = bundle.macroAlbedoRgba[idx00 + c] / 255;
+        const s10 = bundle.macroAlbedoRgba[idx10 + c] / 255;
+        const s01 = bundle.macroAlbedoRgba[idx01 + c] / 255;
+        const s11 = bundle.macroAlbedoRgba[idx11 + c] / 255;
+        const srgbSample =
+          (s00 * (1 - fx) + s10 * fx) * (1 - fy) + (s01 * (1 - fx) + s11 * fx) * fy;
+        const linear = Math.pow(Math.max(0.001, srgbSample), 2.2) * litScale;
+        const encoded = Math.pow(Math.min(1.0, linear), 1.0 / 2.2);
+        colorData[o4 + c] = Math.min(255, Math.max(0, Math.round(encoded * 255)));
+      }
+      colorData[o4 + 3] = 255;
+    }
+  }
+
+  // Tangent-space RGBA8 normal map from decoded BC5 normal_xy: R=nx, G=nz, B=ny_up.
+  const normalData = new Uint8Array(count * 4);
+  for (let i = 0; i < count; i += 1) {
+    const rx = bundle.normalRg[i * 2];
+    const rz = bundle.normalRg[i * 2 + 1];
+    const nx = (rx / 255.0) * 2.0 - 1.0;
+    const nz = (rz / 255.0) * 2.0 - 1.0;
+    const ny = Math.sqrt(Math.max(0.0, 1.0 - nx * nx - nz * nz));
+    const o4 = i * 4;
+    normalData[o4] = rx;
+    normalData[o4 + 1] = rz;
+    normalData[o4 + 2] = Math.min(255, Math.max(0, Math.round((ny * 0.5 + 0.5) * 255)));
+    normalData[o4 + 3] = 255;
+  }
+
+  // River mask aligned to `terrainPbrMaterial.ts` Vlachos flow advection channels:
+  // R = river strength, G = ux, B = uz, A = flow validity from normalized Q.
+  const riverData = new Uint8Array(count * 4);
+  for (let i = 0; i < count; i += 1) {
+    const o4 = i * 4;
+    const ux = bundle.hydroFlowRgba[o4];
+    const uz = bundle.hydroFlowRgba[o4 + 1];
+    const q = bundle.hydroFlowRgba[o4 + 2];
+    const riv = bundle.hydroFlowRgba[o4 + 3];
+    riverData[o4] = riv;
+    riverData[o4 + 1] = ux;
+    riverData[o4 + 2] = uz;
+    riverData[o4 + 3] = riv > 8 ? Math.max(180, q) : 0;
+  }
+
+  const shoreSdfData = new Uint8Array(count * 4);
+  for (let i = 0; i < count; i += 1) {
+    const o4 = i * 4;
+    shoreSdfData[o4] = bundle.shoreSdfRg[i * 2];
+    shoreSdfData[o4 + 1] = bundle.shoreSdfRg[i * 2 + 1];
+    shoreSdfData[o4 + 2] = 0;
+    shoreSdfData[o4 + 3] = 255;
+  }
+
+  return {
+    colorMap: createRgbaTex(colorData, size, THREE.SRGBColorSpace, true),
+    normalMap: createRgbaTex(normalData, size, THREE.NoColorSpace, true),
+    roughnessMap: buildRoughnessTexture(world),
+    detailMap: buildDetailTexture(),
+    riverMaskMap: createRgbaTex(riverData, size, THREE.NoColorSpace, false),
+    splatMap: buildSplatTexture(world),
+    horizonMap: createRgbaTex(new Uint8Array(bundle.horizonRgba), size, THREE.NoColorSpace, false),
+    shoreSdfMap: createRgbaTex(shoreSdfData, size, THREE.NoColorSpace, false),
+    hydroFlowMap: createRgbaTex(new Uint8Array(bundle.hydroFlowRgba), size, THREE.NoColorSpace, false),
+  };
 }

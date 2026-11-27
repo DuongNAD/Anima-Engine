@@ -3,7 +3,7 @@ import type { AgentType } from '../../../types/generated/AgentType';
 import type { EnvironmentalElement } from '../../../types/generated/EnvironmentalElement';
 import type { SegmentState } from '../../../types/generated/SegmentState';
 import type { SimulationTickPayload } from '../../../types/generated/SimulationTickPayload';
-import { SIM_BOUNDS_HALF } from './liveAgentTransform';
+import { SIM_BOUNDS_EXTENT, SIM_BOUNDS_HALF } from './liveAgentTransform';
 
 // ---------------------------------------------------------------------------------------
 // SYNTHETIC tick fixture generator (RW0-2) — NOT simulation output.
@@ -45,6 +45,8 @@ export interface SyntheticTicksOptions {
   seed?: number;
   /** Optional fixed segment count per creature in [3, 15]. Omit or null to span 3..15 across agents. */
   segmentsPerAgent?: number | null;
+  /** Optional canonical [-100, 100] land anchors overriding the default v1 `LAND_ANCHORS`. */
+  anchors?: ReadonlyArray<readonly [number, number]>;
 }
 
 export interface NormalizedSyntheticOptions {
@@ -120,13 +122,219 @@ export const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
   [-17.0, 28.0], // western lowland steppe (elev 0.150)
 ];
 
+/** Minimal SoA world slice needed to derive deterministic canonical land anchors. */
+export interface SyntheticAnchorWorld {
+  size: number;
+  elevation: ArrayLike<number>;
+  biome: ArrayLike<number>;
+  riverAmt?: ArrayLike<number>;
+  water?: ArrayLike<number>;
+  slope?: ArrayLike<number>;
+  seaLevel: number;
+}
+
+const DISALLOWED_ANCHOR_BIOMES = new Set<number>([
+  0, // Ocean
+  1, // Beach
+  11, // Rock
+  12, // Snow
+  13, // River
+  14, // Lake
+  18, // Alpine
+  20, // Glacier
+]);
+
+const PREFERRED_ANCHOR_BIOMES = new Set<number>([
+  3, // Savanna
+  4, // Grassland
+  5, // Shrubland
+  6, // Forest
+  7, // Jungle
+  8, // Taiga
+  10, // Swamp
+  16, // Chaparral
+  17, // Steppe
+]);
+
+const ANCHOR_STENCIL_OFFSETS: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],
+  [10, 0],
+  [-10, 0],
+  [0, 10],
+  [0, -10],
+  [7, 7],
+  [-7, 7],
+  [7, -7],
+  [-7, -7],
+  [20, 0],
+  [-20, 0],
+  [0, 20],
+  [0, -20],
+  [14, 14],
+  [-14, 14],
+  [14, -14],
+  [-14, -14],
+];
+
+interface AnchorCandidate {
+  x: number;
+  z: number;
+  score: number;
+}
+
+function sampleWorldCellIndex(size: number, cx: number, cz: number): number {
+  const u = clamp((cx + SIM_BOUNDS_HALF) / SIM_BOUNDS_EXTENT, 0, 1);
+  const v = clamp((cz + SIM_BOUNDS_HALF) / SIM_BOUNDS_EXTENT, 0, 1);
+  const gx = Math.round(u * (size - 1));
+  const gz = Math.round(v * (size - 1));
+  return gz * size + gx;
+}
+
+function isAquaticOrSubmerged(world: SyntheticAnchorWorld, idx: number, minElev: number): boolean {
+  const elev = Number(world.elevation[idx] ?? 0);
+  const b = Number(world.biome[idx] ?? 0);
+  if (!Number.isFinite(elev) || elev <= minElev) return true;
+  if (b === 0 || b === 14) return true; // Ocean or Lake
+  if (world.water && Number(world.water[idx] ?? 0) > 0) return true;
+  return false;
+}
+
+/**
+ * Deterministically select up to `count` canonical `[-100, 100]` lowland land anchors from a
+ * loaded world's SoA terrain arrays so World v2 synthetic creatures and props spawn inland on
+ * vegetated terrain instead of the v1 `#161` supercontinent coordinates.
+ */
+export function selectWorldV2LandAnchors(
+  world: SyntheticAnchorWorld | null | undefined,
+  count = LAND_ANCHORS.length,
+): ReadonlyArray<readonly [number, number]> {
+  if (
+    !world ||
+    !Number.isInteger(world.size) ||
+    world.size < 2 ||
+    !Number.isFinite(world.seaLevel)
+  ) {
+    return LAND_ANCHORS;
+  }
+  const n = world.size * world.size;
+  if (world.elevation.length < n || world.biome.length < n || count <= 0) {
+    return LAND_ANCHORS;
+  }
+
+  const tier1: AnchorCandidate[] = [];
+  const tier2: AnchorCandidate[] = [];
+
+  for (let cz = -74; cz <= 74; cz += 4) {
+    for (let cx = -74; cx <= 74; cx += 4) {
+      const idx = sampleWorldCellIndex(world.size, cx, cz);
+      const elev = Number(world.elevation[idx] ?? 0);
+      const b = Number(world.biome[idx] ?? 0);
+      if (isAquaticOrSubmerged(world, idx, world.seaLevel + 0.004)) continue;
+      if (DISALLOWED_ANCHOR_BIOMES.has(b)) continue;
+      if (world.riverAmt && Number(world.riverAmt[idx] ?? 0) >= 64) continue;
+
+      let landHits = 0;
+      let lowlandHits = 0;
+      for (let k = 0; k < ANCHOR_STENCIL_OFFSETS.length; k += 1) {
+        const [ox, oz] = ANCHOR_STENCIL_OFFSETS[k];
+        const sIdx = sampleWorldCellIndex(world.size, cx + ox, cz + oz);
+        if (isAquaticOrSubmerged(world, sIdx, world.seaLevel)) continue;
+        landHits += 1;
+        const sb = Number(world.biome[sIdx] ?? 0);
+        if (!DISALLOWED_ANCHOR_BIOMES.has(sb) && !(world.riverAmt && Number(world.riverAmt[sIdx] ?? 0) >= 64)) {
+          lowlandHits += 1;
+        }
+      }
+
+      const landFrac = landHits / ANCHOR_STENCIL_OFFSETS.length;
+      if (landFrac < 0.8) continue;
+
+      const lowlandFrac = lowlandHits / ANCHOR_STENCIL_OFFSETS.length;
+      const lowlandElevBonus =
+        elev <= world.seaLevel + 0.35 ? 0.5 : Math.max(0, 0.35 - (elev - world.seaLevel) * 0.5);
+      const slopeVal = world.slope ? Number(world.slope[idx] ?? 0) : 0;
+      const slopePenalty = Math.min(1.5, Math.max(0, slopeVal) * 2.0);
+      const centralityBonus = 0.25 * (1 - Math.hypot(cx, cz) / 110);
+      const score =
+        lowlandFrac * 4.0 +
+        (PREFERRED_ANCHOR_BIOMES.has(b) ? 1.5 : 0) +
+        lowlandElevBonus -
+        slopePenalty +
+        centralityBonus;
+
+      if (landFrac === 1.0) {
+        tier1.push({ x: cx, z: cz, score });
+      } else {
+        tier2.push({ x: cx, z: cz, score });
+      }
+    }
+  }
+
+  const byDeterministicRank = (a: AnchorCandidate, b: AnchorCandidate): number => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.z !== b.z) return a.z - b.z;
+    return a.x - b.x;
+  };
+  tier1.sort(byDeterministicRank);
+  tier2.sort(byDeterministicRank);
+
+  const pool: AnchorCandidate[] = tier1.length >= count ? tier1 : [...tier1, ...tier2];
+
+  if (pool.length === 0) {
+    for (let cz = -80; cz <= 80; cz += 2) {
+      for (let cx = -80; cx <= 80; cx += 2) {
+        const idx = sampleWorldCellIndex(world.size, cx, cz);
+        if (isAquaticOrSubmerged(world, idx, world.seaLevel)) continue;
+        const b = Number(world.biome[idx] ?? 0);
+        const centralityBonus = 0.25 * (1 - Math.hypot(cx, cz) / 115);
+        pool.push({
+          x: cx,
+          z: cz,
+          score: (DISALLOWED_ANCHOR_BIOMES.has(b) ? 0 : 1) + centralityBonus,
+        });
+      }
+    }
+    pool.sort(byDeterministicRank);
+  }
+
+  if (pool.length === 0) {
+    return LAND_ANCHORS;
+  }
+
+  const picked: Array<readonly [number, number]> = [];
+  for (const minDist of [16, 10, 5, 0]) {
+    const minDistSq = minDist * minDist;
+    for (let i = 0; i < pool.length && picked.length < count; i += 1) {
+      const cand = pool[i];
+      let tooClose = false;
+      for (let j = 0; j < picked.length; j += 1) {
+        const dx = cand.x - picked[j][0];
+        const dz = cand.z - picked[j][1];
+        if (dx * dx + dz * dz < minDistSq || (dx === 0 && dz === 0)) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (!tooClose) {
+        picked.push([cand.x, cand.z]);
+      }
+    }
+    if (picked.length >= count) break;
+  }
+
+  return picked.length > 0 ? picked : LAND_ANCHORS;
+}
+
 /**
  * Deterministically generate clearly-labelled synthetic `environmental_state` elements
- * (`lake`, `tree`, `food`) near `LAND_ANCHORS` from an independent PRNG stream (`(seed ^ 0x517e0e1e)
+ * (`lake`, `tree`, `food`) near `anchors` from an independent PRNG stream (`(seed ^ 0x517e0e1e)
  * >>> 0`), preserving trunk root trajectories and segment PRNG draws while chaining spine
  * `jointAnchor.z` inside Rust's `mutation.rs` `|z| <= parent.length / 2` clamp.
  */
-function buildSyntheticEnvironmentalElements(seed: number): EnvironmentalElement[] {
+function buildSyntheticEnvironmentalElements(
+  seed: number,
+  anchors: ReadonlyArray<readonly [number, number]> = LAND_ANCHORS,
+): EnvironmentalElement[] {
   const envRand = mulberry32((seed ^ 0x517e0e1e) >>> 0);
   const elements: EnvironmentalElement[] = [];
   const bound = Math.min(80, SIM_BOUNDS_HALF - 16);
@@ -142,7 +350,7 @@ function buildSyntheticEnvironmentalElements(seed: number): EnvironmentalElement
     anchorOffset: number,
   ): void => {
     for (let i = 0; i < count; i++) {
-      const anchor = LAND_ANCHORS[(i + anchorOffset) % LAND_ANCHORS.length];
+      const anchor = anchors[(i + anchorOffset) % anchors.length];
       elements.push({
         type,
         x: clamp(anchor[0] + (envRand() - 0.5) * spread * 2, -bound, bound),
@@ -299,7 +507,10 @@ function buildAgentMorphology(
   return specs;
 }
 
-function buildAgentSpecs(opts: NormalizedSyntheticOptions): SyntheticAgentSpec[] {
+function buildAgentSpecs(
+  opts: NormalizedSyntheticOptions,
+  anchors: ReadonlyArray<readonly [number, number]> = LAND_ANCHORS,
+): SyntheticAgentSpec[] {
   const rand = mulberry32(opts.seed);
   const agents: SyntheticAgentSpec[] = [];
   const span = SYNTHETIC_MAX_SEGMENTS - SYNTHETIC_MIN_SEGMENTS + 1;
@@ -316,8 +527,8 @@ function buildAgentSpecs(opts: NormalizedSyntheticOptions): SyntheticAgentSpec[]
         ? opts.segmentsPerAgent
         : SYNTHETIC_MIN_SEGMENTS + ((i * 5) % span);
 
-    const anchor = LAND_ANCHORS[i % LAND_ANCHORS.length];
-    const spreadJitter = i < LAND_ANCHORS.length ? 3.5 : 14.0;
+    const anchor = anchors[i % anchors.length];
+    const spreadJitter = i < anchors.length ? 3.5 : 14.0;
     const centerX = clamp(anchor[0] + (rand() - 0.5) * spreadJitter * 2, -maxSafeCoord, maxSafeCoord);
     const centerZ = clamp(anchor[1] + (rand() - 0.5) * spreadJitter * 2, -maxSafeCoord, maxSafeCoord);
     const radiusX = 3.5 + rand() * 5.5;
@@ -353,8 +564,9 @@ export function createSyntheticTickGenerator(
   opts: SyntheticTicksOptions = {},
 ): SyntheticTickGenerator {
   const options = normalizeSyntheticOptions(opts);
-  const agents = buildAgentSpecs(options);
-  const syntheticEnvElements = buildSyntheticEnvironmentalElements(options.seed);
+  const anchors = opts.anchors && opts.anchors.length > 0 ? opts.anchors : LAND_ANCHORS;
+  const agents = buildAgentSpecs(options, anchors);
+  const syntheticEnvElements = buildSyntheticEnvironmentalElements(options.seed, anchors);
 
   // Scratch math objects reused inside synchronous `tickAt` calls.
   const qParent = new THREE.Quaternion();

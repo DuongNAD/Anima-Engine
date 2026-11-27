@@ -10,14 +10,20 @@ import {
   buildRiverMaskTexture,
   buildRoughnessTexture,
   buildSplatTexture,
+  buildWorldV2TerrainTextures,
 } from './utils/worldTerrainTextures';
 import { sceneElapsed } from './utils/sceneClock';
 import { isCaptureRequested } from './utils/captureMode';
 import type { QualityTier } from './utils/qualityTiers';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
+import type { WorldV2LoadedBundle } from './worldV2/types';
 
 export interface WorldTerrainProps {
   world: World;
+  /** Verified World v2 bundle (when active, replaces v1 procedural texture bakes). */
+  worldV2?: WorldV2LoadedBundle | null;
+  /** World-space direction to sun for baked 4-azimuth horizon shadowing. */
+  sunDir?: [number, number, number];
   /** World-space width the terrain is rendered at, regardless of data resolution. */
   renderSize?: number;
   /** Peak height as a fraction of renderSize. */
@@ -38,6 +44,8 @@ export interface WorldTerrainProps {
  */
 export const WorldTerrain: React.FC<WorldTerrainProps> = ({
   world,
+  worldV2 = null,
+  sunDir = [0.6, 0.7, 0.35],
   renderSize = 400,
   heightRatio = 0.13,
   meshResolution = 256,
@@ -91,30 +99,37 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     return geom;
   }, [world, renderSize, heightRatio, meshResolution]);
 
-  const colorMap = useMemo(() => buildColorTexture(world), [world]);
-  const normalMap = useMemo(
-    () => buildNormalTexture(world, renderSize, heightRatio, meshResolution),
-    [world, renderSize, heightRatio, meshResolution],
-  );
-  const roughnessMap = useMemo(() => buildRoughnessTexture(world), [world]);
-  const detailMap = useMemo(() => buildDetailTexture(), []);
-
-  // River-ribbon mask (feathered), so the shader knows where flowing water lies.
-  const riverMaskMap = useMemo(() => buildRiverMaskTexture(world), [world]);
-  const splatMap = useMemo(() => buildSplatTexture(world), [world]);
+  const textures = useMemo(() => {
+    if (worldV2) {
+      return buildWorldV2TerrainTextures(worldV2, world);
+    }
+    return {
+      colorMap: buildColorTexture(world),
+      normalMap: buildNormalTexture(world, renderSize, heightRatio, meshResolution),
+      roughnessMap: buildRoughnessTexture(world),
+      detailMap: buildDetailTexture(),
+      riverMaskMap: buildRiverMaskTexture(world),
+      splatMap: buildSplatTexture(world),
+      horizonMap: null as THREE.DataTexture | null,
+      shoreSdfMap: null as THREE.DataTexture | null,
+      hydroFlowMap: null as THREE.DataTexture | null,
+    };
+  }, [world, worldV2, renderSize, heightRatio, meshResolution]);
 
   const terrainMat = useMemo(
     () =>
       createTerrainPbrMaterial({
-        colorMap,
-        normalMap,
-        roughnessMap,
-        detailMap,
-        riverMaskMap,
-        splatMap,
+        colorMap: textures.colorMap,
+        normalMap: textures.normalMap,
+        roughnessMap: textures.roughnessMap,
+        detailMap: textures.detailMap,
+        riverMaskMap: textures.riverMaskMap,
+        splatMap: textures.splatMap,
+        horizonMap: textures.horizonMap,
+        normalScale: worldV2 ? 0.45 : 1,
         heightUnits: renderSize * heightRatio,
       }),
-    [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, splatMap, renderSize, heightRatio],
+    [textures, worldV2, renderSize, heightRatio],
   );
 
   useEffect(() => {
@@ -138,20 +153,24 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
 
   useFrame((state) => {
     terrainMat.handle.updateTime(sceneElapsed(state.clock));
+    terrainMat.handle.updateSunDir(sunDir);
   });
 
   useEffect(() => {
     return () => {
-      colorMap.dispose();
-      normalMap.dispose();
-      roughnessMap.dispose();
-      detailMap.dispose();
-      riverMaskMap.dispose();
-      splatMap.dispose();
+      textures.colorMap.dispose();
+      textures.normalMap.dispose();
+      textures.roughnessMap.dispose();
+      textures.detailMap.dispose();
+      textures.riverMaskMap.dispose();
+      textures.splatMap.dispose();
+      textures.horizonMap?.dispose();
+      textures.shoreSdfMap?.dispose();
+      textures.hydroFlowMap?.dispose();
       terrainMat.handle.dispose();
       geometry.dispose();
     };
-  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap, splatMap, terrainMat, geometry]);
+  }, [textures, terrainMat, geometry]);
 
   return (
     <mesh geometry={geometry} material={terrainMat.material} name="world-terrain" receiveShadow />

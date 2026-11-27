@@ -21,6 +21,15 @@ import type { World } from './utils/worldGen';
 import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
+import { loadWorldV2Cached, resolveWorldSourceMode, resolveWorldV2Mip } from './worldV2/tileLoader';
+import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adapter';
+import {
+  resolveWorldHeightRatio,
+  resolveWorldSimEntityScaleRatio,
+  type WorldV2LoadedBundle,
+} from './worldV2/types';
+import WorldV2Flora from './worldV2/WorldV2Flora';
+import WorldV2ErrorPanel from './worldV2/WorldV2ErrorPanel';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
 import CaptureEvidenceOverlay from './CaptureEvidenceOverlay';
@@ -70,6 +79,7 @@ import {
   createSimEnvironmentChannel,
   type SimEnvironmentCounts,
 } from './utils/simEnvironment';
+import { installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
 
 // The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
 // aliased to the names this file already used. It moved because the main app pushes the *same*
@@ -83,7 +93,6 @@ import {
 // map*. Changing the scene extent without changing those together silently resizes every tree
 // relative to the world.
 const RENDER_SIZE = FLORA_RADIUS_REFERENCE_EXTENT;
-const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
 // M3: opt-in chunked terrain (frustum-culls off-screen chunks; see WorldTerrainLod / chunkLod).
 // OFF by default = the proven single-mesh WorldTerrain. Turn on for a chunked terrain; add
@@ -150,6 +159,30 @@ const QualityApplier: React.FC<{ tier: QualityTier; dprOverride?: number }> = ({
     setDpr(resolveDeviceDpr(tier, window.devicePixelRatio || 1, dprOverride));
     applyShadowPass(gl, scene, tierConfig.shadows);
   }, [tier, dprOverride, gl, scene, setDpr]);
+  return null;
+};
+
+/** Publishes `__animaFrameCounters` / `__animaSetCanonicalPose` when World v2 replaces `WorldVegetation`. */
+const WorldV2FrameDiagnostics: React.FC<{ renderSize: number; heightRatio: number }> = ({
+  renderSize,
+  heightRatio,
+}) => {
+  const { gl, scene } = useThree();
+  const handleRef = useRef<FrameCountersHandle | null>(null);
+
+  useLayoutEffect(() => {
+    const handle = installFrameCounters(gl, scene, { renderSize, heightRatio });
+    handleRef.current = handle;
+    return () => {
+      handleRef.current = null;
+      handle.dispose();
+    };
+  }, [gl, scene, renderSize, heightRatio]);
+
+  useFrame((state) => {
+    handleRef.current?.applyPinnedPose(state.camera);
+  });
+
   return null;
 };
 
@@ -263,14 +296,19 @@ function precipFor(weather: WeatherKind): number {
 }
 
 export const WorldShowcase: React.FC = () => {
-  // Load the world ONCE. With IndexedDB we read the cached world (skipping generation);
-  // without it (tests/SSR) we generate synchronously so a frame is available immediately.
+  const search = typeof window === 'undefined' ? '' : window.location.search;
+  const worldSourceMode = useMemo(() => resolveWorldSourceMode(search), [search]);
+
+  // Load the world ONCE. In `'v1'` test/SSR environments without IndexedDB we generate synchronously;
+  // in `'v2'` mode we never generate or fall back to v1 — tiles are verified via WebCrypto SHA-256.
   const [world, setWorld] = useState<World | null>(() =>
-    typeof indexedDB === 'undefined'
+    worldSourceMode === 'v1' && typeof indexedDB === 'undefined'
       ? getMemoizedWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE })
       : null,
   );
-  const [worldError, setWorldError] = useState<string | null>(null);
+  const [worldV2Bundle, setWorldV2Bundle] = useState<WorldV2LoadedBundle | null>(null);
+  const [worldError, setWorldError] = useState<unknown>(null);
+  const [v2RetryTick, setV2RetryTick] = useState(0);
   // Deterministic capture of the canonical map views. `null` on every ordinary visit — see
   // `captureMode.ts` for why this is a query parameter and nothing else.
   //
@@ -303,6 +341,12 @@ export const WorldShowcase: React.FC = () => {
     qualitySelection,
     autoQuality,
     capture?.quality,
+  );
+  const [initialV2Mip] = useState<number>(() =>
+    resolveWorldV2Mip(
+      effectiveQuality,
+      typeof window === 'undefined' ? '' : window.location.search,
+    ),
   );
   const qualityConfig = getQualityTierConfig(effectiveQuality);
   const simEnvChannel = useMemo(() => createSimEnvironmentChannel(), []);
@@ -362,23 +406,40 @@ export const WorldShowcase: React.FC = () => {
   useEffect(() => {
     if (world) return;
     let alive = true;
-    loadOrGenerateWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE })
-      .then((w) => {
-        if (alive) {
+    if (worldSourceMode === 'v2') {
+      loadWorldV2Cached({ mip: initialV2Mip })
+        .then(({ bundle, world: adapted }) => {
+          if (!alive) return;
           setWorldError(null);
-          setWorld(w);
-        }
-      })
-      .catch((err: unknown) => {
-        console.error('[WorldShowcase] Failed to load shared world:', err);
-        if (alive) {
-          setWorldError(err instanceof Error ? err.message : String(err));
-        }
-      });
+          setWorldV2Bundle(bundle);
+          setWorld(adapted);
+        })
+        .catch((err: unknown) => {
+          console.error('[WorldShowcase] Failed to load verified World v2 tiles:', err);
+          if (alive) {
+            setWorldV2Bundle(null);
+            setWorldError(err);
+          }
+        });
+    } else {
+      loadOrGenerateWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE })
+        .then((w) => {
+          if (alive) {
+            setWorldError(null);
+            setWorld(w);
+          }
+        })
+        .catch((err: unknown) => {
+          console.error('[WorldShowcase] Failed to load shared world:', err);
+          if (alive) {
+            setWorldError(err instanceof Error ? err.message : String(err));
+          }
+        });
+    }
     return () => {
       alive = false;
     };
-  }, [world]);
+  }, [world, worldSourceMode, initialV2Mip, v2RetryTick]);
 
   // Advance the day/night clock (24h, 10 minutes per cycle at 1x) unless paused, captured, or pinned to day.
   useEffect(() => {
@@ -491,6 +552,20 @@ export const WorldShowcase: React.FC = () => {
   }, [capture]);
 
   if (!world || !isWorldRenderable(world)) {
+    if (worldSourceMode === 'v2' && worldError) {
+      return (
+        <div data-testid="world-showcase" style={{ width: '100%', height: '100%' }}>
+          <WorldV2ErrorPanel
+            error={worldError}
+            onRetry={() => {
+              setWorldError(null);
+              setV2RetryTick((n) => n + 1);
+            }}
+          />
+        </div>
+      );
+    }
+    const errText = worldError instanceof Error ? worldError.message : worldError ? String(worldError) : null;
     return (
       <div
         data-testid="world-showcase"
@@ -501,16 +576,18 @@ export const WorldShowcase: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           background: '#0a0a0a',
-          color: worldError ? '#feb2b2' : '#9aa',
+          color: errText ? '#feb2b2' : '#9aa',
           fontFamily: 'sans-serif',
           padding: 24,
           textAlign: 'center',
         }}
       >
-        {worldError ? (
+        {errText ? (
           <div role="alert" data-testid="world-load-error">
-            Failed to load shared world: {worldError}
+            Failed to load shared world: {errText}
           </div>
+        ) : worldSourceMode === 'v2' ? (
+          `Loading verified World v2 tiles (L${initialV2Mip})…`
         ) : (
           'Generating a huge 2048² world… (first run only — cached afterwards)'
         )}
@@ -519,10 +596,17 @@ export const WorldShowcase: React.FC = () => {
   }
 
   const sunDir = sunDirectionForTime(timeOfDay);
+  const worldV2Meta = worldV2Bundle ? worldV2RenderMeta(worldV2Bundle) : null;
+  const activeHeightRatio = resolveWorldHeightRatio(worldSourceMode, worldV2Bundle?.extentM);
+  const simEntityScaleRatio = resolveWorldSimEntityScaleRatio(
+    worldSourceMode,
+    worldV2Bundle?.extentM,
+    RENDER_SIZE,
+  );
   // Canonical poses are published in the canonical [-100, 100] bounds; the scene is a different
   // span with its own vertical exaggeration. One conversion, in `mapManifest.ts`.
   const capturePose = capture
-    ? canonicalCameraToRender(capture.camera, RENDER_SIZE, HEIGHT_RATIO)
+    ? canonicalCameraToRender(capture.camera, RENDER_SIZE, activeHeightRatio)
     : null;
 
   return (
@@ -605,8 +689,10 @@ export const WorldShowcase: React.FC = () => {
         {TERRAIN_CHUNKED ? (
           <WorldTerrainLod
             world={world}
+            worldV2={worldV2Bundle}
+            sunDir={sunDir}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
             chunksPerSide={TERRAIN_CHUNKS_PER_SIDE}
             lodDistances={TERRAIN_LOD_DISTANCES}
@@ -618,40 +704,69 @@ export const WorldShowcase: React.FC = () => {
         ) : (
           <WorldTerrain
             world={world}
+            worldV2={worldV2Bundle}
+            sunDir={sunDir}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
             tier={effectiveQuality}
           />
         )}
 
-        <WorldVegetation
-          world={world}
-          renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
-          meshResolution={MESH_RES}
-          quality={legacyVegetationQuality(effectiveQuality)}
-          tier={effectiveQuality}
-        />
+        {worldV2Bundle ? (
+          <WorldV2FrameDiagnostics renderSize={RENDER_SIZE} heightRatio={activeHeightRatio} />
+        ) : (
+          <WorldVegetation
+            world={world}
+            renderSize={RENDER_SIZE}
+            heightRatio={activeHeightRatio}
+            meshResolution={MESH_RES}
+            quality={legacyVegetationQuality(effectiveQuality)}
+            tier={effectiveQuality}
+          />
+        )}
 
-        {/* Shader-based ocean/lakes (depth colour + swell + foam), waterfall curtains on the
-            steep river drops, and cave mouths on the cliff faces. */}
+        {/* Shader-based ocean/lakes (depth colour + swell + shore_sdf + hydro_flow),
+            waterfall curtains on the steep river drops, and cave mouths on the cliff faces. */}
         <WorldWater
           world={world}
+          worldV2={worldV2Bundle}
+          showDecorativeLakes={capture !== null || showDecoration}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
           sunDir={sunDir}
         />
-        <WorldWaterfalls world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+        <WorldWaterfalls
+          world={world}
+          worldV2={worldV2Bundle}
+          renderSize={RENDER_SIZE}
+          heightRatio={activeHeightRatio}
+        />
         {capture !== null || showDecoration ? (
           <>
-            <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} meshResolution={MESH_RES} />
+            {worldV2Bundle ? (
+              <WorldV2Flora
+                bundle={worldV2Bundle}
+                world={world}
+                renderSize={RENDER_SIZE}
+                heightRatio={activeHeightRatio}
+                meshResolution={MESH_RES}
+                tier={effectiveQuality}
+              />
+            ) : null}
+            <WorldCaves
+              world={world}
+              worldV2={worldV2Bundle}
+              renderSize={RENDER_SIZE}
+              heightRatio={activeHeightRatio}
+              meshResolution={MESH_RES}
+            />
             <WorldBirds renderSize={RENDER_SIZE} />
-            <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+            <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={activeHeightRatio} />
             <WorldWildlife
               world={world}
               renderSize={RENDER_SIZE}
-              heightRatio={HEIGHT_RATIO}
+              heightRatio={activeHeightRatio}
               meshResolution={MESH_RES}
             />
           </>
@@ -663,8 +778,9 @@ export const WorldShowcase: React.FC = () => {
         <LiveAgents
           world={world}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
           meshResolution={MESH_RES}
+          entityScaleRatio={simEntityScaleRatio}
           qualityTier={effectiveQuality}
           onEnvironmentalState={simEnvChannel.publish}
         />
@@ -672,8 +788,9 @@ export const WorldShowcase: React.FC = () => {
           <LiveEnvironment
             world={world}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
+            entityScaleRatio={simEntityScaleRatio}
             channel={simEnvChannel}
             onCountsChange={setSimEnvCounts}
           />
@@ -683,7 +800,7 @@ export const WorldShowcase: React.FC = () => {
           mode={camMode}
           world={world}
           renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
+          heightRatio={activeHeightRatio}
           meshResolution={MESH_RES}
           viewRef={viewRef}
           teleportRef={teleportRef}
@@ -697,7 +814,7 @@ export const WorldShowcase: React.FC = () => {
             evidence={evidence}
             world={world}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
           />
         ) : null}
@@ -807,6 +924,7 @@ export const WorldShowcase: React.FC = () => {
         perfOpen={perfOpen}
         simEnvCounts={simEnvCounts}
         simEnvIsSynthetic={simEnvChannel.isSynthetic()}
+        worldV2Meta={worldV2Meta}
         onSpeed={setSpeed}
         onToggleAlwaysDay={() => {
           const next = !alwaysDay;
@@ -843,7 +961,7 @@ export const WorldShowcase: React.FC = () => {
             bridgeRef={perfBridgeRef}
             qualityTier={effectiveQuality}
             renderSize={RENDER_SIZE}
-            heightRatio={HEIGHT_RATIO}
+            heightRatio={activeHeightRatio}
             onClose={() => setPerfOpen(false)}
           />
         </React.Suspense>
@@ -888,6 +1006,7 @@ const WorldHud: React.FC<{
   perfOpen: boolean;
   simEnvCounts: SimEnvironmentCounts;
   simEnvIsSynthetic: boolean;
+  worldV2Meta: WorldV2RenderMeta | null;
   onSpeed: (s: number) => void;
   onToggleAlwaysDay: () => void;
   onWeather: (w: WeatherKind) => void;
@@ -898,7 +1017,7 @@ const WorldHud: React.FC<{
   onTogglePerf: () => void;
   /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
   onReset: (() => void) | null;
-}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, perfOpen, simEnvCounts, simEnvIsSynthetic, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onTogglePerf, onReset }) => {
+}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, perfOpen, simEnvCounts, simEnvIsSynthetic, worldV2Meta, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onTogglePerf, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -1026,6 +1145,12 @@ const WorldHud: React.FC<{
               ? 'Synthetic fixture (not simulation output): awaiting tick'
               : 'Simulated: awaiting simulation tick'}
         </div>
+        {worldV2Meta ? (
+          <div data-testid="world-v2-identity" style={{ opacity: 0.9, color: '#93c5fd' }}>
+            World v2 {worldV2Meta.schemaTag} · sim {worldV2Meta.simIdentity8} · bundle {worldV2Meta.bundleIdentity8} · L
+            {worldV2Meta.mip} {worldV2Meta.size}² ({worldV2Meta.tileCountVerified} verified)
+          </div>
+        ) : null}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span
             data-testid="decoration-legend"

@@ -15,6 +15,7 @@ import {
   computeFarMarkerScale,
   computeHeadBasis,
 } from './utils/agentPose';
+import { resolveContactShadowY, resolveCreatureEyeRadius } from './worldV2/types';
 import {
   readInitialQualitySelection,
   type QualitySelection,
@@ -54,6 +55,7 @@ export interface LiveAgentsProps {
   renderSize: number;
   heightRatio: number;
   meshResolution: number;
+  entityScaleRatio?: number;
   tickSource?: TickSource | null;
   nowMs?: () => number;
   qualityTier?: QualityTier;
@@ -205,6 +207,7 @@ function emitHeadFeatures(
   snoutAgentIds: Int32Array,
   scratch: FeatureScratch,
   counts: HeadDrawCounts,
+  scaleRatio = 1,
 ): void {
   const { pos, quat, scale, matrix, partColor, forward, right, up, headPose } = scratch;
   resolveCreatureHeadPose(pose, headPose, quat);
@@ -247,10 +250,7 @@ function emitHeadFeatures(
     counts.spheres++;
   }
 
-  const eyeRadius =
-    pose.agentType === 'predator'
-      ? Math.max(hRad * 0.28, 0.22 * CREATURE_BODY_SCALE)
-      : Math.max(hRad * 0.24, 0.2 * CREATURE_BODY_SCALE);
+  const eyeRadius = resolveCreatureEyeRadius(pose.agentType, hRad, scaleRatio);
   counts.spheres = emitEyePair(
     sphereMesh,
     counts.spheres,
@@ -274,9 +274,10 @@ function emitContactShadow(
   shadowDrawn: number,
   pose: InterpolatedAgentView,
   scratch: FeatureScratch,
+  scaleRatio = 1,
 ): number {
   const { pos, quat, scale, matrix } = scratch;
-  pos.set(pose.rootPosition[0], pose.groundY + 0.08, pose.rootPosition[2]);
+  pos.set(pose.rootPosition[0], resolveContactShadowY(pose.groundY, scaleRatio), pose.rootPosition[2]);
   const hx = pose.headDirection[0];
   const hz = pose.headDirection[2];
   const yawAngle = hx * hx + hz * hz > 1e-8 ? Math.atan2(hx, hz) : 0;
@@ -504,11 +505,18 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   renderSize,
   heightRatio,
   meshResolution,
+  entityScaleRatio = 1,
   tickSource,
   nowMs = defaultNowMs,
   qualityTier,
   onEnvironmentalState,
 }) => {
+  const activeScaleRatio =
+    typeof entityScaleRatio === 'number' && Number.isFinite(entityScaleRatio) && entityScaleRatio > 0
+      ? entityScaleRatio
+      : 1;
+  const activeBodyScaleFactor =
+    activeScaleRatio === 1 ? CREATURE_BODY_SCALE : CREATURE_BODY_SCALE * activeScaleRatio;
   const segmentsMeshRef = useRef<THREE.InstancedMesh>(null);
   const spheresMeshRef = useRef<THREE.InstancedMesh>(null);
   const snoutsMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -740,6 +748,8 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   const qualityTierRef = useRef(qualityTier);
   const urlQualitySelectionRef = useRef<QualitySelection>(readInitialQualitySelection(search));
   const onEnvironmentalStateRef = useRef(onEnvironmentalState);
+  const scaleRatioRef = useRef(activeScaleRatio);
+  const bodyScaleFactorRef = useRef(activeBodyScaleFactor);
 
   // Sync world/clock/quality refs once outside `useFrame` (`N2`) and rebuild cached snapshots.
   useEffect(() => {
@@ -749,8 +759,20 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     qualityTierRef.current = qualityTier;
     urlQualitySelectionRef.current = readInitialQualitySelection(search);
     onEnvironmentalStateRef.current = onEnvironmentalState;
-    ensureBuffer().rebuildForWorld(renderSize, sampleGroundY, CREATURE_BODY_SCALE);
-  }, [renderSize, sampleGroundY, nowMs, qualityTier, search, onEnvironmentalState, ensureBuffer]);
+    scaleRatioRef.current = activeScaleRatio;
+    bodyScaleFactorRef.current = activeBodyScaleFactor;
+    ensureBuffer().rebuildForWorld(renderSize, sampleGroundY, activeBodyScaleFactor);
+  }, [
+    renderSize,
+    sampleGroundY,
+    nowMs,
+    qualityTier,
+    search,
+    onEnvironmentalState,
+    ensureBuffer,
+    activeScaleRatio,
+    activeBodyScaleFactor,
+  ]);
 
   useEffect(() => {
     selectedAgentIdRef.current = selectedAgentId;
@@ -793,7 +815,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         nowMsRef.current(),
         renderSizeRef.current,
         sampleGroundYRef.current,
-        CREATURE_BODY_SCALE,
+        bodyScaleFactorRef.current,
       );
       if (payload.environmental_state) {
         onEnvironmentalStateRef.current?.(
@@ -918,6 +940,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
 
     // 1. Render near-tier continuous SkinnedMesh creatures in closest-first rank order (`N4`, `R2`).
     const nearLimit = Math.min(lod.nearCount, skinPool.maxSlots());
+    const frameScaleRatio = scaleRatioRef.current;
     for (let r = 0; r < nearLimit; r++) {
       const pIdx = lod.nearIndices[r];
       const pose = agents[pIdx];
@@ -939,10 +962,11 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         lookups.snoutAgentIds,
         scratch,
         headCounts,
+        frameScaleRatio,
       );
 
       if (!realShadowsEnabled) {
-        shadowDrawn = emitContactShadow(shadowMesh, shadowDrawn, pose, scratch);
+        shadowDrawn = emitContactShadow(shadowMesh, shadowDrawn, pose, scratch, frameScaleRatio);
       }
     }
 
@@ -1043,10 +1067,11 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         lookups.snoutAgentIds,
         scratch,
         headCounts,
+        frameScaleRatio,
       );
 
       if (!realShadowsEnabled) {
-        shadowDrawn = emitContactShadow(shadowMesh, shadowDrawn, pose, scratch);
+        shadowDrawn = emitContactShadow(shadowMesh, shadowDrawn, pose, scratch, frameScaleRatio);
       }
     }
 

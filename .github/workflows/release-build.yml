@@ -54,6 +54,15 @@ jobs:
       - name: Install root npm dependencies
         run: npm ci
 
+      # Stages the published World v2 pack into public/world-v2 so `vite build` copies it into the
+      # bundle. Same verified fetch as ci.yml's E2E step; it downloads the pinned asset and checks
+      # bytes and SHA-256. It never creates or edits a release.
+      - name: Fetch and verify World v2 tiles for the installer
+        run: >-
+          node scripts/fetch_world_v2_tiles.mjs
+          --expected-bytes 190071986
+          --expected-sha256 4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f
+
       - name: Build desktop bundle (npm run tauri:build)
         run: npm run tauri:build
 

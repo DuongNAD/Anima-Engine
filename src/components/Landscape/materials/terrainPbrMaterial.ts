@@ -11,11 +11,15 @@ export interface TerrainPbrMaterialParams {
   riverMaskMap: THREE.Texture;
   splatMap: THREE.Texture;
   heightUnits: number;
+  horizonMap?: THREE.Texture | null;
+  sunDir?: [number, number, number];
+  normalScale?: number;
 }
 
 export interface TerrainPbrShaderHandle {
   applyPbrArrays(arrays: TerrainPbrArrays | null): void;
   updateTime(timeSec: number): void;
+  updateSunDir(sunDir: [number, number, number]): void;
   dispose(): void;
 }
 
@@ -45,11 +49,24 @@ export function createTerrainPbrMaterial(
 ): { material: THREE.MeshStandardMaterial; handle: TerrainPbrShaderHandle } {
   const dummyAlbedo = makeDummyLayerArray(180, 180, 180, 255);
   const dummyNormal = makeDummyLayerArray(128, 128, 255, 255);
+  const dummyHorizon = new THREE.DataTexture(
+    new Uint8Array([0, 0, 0, 0]),
+    1,
+    1,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType,
+  );
+  dummyHorizon.needsUpdate = true;
+  const hasHorizon = Boolean(params.horizonMap);
+  const initSun = params.sunDir ?? [0.6, 0.7, 0.35];
 
   const uniforms: {
     uDetail: { value: THREE.Texture };
     uRiverMask: { value: THREE.Texture };
     uSplatMap: { value: THREE.Texture };
+    uHorizonMap: { value: THREE.Texture };
+    uUseBakedHorizon: { value: number };
+    uSunDir: { value: THREE.Vector3 };
     uTime: { value: number };
     uPbrEnabled: { value: number };
     uHeightUnits: { value: number };
@@ -59,6 +76,9 @@ export function createTerrainPbrMaterial(
     uDetail: { value: params.detailMap },
     uRiverMask: { value: params.riverMaskMap },
     uSplatMap: { value: params.splatMap },
+    uHorizonMap: { value: params.horizonMap ?? dummyHorizon },
+    uUseBakedHorizon: { value: hasHorizon ? 1 : 0 },
+    uSunDir: { value: new THREE.Vector3(initSun[0], initSun[1], initSun[2]) },
     uTime: { value: 0 },
     uPbrEnabled: { value: 0 },
     uHeightUnits: { value: Math.max(1, params.heightUnits) },
@@ -66,10 +86,11 @@ export function createTerrainPbrMaterial(
     uPbrNormal: { value: dummyNormal },
   };
 
+  const normScale = params.normalScale ?? 1;
   const material = new THREE.MeshStandardMaterial({
     map: params.colorMap,
     normalMap: params.normalMap,
-    normalScale: new THREE.Vector2(1, 1),
+    normalScale: new THREE.Vector2(normScale, normScale),
     roughnessMap: params.roughnessMap,
     roughness: 1.0,
     metalness: 0.0,
@@ -79,6 +100,9 @@ export function createTerrainPbrMaterial(
     shader.uniforms.uDetail = uniforms.uDetail;
     shader.uniforms.uRiverMask = uniforms.uRiverMask;
     shader.uniforms.uSplatMap = uniforms.uSplatMap;
+    shader.uniforms.uHorizonMap = uniforms.uHorizonMap;
+    shader.uniforms.uUseBakedHorizon = uniforms.uUseBakedHorizon;
+    shader.uniforms.uSunDir = uniforms.uSunDir;
     shader.uniforms.uTime = uniforms.uTime;
     shader.uniforms.uPbrEnabled = uniforms.uPbrEnabled;
     shader.uniforms.uHeightUnits = uniforms.uHeightUnits;
@@ -100,6 +124,9 @@ export function createTerrainPbrMaterial(
 uniform sampler2D uDetail;
 uniform sampler2D uRiverMask;
 uniform sampler2D uSplatMap;
+uniform sampler2D uHorizonMap;
+uniform float uUseBakedHorizon;
+uniform vec3 uSunDir;
 uniform float uTime;
 uniform float uPbrEnabled;
 uniform float uHeightUnits;
@@ -223,6 +250,21 @@ void w3ComputeLayerWeights(
               float flowMod = mix(fallbackFlow, advected, validFlow);
               diffuseColor.rgb *= mix(1.0, flowMod, riv * 0.32);
             }
+            if (uUseBakedHorizon > 0.5) {
+              vec4 hzn = texture2D(uHorizonMap, vMapUv) * 1.5707963;
+              vec3 sd = normalize(uSunDir);
+              vec4 azW = vec4(
+                max(sd.x, 0.0),
+                max(-sd.x, 0.0),
+                max(-sd.z, 0.0),
+                max(sd.z, 0.0)
+              );
+              float wSum = max(0.0001, azW.x + azW.y + azW.z + azW.w);
+              float thetaH = dot(hzn, azW) / wSum;
+              float sunElev = asin(clamp(sd.y, -1.0, 1.0));
+              float sunVis = smoothstep(thetaH - 0.08, thetaH + 0.14, sunElev);
+              diffuseColor.rgb *= mix(0.45, 1.0, sunVis);
+            }
           }`,
         )
         .replace(
@@ -249,7 +291,8 @@ void w3ComputeLayerWeights(
         );
   };
 
-  material.customProgramCacheKey = () => 'w3-lite-terrain-pbr-v3';
+  material.customProgramCacheKey = () =>
+    hasHorizon ? 'w3-lite-terrain-pbr-v4-hzn' : 'w3-lite-terrain-pbr-v3';
 
   const handle: TerrainPbrShaderHandle = {
     applyPbrArrays(arrays) {
@@ -266,9 +309,13 @@ void w3ComputeLayerWeights(
     updateTime(timeSec) {
       uniforms.uTime.value = timeSec;
     },
+    updateSunDir(sunDir) {
+      uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
+    },
     dispose() {
       dummyAlbedo.dispose();
       dummyNormal.dispose();
+      dummyHorizon.dispose();
       material.dispose();
     },
   };

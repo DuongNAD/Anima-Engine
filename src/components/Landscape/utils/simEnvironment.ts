@@ -64,6 +64,7 @@ export function mapSimulationElements(
   elements: readonly EnvironmentalElement[],
   renderSize: number,
   sampleGroundY: SimGroundSampler,
+  entityScaleRatio = 1,
 ): MappedSimEnvironment {
   const lakes: MappedSimElement[] = [];
   const trees: MappedSimElement[] = [];
@@ -74,6 +75,9 @@ export function mapSimulationElements(
   if (!Array.isArray(elements) || !Number.isFinite(scale) || scale <= 0) {
     return { lakes, trees, food, skipped: Array.isArray(elements) ? elements.length : 0 };
   }
+  const safeRatio =
+    Number.isFinite(entityScaleRatio) && entityScaleRatio > 0 ? entityScaleRatio : 1;
+  const sizeScale = safeRatio === 1 ? scale : scale * safeRatio;
 
   for (let i = 0; i < elements.length; i++) {
     const el = elements[i];
@@ -95,7 +99,8 @@ export function mapSimulationElements(
     const rawRadius = Number.isFinite(el.radius) && el.radius > 0 ? el.radius : 0;
 
     if (kind === 'lake') {
-      const renderRadius = Math.max(2.0, (rawRadius || 3.0) * scale);
+      const floor = safeRatio === 1 ? 2.0 : 2.0 * safeRatio;
+      const renderRadius = Math.max(floor, (rawRadius || 3.0) * sizeScale);
       lakes.push({
         kind,
         renderX,
@@ -107,7 +112,9 @@ export function mapSimulationElements(
         resources,
       });
     } else if (kind === 'tree') {
-      const renderRadius = Math.max(1.5, (rawRadius || 1.2) * scale);
+      const radFloor = safeRatio === 1 ? 1.5 : 1.5 * safeRatio;
+      const heightFloor = safeRatio === 1 ? 1.8 : 1.8 * safeRatio;
+      const renderRadius = Math.max(radFloor, (rawRadius || 1.2) * sizeScale);
       trees.push({
         kind,
         renderX,
@@ -115,11 +122,12 @@ export function mapSimulationElements(
         renderZ,
         groundY,
         renderRadius,
-        heightScale: Math.max(1.8, renderRadius * (0.85 + 0.35 * clamp01(resources / 100))),
+        heightScale: Math.max(heightFloor, renderRadius * (0.85 + 0.35 * clamp01(resources / 100))),
         resources,
       });
     } else {
-      const renderRadius = Math.max(0.9, (rawRadius || 0.45) * scale);
+      const floor = safeRatio === 1 ? 0.9 : 0.9 * safeRatio;
+      const renderRadius = Math.max(floor, (rawRadius || 0.45) * sizeScale);
       food.push({
         kind,
         renderX,

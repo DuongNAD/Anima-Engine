@@ -26,6 +26,7 @@ export interface LiveEnvironmentProps {
   renderSize: number;
   heightRatio: number;
   meshResolution: number;
+  entityScaleRatio?: number;
   tickSource?: TickSource | null;
   channel?: SimEnvironmentChannel | null;
   fetchInitialElements?: (() => Promise<EnvironmentalState | null>) | null;
@@ -101,6 +102,7 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
   renderSize,
   heightRatio,
   meshResolution,
+  entityScaleRatio = 1,
   tickSource,
   channel,
   fetchInitialElements,
@@ -121,6 +123,7 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
 
   const groundRef = useRef(sampleGroundY);
   const sizeRef = useRef(renderSize);
+  const scaleRatioRef = useRef(entityScaleRatio);
   const onCountsRef = useRef(onCountsChange);
   const rawRef = useRef<EnvironmentalState | null>(null);
   const mappedRef = useRef<MappedSimEnvironment>(EMPTY_MAPPED);
@@ -136,7 +139,7 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
     if (fromTick) hasTickRef.current = true;
     rawRef.current = env;
     const mapped = env
-      ? mapSimulationElements(env.elements, sizeRef.current, groundRef.current)
+      ? mapSimulationElements(env.elements, sizeRef.current, groundRef.current, scaleRatioRef.current)
       : EMPTY_MAPPED;
     mappedRef.current = mapped;
 
@@ -165,12 +168,18 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
   useEffect(() => {
     sizeRef.current = renderSize;
     groundRef.current = sampleGroundY;
+    scaleRatioRef.current = entityScaleRatio;
     onCountsRef.current = onCountsChange;
     capRef.current = capacity;
     if (rawRef.current) {
-      mappedRef.current = mapSimulationElements(rawRef.current.elements, renderSize, sampleGroundY);
+      mappedRef.current = mapSimulationElements(
+        rawRef.current.elements,
+        renderSize,
+        sampleGroundY,
+        entityScaleRatio,
+      );
     }
-  }, [renderSize, sampleGroundY, onCountsChange, capacity]);
+  }, [renderSize, sampleGroundY, entityScaleRatio, onCountsChange, capacity]);
 
   useEffect(() => {
     const hasTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -277,13 +286,14 @@ export const LiveEnvironment: React.FC<LiveEnvironmentProps> = ({
         rawRef.current.elements,
         renderSize,
         sampleGroundY,
+        entityScaleRatio,
       );
     }
     const m = mappedRef.current;
     writeMesh(lakesRef.current, m.lakes, capacity, scratch);
     writeMesh(treesRef.current, m.trees, capacity, scratch);
     writeMesh(foodRef.current, m.food, capacity, scratch);
-  }, [hasEntities, capacity, rev, renderSize, sampleGroundY, scratch]);
+  }, [hasEntities, capacity, rev, renderSize, sampleGroundY, entityScaleRatio, scratch]);
 
   if (!hasEntities) return null;
 

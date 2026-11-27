@@ -77,7 +77,11 @@ const CHUNK_BUDGET_KIB = {
   // and 155 -> 175 KiB (2026-11-19, reason: 'prototype' — W3-lite CC0 PBR terrain splatting &
   // instanced flora wind `terrainPbrMaterial.ts`, `floraWindMaterial.ts`, `worldAssets.ts`;
   // lazy-loaded only on 3D routes).
-  WorldShowcase: 175,
+  // Raised 175 -> 225 KiB (2026-11-26, reason: 'prototype, WV2-6' — measured 206.7 KiB after
+  // moving `loadWorldV2Cached` out of `worldCache.ts` into `worldV2/tileLoader.ts`, which
+  // keeps `sharedWorld` at trunk size 28.3 KiB and puts all SHA-256/KTX2/ANMC/ANMF viewer
+  // code exclusively behind the lazy 3D route).
+  WorldShowcase: 225,
   Map2Showcase: 130,
   map2: 120,
   // The interactive research dashboard suite (Features 14-19 & DataExportDialog).
@@ -93,9 +97,12 @@ const CHUNK_BUDGET_KIB = {
  * error UI in `WorldShowcase.tsx` and `App.tsx`. Note: `generateWorld` remains in `sharedWorld`
  * (`28.8 KiB`, vs trunk `28.93 kB`) rather than a separate lazy chunk because `WorldMinimap` and
  * sibling components statically import `Biome`/`FloraType`/`WORLD_GEN_VERSION` from `worldGen.ts`.
+ * Raised 2006 -> 2060 KiB (2026-11-26, reason: 'prototype, WV2-6' — measured 2039.3 KiB; adds
+ * lazy-loaded World v2 viewer codecs/SHA-256 loader & `fflate` zlib decompression in 3D routes;
+ * `main` startup bundle stays unchanged at 273.7 KiB <= 320 KiB). Also accommodates the lazy
+ * `PerfOverlay.tsx` chunk merged from trunk `WV2-6-INSTR` (`#338`).
  */
-// WV2-6-INSTR in-app frame recorder (QD-GATES-1127 (3)), lazy-loaded; owner approved option 2 on 2026-11-27
-const TOTAL_BUDGET_KIB = 2022;
+const TOTAL_BUDGET_KIB = 2060;
 
 export const ENTRY_HTML = {
   'index.html': '2D dashboard',
