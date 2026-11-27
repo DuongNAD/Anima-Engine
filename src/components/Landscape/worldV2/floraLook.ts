@@ -11,6 +11,25 @@ import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferG
 // Budget: 18-34 triangles per plant. A plant is a few pixels tall at the canonical view
 // distances, so silhouette, size and colour variation matter far more than facets.
 
+/**
+ * Bake species ids exactly as `bake/flora_place.rs` `FloraSpeciesId` writes them into ANMF.
+ * r1-r8 read these ids as look shapes directly, so coastal rainforest drew as pines, mangroves
+ * as boulders and paramo espeletia as palms (r9 fix). A bake id is an ARCHETYPE for its biome;
+ * `chooseLookShape` turns it into a plant that fits the local habitat.
+ */
+export const BAKE_SPECIES = {
+  RainforestCanopy: 0,
+  MontaneBroadleaf: 1,
+  ElfinConifer: 2,
+  DryThornScrub: 3,
+  MangroveProp: 4,
+  SavannaAcacia: 5,
+  ParamoEspeletia: 6,
+  RiparianWillow: 7,
+} as const;
+export const BAKE_SPECIES_COUNT = 8;
+
+/** Look shapes: one instanced batch (one draw call) each. */
 export const LOOK_SPECIES = {
   Pine: 0,
   Broadleaf: 1,
@@ -20,11 +39,16 @@ export const LOOK_SPECIES = {
   Acacia: 5,
   Palm: 6,
   Bush: 7,
+  Mangrove: 8,
+  Rosette: 9,
+  Willow: 10,
+  TreeFern: 11,
 } as const;
+export const LOOK_SHAPE_COUNT = 12;
 
-/** Height range in metres per bake species id (0..7), and the canopy width / height ratio. */
+/** Height range in metres per look shape, and the canopy width / height ratio. */
 export const LOOK_SPECIES_SIZE: ReadonlyArray<{ minM: number; maxM: number; widthRatio: number }> = [
-  { minM: 14, maxM: 32, widthRatio: 0.42 }, // 0 pine / spruce
+  { minM: 14, maxM: 32, widthRatio: 0.42 }, // 0 pine / podocarp
   { minM: 10, maxM: 24, widthRatio: 0.8 }, // 1 broadleaf
   { minM: 20, maxM: 38, widthRatio: 0.75 }, // 2 jungle emergent
   { minM: 4, maxM: 9, widthRatio: 0.45 }, // 3 cactus
@@ -32,7 +56,117 @@ export const LOOK_SPECIES_SIZE: ReadonlyArray<{ minM: number; maxM: number; widt
   { minM: 6, maxM: 12, widthRatio: 1.5 }, // 5 acacia
   { minM: 9, maxM: 18, widthRatio: 0.7 }, // 6 palm
   { minM: 2.5, maxM: 5.5, widthRatio: 1.5 }, // 7 shrub
+  { minM: 4, maxM: 12, widthRatio: 1.25 }, // 8 mangrove (prop roots, low dense crown)
+  { minM: 1, maxM: 3.2, widthRatio: 0.55 }, // 9 rosette (espeletia, frailejon)
+  { minM: 8, maxM: 16, widthRatio: 1.0 }, // 10 willow (riparian)
+  { minM: 3, maxM: 8, widthRatio: 0.95 }, // 11 tree fern (understory)
 ];
+
+/** Canonical biome ids used by the habitat rules (`BIOME_SRGB_PALETTE` order). */
+const BIOME = { Desert: 2, Savanna: 3, Badlands: 19, Alpine: 18 } as const;
+
+/** Local habitat of one plant, measured on the drawn terrain. */
+export interface FloraHabitat {
+  /** Ground height above sea level, metres. */
+  elevM: number;
+  /** Horizontal distance to the nearest sea, metres. */
+  distSeaM: number;
+  /** 1 - normal.y of the ground (0 flat, ~0.3 cliff-steep). */
+  slope: number;
+  /** Canonical biome id of the cell. */
+  biome: number;
+}
+
+/** Upper limit of trees on this tropical world (humid tropics: ~3,500-4,000 m). */
+export const TREELINE_M = 3600;
+/** Conifers (podocarps, elfin conifers) only in the cool montane belt, never on the lowland coast. */
+export const CONIFER_MIN_ELEV_M = 600;
+/** Bare sand next to the water: no woody plants (dune grass comes from the ground cover). */
+export const BEACH_BARE_M = 45;
+/** Salt-spray strand zone: palms and strand scrub instead of the inland forest. */
+export const STRAND_M = 220;
+/** Ground steeper than this holds no trees; some of it holds boulders (talus). */
+export const CLIFF_SLOPE = 0.32;
+
+/**
+ * Pick the plant drawn for one bake point member, or -1 for nothing. `r` is a uniform [0,1) draw.
+ * Rules follow the seaward-to-inland zonation of tropical coasts (bare beach, strand scrub with
+ * palms, littoral forest; mangroves only on the tidal flats) and the altitudinal belts of a humid
+ * tropical mountain (lowland rainforest, montane broadleaf with tree ferns, conifers only above
+ * ~600 m, paramo rosettes and scrub above the treeline).
+ */
+export function chooseLookShape(bakeId: number, env: FloraHabitat, r: number): number {
+  const S = LOOK_SPECIES;
+  if (env.slope > CLIFF_SLOPE) return r < 0.3 ? S.Rock : -1;
+  if (bakeId !== BAKE_SPECIES.MangroveProp && env.distSeaM < BEACH_BARE_M) return -1;
+  if (env.elevM > TREELINE_M || bakeId === BAKE_SPECIES.ParamoEspeletia) {
+    if (r < 0.6) return S.Rosette;
+    if (r < 0.9) return S.Bush;
+    return env.biome === BIOME.Alpine ? S.Rock : -1;
+  }
+  if (bakeId === BAKE_SPECIES.MangroveProp) {
+    if (env.distSeaM > 600) return r < 0.6 ? S.Broadleaf : S.Bush;
+    return r < 0.88 ? S.Mangrove : S.Bush;
+  }
+  if (env.distSeaM < STRAND_M && env.elevM < 25) {
+    if (r < 0.35) return S.Palm;
+    if (r < 0.8) return S.Bush;
+    return S.Broadleaf;
+  }
+  switch (bakeId) {
+    case BAKE_SPECIES.RainforestCanopy:
+      if (r < 0.4) return S.Jungle;
+      if (r < 0.78) return S.Broadleaf;
+      if (r < 0.86) return S.Palm;
+      if (r < 0.94) return S.TreeFern;
+      return S.Bush;
+    case BAKE_SPECIES.MontaneBroadleaf:
+      if (env.elevM >= 1800) {
+        if (r < 0.55) return S.Broadleaf;
+        if (r < 0.8) return S.Pine;
+        if (r < 0.92) return S.TreeFern;
+        return S.Bush;
+      }
+      if (r < 0.72) return S.Broadleaf;
+      if (r < 0.84) return S.TreeFern;
+      return S.Bush;
+    case BAKE_SPECIES.ElfinConifer:
+      if (env.elevM < CONIFER_MIN_ELEV_M) return r < 0.7 ? S.Broadleaf : S.Bush;
+      if (r < 0.7) return S.Pine;
+      if (r < 0.85) return S.Broadleaf;
+      return S.Bush;
+    case BAKE_SPECIES.DryThornScrub:
+      if (env.biome === BIOME.Desert) return r < 0.35 ? S.Cactus : r < 0.85 ? S.Bush : -1;
+      if (env.biome === BIOME.Badlands) return r < 0.2 ? S.Cactus : r < 0.7 ? S.Bush : S.Rock;
+      return r < 0.75 ? S.Bush : S.Acacia;
+    case BAKE_SPECIES.SavannaAcacia:
+      if (r < 0.68) return S.Acacia;
+      if (r < 0.86) return S.Bush;
+      if (r < 0.94) return S.Broadleaf;
+      return env.biome === BIOME.Savanna ? S.Palm : S.Bush;
+    case BAKE_SPECIES.RiparianWillow:
+      if (r < 0.55) return S.Willow;
+      if (r < 0.85) return S.Broadleaf;
+      return S.Bush;
+    default:
+      return S.Bush;
+  }
+}
+
+/** Understory plant under a forest stand, or -1. Tree ferns in the humid tropics, shrubs elsewhere. */
+export function chooseUnderstoryShape(bakeId: number, env: FloraHabitat, r: number): number {
+  if (env.slope > CLIFF_SLOPE || env.distSeaM < STRAND_M || env.elevM > TREELINE_M) return -1;
+  switch (bakeId) {
+    case BAKE_SPECIES.RainforestCanopy:
+    case BAKE_SPECIES.MontaneBroadleaf:
+      return r < 0.45 ? LOOK_SPECIES.TreeFern : LOOK_SPECIES.Bush;
+    case BAKE_SPECIES.ElfinConifer:
+    case BAKE_SPECIES.RiparianWillow:
+      return LOOK_SPECIES.Bush;
+    default:
+      return -1;
+  }
+}
 
 function seededRandom(seed: number): () => number {
   let s = seed >>> 0;
@@ -230,6 +364,66 @@ export function makeLookFloraGeometry(speciesId: number, lite = false): THREE.Bu
       crownNormals(pa, 0, r * 0.05, 0, 0.25);
       crownNormals(pb, r * 0.7, 0, r * 0.35, 0.25);
       return finish([pa, pb]);
+    }
+    case LOOK_SPECIES.Mangrove: {
+      // Arching prop roots under a short trunk and a low, dense, glossy crown.
+      const r = w * 0.5;
+      const parts: THREE.BufferGeometry[] = [];
+      for (let k = 0; k < 5; k += 1) {
+        const ang = (k / 5) * Math.PI * 2 + 0.4;
+        const root = new THREE.CylinderGeometry(0.012, 0.016, 0.36, 3, 1, true)
+          .rotateZ(0.55)
+          .translate(r * 0.22, 0.14, 0)
+          .rotateY(ang);
+        const p = paintGradient(root, '#2c2318', '#4a3b2a', 0, 0.32);
+        p.computeVertexNormals();
+        parts.push(p);
+      }
+      const crown = jitter(new THREE.IcosahedronGeometry(r * 0.85, 0), r * 0.22, 61).scale(1, 0.5, 1).translate(0, 0.62, 0);
+      const lobe = jitter(new THREE.OctahedronGeometry(r * 0.55, 0), r * 0.15, 62).scale(1, 0.55, 1).translate(r * 0.5, 0.55, -r * 0.25);
+      const pc = paintGradient(crown, '#14260f', '#2c4a1a', 0.4, 0.85);
+      const pl = paintGradient(lobe, '#13240f', '#29451a', 0.38, 0.75);
+      crownNormals(pc, 0, 0.55, 0, 0.5);
+      crownNormals(pl, r * 0.5, 0.5, -r * 0.25, 0.5);
+      return pick([trunk(0.5, 0.03, '#4a3b2a'), pc, pl, ...parts], 3);
+    }
+    case LOOK_SPECIES.Rosette: {
+      // Frailejon: a pillar shaggy with dead leaves, a silver-green rosette on top.
+      const pillar = new THREE.CylinderGeometry(0.11, 0.13, 0.72, 5, 1, true).translate(0, 0.36, 0);
+      const pp = paintGradient(pillar, '#3d352a', '#6b604c', 0, 0.72);
+      pp.computeVertexNormals();
+      const parts: THREE.BufferGeometry[] = [pp];
+      for (let k = 0; k < 6; k += 1) {
+        const ang = (k / 6) * Math.PI * 2;
+        const leaf = new THREE.PlaneGeometry(0.1, 0.32, 1, 1).translate(0, 0.16, 0).rotateX(-0.75).rotateY(ang).translate(0, 0.72, 0);
+        const p = paintGradient(leaf, '#6d7a5e', '#a9b79a', 0.72, 0.98);
+        crownNormals(p, 0, 0.7, 0, 1.0);
+        parts.push(p);
+      }
+      return pick(parts, 4);
+    }
+    case LOOK_SPECIES.Willow: {
+      // Wide, soft, drooping crown: a tall mass plus an open skirt hanging past its edge.
+      const r = w * 0.5;
+      const mass = jitter(new THREE.IcosahedronGeometry(r * 0.75, 0), r * 0.2, 71).scale(1, 0.85, 1).translate(0, 0.62, 0);
+      const skirt = new THREE.ConeGeometry(r * 0.95, 0.55, 7, 1, true).rotateX(Math.PI).translate(0, 0.5, 0);
+      const pm = paintGradient(mass, '#2a3d17', '#58702c', 0.3, 1.0);
+      const ps = paintGradient(skirt, '#2f4419', '#4f6827', 0.22, 0.78);
+      crownNormals(pm, 0, 0.6, 0, 0.4);
+      crownNormals(ps, 0, 0.7, 0, 0.2);
+      return pick([trunk(0.45, 0.04, '#4a3d2c'), pm, ps], 2);
+    }
+    case LOOK_SPECIES.TreeFern: {
+      // Slim trunk and a ring of arching fronds: the understory of humid tropical forest.
+      const parts: THREE.BufferGeometry[] = [trunk(0.78, 0.025, '#3a2f22')];
+      for (let k = 0; k < 7; k += 1) {
+        const ang = (k / 7) * Math.PI * 2 + 0.2;
+        const frond = new THREE.PlaneGeometry(0.16, 0.5, 1, 1).translate(0, 0.25, 0).rotateX(-1.2).rotateY(ang).translate(0, 0.78, 0);
+        const p = paintGradient(frond, '#24401a', '#4f7a2c', 0.62, 0.9);
+        crownNormals(p, 0, 0.7, 0, 1.0);
+        parts.push(p);
+      }
+      return pick(parts, 5);
     }
     case LOOK_SPECIES.Bush:
     default: {

@@ -42,7 +42,9 @@ const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'wa
 //   coastnear  low camera (~50-70 m above the waterline) just offshore of the `coast` beach,
 //              looking along the shore: the surf zone, swash and beach at close range.
 //   vista      low oblique (~2.2 km above the sea) along the main massif, sky and horizon in frame.
-const OPTIONAL_VIEW_IDS = ['coastnear', 'vista'];
+//   meadow     eye height (~2.2 m) in the grassland or savanna nearest the map centre, looking
+//              towards the highest peak: the ground cover (grass) at walking range.
+const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -697,6 +699,46 @@ function pageAnalyseWorld() {
       pose: { position: rnd(eye), target: rnd([eye[0] + far * Math.cos(az), eye[1] - far * Math.tan((4 * Math.PI) / 180), eye[2] + far * Math.sin(az)]) },
       feature: `low over ${biomeAt(home[0], home[1])} near the map centre, facing the highest peak`,
     };
+  }
+
+  // meadow (opt-in): standing in the grassland or savanna nearest the centre, at eye height.
+  {
+    const GRASSY = new Set([3, 4, 17]); // Savanna, Grassland, Steppe
+    let g = null;
+    let gBest = Infinity;
+    for (let gy = 0; gy < N; gy += 4) {
+      for (let gx = 0; gx < N; gx += 4) {
+        const i = gy * N + gx;
+        if (!GRASSY.has(w.biome[i]) || w.elevation[i] < sea + 0.01 || (w.slope && w.slope[i] > 0.12)) continue;
+        const x = cellToR(gx);
+        const z = cellToR(gy);
+        const d = x * x + z * z;
+        if (d < gBest) {
+          gBest = d;
+          g = [x, z];
+        }
+      }
+    }
+    if (!g || !metrics.extentM) skip('meadow', g ? 'no World v2 manifest: map extent unknown' : 'no gentle grassland or savanna cell');
+    else {
+      const unitsPerM = R / metrics.extentM;
+      const uYc = H / (metrics.elevSpanM || 7200);
+      // The drawn mesh is coarser than the elevation grid: stand on the highest ground within one
+      // coarse mesh cell, or the camera can end up under the drawn surface.
+      let gTop = surfAt(g[0], g[1]);
+      const span = R / 256;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) gTop = Math.max(gTop, surfAt(g[0] + dx * span, g[1] + dz * span));
+      const eye = [g[0], gTop + 2.2 * uYc, g[1]];
+      const az = azTo(eye, peak);
+      const ahead = 260 * unitsPerM;
+      const tx = eye[0] + ahead * Math.cos(az);
+      const tz = eye[2] + ahead * Math.sin(az);
+      put(
+        'meadow',
+        { position: eye, target: [tx, surfAt(tx, tz) + 1.0 * uYc, tz], azimuthDeg: deg(az), pitchDeg: 0, lineOfSight: 'unchecked (eye height)' },
+        `standing in ${biomeAt(g[0], g[1])} near the map centre at ~2.2 m, facing the highest peak`,
+      );
+    }
   }
 
   // 3. coast: the beach nearest the map centre that faces the OPEN SEA, seen from the sea side.

@@ -10,7 +10,16 @@ import {
   WORLD_EXTENT_M,
   type WorldV2LoadedBundle,
 } from './types';
-import { LOOK_SPECIES, LOOK_SPECIES_SIZE, makeLookFloraGeometry } from './floraLook';
+import {
+  BAKE_SPECIES_COUNT,
+  LOOK_SHAPE_COUNT,
+  LOOK_SPECIES,
+  LOOK_SPECIES_SIZE,
+  chooseLookShape,
+  chooseUnderstoryShape,
+  makeLookFloraGeometry,
+  type FloraHabitat,
+} from './floraLook';
 import { C01_RENDER_SIZE, worldRenderScale } from './worldScale';
 import {
   ATMOSPHERE_FRAGMENT_PARS,
@@ -262,7 +271,6 @@ const FloraBatchMesh = memo(function FloraBatchMesh({
   );
 });
 
-const SPECIES_COUNT = 8;
 
 // prototype, to be replaced — WV2-LOOK placement rules.
 //
@@ -272,7 +280,7 @@ const SPECIES_COUNT = 8;
 // Stand size follows a low-frequency clump noise and the local biome purity, so forest edges
 // thin out raggedly instead of stopping on a line; plants on cliff-steep cells are dropped.
 
-/** Stand radius in metres per species. */
+/** Stand radius in metres per bake species id (the archetype, not the drawn shape). */
 const STAND_RADIUS_M: ReadonlyArray<number> = [34, 30, 30, 18, 14, 30, 22, 16];
 /** Plants per stand at `high`; medium/low scale this down. */
 const STAND_BASE: ReadonlyArray<number> = [5, 4, 4, 2, 4, 2, 3, 4];
@@ -305,6 +313,57 @@ function seeded(seed: number): () => number {
     return s / 4294967296;
   };
 }
+
+/**
+ * Distance to the nearest sea cell, in grid cells, on a G x G grid over the drawn terrain
+ * (two-pass chamfer transform, 1 / sqrt(2) weights). Built once per world load.
+ */
+function seaDistanceGrid(
+  world: World,
+  meshResolution: number,
+  heightUnits: number,
+  seaY: number,
+  G: number,
+): Float32Array {
+  const d = new Float32Array(G * G);
+  const INF = 1e9;
+  for (let y = 0; y < G; y += 1) {
+    for (let x = 0; x < G; x += 1) {
+      const h = sampleMeshHeight(world, (x + 0.5) / G, (y + 0.5) / G, meshResolution) * heightUnits;
+      d[y * G + x] = h < seaY ? 0 : INF;
+    }
+  }
+  const D = Math.SQRT2;
+  for (let y = 0; y < G; y += 1) {
+    for (let x = 0; x < G; x += 1) {
+      const i = y * G + x;
+      let v = d[i];
+      if (x > 0) v = Math.min(v, d[i - 1] + 1);
+      if (y > 0) {
+        v = Math.min(v, d[i - G] + 1);
+        if (x > 0) v = Math.min(v, d[i - G - 1] + D);
+        if (x < G - 1) v = Math.min(v, d[i - G + 1] + D);
+      }
+      d[i] = v;
+    }
+  }
+  for (let y = G - 1; y >= 0; y -= 1) {
+    for (let x = G - 1; x >= 0; x -= 1) {
+      const i = y * G + x;
+      let v = d[i];
+      if (x < G - 1) v = Math.min(v, d[i + 1] + 1);
+      if (y < G - 1) {
+        v = Math.min(v, d[i + G] + 1);
+        if (x < G - 1) v = Math.min(v, d[i + G + 1] + D);
+        if (x > 0) v = Math.min(v, d[i + G - 1] + D);
+      }
+      d[i] = v;
+    }
+  }
+  return d;
+}
+
+const SEA_GRID = 512;
 
 function makeFloraLookMaterial(farUnits: number): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
@@ -359,8 +418,8 @@ diffuseColor.rgb*=mix(0.6,1.0,atmoCloudShadow(vLkFloraWp));
 }
 
 /**
- * Renders decoded `flora_tiles` (`ANMF v1`, `FLORA_FLAG_DECORATIVE`) as up to 8 `InstancedMesh`
- * batches (<= 8 draw calls total). Strictly decorative — mounted only inside `showDecoration`.
+ * Renders decoded `flora_tiles` (`ANMF v1`, `FLORA_FLAG_DECORATIVE`) as up to 12 `InstancedMesh`
+ * batches, one per look shape (<= 12 draw calls total). Strictly decorative — mounted only inside `showDecoration`.
  */
 export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   bundle,
@@ -384,15 +443,21 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   const edgeSkip = 0.085 * worldRenderScale(bundle.extentM).edgeScale;
 
   const batches = useMemo<SpeciesBatch[]>(() => {
-    const unitsPerM = renderSize / (bundle.extentM || WORLD_EXTENT_M);
+    const extentM = bundle.extentM || WORLD_EXTENT_M;
+    const unitsPerM = renderSize / extentM;
     const unitsPerMY = heightUnits / ELEV_SPAN_M;
     const seaY = SEA_LEVEL_NORM * heightUnits;
     const { size } = bundle;
-    const perSpecies: number[][] = Array.from({ length: SPECIES_COUNT }, () => []);
-    const perSpeciesColor: number[][] = Array.from({ length: SPECIES_COUNT }, () => []);
+    const perShape: number[][] = Array.from({ length: LOOK_SHAPE_COUNT }, () => []);
+    const perShapeColor: number[][] = Array.from({ length: LOOK_SHAPE_COUNT }, () => []);
     const rnd = seeded(bundle.seed ^ 0x5eed);
     const dummy = new THREE.Object3D();
     const tint = new THREE.Color();
+    // r9: habitat of every plant, measured on the drawn terrain (height above sea, distance to
+    // the sea, slope, biome), so a bake archetype becomes a plant that fits where it stands.
+    const seaDist = seaDistanceGrid(world, meshResolution, heightUnits, seaY, SEA_GRID);
+    const mPerSeaCell = extentM / SEA_GRID;
+    const env: FloraHabitat = { elevM: 0, distSeaM: 0, slope: 0, biome: 0 };
 
     let idx = 0;
     for (const sector of bundle.floraSectors) {
@@ -402,7 +467,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           continue;
         }
         idx += 1;
-        const sid = inst.species_id < SPECIES_COUNT ? inst.species_id : LOOK_SPECIES.Bush;
+        const bakeId = inst.species_id < BAKE_SPECIES_COUNT ? inst.species_id : 3;
         const u = (sector.sectorX + inst.x_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
         const v = (sector.sectorZ + inst.z_local_u16 / 65535.0) / FLORA_SECTORS_PER_SIDE;
         // The terrain's map-edge falloff band (see terrainPbrMaterial) is under water.
@@ -411,27 +476,30 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
         const cy = Math.min(size - 1, Math.max(0, Math.floor(v * size)));
         const ci = cy * size + cx;
 
-        // Cliff-steep cells: no trees (boulders may stay).
         const nx = (bundle.normalRg[ci * 2] / 255) * 2 - 1;
         const nz = (bundle.normalRg[ci * 2 + 1] / 255) * 2 - 1;
         const ny = Math.sqrt(Math.max(0, 1 - nx * nx - nz * nz));
         const slope = 1 - ny;
-        if (sid !== LOOK_SPECIES.Rock && slope > 0.32) continue;
 
         // Biome purity: 1 deep inside a biome, lower on an ecotone.
         const purity = (bundle.biomeWeightsRgba[ci * 4] ?? 255) / 255;
+        env.biome = bundle.biomeIdsRgba[ci * 4] ?? 0;
+        env.slope = slope;
         const wx0 = (u - 0.5) * renderSize;
         const wz0 = (v - 0.5) * renderSize;
         const clump =
           valueNoise(wx0 * 0.045, wz0 * 0.045, 17) * 0.65 + valueNoise(wx0 * 0.16, wz0 * 0.16, 23) * 0.35;
-        const keep = clump * 0.9 + purity * 0.55 - slope * 1.2;
+        // Steep ground thins the stand but no longer removes it: chooseLookShape turns cliff
+        // members into talus boulders or nothing.
+        const keep = clump * 0.9 + purity * 0.55 - Math.min(slope, 0.3) * 1.2;
         if (keep < 0.42) continue;
         const density = Math.min(1.25, Math.max(0.25, (keep - 0.42) * 2.2));
-        const k = Math.max(1, Math.round(STAND_BASE[sid] * standScale * density + rnd() * 0.8));
+        const k = Math.max(1, Math.round(STAND_BASE[bakeId] * standScale * density + rnd() * 0.8));
+        // Forest stands get one understory plant (tree fern or shrub) at high and medium.
+        const understory = !lite && rnd() < 0.6 ? 1 : 0;
 
-        const sizeSpec = LOOK_SPECIES_SIZE[sid];
         const scale01 = inst.scale_u8 / 255;
-        const radius = STAND_RADIUS_M[sid] * unitsPerM;
+        const radius = STAND_RADIUS_M[bakeId] * unitsPerM;
         const yaw0 = (inst.yaw_u8 / 255) * Math.PI * 2;
         // Clumped, not evenly spread: members gather around one or two sub-centres inside the
         // stand, leaving gaps (natural regeneration patches), and the whole stand is nudged.
@@ -442,7 +510,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           const sr = Math.sqrt(rnd()) * radius * 0.75;
           subs.push([wx0 + Math.cos(sa) * sr, wz0 + Math.sin(sa) * sr]);
         }
-        for (let m = 0; m < k; m += 1) {
+        for (let m = 0; m < k + understory; m += 1) {
           const a = rnd() * Math.PI * 2;
           const sc = subs[m % subN];
           const r = Math.pow(rnd(), 0.8) * radius * 0.55;
@@ -451,32 +519,57 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           const pu = px / renderSize + 0.5;
           const pv = pz / renderSize + 0.5;
           if (pu < 0 || pu > 1 || pv < 0 || pv > 1) continue;
+          const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
+          env.elevM = (groundY - seaY) / unitsPerMY;
+          const gx = Math.min(SEA_GRID - 1, Math.floor(pu * SEA_GRID));
+          const gy = Math.min(SEA_GRID - 1, Math.floor(pv * SEA_GRID));
+          env.distSeaM = seaDist[gy * SEA_GRID + gx] * mPerSeaCell;
+          const pick = rnd();
+          const shape = m < k ? chooseLookShape(bakeId, env, pick) : chooseUnderstoryShape(bakeId, env, pick);
+          if (shape < 0) continue;
+          const isRock = shape === LOOK_SPECIES.Rock;
+          // Nothing grows under the sea; mangroves stand in the intertidal zone, boulders may sit
+          // in the swash, half buried.
+          const floorY = isRock
+            ? seaY - 2 * unitsPerMY
+            : shape === LOOK_SPECIES.Mangrove
+              ? seaY - 1.5 * unitsPerMY
+              : seaY + 0.6 * unitsPerMY;
+          if (groundY < floorY) continue;
+          const sizeSpec = LOOK_SPECIES_SIZE[shape];
+          const under = m >= k ? 0.55 : 1;
           const hM =
-            sizeSpec.minM +
-            (sizeSpec.maxM - sizeSpec.minM) * Math.min(1, Math.max(0, scale01 * 0.6 + rnd() * 0.55 - 0.1));
+            (sizeSpec.minM +
+              (sizeSpec.maxM - sizeSpec.minM) * Math.min(1, Math.max(0, scale01 * 0.6 + rnd() * 0.55 - 0.1))) *
+            under;
           const h = hM * unitsPerM;
           const wJ = 0.72 + rnd() * 0.6;
-          const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
-          // Nothing grows under the sea; boulders may sit in the swash, half buried.
-          if (sid === LOOK_SPECIES.Rock ? groundY < seaY - 2 * unitsPerMY : groundY < seaY + 0.6 * unitsPerMY) continue;
-          const py = groundY - h * (sid === LOOK_SPECIES.Rock ? 0.3 : 0.03);
+          const py = groundY - h * (isRock ? 0.3 : 0.03);
           dummy.position.set(px, py, pz);
           dummy.rotation.set((rnd() - 0.5) * 0.08, yaw0 + rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
           dummy.scale.set(h * wJ, h * (0.88 + rnd() * 0.3), h * (0.72 + rnd() * 0.6));
           dummy.updateMatrix();
           const e = dummy.matrix.elements;
-          const list = perSpecies[sid];
+          const list = perShape[shape];
           for (let j = 0; j < 16; j += 1) list.push(e[j]);
 
           // Per-plant tint: value +-18%, drift between dry-warm and lush-cool.
           const val = 0.78 + rnd() * 0.4;
           const warm = rnd();
-          if (sid === LOOK_SPECIES.Rock) {
+          if (isRock) {
             tint.setRGB(val, val * 0.98, val * (0.92 + warm * 0.1));
+          } else if (
+            (shape === LOOK_SPECIES.Jungle || shape === LOOK_SPECIES.Broadleaf) &&
+            bakeId === 0 &&
+            rnd() < 0.035
+          ) {
+            // A few flowering or flushing crowns in the rainforest canopy (red-orange, yellow).
+            if (warm < 0.5) tint.setRGB(2.1, 1.05, 0.62);
+            else tint.setRGB(1.95, 1.75, 0.6);
           } else {
             tint.setRGB(val * (0.9 + warm * 0.28), val * (0.98 + warm * 0.06), val * (1.06 - warm * 0.3));
           }
-          perSpeciesColor[sid].push(tint.r, tint.g, tint.b);
+          perShapeColor[shape].push(tint.r, tint.g, tint.b);
         }
       }
     }
@@ -488,15 +581,15 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
     };
     grid.cellSize = renderSize / grid.side;
     const out: SpeciesBatch[] = [];
-    for (let sid = 0; sid < SPECIES_COUNT; sid += 1) {
-      const list = perSpecies[sid];
+    for (let shape = 0; shape < LOOK_SHAPE_COUNT; shape += 1) {
+      const list = perShape[shape];
       if (list.length === 0) continue;
       out.push({
-        speciesId: sid,
-        geometry: makeLookFloraGeometry(sid, lite),
+        speciesId: shape,
+        geometry: makeLookFloraGeometry(shape, lite),
         count: list.length / 16,
         grid,
-        ...sortIntoGrid(new Float32Array(list), new Float32Array(perSpeciesColor[sid]), grid),
+        ...sortIntoGrid(new Float32Array(list), new Float32Array(perShapeColor[shape]), grid),
       });
     }
     return out;
