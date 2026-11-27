@@ -1786,7 +1786,7 @@ impl SimulationEngine {
                         AgentGeneration(0),
                         crate::core::ecs::AgentParentLineageIds(Vec::new()),
                     ));
-                    if i < 7 {
+                    if founding.is_prey(i) {
                         world.entity_mut(agent_entity).insert(Prey);
                     } else {
                         world.entity_mut(agent_entity).insert(Predator);
