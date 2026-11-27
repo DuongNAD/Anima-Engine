@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { driveTimeUniform } from './utils/sceneClock';
-import { sampleMeshHeight } from './utils/worldSample';
 import type { WorldV2LoadedBundle } from './worldV2/types';
+import { evaluateDrawnWaterfall } from './worldV2/waterfallFit';
 
 // ---------------------------------------------------------------------------------------
 // WorldWaterfalls — foam curtains hung over the steep river drops the generator detected
@@ -66,8 +66,8 @@ float side=1.0-smoothstep(edgeMask-0.36,edgeMask,xDist);
 float vert=smoothstep(0.0,0.18,vUv.y)*smoothstep(1.0,0.82,vUv.y);
 float dist=distance(cameraPosition,vWorldPos);
 float distFade=1.0-smoothstep(uTerrainSize*0.16,uTerrainSize*0.46,dist);
-float sprayBase=smoothstep(0.45,0.0,vUv.y)*0.26;
-float alpha=clamp((0.16+0.62*filaments+sprayBase)*side*vert*distFade,0.0,0.82);
+float sprayBase=smoothstep(0.45,0.0,vUv.y)*0.30;
+float alpha=clamp((0.26+0.68*filaments+sprayBase)*side*vert*distFade,0.0,0.92);
 if(alpha<0.015)discard;
 vec3 col=mix(vec3(0.56,0.78,0.90),vec3(0.95,0.98,1.0),clamp(filaments*0.8+sprayBase*1.4,0.0,1.0));
 col=mix(col,uFogColor,smoothstep(uTerrainSize*0.5,uTerrainSize*2.2,dist));
@@ -196,40 +196,59 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     const dummy = new THREE.Object3D();
     const { size } = world;
     const toWorld = renderSize / size;
+    let keptCount = 0;
     for (let i = 0; i < count; i++) {
       const x = world.waterfallX[i] * toWorld;
       const z = world.waterfallZ[i] * toWorld;
-      const dropY = Math.max(1.2, world.waterfallDrop[i] * heightUnits);
       const yaw = world.waterfallYaw[i];
       const dirX = Math.cos(yaw);
       const dirZ = Math.sin(yaw);
+      let dropY = Math.max(1.2, world.waterfallDrop[i] * heightUnits);
       let topY = world.waterfallTopE[i] * heightUnits;
+      let pitchRad = 0;
+      let spanOffset = 1.0;
+
       if (worldV2 && meshResolution) {
-        // Seat the base on the drawn surface just downstream of the curtain.
-        const bu = (x + dirX * 1.6) / renderSize + 0.5;
-        const bv = (z + dirZ * 1.6) / renderSize + 0.5;
-        const drawnBase = sampleMeshHeight(world, bu, bv, meshResolution) * heightUnits;
-        topY = Math.max(topY, drawnBase + dropY);
+        const fit = evaluateDrawnWaterfall(world, worldV2, meshResolution, renderSize, heightUnits, i);
+        if (!fit.keep) {
+          dummy.position.set(0, -1e6, 0);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(0, 0, 0);
+          dummy.updateMatrix();
+          if (typeof curtain.setMatrixAt === 'function') curtain.setMatrixAt(i, dummy.matrix);
+          if (typeof foam.setMatrixAt === 'function') foam.setMatrixAt(i, dummy.matrix);
+          continue;
+        }
+        topY = fit.topY;
+        dropY = fit.dropY;
+        pitchRad = fit.pitchRad;
+        spanOffset = 1.25;
       }
+      keptCount += 1;
+
       const wfDischarge = worldV2?.sim.waterfalls[i]?.discharge_q_m3_s ?? 0;
       const qBoost = wfDischarge > 0 ? Math.min(1.6, 1.0 + Math.log2(1 + wfDischarge) * 0.08) : 1.0;
-      const width = Math.min(4.8, (1.2 + dropY * 0.3) * qBoost);
+      const width = Math.min(6.0, (1.8 + dropY * 0.42) * qBoost);
 
-      // Curtain: hangs from the lip, pushed proud of the rock face so the top edge doesn't
-      // knife back into the slope.
-      dummy.position.set(x + dirX * 1.0, topY - dropY / 2, z + dirZ * 1.0);
-      dummy.rotation.set(0, Math.PI / 2 - yaw, 0);
-      dummy.scale.set(width, dropY + 0.6, 1);
+      // Curtain: hangs from the lip down along the drawn rock face to the splash pool.
+      // Negative X pitch tilts the base (+downstream) outward so the sheet never knives into the cliff.
+      dummy.position.set(x + dirX * spanOffset, topY - dropY / 2, z + dirZ * spanOffset);
+      dummy.rotation.order = 'YXZ';
+      dummy.rotation.set(-pitchRad, Math.PI / 2 - yaw, 0);
+      dummy.scale.set(width, dropY + 0.5, 1);
       dummy.updateMatrix();
       if (typeof curtain.setMatrixAt === 'function') curtain.setMatrixAt(i, dummy.matrix);
 
-      // Splash pool at the base — small, soft-feathered, seated cleanly at base water surface.
-      dummy.position.set(x + dirX * (1.0 + width * 0.16), topY - dropY + 0.18, z + dirZ * (1.0 + width * 0.16));
+      // Splash pool at the base — seated cleanly at the drawn lower step.
+      const poolPush = spanOffset + Math.sin(pitchRad) * (dropY * 0.48) + width * 0.16;
+      dummy.position.set(x + dirX * poolPush, topY - dropY + 0.18, z + dirZ * poolPush);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(width * 0.44, 1, width * 0.36);
       dummy.updateMatrix();
       if (typeof foam.setMatrixAt === 'function') foam.setMatrixAt(i, dummy.matrix);
     }
+    curtain.userData.keptCount = keptCount;
+    curtain.userData.totalCount = count;
     if (curtain.instanceMatrix) curtain.instanceMatrix.needsUpdate = true;
     if (foam.instanceMatrix) foam.instanceMatrix.needsUpdate = true;
   }, [world, worldV2, count, renderSize, heightUnits, meshResolution]);

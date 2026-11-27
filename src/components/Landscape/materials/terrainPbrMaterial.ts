@@ -352,7 +352,7 @@ float lkSunVis=1.0;
 vec4 rivMask = texture2D(uRiverMask, vMapUv);
 float riv=rivMask.r;
 if(riv>0.03){
-  lkRivWater=smoothstep(0.26,0.58,riv)*(1.0-lkSnow)*(1.0-smoothstep(0.24,0.42,lkSlope)*smoothstep(800.0,1400.0,lkHm));
+  lkRivWater=smoothstep(0.26,0.58,riv)*(1.0-lkSnow)*(1.0-smoothstep(0.14,0.28,lkGSlope));
   lkRivBank=smoothstep(0.03,0.26,riv)*(1.0-lkRivWater)*(1.0-lkSnow);
   diffuseColor.rgb*=mix(1.0,0.48,lkRivBank);
   if(lkRivWater>0.01){

@@ -988,25 +988,33 @@ function pageAnalyseWorld() {
     const side = tGeom ? Math.round(Math.sqrt(tGeom.count)) : 0;
     const meshSurfAt = (x, z) => {
       if (!tGeom || side * side !== tGeom.count) return -Infinity;
-      const fx = Math.min(side - 1, Math.max(0, (x / R + 0.5) * (side - 1)));
-      const fz = Math.min(side - 1, Math.max(0, (z / R + 0.5) * (side - 1)));
-      const x0 = Math.floor(fx);
-      const z0 = Math.floor(fz);
+      const gx = Math.min(side - 1, Math.max(0, (x / R + 0.5) * (side - 1)));
+      const gz = Math.min(side - 1, Math.max(0, (z / R + 0.5) * (side - 1)));
+      const x0 = Math.floor(gx);
+      const z0 = Math.floor(gz);
       const x1 = Math.min(side - 1, x0 + 1);
       const z1 = Math.min(side - 1, z0 + 1);
+      const fx = gx - x0;
+      const fz = gz - z0;
       const a = tGeom.array;
-      return Math.max(a[(z0 * side + x0) * 3 + 1], a[(z0 * side + x1) * 3 + 1], a[(z1 * side + x0) * 3 + 1], a[(z1 * side + x1) * 3 + 1]);
+      const h00 = a[(z0 * side + x0) * 3 + 1];
+      const h10 = a[(z0 * side + x1) * 3 + 1];
+      const h01 = a[(z1 * side + x0) * 3 + 1];
+      const h11 = a[(z1 * side + x1) * 3 + 1];
+      return fx + fz < 1
+        ? h00 + (h10 - h00) * fx + (h01 - h00) * fz
+        : h11 + (h01 - h11) * (1 - fx) + (h10 - h11) * (1 - fz);
     };
     const groundAt = (x, z) => Math.max(surfAt(x, z), meshSurfAt(x, z));
-    // Where each curtain is actually drawn (the renderer may seat it on the drawn surface): the
-    // instance translation is the curtain's centre, its Y scale the drop + 0.6 (WorldWaterfalls).
+    // Where each curtain is actually drawn (the renderer may seat or filter it on the drawn surface).
     const curtains = scene.getObjectByName('waterfall-curtains');
     const drawn = (k) => {
       if (!curtains || !curtains.instanceMatrix || k >= curtains.count) return null;
       const e = curtains.instanceMatrix.array;
       const o = k * 16;
       const sy = Math.hypot(e[o + 4], e[o + 5], e[o + 6]);
-      return { centre: [e[o + 12], e[o + 13], e[o + 14]], drop: Math.max(0.1, sy - 0.6) };
+      if (sy < 0.05 || e[o + 13] < -1e4) return { culled: true };
+      return { culled: false, centre: [e[o + 12], e[o + 13], e[o + 14]], drop: Math.max(0.1, sy - 0.5) };
     };
     const losClear = (from, to) => {
       for (let s = 1; s < 48; s++) {
@@ -1027,11 +1035,13 @@ function pageAnalyseWorld() {
       const topY = w.waterfallTopE[k] * H;
       const lip = [w.waterfallX[k] * cellUnitToR, w.waterfallZ[k] * cellUnitToR];
       const d = drawn(k);
+      if (d && d.culled) continue;
       const t = d ? d.centre : [lip[0] + Math.cos(yaw) * 1.0, topY - drop / 2, lip[1] + Math.sin(yaw) * 1.0];
-      const baseY = d ? d.centre[1] - d.drop / 2 : topY - drop;
+      const actualDrop = d ? d.drop : drop;
+      const baseY = d ? d.centre[1] - actualDrop / 2 : topY - drop;
       // A curtain the drawn terrain swallows past its middle cannot be framed: next waterfall.
       if (meshSurfAt(t[0], t[2]) > t[1]) continue;
-      for (const dist of [10, 16, 24, 36, 52]) {
+      for (const dist of [13, 18, 26, 38]) {
         if (pick) break;
         for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) {
           if (pick) break;
@@ -1040,11 +1050,11 @@ function pageAnalyseWorld() {
             const x = t[0] + dist * Math.cos(az);
             const z = t[2] + dist * Math.sin(az);
             if (!insideMap(x, z)) continue;
-            const y = Math.max(baseY + drop * up, groundAt(x, z) + 1.0);
-            if (y > baseY + drop * 1.6) continue; // the ground there is above the fall: not "downstream"
+            const y = Math.max(baseY + actualDrop * up, groundAt(x, z) + 1.0);
+            if (y > baseY + actualDrop * 1.6) continue; // the ground there is above the fall: not "downstream"
             const pos = [x, y, z];
             if (!losClear(pos, t)) continue;
-            pick = { k, drop, pose: { position: pos, target: t, azimuthDeg: deg(azTo(pos, t)), pitchDeg: deg(Math.atan2(t[1] - y, dist)), lineOfSight: 'clear' }, dist, rank: order.indexOf(k) + 1 };
+            pick = { k, drop: actualDrop, pose: { position: pos, target: t, azimuthDeg: deg(azTo(pos, t)), pitchDeg: deg(Math.atan2(t[1] - y, dist)), lineOfSight: 'clear' }, dist, rank: order.indexOf(k) + 1 };
             break;
           }
         }
