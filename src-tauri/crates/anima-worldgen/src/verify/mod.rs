@@ -11,17 +11,132 @@ use crate::anmw_v3::{
 use crate::caves::CaveNetwork;
 use crate::pipeline::{read_bin_f32, read_bin_u8, read_bin_u8x4, PipelineError, RawWorldMeta};
 use crate::{normalize_elevation, WaterKind, SEA_LEVEL_M};
-use g_comp::{evaluate_c4_c5_and_flags, finalize_g_comp_v2, GCompV2Report};
-use g_shape::{evaluate_g_shape, GShapeInput, GShapeReport};
+use g_comp::{
+    evaluate_c4_c5_and_flags_with_profile, finalize_g_comp_v2_with_profile, GCompV2Report,
+};
+use g_shape::{evaluate_g_shape_with_flint_max, GShapeInput, GShapeReport};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
-use std::io::Read;
+use std::io::{BufReader, Read};
 use std::path::Path;
 
 const DEEP_OCEAN_THRESHOLD_M: f32 = -220.0;
 const DX8: [isize; 8] = [1, 1, 0, -1, -1, -1, 0, 1];
 const DZ8: [isize; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
+
+/// Verifier scale profile identifier selected automatically by world `extent_m`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VerifierProfileKind {
+    #[serde(rename = "40.96km")]
+    Standard40Km,
+    #[serde(rename = "81.92km")]
+    Large82Km,
+}
+
+/// Scale-aware threshold profile for `G-SHAPE` and `G-COMP v2` (`WB-D3`, `WB-D8`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VerifierProfile {
+    pub kind: VerifierProfileKind,
+    pub flint_a_max_m2: f64,
+    pub min_patch_area_m2: f64,
+    pub c1_waterfall_min: usize,
+    pub c1_waterfall_max: usize,
+    pub c1_cave_min: usize,
+    pub c1_cave_max: usize,
+    pub c1_min_cave_spacing_fixed_m: Option<f64>,
+    pub c3_large_lake_min: usize,
+    pub c3_paramo_lake_min: usize,
+    pub c3_caldera_lake_min: usize,
+    pub c3_small_paramo_pond_min: usize,
+    pub c4_fan_min: usize,
+    pub c4_delta_min: usize,
+    pub c4_require_oxbow_meander: bool,
+    pub c5_steep_cliff_max: Option<f64>,
+    pub c5_top_cam_z_offset_m: f64,
+    pub c5b_gated: bool,
+    pub c5b_plain_backed_5km_min: f64,
+    pub c5b_plain_backed_3km_min: f64,
+    pub c5b_median_coast_to_1000m_min_km: f64,
+    pub c5b_steep_mountain_front_max: f64,
+}
+
+impl VerifierProfile {
+    /// Trunk `40.96 km` profile — reproduces every existing `40.96 km @ 10 m` threshold verbatim.
+    #[must_use]
+    pub fn standard_40km() -> Self {
+        Self {
+            kind: VerifierProfileKind::Standard40Km,
+            flint_a_max_m2: 3.0e8,
+            min_patch_area_m2: g_comp::MIN_PATCH_AREA_M2,
+            c1_waterfall_min: 20,
+            c1_waterfall_max: 80,
+            c1_cave_min: 30,
+            c1_cave_max: 48,
+            c1_min_cave_spacing_fixed_m: None,
+            c3_large_lake_min: 5,
+            c3_paramo_lake_min: 1,
+            c3_caldera_lake_min: 1,
+            c3_small_paramo_pond_min: 10,
+            c4_fan_min: 2,
+            c4_delta_min: 2,
+            c4_require_oxbow_meander: false,
+            c5_steep_cliff_max: None,
+            c5_top_cam_z_offset_m: 12_000.0,
+            c5b_gated: false,
+            c5b_plain_backed_5km_min: 0.60,
+            c5b_plain_backed_3km_min: 0.75,
+            c5b_median_coast_to_1000m_min_km: 10.0,
+            c5b_steep_mountain_front_max: 0.20,
+        }
+    }
+
+    /// `81.92 km` profile (`WB-D3` + `WB-D8` from `WV2-D2 §5`), selected when `extent_m >= 80_000.0`.
+    #[must_use]
+    pub fn large_82km() -> Self {
+        Self {
+            kind: VerifierProfileKind::Large82Km,
+            flint_a_max_m2: 1.2e9,
+            min_patch_area_m2: 500_000.0,
+            c1_waterfall_min: 40,
+            c1_waterfall_max: 200,
+            c1_cave_min: 60,
+            c1_cave_max: 140,
+            c1_min_cave_spacing_fixed_m: Some(400.0),
+            c3_large_lake_min: 12,
+            c3_paramo_lake_min: 2,
+            c3_caldera_lake_min: 2,
+            c3_small_paramo_pond_min: 20,
+            c4_fan_min: 6,
+            c4_delta_min: 4,
+            c4_require_oxbow_meander: true,
+            c5_steep_cliff_max: Some(0.25),
+            c5_top_cam_z_offset_m: 24_000.0,
+            c5b_gated: true,
+            c5b_plain_backed_5km_min: 0.60,
+            c5b_plain_backed_3km_min: 0.75,
+            c5b_median_coast_to_1000m_min_km: 10.0,
+            c5b_steep_mountain_front_max: 0.20,
+        }
+    }
+
+    /// Selects the verifier profile matching a domain side length in metres.
+    #[must_use]
+    pub fn for_extent_m(extent_m: f32) -> Self {
+        if extent_m >= 80_000.0 {
+            Self::large_82km()
+        } else {
+            Self::standard_40km()
+        }
+    }
+
+    /// Computes required minimum cave entrance spacing in metres for `extent_m`.
+    #[must_use]
+    pub fn min_cave_spacing_m(&self, extent_m: f32) -> f64 {
+        self.c1_min_cave_spacing_fixed_m
+            .unwrap_or_else(|| 0.01 * f64::from(extent_m))
+    }
+}
 
 #[inline]
 fn pipeline_err(message: impl Into<String>) -> PipelineError {
@@ -70,6 +185,8 @@ pub struct VerificationReport {
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verifier_profile: Option<VerifierProfileKind>,
     pub mode: String,
     pub seed: Option<u64>,
     pub schema_tag: Option<String>,
@@ -486,6 +603,11 @@ fn collect_failed_gates(
         if !c.c5_coastal_sightlines.passed {
             failed.push("G-COMP-v2.C5.CoastalSightlines".to_owned());
         }
+        if let Some(c5b) = c.c5b_coastal_plain_profile.as_ref() {
+            if c5b.gated && !c5b.passed {
+                failed.push("G-COMP-v2.C5b.CoastalPlainProfile".to_owned());
+            }
+        }
     }
     if let Some(s) = g_sim {
         if !s.round_trip_ok
@@ -505,8 +627,45 @@ fn collect_failed_gates(
     failed
 }
 
+fn count_meander_scroll_cells(
+    path: &Path,
+    expected_cells: usize,
+) -> Result<Option<usize>, PipelineError> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let f = fs::File::open(path)?;
+    let file_meta = f.metadata()?;
+    let expected_bytes = expected_cells as u64 * 4;
+    if file_meta.len() != expected_bytes {
+        return Err(pipeline_err(format!(
+            "{} byte size mismatch: expected {expected_bytes}, got {}",
+            path.display(),
+            file_meta.len()
+        )));
+    }
+    let mut reader = BufReader::new(f);
+    let mut buf = [0_u8; 65_536];
+    let mut count = 0_usize;
+    let mut rem = expected_bytes as usize;
+    while rem > 0 {
+        let to_read = rem.min(buf.len());
+        reader.read_exact(&mut buf[..to_read])?;
+        for &chunk in buf[..to_read].as_chunks::<4>().0 {
+            let v = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            if v.is_finite() && v > 0.1 {
+                count += 1;
+            }
+        }
+        rem -= to_read;
+    }
+    Ok(Some(count))
+}
+
 /// Verifies a full `anima-worldgen generate` output directory (`raw_meta.json` + spilled layers)
 /// sequentially in memory to keep `4096^2` verification peak RAM under `~1 GiB`.
+///
+/// Automatically selects [`VerifierProfile::for_extent_m`] from `raw_meta.json`'s `extent_m`.
 pub fn verify_raw_dir(
     raw_dir: &Path,
     generator_version: u32,
@@ -515,6 +674,45 @@ pub fn verify_raw_dir(
 ) -> Result<VerificationReport, PipelineError> {
     let meta_bytes = fs::read(raw_dir.join("raw_meta.json"))?;
     let meta: RawWorldMeta = serde_json::from_slice(&meta_bytes)?;
+    let profile = VerifierProfile::for_extent_m(meta.extent_m);
+    verify_raw_dir_inner(
+        raw_dir,
+        meta,
+        generator_version,
+        out_sim_path,
+        out_index_path,
+        &profile,
+    )
+}
+
+/// Verifies a full `anima-worldgen generate` output directory against an explicit [`VerifierProfile`].
+pub fn verify_raw_dir_with_profile(
+    raw_dir: &Path,
+    generator_version: u32,
+    out_sim_path: Option<&Path>,
+    out_index_path: Option<&Path>,
+    profile: &VerifierProfile,
+) -> Result<VerificationReport, PipelineError> {
+    let meta_bytes = fs::read(raw_dir.join("raw_meta.json"))?;
+    let meta: RawWorldMeta = serde_json::from_slice(&meta_bytes)?;
+    verify_raw_dir_inner(
+        raw_dir,
+        meta,
+        generator_version,
+        out_sim_path,
+        out_index_path,
+        profile,
+    )
+}
+
+fn verify_raw_dir_inner(
+    raw_dir: &Path,
+    meta: RawWorldMeta,
+    generator_version: u32,
+    out_sim_path: Option<&Path>,
+    out_index_path: Option<&Path>,
+    profile: &VerifierProfile,
+) -> Result<VerificationReport, PipelineError> {
     let w = meta.width as usize;
     let h = meta.height as usize;
     if w < 16
@@ -571,13 +769,20 @@ pub fn verify_raw_dir(
         min_hack_samples: if n >= 512 * 512 { 500 } else { 20 },
         has_climate_fields: true,
     };
-    let shape_out = evaluate_g_shape(&shape_in);
+    let shape_out = evaluate_g_shape_with_flint_max(&shape_in, profile.flint_a_max_m2);
     drop(precip_m_yr);
     drop(pet_m_yr);
     drop(discharge_q_m3_s);
     drop(lithology_id);
 
-    let c4_c5_summary = evaluate_c4_c5_and_flags(
+    let (oxbow_count, meander_scroll_cells) = if profile.c4_require_oxbow_meander {
+        let meander_cells = count_meander_scroll_cells(&raw_dir.join("meander_scroll.bin"), n)?;
+        (Some(meta.stats.oxbow_count), meander_cells)
+    } else {
+        (None, None)
+    };
+
+    let c4_c5_summary = evaluate_c4_c5_and_flags_with_profile(
         w,
         h,
         meta.dx_m,
@@ -592,6 +797,9 @@ pub fn verify_raw_dir(
         &shape_out.report.metric_4_hack_law,
         meta.stats.fan_count,
         meta.stats.delta_count,
+        oxbow_count,
+        meander_scroll_cells,
+        profile,
     );
     drop(glacier_h_m);
     drop(water_h_m);
@@ -614,7 +822,7 @@ pub fn verify_raw_dir(
         .map_err(|e| pipeline_err(format!("cave_network.bin decode failed: {e}")))?;
     drop(cave_bytes);
 
-    let g_comp_v2 = finalize_g_comp_v2(
+    let g_comp_v2 = finalize_g_comp_v2_with_profile(
         w,
         h,
         meta.dx_m,
@@ -628,6 +836,7 @@ pub fn verify_raw_dir(
         meta.stats.micro_pond_count,
         &cave_network,
         c4_c5_summary,
+        profile,
     );
     drop(dominant_biome);
     drop(biome_ids);
@@ -684,6 +893,7 @@ pub fn verify_raw_dir(
         schema_version: 1,
         status: None,
         decision: None,
+        verifier_profile: Some(profile.kind),
         mode: "raw".to_owned(),
         seed: Some(meta.seed),
         schema_tag: Some(meta.schema_tag),
@@ -740,13 +950,12 @@ pub fn verify_dem_file(
     }
     drop(raw);
 
-    let g_shape_out = evaluate_g_shape(&GShapeInput::from_dem_only(
-        &total_h_m,
-        width,
-        height,
-        dx_m,
-        sea_level_m,
-    ));
+    let extent_m = width as f32 * dx_m;
+    let profile = VerifierProfile::for_extent_m(extent_m);
+    let g_shape_out = evaluate_g_shape_with_flint_max(
+        &GShapeInput::from_dem_only(&total_h_m, width, height, dx_m, sea_level_m),
+        profile.flint_a_max_m2,
+    );
     let failed_gates = collect_failed_gates(&g_shape_out.report, None, None);
     let overall_pass = failed_gates.is_empty();
 
@@ -754,13 +963,14 @@ pub fn verify_dem_file(
         schema_version: 1,
         status: None,
         decision: None,
+        verifier_profile: Some(profile.kind),
         mode: "dem_input".to_owned(),
         seed: None,
         schema_tag: None,
         width,
         height,
         dx_m,
-        extent_m: width as f32 * dx_m,
+        extent_m,
         world_sha256: None,
         sim_world_identity: None,
         overall_pass,

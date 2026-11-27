@@ -30,6 +30,32 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-082 — Shared `BrainModel::forward` hot path performs ~74 heap allocations/tick across `ai/model.rs:349-354`
+- **Ngày:** 2026-11-25
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/ai/model.rs:349-354`: inside the live shared inference pass (`batch_size > 0`), every tick executes `scratch.inputs.clone()`, `TensorData::new(...)`, `Tensor::<2>::from_data(data, device)`, and `actor_out.into_data().try_into_vec::<f32>()`.
+- **Phát hiện bởi:** `alloc_baseline_tests::measure_live_schedule_allocations_shared_vs_evolved_brains` (`P2 ALLOC-BASELINE`, `common/allocator.rs` process-wide `TrackingAllocator`)
+- **Triệu chứng:** Violates the hot-path zero-allocation rule (`SIMULATION_RULES.md`): even after a `60`-tick warm-up on `LiveExperimentAdapter` (`100` agents, `predator_fraction = 0.30`, `mortality = 0.0`, `reproduction = 0.0`), the live tick schedule allocates a median of **`17,683` heap blocks over `120` ticks (`147.36` allocs/tick)** when running shared `BrainModel` inference (`live.evolved_brains = 0.0`).
+  - **Negative control (`live.evolved_brains = 1.0`, every agent carries an `AgentBrain` so `batch_size == 0` skips lines 344-354):** median drops to **`8,803` heap blocks over `120` ticks (`73.36` allocs/tick)** — a drop of **`8,880` allocations (`74.00` allocs/tick, `50.2%`)**.
+  - **Measurement caveat:** Because the live Bevy schedule can involve worker threads, `alloc_baseline_tests` keeps process-wide `ALLOCATOR.start_tracking()` in a single `#[test]` (`common/allocator.rs`); process-wide counts can therefore include a few allocations from libtest's main thread handling harness events, though the `8,880`-allocation drop is orders of magnitude above that noise.
+- **Tái hiện:** `cargo test --manifest-path src-tauri/Cargo.toml --test alloc_baseline_tests -- --nocapture` (`5`-run median: shared `17,683` vs evolved negative control `8,803`)
+- **Test khoá lại:** `src-tauri/tests/alloc_baseline_tests.rs::measure_live_schedule_allocations_shared_vs_evolved_brains` (pins negative-control drop; intentionally does not gate on the shared baseline count)
+- **Trạng thái:** OPEN (measurement & finding only in `P2 ALLOC-BASELINE`, pending next-card hot-path fix)
+
+### F-081 — `physics_tests::test_spatial_grid_zero_allocation` process-wide tracking flake + `TEST_LOCK` `PoisonError` cascade
+- **Ngày:** 2026-11-25
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/tests/physics_tests.rs:528-536` (`test_spatial_grid_zero_allocation` used process-wide `ALLOCATOR.start_tracking()` around single-threaded `grid.raycast`)
+  - `src-tauri/tests/physics_tests.rs:24,107,187,267,416,493,541,686,763,855` (`TEST_LOCK.lock().unwrap()` poisoned sibling tests on any panic)
+- **Phát hiện bởi:** determinism (`hardening` -> `determinism` on PR `#273` at trunk `a146d2f2`, run `https://github.com/DuongNAD/Anima-Engine/actions/runs/45516447719`)
+- **Triệu chứng:** On run 1 of "kiểm ổn định (5 lần)", `physics_tests::test_spatial_grid_zero_allocation` failed with `"Raycast should perform 0 heap allocations, but made 1"`. That panic poisoned `TEST_LOCK`, causing `test_static_equilibrium`, `test_zero_allocation_hot_path`, and `test_zero_joint_axis_no_nan` to fail with `PoisonError`.
+  - **Root cause:** As documented in `src-tauri/tests/common/allocator.rs`, `start_tracking()` counts allocations from every thread in the process; in a multi-test binary, libtest's main thread allocates while handling harness events and can land inside the single-threaded `grid.raycast` measurement window. Meanwhile, `.unwrap()` on `TEST_LOCK` turned one failure into a 4-test cascade.
+- **Tái hiện:** `cargo test --manifest-path src-tauri/Cargo.toml --release --test physics_tests` (intermittent under `common/allocator.rs` process-wide tracking; CI run `45516447719`).
+- **Test khoá lại:** `physics_tests::test_spatial_grid_zero_allocation` (switched to `ALLOCATOR.start_tracking_this_thread()` on the single-threaded raycast window while keeping process-wide `ALLOCATOR.start_tracking()` on both `Schedule` windows `test_zero_allocation_hot_path` and `test_decoupled_systems_zero_allocation`; recovered `TEST_LOCK` via `unwrap_or_else(|e| e.into_inner())`; negative control with `Vec::<u8>::with_capacity(1)` fails with `"made 1"`; `20/20` `--release` stability runs pass).
+- **Trạng thái:** FIXED (`P11 PHYSICS-ALLOC-FLAKE`, branch `win/p11-physics-alloc-flake`, 2026-11-25).
+
 ### F-080 — `BrainPolicy.lifetime_learning` cannot be enabled from an experiment manifest (`ANIMA_LIFETIME_LEARNING` env-only / always `false` in `LiveWorldConfig`)
 - **Ngày:** 2026-11-24
 - **Loại:** SMELL
@@ -233,8 +259,8 @@ Quy tắc ghi:
   - **Confirmed by reading trunk `cf3fb24a`:** `evolution_worker_resume_state` rejects restore at `simulation_state.rs:812-814` with `"evolution morphology-node cursor precedes saved genotypes"` whenever `saved.node_id_counter < node_id_counter`, checked on restore at `simulation_loop.rs:436-454`; the `evo_handle` thread holds a local `mut node_id_counter` (`simulation_loop.rs:627`, incremented at `:878,:923`) synced across channels during checkpoint save (`:669-673`, `:2032-2073`), while `test_100_save_load_cycles` sleeps `15 ms` between `start` and `save_request_tx` (`persistence_stress_tests.rs:422-435`).
   - **Reported only by `anima-mac` (not re-run with Cargo on `anima-dell`):** intermittently aborted snapshot restore on earlier full-suite and isolated runs, while passing `4 passed; 0 failed` in `7.33s` in both Round 1 (`task-4902`) and Round 2 (`task-5034`) `-j 2` runs; deterministic trigger not yet isolated.
 - **Tái hiện:** `cd src-tauri && cargo test --features desktop --test persistence_stress_tests test_100_save_load_cycles` (intermittent per `anima-mac` report; not re-run on `anima-dell`)
-- **Test khoá lại:** none (intermittent pre-existing race; no fix in D9)
-- **Trạng thái:** OPEN — found by `anima-mac` (`WV2-3` review, 2026-11-24). No fix in D9.
+- **Test khoá lại:** `src-tauri/tests/f068_morphology_cursor_restore_tests.rs` (`f068_live_add_node_with_evo_paused_survives_save_load_cycles` + `f068_corrupt_morphology_cursor_is_still_rejected`), plus 50 repeated runs of `persistence_stress_tests::test_100_save_load_cycles`
+- **Trạng thái:** FIXED (`C15 HOTLOOP-PERSIST`, branch `win/hotloop-persist`, 2026-11-24). Synced `NextNodeId` / saved genotype node maxima into `SavedEvolutionWorkerState.node_id_counter` on checkpoint save and across `evo_handle` batches while keeping `evolution_worker_resume_state` strict.
 
 ### F-067 — `demographic_census_system` -> `build_demographic_census` allocates on the heap every tick inside `build_tick_schedule`
 - **Ngày:** 2026-11-24
@@ -248,8 +274,8 @@ Quy tắc ghi:
   - **Confirmed by reading trunk `cf3fb24a`:** `demographic_census_system` runs every tick (no cadence guard) in `simulation_schedule.rs:192` (`build_tick_schedule` `.chain()` `:131-200`, `55` tuple items at `:133-196` = `49` systems + `6` `apply_deferred`) and allocates heap memory every tick via `agent_data = Vec::new()` (`environmental_systems.rs:405,413`) plus `3` `Vec`s and `8` `String`s inside `build_demographic_census` (`telemetry_export.rs:136-243`) even when `DemographicCensusState` is absent (`environmental_systems.rs:419`), conflicting with the `CLAUDE.md` zero-heap-allocation hot-loop rule.
   - **Reported only by `anima-mac` (not re-run with Cargo on `anima-dell`):** running what `docs/ai/planning/2026-11-24-wv2-3.md:119` describes as the full 52-system `build_tick_schedule` performed `7338` allocations across `50` ticks, leading `world_v2_sim_gate_tests.rs:998` (`GS-4`) to isolate a 7-system World v2 hot schedule.
 - **Tái hiện:** run `ThreadTrackingAllocator` over full 52-system `build_tick_schedule` for `50` ticks as reported in `docs/ai/planning/2026-11-24-wv2-3.md:119` (not re-run on `anima-dell`)
-- **Test khoá lại:** none for full `build_tick_schedule` (no fix in D9)
-- **Trạng thái:** OPEN — found by `anima-mac` (`WV2-3` review, 2026-11-24). No fix in D9.
+- **Test khoá lại:** `src-tauri/tests/f067_census_zero_alloc_tests.rs` (zero heap allocations via `ThreadTrackingAllocator`, resource-present/absent parity vs `build_demographic_census`, and bit-identical trajectory check)
+- **Trạng thái:** FIXED (`C15 HOTLOOP-PERSIST`, branch `win/hotloop-persist`, 2026-11-24). `demographic_census_system` now skips work when `DemographicCensusState` is absent and streams living agents directly into `update_demographic_census_from_iter`, updating fixed cohort/mortality/fecundity buffers in place.
 
 ### F-066 — Ca sinh trong thế giới live không bao giờ tới lineage tracker, và anh em cùng cha dùng chung một lineage id
 - **Ngày:** 2026-11-22

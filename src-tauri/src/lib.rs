@@ -100,6 +100,11 @@ pub fn run() {
         ])
         .setup(move |app| {
             let app_state = app.state::<AppState>();
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                app_state
+                    .engine
+                    .set_bundled_world_path(resource_dir.join("world-v2").join("sim_256.anmw3"));
+            }
             if !launch_persistence.resume_autosave {
                 eprintln!(
                     "[anima] ANIMA_FRESH_START is set; starting from genesis and leaving the \

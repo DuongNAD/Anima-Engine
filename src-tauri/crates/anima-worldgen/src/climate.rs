@@ -3,7 +3,7 @@
 //! precipitation (`Smith & Barstad 2004`; `Roe 2005`), `PET`, `TWI` (`Beven & Kirkby 1979`),
 //! normalized `moisture`, and 2-pass climate–erosion coupling.
 
-use crate::config::WorldV2Config;
+use crate::config::{WorldLayout, WorldV2Config};
 use crate::rng::stage_rng;
 use crate::SEA_LEVEL_M;
 use rand::Rng;
@@ -63,6 +63,8 @@ pub struct ClimateConfig {
     pub wind_deflect_gain: f32,
     /// Clausius-Clapeyron moisture scale height (`3,200 m`).
     pub moisture_scale_height_m: f32,
+    /// Leeward orographic drying multiplier (`1.0` default = unchanged trunk; `1.32` on `MultiEnvironment`).
+    pub leeward_rain_shadow_gain: f32,
 }
 
 impl Default for ClimateConfig {
@@ -87,6 +89,7 @@ impl Default for ClimateConfig {
             advect_grid_size: 512,
             wind_deflect_gain: 0.55,
             moisture_scale_height_m: 3_200.0,
+            leeward_rain_shadow_gain: 1.0,
         }
     }
 }
@@ -106,6 +109,10 @@ impl ClimateConfig {
             schema_tag: cfg.schema_tag.clone(),
             params_grid_size: Some(target_size),
             dx_m: cfg.cell_size_m(),
+            leeward_rain_shadow_gain: match cfg.layout {
+                WorldLayout::SingleMassif => 1.0,
+                WorldLayout::MultiEnvironment => 1.32,
+            },
             ..Self::default()
         }
     }
@@ -155,6 +162,11 @@ impl ClimateConfig {
         }
         if !self.lapse_rate_c_per_km.is_finite() || self.lapse_rate_c_per_km <= 0.0 {
             return Err(err("lapse_rate_c_per_km must be > 0"));
+        }
+        if !self.leeward_rain_shadow_gain.is_finite()
+            || !(0.5..=3.0).contains(&self.leeward_rain_shadow_gain)
+        {
+            return Err(err("leeward_rain_shadow_gain must lie within [0.5, 3.0]"));
         }
         Ok(())
     }
@@ -478,8 +490,8 @@ pub fn compute_climate(
 
     let step_scale = dx_c / 80.0;
     let oro_gain = (cfg.windward_precip_target_m_yr / 3.2).clamp(0.4, 2.0);
-    let c_bg = 1.92 * oro_gain;
-    let c_oro = 3.90 * oro_gain;
+    let c_bg = 1.82 * oro_gain;
+    let c_oro = 3.65 * oro_gain;
     let w_sat = 0.19_f32;
     let c_lee = 5.2_f32;
     let s0_sq = 0.25_f32 * 0.25_f32;
@@ -539,12 +551,27 @@ pub fn compute_climate(
                 // Rainout depletes column moisture during orographic condensation excess and
                 // leeward adiabatic drying; flat humid lowlands gently recycle moisture.
                 let oro_rain = (cond - q_in * f_cc * c_bg).max(0.0);
-                let rain_deplete = 0.0018 * step_scale * oro_rain + 0.005 * step_scale * w_down;
-                let evap_recycle = if w_down < 0.02 && h < 1_200.0 {
-                    0.0045 * step_scale * (0.96 - q_in).max(0.0)
-                } else {
-                    0.0008 * step_scale * (0.50 - q_in).max(0.0)
-                };
+                let (rain_deplete, evap_recycle) =
+                    if (cfg.leeward_rain_shadow_gain - 1.0).abs() < 1e-6 {
+                        let rd = 0.0018 * step_scale * oro_rain + 0.005 * step_scale * w_down;
+                        let er = if w_down < 0.02 && h < 1_200.0 {
+                            0.0045 * step_scale * (0.96 - q_in).max(0.0)
+                        } else {
+                            0.0008 * step_scale * (0.50 - q_in).max(0.0)
+                        };
+                        (rd, er)
+                    } else {
+                        let rd = (0.0018 * step_scale * oro_rain + 0.005 * step_scale * w_down)
+                            * cfg.leeward_rain_shadow_gain;
+                        let t_dry = ((0.78 - q_in) / 0.30).clamp(0.0, 1.0);
+                        let recycle_damp = 1.0 - 0.72 * t_dry * t_dry * (3.0 - 2.0 * t_dry);
+                        let er = if w_down < 0.02 && h < 1_200.0 {
+                            0.0045 * step_scale * recycle_damp * (0.96 - q_in).max(0.0)
+                        } else {
+                            0.0008 * step_scale * (0.50 - q_in).max(0.0)
+                        };
+                        (rd, er)
+                    };
                 q_curr_col[r] = (q_in - rain_deplete + evap_recycle).clamp(0.05, 1.0);
             }
         }
@@ -1275,5 +1302,45 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[test]
+    fn leeward_rain_shadow_gain_preserves_default_and_amplifies_dry_side() {
+        let mut cfg_default = WorldV2Config::for_size(0x5756_3201, 128);
+        cfg_default.extent_m = 81_920.0;
+        let clim_cfg_default = ClimateConfig::for_world(&cfg_default);
+        assert!((clim_cfg_default.leeward_rain_shadow_gain - 1.0).abs() < 1e-6);
+
+        let mut cfg_multi = cfg_default.clone();
+        cfg_multi.layout = WorldLayout::MultiEnvironment;
+        let clim_cfg_multi = ClimateConfig::for_world(&cfg_multi);
+        assert!((clim_cfg_multi.leeward_rain_shadow_gain - 1.32).abs() < 1e-6);
+
+        let mut clim_cfg_dry = clim_cfg_default.clone();
+        clim_cfg_dry.leeward_rain_shadow_gain = 1.45;
+
+        let w = 128_usize;
+        let mut elev = vec![-100.0_f32; w * w];
+        for r in 0..w {
+            for c in 48..w {
+                let x = (c - 48) as f32 / (w - 48) as f32;
+                let ridge = libm::expf(-((x - 0.35) / 0.14) * ((x - 0.35) / 0.14));
+                elev[r * w + c] = 40.0 + 4_500.0 * ridge;
+            }
+        }
+        let f_def = compute_climate(&elev, w, w, None, &clim_cfg_default).expect("default");
+        let f_mul = compute_climate(&elev, w, w, None, &clim_cfg_dry).expect("dry gain");
+        assert!(f_mul
+            .precip_m_yr
+            .iter()
+            .all(|&p| p >= clim_cfg_dry.min_precip_m_yr));
+
+        let lee_idx = 64 * w + 112;
+        assert!(
+            f_mul.precip_m_yr[lee_idx] < f_def.precip_m_yr[lee_idx],
+            "expected stronger leeward drying: dry={} vs default={}",
+            f_mul.precip_m_yr[lee_idx],
+            f_def.precip_m_yr[lee_idx]
+        );
     }
 }

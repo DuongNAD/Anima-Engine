@@ -2,7 +2,7 @@
 title: Kế hoạch định hướng và điều phối — từ một cây xanh tới thế giới nhiều máy
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-26
 review_cycle: monthly  # và sau mỗi chặng
 ---
 
@@ -227,6 +227,12 @@ có bất kỳ tính năng nhiều máy nào (bản tổng hợp §12).
 
 **Cổng ra:** tag `v0.9.0`, bản cài tải được, ít nhất ba buổi MP-5.1 có ghi chép.
 
+**Cập nhật 2026-11-26 ([QD-FOCUS](../how-to/AGENT_WORKFLOW.md)):**
+
+- Đường tới `v0.9.0` đi theo đúng thứ tự FOCUS-2.
+- Phạm vi thế giới sống đóng băng tới tag này (FOCUS-1).
+- Thí nghiệm kế tiếp là SEL2-P2, chạy đúng một lần, xen giữa các thẻ phát hành (FOCUS-3).
+
 ### Chặng 6 — Bản 1.0: lát cắt dọc hoàn chỉnh
 
 Đợt 6 của kế hoạch swarm (V0 đến V11, H11). Tài liệu này không thêm gì ngoài một điều kiện: mọi
@@ -361,6 +367,13 @@ Cột "Đề xuất" chép từ tài liệu đã có, trừ các dòng QĐ-M là
 | **QĐ-M6** | Mức tất định giữa các nền tảng: "theo lớp" (bằng nhau trong cùng hệ điều hành, kiến trúc và build) hay "tuyệt đối" (bằng nhau giữa Windows x86_64 và macOS ARM64) | "Theo lớp" cho tới khi NM-2 có bảng. Chỉ xét "tuyệt đối" sau khi đo được giá tốc độ của hồ sơ CPU tất định | T5, NM-3 trên hai nền tảng, cổng ra chặng 7 | 4 nếu một thí nghiệm chạy trên hai nền tảng; nếu không thì 7 |
 | **QĐ-M7** | Sửa thiết kế 25/08: `Contribute` thành lô, `Inhabit` thành đảo, bỏ lockstep theo nhịp và dải không gian liên tục | Có, bằng một bản sửa thiết kế trước khi F2 có mã. Đây là suy luận từ nghiên cứu bên ngoài, chưa có phép đo | F2 đến F4, NM-4 | 7 |
 | **QĐ-M8** | Ký bản cài và tự cập nhật: có bật tự cập nhật không; nếu có, khoá ký để ở đâu và ai giữ bản dự phòng | Chưa đề xuất. Mất khoá thì người dùng hết nhận được bản cập nhật, nên phải quyết trước tag đầu tiên | MP-5.5 | 5 |
+
+> **Ghi chú (2026-11-24):** Các hàng của bảng §7 trên đã được chốt lần lượt từ `2026-11-14` tới `2026-11-24` (văn bản gốc giữ nguyên để tra cứu lịch sử):
+> - **`QĐ-A′`, `QĐ-B`, `QĐ-F028`, `QĐ-C`/`QD-C2`, `QĐ-1`, `QĐ-EN`, `QĐ-4`/`QĐ-5`, `QĐ-6`, `QĐ-P1..P3`:** đã quyết (xem [`COMPLETION_ROADMAP_2026-10-31.md` §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được)); riêng phần đuôi `QĐ-2/H` chốt theo `QD-OPENC` (ẩn Map 2 cho tới khi dán nhãn trang trí ở thẻ `C14`, giữ Research Dashboard chỉ-đọc) và `QĐ-P2` chốt hình vẽ coi là dữ liệu ở repo công khai còn bản nháp văn bản ở repo riêng tư.
+> - **`QĐ-M1`, `QĐ-M2`, `QĐ-M6`:** đã quyết theo `QD-OPENQ` (`EXECUTION_PLAN` + swarm plan cho việc và `DIRECTION` cho thứ tự chặng; tách crate sau `v1.0.0`; tất định theo lớp nền tảng).
+> - **`QĐ-M4` & `QĐ-M8`:** đã quyết theo `QD-OPENQ` + `QD-OPENC` + `QD-REL09` (`0.9` không ký; quyết ký & tự cập nhật trước `v1.0.0`; macOS không ký là nền tảng thứ hai nếu `NM-2` khớp lớp Windows).
+> - **`QĐ-M5` & `QĐ-M7`:** đã quyết theo `QD-SHAREDISLAND` + `QD-OPENQ` + `QD-ADR0014` ([ADR-0014](../decisions/ADR-0014-shared-island-host-and-guests.md), `#256`): đảo chung do host mô phỏng là mục tiêu chính, thay thế định nghĩa `Inhabit` cũ của `QĐ-M7`; `Contribute` theo lô giữ nguyên. `QĐ-M3` (vận chuyển Internet) để mở tới khi mốc LAN 1 chạy xong.
+> - Nguồn chi tiết mọi quyết định ngày `2026-11-24` (`PR #255`): [`AGENT_WORKFLOW.md` §4](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
 
 ## 8. Việc chỉ con người làm được
 

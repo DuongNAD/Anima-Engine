@@ -81,6 +81,8 @@ Kiểm chứng thực nghiệm: rate 0,001 và rate 0 cho checksum trùng từng
    sống sót trên nhiều seed hơn cho vế "tuyệt chủng muộn là ngẫu nhiên". Hai việc này cần thành một thẻ có
    uỷ quyền nếu chủ dự án muốn.
 
+> **Note (2026-11-24):** The founder-pool design choice above was answered by `QD-E3B` (`#223`, opt-in 2-segment `live.founder_genotype = 1.0` in `#224`, frozen in `E3b` `#231` and reported in `#252`), `QD-SEL2P2-D1=(a)` (`#258`, [`2026-11-24-sel2-p2-preregistration-draft.md`](2026-11-24-sel2-p2-preregistration-draft.md)), and `QD-GENESIS` (`PR #255`: G1 fixed designed founders, G2 screened founder pools, G3 emergent spike; see [`AGENT_WORKFLOW.md` §4](../../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0)).
+
 ## Ghi chú phụ
 
 Các cạnh của genotype sáng lập có `joint_anchor.x = 1.0`, nằm ngoài bán kính 0,2 của đốt cha. Toán tử 1 và 2

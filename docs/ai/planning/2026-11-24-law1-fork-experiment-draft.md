@@ -148,7 +148,7 @@ Programmatic verification across all `.json`, `.csv`, `.rs`, `.md`, and `.toml` 
 All six decisions below MUST be answered by the project owner before opening code cards (`AE-C0`/`AE-C1`/`L0`/`L1`) or freezing `LAW1`.
 
 ### `LAW1-D1` — Target Simulation World (`ReferenceEvolutionWorld` vs. `LiveExperimentAdapter`)
-- **Owner Decision:** *(EMPTY — awaiting owner choice before freeze)*
+- **Owner Decision:** **DECIDED (2026-11-24, QD-OPENQ):** Option **(a)** — reference world (`ReferenceEvolutionWorld`, `LAW1-ref`) first, `LAW1-live` second (`LAW1` freeze remains a separate owner approval).
 - **Context:** [`LiveExperimentAdapter`](../../../src-tauri/src/core/live_experiment.rs#L1985-L1994) explicitly refuses `laws.exotic_energy.is_some()` because the live Bevy world currently has no MU field or pathway traits, whereas [`ReferenceEvolutionWorld`](../../../src-tauri/src/core/reference_world.rs) already implements `ExoticEnergyField`, `ExoticEnergyBudget`, and `EnergyPathwayGenotype`.
 - **Options:**
   - **(a)** **Staged execution (`LAW1-ref` first, `LAW1-live` second):** Add `AE-C0` (`ER06`/`ER07` + `T2a` ghost-field gate) and `AE-C1` (`T2b`/`T3`/`T4`) on `ReferenceEvolutionWorld` first to complete the initial pre-`1.0` `QD-LAW1` gate rapidly, then schedule `L0` + `L1` (`AE4`) separately for live Bevy replication.
@@ -157,7 +157,7 @@ All six decisions below MUST be answered by the project owner before opening cod
 - **`anima-case` Recommendation:** **Option `(a)`** (staged `LAW1-ref` right after `SEL2-P2` while `L0`/`L1` are scoped cleanly without blocking pre-`1.0` counterfactual law validation on full `L1` engine migration), or **Option `(b)`** if the owner wants the sole pre-`1.0` law-fork milestone to measure spatial live creatures rather than the aggregate reference population.
 
 ### `LAW1-D2` — `QD-AE-C` Control-Arm Execution Scope
-- **Owner Decision:** *(EMPTY — awaiting owner choice before freeze)*
+- **Owner Decision:** **DECIDED (2026-11-24, QD-OPENQ):** Option **(a)** — full `QD-AE-C` 6-arm design `{T0, T1, T2a, T2b, T3, T4}`.
 - **Options:**
   - **(a)** **Full `QD-AE-C` 6-arm design `{T0, T1, T2a, T2b, T3, T4}`** (`T2a` verified bit-identical to `T0` on every seed in both `LAW1-VIAB` and confirmation, alongside `T2b`, `T3`, and `T4`).
   - **(b)** **Pre-gate `T2a` in `LAW1-VIAB` + 5-arm confirmation `{T0, T1, T2b, T3, T4}`** (saves 1 arm per confirmation seed once `T2a == T0` holds in deterministic tests + blind smoke/calibration).
@@ -165,7 +165,7 @@ All six decisions below MUST be answered by the project owner before opening cod
 - **`anima-case` Recommendation:** **Option `(a)`** (full `QD-AE-C` 6-arm ensemble; if `LAW1-D1` runs on `ReferenceEvolutionWorld`, `6` arms × `N` seeds executes in seconds on `Windows 1`).
 
 ### `LAW1-D3` — Confirmatory Hypothesis Family (`m = 3` vs. `m = 2`)
-- **Owner Decision:** *(EMPTY — awaiting owner choice before freeze)*
+- **Owner Decision:** **DECIDED (2026-11-24, QD-OPENQ):** Option **(b)** — `m = 2` Holm–Bonferroni family `{H1: T1 vs T4, H2: T3 vs T0}` plus `T2b` sham non-spread manipulation validity gate.
 - **Options:**
   - **(a)** **`m = 3` Holm–Bonferroni family** ($\alpha = 0.05$):
     - `H1`: **`T1` vs. `T4`** (two-sided: exotic law vs. calorie-matched elevated primary control),
@@ -175,7 +175,7 @@ All six decisions below MUST be answered by the project owner before opening cod
 - **`anima-case` Recommendation:** **Option `(b)` (`m = 2` confirmatory + `T2b` manipulation gate)** if matching `QD-AE-C` §2.3 cleanly (`T1 != T4` AND `T3 != T0` with `T2b` not retaining pathway), or **Option `(a)` (`m = 3`)** if formal equality with `#214`'s `m = 3` Holm budget is preferred (`N = 48` reaches `> 83%` power at $d_z = 0.50$ under both).
 
 ### `LAW1-D4` — Primary Endpoint & SESOI Margin (`R4`)
-- **Owner Decision:** *(EMPTY — awaiting owner choice before freeze)*
+- **Owner Decision:** **DECIDED (2026-11-24, QD-OPENQ):** Option **(b)** — log-ratio `ln(perf_B / perf_A)` with `SESOI = ±ln(1.25)` (`±0.2231`).
 - **Options:**
   - **(a)** *(If `LAW1-D1(a)` / `(c)` on `ReferenceEvolutionWorld`):* Post-warmup time-integrated **`evolution.pathway_frequency` delta** (on `H1/H2/H3`; noting `T0`/`T4` fix `pathway_frequency = 0` or pre-seeded baseline — specifically: `evolution.pathway_frequency` comparing `T1` vs. `T2b` / `T3` vs. `0`, PLUS **`evolution.performance_delta`** / total biomass / mean performance **`SESOI = ±0.10`** (`10` pp on `[0, 1]` frequency or `±ln(1.15)` relative performance ratio) refined cleanly during `AE-C1` + `LAW1-VIAB`).
   - **(b)** Log-ratio of post-warmup total population / metabolic throughput (`ln(perf_B / perf_A)`) with **`SESOI = ±ln(1.25)`** (`±0.2231`) so every contrast compares well-defined non-zero observables even when `T0`/`T4` lack expressed exotic pathways.
@@ -183,7 +183,7 @@ All six decisions below MUST be answered by the project owner before opening cod
 - **`anima-case` Recommendation:** **Option `(b)`** (`ln`-ratio of defined non-zero population performance / biomass throughput `±ln(1.25)` across `{T0, T1, T3, T4}`, paired with secondary `evolution.pathway_frequency` on `{T1, T2b, T3}`), avoiding boundary division or degenerate zero-variance `T0`/`T4` pathway comparisons.
 
 ### `LAW1-D5` — Fork Architecture (`genesis_fork` vs. Two-Phase vs. `checkpoint_fork`)
-- **Owner Decision:** *(EMPTY — awaiting owner choice before freeze)*
+- **Owner Decision:** **DECIDED (2026-11-24, QD-OPENQ):** Option **(a)** — `genesis_fork` at `t = 0`.
 - **Options:**
   - **(a)** **`t = 0` Genesis Fork (`genesis_fork`, `AE-S08`):** Diverge `T0, T1, T2a, T2b, T3, T4` from `t = 0` per independent world seed (directly tests counterfactual law from origin as stated in `ADR-0002` and `QD-LAW1`).
   - **(b)** **Two-phase Genesis + Checkpoint Fork (`2026-11-18` §2.1):** Multiple replicates per lineage history (`N` histories × `M` law draws) to partition law effect vs. historical contingency variance.
@@ -191,7 +191,7 @@ All six decisions below MUST be answered by the project owner before opening cod
 - **`anima-case` Recommendation:** **Option `(a)` (`genesis_fork` at `t = 0`)** for `LAW1` cleanly separating law genesis effects from runtime shocks.
 
 ### `LAW1-D6` — Confirmation Sample Size `N` & Execution Host (`1010001 + 1000*k`)
-- **Owner Decision:** *(EMPTY — awaiting owner choice before freeze)*
+- **Owner Decision:** **DECIDED (2026-11-24, QD-OPENQ):** Option **(a)** — `N = 48` seeds (`1010001..=1047001`) executed once on `Windows 1`.
 - **Options:**
   - **(a)** **`N = 48` seeds** (`1010001..=1047001`; `83.2%` power at $d_z = 0.50$ under `m=3` / `87.1%` under `m=2`, matches `SEL2-P2` sample size and unpaired WMW `N = 49` medium-effect robustness bound), executed once on **`Windows 1`**.
   - **(b)** **`N = 64` seeds** (`1010001..=1063001`; `93.5%` / `95.3%` power at $d_z = 0.50$, matches `E3b`).

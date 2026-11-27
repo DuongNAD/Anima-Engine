@@ -3,14 +3,20 @@
 #![deny(clippy::disallowed_methods)]
 
 use anima_worldgen::anmw_v3::{compute_sim_world_identity, sha256_to_hex, AnmwV3Sim};
-use anima_worldgen::caves::CaveNetwork;
+use anima_worldgen::caves::{
+    CaveEntrance, CaveNetwork, CaveNode, MouthKind, ANMC_HEADER_LEN, ANMC_MAGIC, ANMC_VERSION,
+};
 use anima_worldgen::config::WorldV2Config;
 use anima_worldgen::lakes_falls::{LakeBasinRecord, LakeClassification, WaterfallRecord};
 use anima_worldgen::pipeline::run_worldgen_to_dir;
-use anima_worldgen::verify::g_comp::{evaluate_c4_c5_and_flags, finalize_g_comp_v2};
+use anima_worldgen::verify::g_comp::{
+    evaluate_c4_c5_and_flags, evaluate_c4_c5_and_flags_with_profile,
+    evaluate_c5b_coastal_plain_profile, finalize_g_comp_v2, finalize_g_comp_v2_with_profile,
+};
 use anima_worldgen::verify::g_shape::{evaluate_g_shape, GShapeInput, HackLawReport};
 use anima_worldgen::verify::{
-    verify_dem_file, verify_raw_dir, VerificationReport, WorldV2IndexJson,
+    verify_dem_file, verify_raw_dir, verify_raw_dir_with_profile, VerificationReport,
+    VerifierProfile, VerifierProfileKind, WorldV2IndexJson,
 };
 use anima_worldgen::{BiomeId, WaterKind};
 use std::path::{Path, PathBuf};
@@ -771,7 +777,7 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
     cfg.validate().expect("preset_v2.toml must be valid");
     assert_eq!(cfg.seed, 0x5756_3201);
     assert_eq!(cfg.grid_size, 4096);
-    assert_eq!(cfg.schema_tag, "ANMW3-SNSM-v1");
+    assert_eq!(cfg.schema_tag, "ANMW3-BIG-v1");
 
     let sim_bytes = std::fs::read(v2_dir.join("sim_256.anmw3"))
         .expect("read committed artifacts/world-v2/sim_256.anmw3");
@@ -805,8 +811,9 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
         .expect("read committed artifacts/world-v2/gates.json");
     let gates: VerificationReport =
         serde_json::from_slice(&gates_bytes).expect("parse artifacts/world-v2/gates.json");
-    assert_eq!(gates.status.as_deref(), Some("provisional"));
-    assert_eq!(gates.decision.as_deref(), Some("MAP-D4"));
+    assert_eq!(gates.status.as_deref(), Some("accepted"));
+    assert_eq!(gates.decision.as_deref(), Some("MAP-D8"));
+    assert_eq!(gates.verifier_profile, Some(VerifierProfileKind::Large82Km));
     assert_eq!(
         gates.sim_world_identity.as_deref(),
         Some(idx.sim_world_identity.as_str())
@@ -815,22 +822,53 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
     assert_eq!(gates.height, 4096);
     assert_eq!(gates.seed, Some(0x5756_3201));
 
+    assert!(
+        gates.g_shape.metric_1_strahler_horton.passed,
+        "MAP-D8 BIG_4096_v2 passes G-SHAPE.1 Strahler-Horton"
+    );
+
     let endo = &gates.g_shape.metric_6_endorheic_spillways;
     assert!(
         endo.passed,
-        "provisional C01 passes G-SHAPE.6 endorheic spillways"
+        "MAP-D8 BIG_4096_v2 passes G-SHAPE.6 endorheic spillways"
     );
     assert_eq!(endo.unmodeled_micro_pits, 0);
     assert_eq!(endo.severed_humid_spillways, 0);
     assert_eq!(endo.endorheic_humid_fraction, 0.0);
 
+    assert!(
+        gates.g_shape.metric_4_2_shoreline_fractal.passed,
+        "MAP-D8 BIG_4096_v2 passes G-SHAPE.4_2 shoreline fractal"
+    );
+
     let comp = gates.g_comp_v2.as_ref().expect("g_comp_v2 present");
     assert!(
+        comp.c1_partition.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C1 partition"
+    );
+    assert!(
         comp.c2_ecotone.passed,
-        "provisional C01 passes G-COMP-v2.C2 ecotone continuity"
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C2 ecotone continuity"
+    );
+    assert!(
+        comp.c3_lakes.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C3 lakes"
+    );
+    assert!(
+        comp.c5_coastal_sightlines.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C5 coastal sightlines"
+    );
+    let c5b = comp
+        .c5b_coastal_plain_profile
+        .as_ref()
+        .expect("c5b_coastal_plain_profile present");
+    assert!(
+        c5b.gated && c5b.passed,
+        "MAP-D8 BIG_4096_v2 passes G-COMP-v2.C5b coastal plain profile"
     );
 
     let sim_rep = gates.g_sim_raw.as_ref().expect("g_sim_raw present");
+    assert!(sim_rep.passed, "MAP-D8 BIG_4096_v2 passes G-SIM.Raw");
     assert!(sim_rep.round_trip_ok);
     assert!(sim_rep.max_mean_norm_elev_diff <= 1e-5);
     assert!(sim_rep.all_biomes_in_range);
@@ -848,7 +886,7 @@ fn official_world_v2_provisional_c01_artifacts_integrity_and_passing_gates() {
 }
 
 #[test]
-#[ignore = "MAP-D4: G-SHAPE (1-5, 7, 4.2), G-COMP v2 (C1, C3-C5), and G-SIM (GS-1, GS-2) not met by provisional C01, see docs/ai/planning/2026-11-24-wv2-4.md"]
+#[ignore = "MAP-D8: G-SHAPE (2, 3, 4, 5, 7) and G-COMP-v2.C4 not met by accepted BIG_4096_v2 (9/15 pass under 81.92km profile), see docs/ai/planning/2026-11-26-wv2-big-3-card.md"]
 fn official_world_v2_c01_passes_all_15_g_shape_g_comp_and_g_sim_gates() {
     let v2_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../artifacts/world-v2");
     let gates_bytes = std::fs::read(v2_dir.join("gates.json"))
@@ -870,4 +908,445 @@ fn official_world_v2_c01_passes_all_15_g_shape_g_comp_and_g_sim_gates() {
         gates.g_sim_raw.as_ref().expect("g_sim_raw").passed,
         "G-SIM raw must pass"
     );
+}
+
+#[test]
+fn verifier_profile_selection_by_extent_m() {
+    let p_40 = VerifierProfile::for_extent_m(40_960.0);
+    assert_eq!(p_40.kind, VerifierProfileKind::Standard40Km);
+    assert_eq!(p_40, VerifierProfile::standard_40km());
+    assert!((p_40.flint_a_max_m2 - 3.0e8).abs() < 1.0);
+    assert!((p_40.min_patch_area_m2 - 250_000.0).abs() < 1.0);
+    assert_eq!((p_40.c1_waterfall_min, p_40.c1_waterfall_max), (20, 80));
+    assert_eq!((p_40.c1_cave_min, p_40.c1_cave_max), (30, 48));
+    assert!((p_40.min_cave_spacing_m(40_960.0) - 409.6).abs() < 1e-6);
+    assert!(!p_40.c5b_gated);
+
+    let p_80 = VerifierProfile::for_extent_m(80_000.0);
+    let p_82 = VerifierProfile::for_extent_m(81_920.0);
+    assert_eq!(p_80.kind, VerifierProfileKind::Large82Km);
+    assert_eq!(p_82, VerifierProfile::large_82km());
+    assert!((p_82.flint_a_max_m2 - 1.2e9).abs() < 1.0);
+    assert!((p_82.min_patch_area_m2 - 500_000.0).abs() < 1.0);
+    assert_eq!((p_82.c1_waterfall_min, p_82.c1_waterfall_max), (40, 200));
+    assert_eq!((p_82.c1_cave_min, p_82.c1_cave_max), (60, 140));
+    assert!((p_82.min_cave_spacing_m(81_920.0) - 400.0).abs() < 1e-6);
+    assert_eq!(
+        (
+            p_82.c3_large_lake_min,
+            p_82.c3_paramo_lake_min,
+            p_82.c3_caldera_lake_min,
+            p_82.c3_small_paramo_pond_min,
+        ),
+        (12, 2, 2, 20)
+    );
+    assert_eq!((p_82.c4_fan_min, p_82.c4_delta_min), (6, 4));
+    assert!(p_82.c4_require_oxbow_meander);
+    assert_eq!(p_82.c5_steep_cliff_max, Some(0.25));
+    assert!((p_82.c5_top_cam_z_offset_m - 24_000.0).abs() < 1e-6);
+    assert!(p_82.c5b_gated);
+}
+
+#[test]
+fn c5b_coastal_plain_profile_pass_fail_and_low_islet_exclusion() {
+    let w = 128_usize;
+    let h = 128_usize;
+    let dx = 500.0_f32;
+    let profile = VerifierProfile::large_82km();
+
+    // 1. Plain-backed mainland (>= 7.5 km < 100 m, 12.5 km to 1,000 m) -> passes C5b.
+    let mut plain_h = vec![0.0_f32; w * h];
+    let mut plain_wk = vec![WaterKind::None as u8; w * h];
+    for r in 0..h {
+        for c in 0..w {
+            let idx = r * w + c;
+            if c < 20 {
+                plain_h[idx] = -20.0;
+                plain_wk[idx] = WaterKind::Ocean as u8;
+            } else if c < 35 {
+                plain_h[idx] = 25.0;
+            } else if c < 45 {
+                plain_h[idx] = 250.0;
+            } else {
+                plain_h[idx] = 1_400.0;
+            }
+        }
+    }
+    let plain_rep =
+        evaluate_c5b_coastal_plain_profile(w, h, dx, 0.0, &plain_h, &plain_wk, &profile);
+    assert!(plain_rep.gated);
+    assert!(
+        plain_rep.passed,
+        "expected plain coast to pass: {plain_rep:?}"
+    );
+    assert!((plain_rep.plain_backed_5km_fraction - 1.0).abs() < 1e-9);
+    assert!((plain_rep.plain_backed_3km_fraction - 1.0).abs() < 1e-9);
+    assert!(plain_rep.median_coast_to_1000m_km >= 12.0);
+    assert!(plain_rep.steep_mountain_front_fraction < 1e-9);
+
+    // 2. Steep coastal mountain front (1.0 km to 1,200 m) -> fails C5b.
+    let mut steep_h = vec![0.0_f32; w * h];
+    let mut steep_wk = vec![WaterKind::None as u8; w * h];
+    for r in 0..h {
+        for c in 0..w {
+            let idx = r * w + c;
+            if c < 20 {
+                steep_h[idx] = -20.0;
+                steep_wk[idx] = WaterKind::Ocean as u8;
+            } else if c < 22 {
+                steep_h[idx] = 20.0;
+            } else {
+                steep_h[idx] = 1_200.0;
+            }
+        }
+    }
+    let steep_rep =
+        evaluate_c5b_coastal_plain_profile(w, h, dx, 0.0, &steep_h, &steep_wk, &profile);
+    assert!(
+        !steep_rep.passed,
+        "expected steep wall coast to fail: {steep_rep:?}"
+    );
+    assert!((steep_rep.plain_backed_5km_fraction - 0.0).abs() < 1e-9);
+    assert!((steep_rep.median_coast_to_1000m_km - 1.0).abs() < 1e-6);
+    assert!((steep_rep.steep_mountain_front_fraction - 1.0).abs() < 1e-9);
+
+    // 3. Adding a low (< 100 m) offshore islet must be excluded and must not rescue steep mainland.
+    for r in 30..100 {
+        for c in 4..10 {
+            let idx = r * w + c;
+            steep_h[idx] = 15.0;
+            steep_wk[idx] = WaterKind::None as u8;
+        }
+    }
+    let islet_rep =
+        evaluate_c5b_coastal_plain_profile(w, h, dx, 0.0, &steep_h, &steep_wk, &profile);
+    assert!(
+        islet_rep.excluded_low_islet_coast_cells > 50,
+        "low offshore islet coast cells must be excluded: {islet_rep:?}"
+    );
+    assert_eq!(islet_rep.evaluated_coastline_cells, h);
+    assert!(!islet_rep.passed);
+}
+
+#[test]
+fn large_82km_profile_boundary_and_negative_control_rejects_40km_candidate() {
+    let w = 256_usize;
+    let h = 256_usize;
+    let n = w * h;
+    let dx = 320.0_f32;
+    let extent_m = w as f32 * dx; // 81,920 m
+    let large_profile = VerifierProfile::large_82km();
+
+    let mut total_h = vec![0.0_f32; n];
+    let mut water_h = vec![0.0_f32; n];
+    let mut water_kind = vec![WaterKind::None as u8; n];
+    let glacier_h = vec![0.0_f32; n];
+    let mut river_w = vec![0.0_f32; n];
+    let mut is_channel = vec![false; n];
+
+    // 43.75% ocean (c < 112) -> gentle coast cols 112..148 (~11.5 km < 100 m) -> foothills -> summit (>= 1,000 m at c >= 148)
+    for r in 0..h {
+        for c in 0..w {
+            let idx = r * w + c;
+            if c < 112 {
+                total_h[idx] = -50.0;
+                water_h[idx] = 0.0;
+                water_kind[idx] = WaterKind::Ocean as u8;
+            } else if c < 148 {
+                if r < 40 && c == 112 {
+                    // 40/256 = 15.6% cliffed coast minority (within [0.10, 0.25]); remaining 84.4% gentle & plain-backed.
+                    total_h[idx] = 95.0;
+                } else if r < 40 && c == 113 {
+                    total_h[idx] = 200.0;
+                } else {
+                    total_h[idx] = 15.0;
+                }
+                water_h[idx] = total_h[idx];
+            } else if c < 164 {
+                total_h[idx] = 400.0;
+                water_h[idx] = 400.0;
+            } else {
+                total_h[idx] = 1_500.0 + ((r == 128 && c == 200) as u8 as f32) * 3_000.0;
+                water_h[idx] = total_h[idx];
+            }
+        }
+    }
+
+    // Add 0.015 lake fraction + active Strahler channels for C3/C4 fractions.
+    for r in 10..20 {
+        for c in 150..250 {
+            let idx = r * w + c;
+            water_kind[idx] = WaterKind::FreshwaterLake as u8;
+        }
+    }
+    for c in 120..240 {
+        let idx = 128 * w + c;
+        is_channel[idx] = true;
+        river_w[idx] = 320.0;
+    }
+
+    let mean_width_by_order = vec![(2_u8, 20_usize, 4.0), (3, 15, 8.0), (4, 10, 14.0)];
+    let hack = HackLawReport {
+        passed: true,
+        sample_count: 600,
+        exponent_h: 0.57,
+        prefactor_c_km: 1.4,
+        r_squared: 0.92,
+        max_path_km: 24.0,
+        median_mainstem_sinuosity: 1.15,
+    };
+
+    let summary_ok = evaluate_c4_c5_and_flags_with_profile(
+        w,
+        h,
+        dx,
+        0.0,
+        &total_h,
+        &water_h,
+        &water_kind,
+        &glacier_h,
+        &river_w,
+        &is_channel,
+        &mean_width_by_order,
+        &hack,
+        6,
+        4,
+        Some(1),
+        Some(12),
+        &large_profile,
+    );
+    assert!(
+        summary_ok.c4.passed,
+        "expected 82km C4 pass: {:?}",
+        summary_ok.c4
+    );
+    assert!(
+        summary_ok.c5.passed,
+        "expected 82km C5 pass: {:?}",
+        summary_ok.c5
+    );
+    assert!(
+        summary_ok.c5b.as_ref().expect("c5b").passed,
+        "expected 82km C5b pass: {:?}",
+        summary_ok.c5b
+    );
+
+    // Assign pure Forest on r >= 80 and blended Forest/Jungle ecotone on r < 80 (~31% ecotone in [0.15, 0.55]),
+    // plus all 16 zoned biomes onto contiguous blocks >= 500,000 m^2 (5 cells @ 320 m).
+    let mut dominant_biome = vec![BiomeId::Forest as u8; n];
+    let mut biome_ids = vec![[BiomeId::Forest as u8, BiomeId::Jungle as u8, 0, 0]; n];
+    let mut biome_weights = vec![[240_u8, 15, 0, 0]; n];
+    for r in 0..80 {
+        for c in 0..w {
+            biome_weights[r * w + c] = [180_u8, 75, 0, 0];
+        }
+    }
+    let mut land_cells_list = Vec::new();
+    for r in 0..h {
+        for c in 112..w {
+            let idx = r * w + c;
+            if water_kind[idx] == WaterKind::None as u8 {
+                land_cells_list.push(idx);
+            }
+        }
+    }
+    for (bi, &b) in BiomeId::ZONED_TERRESTRIAL_16.iter().enumerate() {
+        let row_band = bi * 8 + 4;
+        for dr in 0..6 {
+            for dc in 0..10 {
+                let r = (row_band + dr).min(h - 1);
+                let c = 170 + dc;
+                let idx = r * w + c;
+                dominant_biome[idx] = b as u8;
+                biome_ids[idx] = [b as u8, BiomeId::Forest as u8, 0, 0];
+                biome_weights[idx] = [240, 15, 0, 0];
+            }
+        }
+    }
+
+    let make_caves = |count: usize, spacing_cells: usize| -> CaveNetwork {
+        let mut nodes = Vec::with_capacity(count);
+        let mut entrances = Vec::with_capacity(count);
+        let cols_per_row = 8_usize;
+        for i in 0..count {
+            let c = 114 + (i % cols_per_row) * spacing_cells;
+            let r = 24 + (i / cols_per_row) * spacing_cells;
+            nodes.push(CaveNode {
+                x_m: c as f32 * dx,
+                y_m: 100.0,
+                z_m: r as f32 * dx,
+                radius_m: 3.0,
+                light_decay: 0.1,
+            });
+            entrances.push(CaveEntrance {
+                node_idx: i as u32,
+                mouth_kind: MouthKind::CliffPortal as u8,
+                realm_status: 1,
+                yaw_rad: 0.0,
+                elevation_m: 100.0,
+                clearance_m: 3.0,
+            });
+        }
+        CaveNetwork {
+            flags: 0,
+            nodes,
+            edges: Vec::new(),
+            entrances,
+        }
+    };
+    let make_wf = |count: usize| -> Vec<WaterfallRecord> {
+        (0..count)
+            .map(|i| WaterfallRecord {
+                lip_cell: (1000 + i) as u32,
+                base_cell: (1001 + i) as u32,
+                x_m: (i as f32) * 320.0,
+                z_m: 1_000.0,
+                lip_elev_m: 200.0,
+                drop_m: 16.0,
+                yaw_rad: 0.0,
+                discharge_q_m3_s: 1.5,
+                plunge_depth_m: 3.0,
+            })
+            .collect()
+    };
+    let make_basins = |large: usize, paramo: usize, caldera: usize| -> Vec<LakeBasinRecord> {
+        let mut out = Vec::new();
+        for i in 0..large {
+            let level = if i < paramo { 3_400.0 } else { 150.0 };
+            out.push(LakeBasinRecord {
+                id: (i + 1) as u32,
+                water_kind: WaterKind::FreshwaterLake as u8,
+                classification: LakeClassification::FreshwaterSpilling,
+                water_level_m: level,
+                spill_elev_m: level,
+                pit_elev_m: level - 8.0,
+                area_m2: 120_000.0,
+                max_depth_m: 8.0,
+                mean_elev_m: level - 3.0,
+                max_wall_slope_deg: if i < caldera { 30.0 } else { 10.0 },
+                elongation: 1.5,
+                outlet_cell: 0,
+                q_in_m3_s: 2.0,
+                q_out_m3_s: 2.0,
+                spillway_reaches_outlet: true,
+            });
+        }
+        out
+    };
+
+    let rep_ok = finalize_g_comp_v2_with_profile(
+        w,
+        h,
+        dx,
+        extent_m,
+        &water_kind,
+        &dominant_biome,
+        &biome_ids,
+        &biome_weights,
+        &make_wf(40),
+        &make_basins(12, 2, 2),
+        20,
+        &make_caves(60, 4),
+        summary_ok,
+        &large_profile,
+    );
+    assert!(
+        rep_ok.c1_partition.passed,
+        "expected 82km C1 pass: {:?}",
+        rep_ok.c1_partition
+    );
+    assert!(
+        rep_ok.c3_lakes.passed,
+        "expected 82km C3 pass: {:?}",
+        rep_ok.c3_lakes
+    );
+    assert!(
+        rep_ok.passed,
+        "expected full 82km G-COMP v2 pass: {rep_ok:?}"
+    );
+
+    // Negative control: 40.96 km-sized metrics evaluated under 81.92 km profile must fail C1, C3, C4, and C5!
+    for r in 40..90 {
+        // Raise cliffs from 15.6% to 35.2% (> 0.25 ceiling) & remove oxbow/meander & shrink fans/deltas.
+        total_h[r * w + 112] = 95.0;
+        total_h[r * w + 113] = 200.0;
+    }
+    let summary_40k_under_82k = evaluate_c4_c5_and_flags_with_profile(
+        w,
+        h,
+        dx,
+        0.0,
+        &total_h,
+        &water_h,
+        &water_kind,
+        &glacier_h,
+        &river_w,
+        &is_channel,
+        &mean_width_by_order,
+        &hack,
+        3,
+        2,
+        Some(0),
+        Some(0),
+        &large_profile,
+    );
+    assert!(!summary_40k_under_82k.c4.passed);
+    assert!(!summary_40k_under_82k.c5.passed);
+    let rep_40k_under_82k = finalize_g_comp_v2_with_profile(
+        w,
+        h,
+        dx,
+        extent_m,
+        &water_kind,
+        &dominant_biome,
+        &biome_ids,
+        &biome_weights,
+        &make_wf(31),
+        &make_basins(6, 1, 1),
+        10,
+        &make_caves(40, 4),
+        summary_40k_under_82k,
+        &large_profile,
+    );
+    assert!(!rep_40k_under_82k.c1_partition.passed);
+    assert!(!rep_40k_under_82k.c3_lakes.passed);
+    assert!(!rep_40k_under_82k.passed);
+    assert!(!land_cells_list.is_empty());
+    let _ = (ANMC_HEADER_LEN, ANMC_MAGIC, ANMC_VERSION);
+}
+
+#[test]
+fn verify_raw_dir_40km_candidate_fails_cleanly_under_82km_profile() {
+    let root = temp_test_dir("neg_82km_profile_on_40km_raw");
+    let raw_dir = root.join("raw_40km");
+    let mut cfg = WorldV2Config::for_size(0x5756_3201, 256);
+    cfg.schema_tag = "wv2_big_2_neg".to_owned();
+    run_worldgen_to_dir(&cfg, &raw_dir).expect("generate 256x256 40.96 km world");
+
+    let std_rep = verify_raw_dir(&raw_dir, 3, None, None).expect("verify 40km default");
+    assert_eq!(
+        std_rep.verifier_profile,
+        Some(VerifierProfileKind::Standard40Km)
+    );
+    assert!(
+        !std_rep
+            .failed_gates
+            .iter()
+            .any(|g| g == "G-COMP-v2.C5b.CoastalPlainProfile"),
+        "40.96 km profile must not gate C5b"
+    );
+
+    let big_rep =
+        verify_raw_dir_with_profile(&raw_dir, 3, None, None, &VerifierProfile::large_82km())
+            .expect("verify 40km under 81.92km profile");
+    assert_eq!(
+        big_rep.verifier_profile,
+        Some(VerifierProfileKind::Large82Km)
+    );
+    assert!(!big_rep.overall_pass);
+    assert!(big_rep
+        .failed_gates
+        .iter()
+        .any(|g| g == "G-COMP-v2.C1.Partition"));
+    let _ = std::fs::remove_dir_all(&root);
 }

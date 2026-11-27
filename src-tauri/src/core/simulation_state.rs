@@ -1529,13 +1529,14 @@ pub fn serialize_world_state(
     }
 }
 
-/// Recover [`crate::core::agent_systems::NextNodeId`] from a restored save, falling back to
-/// `(max_saved_node_id + 1).max(3)` when loading a pre-F045 save that omitted `next_node_id`.
+/// Recover [`crate::core::agent_systems::NextNodeId`] from a restored save, guaranteed not to
+/// fall behind `state.next_node_id`, `evolution_worker.node_id_counter`, or any saved genotype's
+/// morphology node id (falling back safely for pre-F045 saves as well).
 pub fn restored_next_node_id(state: &SavedSimulationState) -> u32 {
-    if let Some(next_id) = state.next_node_id {
-        return next_id.max(3);
+    let mut next_node_id = state.next_node_id.unwrap_or(3).max(3);
+    if let Some(worker) = state.evolution_worker.as_ref() {
+        next_node_id = next_node_id.max(worker.node_id_counter);
     }
-    let mut next_node_id = 3u32;
     for agent in &state.agents {
         for node in &agent.genotype.nodes {
             next_node_id = next_node_id.max(node.id.saturating_add(1));
@@ -1544,6 +1545,13 @@ pub fn restored_next_node_id(state: &SavedSimulationState) -> u32 {
     for dormant in &state.dormant_agents {
         for node in &dormant.agent.genotype.nodes {
             next_node_id = next_node_id.max(node.id.saturating_add(1));
+        }
+    }
+    for lineage_node in &state.lineage_nodes {
+        if let Some(genotype) = lineage_node.genotype.as_ref() {
+            for node in &genotype.nodes {
+                next_node_id = next_node_id.max(node.id.saturating_add(1));
+            }
         }
     }
     next_node_id
@@ -1707,4 +1715,132 @@ pub fn route_restored_pending_inference(
         }
     }
     (routed_batches, dropped)
+}
+
+/// Extract the current per-segment visual telemetry from `world` into `out`, reusing `out`'s buffer.
+///
+/// Read-only projection helper used by off-tick inspection and Card `I3` tests; does not mutate
+/// simulation resources or advance any RNG.
+pub fn extract_segment_states_from_world(world: &mut World, out: &mut Vec<SegmentState>) {
+    out.clear();
+    let mut query_state = world.query::<(
+        Entity,
+        &Segment,
+        &Position,
+        &Rotation,
+        &ParentAgent,
+        Option<&crate::physics::JointConstraint>,
+        Option<&JointAxis>,
+    )>();
+    for (entity, segment, pos, rot, parent_agent, joint_constraint, joint_axis) in
+        query_state.iter(world)
+    {
+        let (yaw, pitch, roll) = rot.0.to_euler(glam::EulerRot::YXZ);
+
+        let parent_segment_id = world
+            .get::<ParentLink>(entity)
+            .and_then(|parent_link| world.get::<Segment>(parent_link.0))
+            .map(|parent_segment| parent_segment.id);
+
+        let (energy, hydration) =
+            if let Some(homeo) = world.get::<crate::ai::hrrl::HomeostaticState>(parent_agent.0) {
+                (homeo.energy, homeo.hydration)
+            } else {
+                (0.0, 0.0)
+            };
+
+        let head_rot = world
+            .get::<Rotation>(parent_agent.0)
+            .map(|r| r.0)
+            .unwrap_or(glam::Quat::IDENTITY);
+        let head_direction = (head_rot * glam::Vec3::Z).to_array();
+
+        let joint_anchor = joint_constraint
+            .map(|jc| jc.anchor_offset)
+            .unwrap_or(glam::Vec3::ZERO);
+        let j_axis = joint_axis.map(|ja| ja.0).unwrap_or(glam::Vec3::ZERO);
+
+        let agent_type = if world.get::<Predator>(parent_agent.0).is_some() {
+            Some(AgentType::Predator)
+        } else if world.get::<Prey>(parent_agent.0).is_some() {
+            Some(AgentType::Prey)
+        } else {
+            None
+        };
+
+        out.push(SegmentState {
+            agent_id: parent_agent.0.index(),
+            segment_id: segment.id,
+            parent_segment_id,
+            length: segment.length,
+            radius: segment.radius,
+            x: pos.0.x,
+            y: pos.0.y,
+            z: pos.0.z,
+            yaw,
+            pitch,
+            roll,
+            joint_anchor_x: joint_anchor.x,
+            joint_anchor_y: joint_anchor.y,
+            joint_anchor_z: joint_anchor.z,
+            joint_axis_x: j_axis.x,
+            joint_axis_y: j_axis.y,
+            joint_axis_z: j_axis.z,
+            energy,
+            hydration,
+            head_direction,
+            agent_type,
+        });
+    }
+}
+
+/// Extract current lake and tree landmarks from `world` into `out`, reusing element `String`s.
+pub fn extract_environmental_state_from_world(world: &mut World, out: &mut EnvironmentalState) {
+    let mut write_idx = 0usize;
+    let mut push_el = |kind: &str, x: f32, z: f32, radius: f32, resources: f32| {
+        if let Some(slot) = out.elements.get_mut(write_idx) {
+            slot.element_type.clear();
+            slot.element_type.push_str(kind);
+            slot.x = x;
+            slot.y = z;
+            slot.radius = radius;
+            slot.resources = resources;
+        } else {
+            out.elements.push(EnvironmentalElement {
+                element_type: kind.to_string(),
+                x,
+                y: z,
+                radius,
+                resources,
+            });
+        }
+        write_idx += 1;
+    };
+
+    {
+        let mut lake_query = world.query::<(&Position, &crate::physics::SpatialCollider, &Lake)>();
+        for (pos, collider, lake) in lake_query.iter(world) {
+            push_el(
+                "lake",
+                pos.0.x,
+                pos.0.z,
+                collider.radius,
+                lake.current_water,
+            );
+        }
+    }
+    {
+        let mut tree_query = world.query::<(&Position, &crate::physics::SpatialCollider, &Tree)>();
+        for (pos, collider, tree) in tree_query.iter(world) {
+            push_el(
+                "tree",
+                pos.0.x,
+                pos.0.z,
+                collider.radius,
+                tree.current_fruit,
+            );
+        }
+    }
+
+    out.elements.truncate(write_idx);
 }

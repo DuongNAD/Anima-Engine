@@ -107,6 +107,18 @@ pub fn load_simulation_state(
     let loaded_state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
 
     let engine = &state.engine;
+    let active_identity = crate::core::world_artifact::active_desktop_world_identity(
+        engine.bundled_world_path().as_deref(),
+    )?;
+    if let Some(reason) = loaded_state
+        .world_identity
+        .mismatch_against(&active_identity)
+    {
+        return Err(format!(
+            "refusing to load save from a different world: {reason}"
+        ));
+    }
+
     let was_running = engine.running.load(std::sync::atomic::Ordering::SeqCst);
     if was_running {
         engine.stop();

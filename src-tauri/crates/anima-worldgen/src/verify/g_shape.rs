@@ -289,8 +289,18 @@ fn count_raw_non_water_land_pits(
     pits
 }
 
-/// Evaluates `G-SHAPE` metrics `1..=7` and shoreline fractal dimension `D_shore` (§4.1–§4.2).
+/// Evaluates `G-SHAPE` metrics `1..=7` and shoreline fractal dimension `D_shore` (§4.1–§4.2)
+/// using the standard `40.96 km` Flint catchment area ceiling.
 pub fn evaluate_g_shape(input: &GShapeInput<'_>) -> GShapeHydroOutput {
+    evaluate_g_shape_with_flint_max(input, 3.0e8)
+}
+
+/// Evaluates `G-SHAPE` metrics `1..=7` and shoreline fractal dimension `D_shore` with an explicit
+/// Flint catchment upper bound `flint_a_max_m2` (`3.0e8` for `40.96 km`, `1.2e9` for `81.92 km`).
+pub fn evaluate_g_shape_with_flint_max(
+    input: &GShapeInput<'_>,
+    flint_a_max_m2: f64,
+) -> GShapeHydroOutput {
     let w = input.width;
     let h = input.height;
     let n = w * h;
@@ -428,6 +438,7 @@ pub fn evaluate_g_shape(input: &GShapeInput<'_>) -> GShapeHydroOutput {
         w,
         h,
         dx,
+        flint_a_max_m2,
     );
 
     let m6 = eval_metric_6_endorheic_spillways(input, raw_pit_before, w, h);
@@ -1194,6 +1205,7 @@ fn eval_metric_5_valleys_flint<F: Fn(usize) -> f64>(
     w: usize,
     h: usize,
     dx: f64,
+    flint_a_max_m2: f64,
 ) -> ValleyFlintReport {
     let n = w * h;
     let mut wf_mark = vec![false; n];
@@ -1290,14 +1302,15 @@ fn eval_metric_5_valleys_flint<F: Fn(usize) -> f64>(
     const BINS: usize = 20;
     let mut bin_slopes: Vec<Vec<f64>> = vec![Vec::new(); BINS];
     let mut bin_areas: Vec<Vec<f64>> = vec![Vec::new(); BINS];
+    let a_max = flint_a_max_m2.max(5.1e4);
     let log_a_min = libm::log10(5.0e4); // 0.05 km^2
-    let log_a_max = libm::log10(3.0e8); // 300 km^2
+    let log_a_max = libm::log10(a_max); // 300 km^2 @ 40.96 km, 1200 km^2 @ 81.92 km
     for i in 0..n {
         if !is_channel[i] || wf_mark[i] || strahler[i] < 2 {
             continue;
         }
         let a_m2 = flow_acc_m2(i);
-        if !(5.0e4..=3.0e8).contains(&a_m2) {
+        if !(5.0e4..=a_max).contains(&a_m2) {
             continue;
         }
         let mut cur = i;

@@ -37,8 +37,40 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Docs-only fast path (QD-FOCUS FOCUS-5, owner 2026-11-26). The Rust job costs one to two hours. When
+  # a pull request only changes documentation that no Rust step reads, `scope` says so and `rust` is
+  # skipped. GitHub reports a job skipped by `if:` as a success, so the required check
+  # `Rust (src-tauri)` keeps its name and branch protection does not change. `Frontend`, which holds
+  # every docs gate, always runs. The definition of "docs-only", the measurement behind it and the
+  # self-test with negative controls are in scripts/ci_docs_only.mjs.
+  #
+  # Fail-safe by construction:
+  # - If `scope` fails or is cancelled, `docs_only` is empty, `!= 'true'` holds, and the Rust job
+  #   runs in full. `!cancelled()` is what lets `rust` start after a failed `scope`.
+  # - Pushes to the trunk and workflow_dispatch always run in full.
+  scope:
+    name: Change scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify the change (docs-only fast path)
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci_docs_only.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
+
   rust:
     name: Rust (src-tauri)
+    needs: scope
+    if: ${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}
     # Windows on purpose: this is the platform the project is developed and released on, and
     # src-tauri/.cargo/config.toml carries x86_64-pc-windows-msvc rustflags.
     runs-on: windows-latest

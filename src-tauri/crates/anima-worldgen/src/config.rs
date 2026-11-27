@@ -18,6 +18,19 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Regional macro-layout mode for World v2 tectonic generation (`WV2-BIG-1`).
+///
+/// [`WorldLayout::SingleMassif`] preserves trunk `40.96 km` generation bit-for-bit;
+/// [`WorldLayout::MultiEnvironment`] activates the opt-in metre-based `81.92 km`
+/// multi-environment layout (`E1..E9`, `§4b` coastal plain setbacks).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorldLayout {
+    #[default]
+    SingleMassif,
+    MultiEnvironment,
+}
+
 /// Top-level configuration for World v2 regional terrain generation (`LD-1` / `LD-5`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorldV2Config {
@@ -25,6 +38,9 @@ pub struct WorldV2Config {
     pub seed: u64,
     /// Schema/preset tag hashed into PRNG domain separation.
     pub schema_tag: String,
+    /// Regional tectonic layout mode (default: `single_massif`, bit-identical to trunk).
+    #[serde(default)]
+    pub layout: WorldLayout,
     /// Grid resolution per side (`width == height`). Minimum supported is `64`.
     pub grid_size: u32,
     /// Physical square domain extent in metres (`40,960.0` default).
@@ -45,6 +61,67 @@ pub struct WorldV2Config {
     pub caprock_max_m: f32,
     /// Maximum allowed ratio `max(stratum_k) / min(stratum_k)` across the 6 lithology classes (`<= 8.0`).
     pub max_erodibility_contrast: f32,
+    /// Channel initiation threshold on `A * S^2` (`m^2`) transitioning MFD hillslopes -> D8 channels.
+    #[serde(default = "default_channel_init")]
+    pub channel_init: f32,
+    /// MFD slope-partition exponent `p` controlling hillslope convergence.
+    #[serde(default = "default_mfd_p")]
+    pub mfd_p: f32,
+    /// Seasonal convective storm-runoff yield coefficient (`0.0..=0.50`) for sub-humid/semi-arid basins.
+    #[serde(default = "default_storm_runoff")]
+    pub storm_runoff: f32,
+    /// Dimensionless multiplier on Fastscape-SD fluvial erodibility scale across multigrid evolution.
+    #[serde(default = "default_fluvial_k_mult")]
+    pub fluvial_k_mult: f32,
+    /// Caprock-over-shale differential plunge sapping gain (`0.0..=6.0`).
+    #[serde(default = "default_sapping_gain")]
+    pub sapping_gain: f32,
+    /// Amplitude multiplier for structural pull-apart/foreland lake basins and caldera relief (`0.5..=3.0`).
+    #[serde(default = "default_basin_amp")]
+    pub basin_amp: f32,
+    /// Multiplier for LGM paleo-glacial cirque steps and intensity above `3,350 m` (`0.5..=5.0`).
+    #[serde(default = "default_glacial_mult")]
+    pub glacial_mult: f32,
+    /// Multi-octave fractal coastline amplitude (`0.0..=0.12`).
+    #[serde(default = "default_coast_frac_amp")]
+    pub coast_frac_amp: f32,
+    /// Target headland fraction along rocky coastal arcs (`0.0..=0.70`).
+    #[serde(default = "default_coast_cliff_share")]
+    pub coast_cliff_share: f32,
+    /// Substeps for fine-scale (`< 30 m`) Stage S3 thermal/talus relaxation (`1..=64`).
+    #[serde(default = "default_talus_substeps")]
+    pub talus_substeps: usize,
+}
+
+const fn default_channel_init() -> f32 {
+    100.0
+}
+const fn default_mfd_p() -> f32 {
+    1.90
+}
+const fn default_storm_runoff() -> f32 {
+    0.12
+}
+const fn default_fluvial_k_mult() -> f32 {
+    1.65
+}
+const fn default_sapping_gain() -> f32 {
+    1.5
+}
+const fn default_basin_amp() -> f32 {
+    1.35
+}
+const fn default_glacial_mult() -> f32 {
+    1.8
+}
+const fn default_coast_frac_amp() -> f32 {
+    0.055
+}
+const fn default_coast_cliff_share() -> f32 {
+    0.28
+}
+const fn default_talus_substeps() -> usize {
+    20
 }
 
 impl Default for WorldV2Config {
@@ -52,6 +129,7 @@ impl Default for WorldV2Config {
         Self {
             seed: 0x0057_5632_2026_1120,
             schema_tag: "ANMW3-SNSM-v1".to_owned(),
+            layout: WorldLayout::default(),
             grid_size: 4096,
             extent_m: WORLD_EXTENT_M,
             elev_min_m: ELEV_MIN_M,
@@ -62,6 +140,16 @@ impl Default for WorldV2Config {
             caprock_min_m: 450.0,
             caprock_max_m: 1_100.0,
             max_erodibility_contrast: 8.0,
+            channel_init: default_channel_init(),
+            mfd_p: default_mfd_p(),
+            storm_runoff: default_storm_runoff(),
+            fluvial_k_mult: default_fluvial_k_mult(),
+            sapping_gain: default_sapping_gain(),
+            basin_amp: default_basin_amp(),
+            glacial_mult: default_glacial_mult(),
+            coast_frac_amp: default_coast_frac_amp(),
+            coast_cliff_share: default_coast_cliff_share(),
+            talus_substeps: default_talus_substeps(),
         }
     }
 }
@@ -121,6 +209,75 @@ impl WorldV2Config {
         {
             return Err(err("max_erodibility_contrast must lie in (1.0, 8.0]"));
         }
+        if !self.channel_init.is_finite()
+            || self.channel_init <= 0.0
+            || self.channel_init > 10_000.0
+        {
+            return Err(err("channel_init must lie in (0.0, 10000.0]"));
+        }
+        if !self.mfd_p.is_finite() || !(1.0..=4.0).contains(&self.mfd_p) {
+            return Err(err("mfd_p must lie within [1.0, 4.0]"));
+        }
+        if !self.storm_runoff.is_finite() || !(0.0..=0.50).contains(&self.storm_runoff) {
+            return Err(err("storm_runoff must lie within [0.0, 0.50]"));
+        }
+        if !self.fluvial_k_mult.is_finite() || !(0.2..=10.0).contains(&self.fluvial_k_mult) {
+            return Err(err("fluvial_k_mult must lie within [0.2, 10.0]"));
+        }
+        if !self.sapping_gain.is_finite() || !(0.0..=6.0).contains(&self.sapping_gain) {
+            return Err(err("sapping_gain must lie within [0.0, 6.0]"));
+        }
+        if !self.basin_amp.is_finite() || !(0.5..=3.0).contains(&self.basin_amp) {
+            return Err(err("basin_amp must lie within [0.5, 3.0]"));
+        }
+        if !self.glacial_mult.is_finite() || !(0.5..=5.0).contains(&self.glacial_mult) {
+            return Err(err("glacial_mult must lie within [0.5, 5.0]"));
+        }
+        if !self.coast_frac_amp.is_finite() || !(0.0..=0.12).contains(&self.coast_frac_amp) {
+            return Err(err("coast_frac_amp must lie within [0.0, 0.12]"));
+        }
+        if !self.coast_cliff_share.is_finite() || !(0.0..=0.70).contains(&self.coast_cliff_share) {
+            return Err(err("coast_cliff_share must lie within [0.0, 0.70]"));
+        }
+        if !(1..=64).contains(&self.talus_substeps) {
+            return Err(err("talus_substeps must lie within [1, 64]"));
+        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WorldLayout, WorldV2Config};
+
+    #[test]
+    fn default_layout_is_single_massif_and_legacy_toml_defaults_to_it() {
+        assert_eq!(WorldV2Config::default().layout, WorldLayout::SingleMassif);
+        let legacy_toml = include_str!("../presets/wv2_c01_40960.toml");
+        let parsed: WorldV2Config = toml::from_str(legacy_toml).expect("parse legacy preset");
+        assert_eq!(parsed.layout, WorldLayout::SingleMassif);
+        assert!(parsed.validate().is_ok());
+    }
+
+    #[test]
+    fn shipped_preset_v2_is_the_wv2_big_81920_preset() {
+        let shipped_toml = include_str!("../../../../artifacts/world-v2/preset_v2.toml");
+        let big_toml = include_str!("../presets/wv2_big_81920.toml");
+        let shipped: WorldV2Config =
+            toml::from_str(shipped_toml).expect("parse shipped preset_v2.toml");
+        let big: WorldV2Config = toml::from_str(big_toml).expect("parse wv2_big_81920.toml");
+        assert_eq!(shipped, big);
+        assert_eq!(shipped.layout, WorldLayout::MultiEnvironment);
+        assert!(shipped.validate().is_ok());
+    }
+
+    #[test]
+    fn wv2_big_81920_preset_toml_parses_and_validates() {
+        let big_toml = include_str!("../presets/wv2_big_81920.toml");
+        let parsed: WorldV2Config = toml::from_str(big_toml).expect("parse wv2_big_81920.toml");
+        assert_eq!(parsed.layout, WorldLayout::MultiEnvironment);
+        assert!((parsed.extent_m - 81_920.0).abs() < 1e-3);
+        assert_eq!(parsed.grid_size, 4096);
+        assert!(parsed.validate().is_ok());
     }
 }
