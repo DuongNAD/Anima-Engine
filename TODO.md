@@ -14,6 +14,21 @@
 
 ---
 
+# 2026-11-27 — `WV2-BIG-3` (`#332` `MAP-D8`), `DECISIONS-1127` (`#331`), `WV2-BIG-HYDRO` (`#327`), `G-SHAPE` (`#322`/`#323`), `CI`/`HARDENING` Fast-Paths (`#315`/`#328`), `SEL2-P2` Provenance Hold (`#330`), `G3` Rejection (`#325`) & `STATE-SYNC r9`
+
+- **Merged into trunk (`8d58a580`, `15` PRs since `r8` baseline `40551113`):**
+  - **`#332`** (`WV2-BIG-3`, `8d58a580`, `verdicts/WV2-BIG-3_474a8a87.md`): under `MAP-D8` (`9/15` PASS / `6/15` FAIL), replaced provisional `C01` with `BIG_4096_v2` (`world_sha256 01956959…`, `sim_world_identity 1d313005…`, `sim_256.anmw3` `1,445,892` B, `index.json` `936,863` B / `3,817` entries / `3,560` `.ktx2`, kept `C01` byte copy `src-tauri/crates/anima-worldgen/presets/wv2_c01_40960.toml` `288` B SHA-256 `f460fa73…`, unpublished release asset `world_v2_1d313005_tiles.tar.gz` `190,071,986` B SHA-256 `4fdad1df…` pending owner release gate).
+  - **`#331`** (`DECISIONS-1127`, `852dd870`, `verdicts/DECISIONS-1127_a68651bd.md`): recorded `MAP-D8` and `QD-SEL2P2-RUN` (option `a`, pinned `f195a361`).
+  - **`#327`** (`WV2-BIG-HYDRO`, `69746175`, `verdicts/WV2-BIG-HYDRO_c959b8fa.md`): `9/15` PASS (`C3.Lakes` `0.009526` PASS, `C01` bit-identical); `BIG-3-EVIDENCE` look-only pack `VERIFIED` on hub (`verdicts/BIG-3-EVIDENCE_c959b8fa.md`) prior to `#332`.
+  - **`#320`** (`WV2-BIG-FLORA`, `6bf7148d`), **`#322`** (`WV2-BIG-GSHAPE`, `99ece07a`), **`#323`** (`WV2-BIG-GSHAPE-2`, `82bbf029`), **`#315`** (`CI-FASTPATH`, `20ff2099`), **`#328`** (`HARDENING-FASTPATH`, `c952563e`; `#329` control closed), **`#314`** (`QD-FOCUS`, `f684049d`), **`#317`** (`BIG-COMBO-NOTE`, `e9a7f307`), **`#318`** (`STATE-SYNC r8`, `e1d7f9d4`), **`#319`** (`REPLAY-1-DRAFT`, `bd7a3834`), **`#321`** (`REL09-DOCS-REFRESH`, `1eff2390`), **`#324`** (`BIG-3-CARD`, `66ce8980`), and **`#326`** (`REPLAY-1-OPTIONS`, `023b5878`).
+- **Open PRs, Holds & Rejections:**
+  - **`#333`** (`dell/wv2-big-3-docs-followup` @ `882d72cc`, open draft for `anima-mac` review): `WV2-BIG-3-DOCS` follow-up filling `0.9.0.md`, `RELEASE_CHECKLIST.md`, `INSTALL.md`, and `2026-11-26-wv2-big-3-card.md` §4/§5 slots from `8d58a580` (keeping tiles marked unpublished pending owner gate).
+  - **`#330`** (`win/sel2p2-runner` @ `247abf42`, open draft; runner `VERIFIED` in `verdicts/SEL2-P2-RUNNER_247abf42.md`; CI expectedly red on trunk merge ref until post-run compile-fix commit): single Windows 1 run finished (`159/159` runs, matching binary SHA-256), **rejected by `verify_sel2p2_artifacts.mjs` on provenance only** (`src-tauri/gen/schemas/*.json` rewritten by `tauri-build` differing only in line endings). **Held for owner decision — no effect numbers recorded, result NOT `VERIFIED`.**
+  - **`#325`** (`mac/wv2-big-gshape-g3`, open draft): **`G3` rejected on `HYDRO` (`c959b8fa`)** (`G-SHAPE.7` moved to PASS, but `C3.Lakes` regressed `0.009526 -> 0.007919`, below `0.0080` floor); `LR-GSHAPE-GATE` still pending owner decision.
+  - **`#291`** (`win/wv2-6`, open draft): **`WV2-BIG-4` in progress (`anima-case`)** on `#291` (tiles still unpublished pending owner release gate); `#278` (`WV2-6-PREVIEW`, never merged) and `#281` remain open. See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17) for `FOCUS-6` counters (`10` proposed / `0` implemented living-world; `2` `RESULT.md`: `0` primary-conclusive / `2` not conclusive).
+
+---
+
 # 2026-11-26 (Update 3) — `ADR-ACCEPT` (`#312`), `STATE-SYNC r7` (`#313`), `QD-FOCUS` (`#314` `VERIFIED`), `CI-FASTPATH` (`#315`), `BIG-COMBO-NOTE` (`#317`) & `STATE-SYNC r8`
 
 - **Merged into trunk (`40551113`):** **`#312`** (`ADR-ACCEPT`, `5e6927bb`, setting [`ADR-0015`](docs/decisions/ADR-0015-evolving-plants.md) & [`ADR-0016`](docs/decisions/ADR-0016-changing-world-surface.md) -> `accepted`) and **`#313`** (`D1. STATE-SYNC r7`, `40551113`, reconciling `STATE_OF_THE_PROJECT.md` & `TODO.md` through `#311`).
