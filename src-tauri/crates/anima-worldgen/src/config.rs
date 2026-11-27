@@ -118,6 +118,9 @@ pub struct WorldV2Config {
     /// Opt-in boundary warp and canyon/cuesta dissection on `MultiEnvironment` caprock plateau (`0.0` = trunk).
     #[serde(default)]
     pub plateau_dissection: f32,
+    /// Opt-in initial surface random height perturbation amplitude in metres on `MultiEnvironment` (`0.0` = trunk).
+    #[serde(default)]
+    pub init_jitter_m: f32,
 }
 
 const fn default_channel_init() -> f32 {
@@ -192,6 +195,7 @@ impl Default for WorldV2Config {
             init_bedrock_frac: default_one_f32(),
             foothill_dissection: 0.0,
             plateau_dissection: 0.0,
+            init_jitter_m: 0.0,
         }
     }
 }
@@ -309,6 +313,9 @@ impl WorldV2Config {
         if !self.plateau_dissection.is_finite() || !(0.0..=2.0).contains(&self.plateau_dissection) {
             return Err(err("plateau_dissection must lie within [0.0, 2.0]"));
         }
+        if !self.init_jitter_m.is_finite() || !(0.0..=25.0).contains(&self.init_jitter_m) {
+            return Err(err("init_jitter_m must lie within [0.0, 25.0]"));
+        }
         Ok(())
     }
 }
@@ -364,6 +371,7 @@ mod tests {
             assert_eq!(cfg.init_bedrock_frac.to_bits(), 1.0_f32.to_bits());
             assert_eq!(cfg.foothill_dissection.to_bits(), 0.0_f32.to_bits());
             assert_eq!(cfg.plateau_dissection.to_bits(), 0.0_f32.to_bits());
+            assert_eq!(cfg.init_jitter_m.to_bits(), 0.0_f32.to_bits());
         }
     }
 

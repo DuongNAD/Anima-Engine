@@ -1,4 +1,5 @@
-# World v2 81.92 km Shape Experiment Candidate Preset (opt-in `#337` Option B)
+# World v2 81.92 km Shape Experiment Candidate Preset (`WV2-SHAPE-EXP` M1, `#337` Option B)
+# Opt-in side-branch candidate only; shipped `wv2_big_81920.toml` and `wv2_c01_40960.toml` remain untouched.
 seed = 1465266689
 schema_tag = "ANMW3-BIG-v1"
 layout = "multi_environment"
@@ -12,14 +13,18 @@ volcano_relief_m = 3100.0
 caprock_min_m = 450.0
 caprock_max_m = 1100.0
 max_erodibility_contrast = 8.0
-fluvial_k_mult = 1.55
+fluvial_k_mult = 1.85
 coast_frac_amp = 0.058
 coast_cliff_share = 0.20
 basin_amp = 1.45
 mfd_p = 1.90
 storm_runoff = 0.12
-fine_steps_mult = 1.5
-fluvial_m = 0.49
-uplift_roughness = 0.65
-foothill_dissection = 1.0
-plateau_dissection = 1.0
+
+# WV2-SHAPE-EXP M1 opt-in structural & erosion overrides (`m1r3_c_clean_fast`)
+uplift_roughness = 0.55
+foothill_dissection = 1.10
+plateau_dissection = 1.00
+fluvial_m = 0.48
+fine_steps_mult = 1.25
+hillslope_d_mult = 1.35
+init_jitter_m = 4.0

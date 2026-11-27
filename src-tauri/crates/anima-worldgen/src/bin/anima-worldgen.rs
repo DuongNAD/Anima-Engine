@@ -76,6 +76,7 @@ struct WorldV2PresetOverride {
     init_bedrock_frac: Option<f32>,
     foothill_dissection: Option<f32>,
     plateau_dissection: Option<f32>,
+    init_jitter_m: Option<f32>,
 }
 
 fn usage_text() -> &'static str {
@@ -431,6 +432,9 @@ fn load_config(args: &GenerateArgs) -> Result<WorldV2Config, String> {
         }
         if let Some(v) = ov.plateau_dissection {
             cfg.plateau_dissection = v;
+        }
+        if let Some(v) = ov.init_jitter_m {
+            cfg.init_jitter_m = v;
         }
     }
     cfg.validate()
