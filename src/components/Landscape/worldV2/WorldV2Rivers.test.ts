@@ -47,8 +47,10 @@ describe('WorldV2Rivers', () => {
     const geom = buildRiverRibbonGeometry(bundle, world, 1200, 168, 32, true);
     const pos = geom.getAttribute('position');
     const aRibbon = geom.getAttribute('aRibbon');
+    const aRiverMeta = geom.getAttribute('aRiverMeta');
     const idx = geom.getIndex();
     expect(pos.count).toBeGreaterThan(20);
+    expect(aRiverMeta).toBeDefined();
     expect(idx).not.toBeNull();
     expect(idx!.count).toBeGreaterThan(30);
 
@@ -58,6 +60,7 @@ describe('WorldV2Rivers', () => {
       expect(Number.isFinite(pos.getX(i))).toBe(true);
       expect(Number.isFinite(pos.getY(i))).toBe(true);
       expect(Number.isFinite(pos.getZ(i))).toBe(true);
+      expect(aRiverMeta.getX(i)).toBeGreaterThanOrEqual(1);
       const hw = aRibbon.getZ(i);
       if (hw < minW) minW = hw;
       if (hw > maxW) maxW = hw;

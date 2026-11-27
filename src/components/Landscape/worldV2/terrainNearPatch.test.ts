@@ -218,4 +218,100 @@ describe('terrainNearPatch', () => {
     expect(waterY).toBeLessThan(elev3500);
     expect(bedY).toBeLessThan(waterY);
   });
+
+  it('carves a tight incised channel (bankDrop >= 1.35 m) on steep mountain stream reaches', () => {
+    const meshRes = 8;
+    const verts = meshRes + 1;
+    const renderSize = 100;
+    const heightUnits = 20;
+    const uPerM = heightUnits / 7200;
+    const elev1200 = ((1200 - -1500) / 7200) * heightUnits;
+    const coarsePos = new Float32Array(verts * verts * 3);
+    const coarseNrm = new Float32Array(verts * verts * 3);
+    for (let z = 0; z <= meshRes; z += 1) {
+      for (let x = 0; x <= meshRes; x += 1) {
+        const i = z * verts + x;
+        coarsePos[i * 3] = (x / meshRes - 0.5) * renderSize;
+        coarsePos[i * 3 + 1] = elev1200;
+        coarsePos[i * 3 + 2] = (z / meshRes - 0.5) * renderSize;
+        coarseNrm[i * 3 + 1] = 1;
+      }
+    }
+
+    const rSize = 33;
+    const waterKind = new Uint8Array(rSize * rSize);
+    const heightM = new Float32Array(rSize * rSize).fill(1200);
+    const waterHeightM = new Float32Array(rSize * rSize).fill(1200);
+    const hydroFlowRgba = new Uint8Array(rSize * rSize * 4);
+    const normalRg = new Uint8Array(rSize * rSize * 2).fill(128);
+    for (let x = 4; x <= 28; x += 1) {
+      const ci = 16 * rSize + x;
+      waterKind[ci] = WaterKind.River;
+      hydroFlowRgba[ci * 4] = 255;
+      hydroFlowRgba[ci * 4 + 1] = 128;
+      hydroFlowRgba[ci * 4 + 2] = 12;
+      hydroFlowRgba[ci * 4 + 3] = 210;
+      heightM[ci] = 1200 - x * 12;
+    }
+
+    const bundle = {
+      size: rSize,
+      extentM: 2560,
+      waterKind,
+      heightM,
+      waterHeightM,
+      hydroFlowRgba,
+      normalRg,
+      sim: { waterfalls: [] },
+    } as unknown as WorldV2LoadedBundle;
+
+    const wSize = 16;
+    const world = {
+      size: wSize,
+      elevation: new Float32Array(wSize * wSize).fill((1200 - -1500) / 7200),
+      waterfallCount: 0,
+    } as unknown as World;
+
+    const entries = new Map<string, TileManifestEntry>([
+      ['0:0', { layer: 'height', mip: 0, tx: 0, ty: 0, path: 'h', byte_len: 1, sha256: '00'.repeat(32) }],
+    ]);
+    const manifest: L0HeightManifest = { tilesBaseUrl: '/x', gridSize: TILE_ACTIVE_SIZE, tilesPerSide: 1, entries };
+    const l0Cache = new L0HeightTileCache(manifest);
+    l0Cache.setDecodedTile(0, 0, new Float32Array(TILE_ACTIVE_SIZE * TILE_ACTIVE_SIZE).fill(1200));
+
+    const coarseSpan = 4;
+    const subDiv = 4;
+    const patchRes = coarseSpan * subDiv;
+    const { vertCount } = buildNearPatchIndices(patchRes);
+    const outPos = new Float32Array(vertCount * 3);
+    const outUvs = new Float32Array(vertCount * 2);
+    const outNrm = new Float32Array(vertCount * 3);
+    const outTex = new Float32Array((patchRes + 1) * (patchRes + 1) * 4);
+
+    buildNearPatchBuffers({
+      gx0: 2,
+      gz0: 2,
+      coarseSpan,
+      subDiv,
+      meshRes,
+      renderSize,
+      heightUnits,
+      world,
+      bundle,
+      coarsePositions: coarsePos,
+      coarseNormals: coarseNrm,
+      l0Cache,
+      outPositions: outPos,
+      outUvs,
+      outNormals: outNrm,
+      outTexData: outTex,
+    });
+
+    const side = patchRes + 1;
+    const mid = (patchRes >> 1) * side + (patchRes >> 1);
+    const bedY = outTex[mid * 4];
+    const waterY = outTex[mid * 4 + 3];
+    expect(elev1200 - waterY).toBeGreaterThanOrEqual(1.1 * uPerM);
+    expect(waterY - bedY).toBeGreaterThan(0.5 * uPerM);
+  });
 });

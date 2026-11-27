@@ -7,6 +7,7 @@ import type { World } from '../utils/worldGen';
 import type { QualityTier } from '../utils/qualityTiers';
 import { WORLD_EXTENT_M, type WorldV2LoadedBundle } from './types';
 import { buildRiverRibbonGeometry } from './riverRibbon';
+import { getCachedRiverNetwork } from './riverSmooth';
 import { bindNearPatchUniforms, NEAR_PATCH_SAMPLER_GLSL } from './terrainNearPatch';
 import { ATMOSPHERE_FRAGMENT_PARS, bindAtmosphereUniforms } from '../materials/atmosphere';
 import { buildLookNoiseTexture } from '../utils/worldTerrainTextures';
@@ -27,6 +28,7 @@ function setUniformValue(u: { value: number }, v: number): void {
 const RIVER_VERTEX_SHADER = /* glsl */ `
 attribute vec4 aRibbon;
 attribute vec4 aFlow;
+attribute vec2 aRiverMeta;
 
 uniform float uUnitsPerM;
 uniform float uMPerUnitH;
@@ -40,6 +42,8 @@ varying float vAcrossU;
 varying float vHalfW;
 varying float vAlongM;
 varying float vGrade;
+varying float vLocalGrade;
+varying float vStrahler;
 varying float vSignedCurv;
 varying float vQNorm;
 varying float vNearBlend;
@@ -52,6 +56,9 @@ void main() {
   float halfW = aRibbon.z;
   float isWf = aRibbon.w;
   float sideSign = uv.x;
+  float strahler = aRiverMeta.x;
+  float widthM = halfW * 2.0;
+  float isTrunk = max(step(2.5, strahler), step(10.0, widthM));
 
   vec4 np = sampleNearPatch(centerPos.xz);
   float nearB = (uNearPatchBounds.z > uNearPatchBounds.x &&
@@ -63,15 +70,21 @@ void main() {
   float camDist = distance(cameraPosition, centerPos);
   float pxWorldM = camDist * uPxPerUnit * uMPerUnitH;
   float nearSkirt = nearB * clamp(halfW * 0.35, 1.0, 4.0);
-  float geomHalfW = max(halfW + nearSkirt, min(halfW * 2.4, pxWorldM * 0.80));
-  vCoverage = clamp(halfW / max(geomHalfW - nearSkirt, 0.01), 0.0, 1.0);
+  // Trunks expand up to ~1.2 px on screen at overview/horizon distances so they gleam softly instead of vanishing.
+  float maxTrunkExpand = max(halfW * 2.4, min(115.0, max(halfW * 7.0, pxWorldM * 0.92)));
+  float expandedHalfW = min(mix(halfW * 2.4, maxTrunkExpand, isTrunk), pxWorldM * 0.92);
+  float geomHalfW = max(halfW + nearSkirt, expandedHalfW);
+  float rawCov = clamp(halfW / max(geomHalfW - nearSkirt, 0.01), 0.0, 1.0);
+  float trunkCovFloor = mix(0.56, 0.92, clamp((widthM - 4.0) / 22.0 + step(3.5, strahler) * 0.36, 0.0, 1.0));
+  vCoverage = mix(rawCov, max(trunkCovFloor, pow(rawCov, 0.30)), isTrunk);
 
   vec3 wp = centerPos;
   wp.xz += sideDir * (geomHalfW * uUnitsPerM);
-  float coarseLift = clamp(camDist * 0.0022, 0.07, 0.65);
+  float coarseLift = clamp(camDist * 0.0026 + smoothstep(0.08, 0.24, aFlow.y) * 0.22, 0.08, 0.85);
   float targetY = centerPos.y + coarseLift;
   if (nearB > 0.001) {
-    float steepBedLift = smoothstep(0.06, 0.16, aFlow.y) * 0.03;
+    float steepSlope = smoothstep(0.06, 0.16, max(aFlow.y, aRiverMeta.y));
+    float steepBedLift = steepSlope * mix(0.055, 0.035, isTrunk);
     float nearWaterY = max(np.a, np.r + steepBedLift);
     targetY = mix(targetY, nearWaterY, nearB);
   }
@@ -83,6 +96,8 @@ void main() {
   vHalfW = halfW;
   vAlongM = aFlow.x;
   vGrade = aFlow.y;
+  vLocalGrade = aRiverMeta.y;
+  vStrahler = strahler;
   vSignedCurv = aFlow.z;
   vQNorm = aFlow.w;
   vNearBlend = nearB;
@@ -111,11 +126,38 @@ varying float vAcrossU;
 varying float vHalfW;
 varying float vAlongM;
 varying float vGrade;
+varying float vLocalGrade;
+varying float vStrahler;
 varying float vSignedCurv;
 varying float vQNorm;
 varying float vNearBlend;
 varying float vCoverage;
 varying float vIsWaterfall;
+
+vec2 rivHash22(vec2 p) {
+  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+  return fract(sin(p) * 43758.5453);
+}
+
+vec2 rivBoulderVoronoi(vec2 p) {
+  vec2 ip = floor(p);
+  vec2 fp = fract(p);
+  float md = 8.0;
+  float rid = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      vec2 g = vec2(float(i), float(j));
+      vec2 o = rivHash22(ip + g);
+      vec2 r = g + (0.18 + 0.64 * o) - fp;
+      float d = dot(r, r);
+      if (d < md) {
+        md = d;
+        rid = o.x;
+      }
+    }
+  }
+  return vec2(sqrt(md), rid);
+}
 
 void main() {
   if (vCenterPos.y < uAtmoSeaY - 0.02 || vWorldPos.y < uAtmoSeaY - 0.02) discard;
@@ -127,22 +169,30 @@ void main() {
   float camDist = distance(cameraPosition, vWorldPos);
   float camDistM = camDist * uMPerUnitH;
   float widthM = vHalfW * 2.0;
+  float isTrunk = max(step(2.5, vStrahler), step(10.0, widthM));
 
-  // Distance fade: tiny headwater threads recede before overview so only true rivers read afar.
-  float maxVisM = mix(widthM * 850.0, 220000.0, smoothstep(6.0, 14.0, widthM));
-  maxVisM = max(maxVisM, smoothstep(0.11, 0.22, vGrade) * 11000.0);
-  float distFade = 1.0 - smoothstep(maxVisM * 0.42, maxVisM, camDistM);
+  // Headwater rills < 5 m fade out cleanly at distance; trunk rivers (>= 10 m or Strahler >= 3)
+  // fade smoothly in alpha while staying visible as thin glinting lines from 300 m to overview.
+  float maxVisM = mix(widthM * 680.0, 220000.0, smoothstep(5.5, 13.0, widthM));
+  maxVisM = max(maxVisM, isTrunk * 220000.0);
+  maxVisM = max(maxVisM, smoothstep(0.11, 0.22, vGrade) * 14000.0);
+  float distFade = 1.0 - smoothstep(maxVisM * 0.44, maxVisM, camDistM);
+  float trunkFloor = mix(0.64, 0.94, clamp((widthM - 4.0) / 22.0 + step(3.5, vStrahler) * 0.35, 0.0, 1.0));
+  distFade = max(distFade, isTrunk * trunkFloor);
   distFade *= 1.0 - smoothstep(0.15, 0.85, vIsWaterfall);
   if (distFade < 0.005) discard;
 
   vec2 worldM = vWorldPos.xz * uMPerUnitH;
   float bendSide = vAcrossU * vSignedCurv;
-  float edgeWarp = (texture2D(uLookNoise, worldM * 0.012).r - 0.5) * 0.24
-    + (texture2D(uLookNoise, worldM * 0.045).g - 0.5) * 0.12;
-  float insideShrink = max(0.0, bendSide) * 0.16;
-  float effHalfRatio = max(0.35, 1.0 - insideShrink + edgeWarp);
+  float edgeN1 = texture2D(uLookNoise, worldM * 0.015 + vec2(0.13, 0.47)).r - 0.5;
+  float edgeN2 = texture2D(uLookNoise, worldM * 0.065 + vec2(0.71, 0.29)).g - 0.5;
+  float edgeN3 = texture2D(uLookNoise, worldM * 0.22 + vec2(0.37, 0.83)).b - 0.5;
+  float rockyReach = smoothstep(0.065, 0.15, max(vGrade, vLocalGrade));
+  float edgeWarp = (edgeN1 * 0.35 + edgeN2 * 0.35 + edgeN3 * 0.30) * mix(0.28, 0.58, rockyReach);
+  float insideShrink = max(0.0, bendSide) * 0.12;
+  float effHalfRatio = max(0.32, 1.0 - insideShrink + edgeWarp);
   float edgeDist = effHalfRatio - abs(vAcrossU);
-  float edgeAA = max(0.02, fwidth(edgeDist) * 1.25);
+  float edgeAA = max(0.055, fwidth(edgeDist) * 1.45);
   float edgeAlpha = smoothstep(-edgeAA, edgeAA, edgeDist);
   if (edgeAlpha < 0.01) discard;
 
@@ -151,8 +201,8 @@ void main() {
   if (vNearBlend > 0.02) {
     float bedY = sampleNearPatch(vWorldPos.xz).r;
     physDepthM = max(0.0, (vWorldPos.y - bedY) * uDepthMPerUnit);
-    float outerBand = smoothstep(0.55, 0.96, abs(vAcrossU));
-    shoreAlpha = mix(1.0, smoothstep(-0.08, 0.18, physDepthM), vNearBlend * outerBand);
+    float outerBand = smoothstep(0.40, 0.96, abs(vAcrossU));
+    shoreAlpha = mix(1.0, smoothstep(-0.10, 0.38 + edgeN2 * 0.14, physDepthM), vNearBlend * outerBand);
   }
   if (shoreAlpha < 0.01) discard;
 
@@ -204,45 +254,81 @@ void main() {
   diff *= mix(0.72, 1.0, cloudSh);
 
   float schlick = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
-  float refl = clamp(schlick * 1.15 + 0.04, 0.0, 0.82);
+  float aerialTrunk = isTrunk * smoothstep(260.0, 1800.0, camDistM);
+  float refl = clamp(schlick * 1.15 + 0.05 + aerialTrunk * 0.32, 0.0, 0.90);
   vec3 R = reflect(-V, normalize(vec3(N.x * 0.4, 1.0, N.z * 0.4)));
   R.y = abs(R.y);
   vec3 skyRefl = atmoSkyColor(normalize(R));
 
-  float spec = (pow(max(dot(N, H), 0.0), 180.0) * 0.85 * ripFade + pow(max(dot(N, H), 0.0), 24.0) * 0.04)
+  float aerialGlint = aerialTrunk * pow(clamp(1.0 - abs(vAcrossU) * 0.55, 0.0, 1.0), 1.3);
+  float spec = (pow(max(dot(N, H), 0.0), 180.0) * 0.85 * ripFade + pow(max(dot(N, H), 0.0), 16.0) * (0.04 + 0.22 * aerialGlint))
     * cloudSh * cloudSh;
   vec3 litBody = bodyCol * diff;
-  vec3 col = mix(litBody, skyRefl, refl) + uAtmoSunColor * spec;
+  vec3 glintSky = mix(skyRefl, vec3(0.36, 0.54, 0.72), 0.38 * aerialGlint);
+  vec3 col = mix(litBody, glintSky, refl) + uAtmoSunColor * spec;
 
-  // Steep mountain reaches -> broken white-water rapids over wet boulders (never a solid blue ribbon!)
-  float steep = smoothstep(0.085, 0.19, vGrade);
+  // Steep mountain streams -> mostly dark/clear reflective water between localized step foam & emergent rocks.
+  float steep = smoothstep(0.065, 0.175, max(vGrade, vLocalGrade));
   float rockBreakAlpha = 1.0;
   if (steep > 0.01) {
-    float foamNoise = nA.b * 0.55 + nB.a * 0.45;
-    float boulderN = texture2D(uLookNoise, worldM * 0.085 + vec2(0.41, 0.17)).r * 0.6
-      + texture2D(uLookNoise, worldM * 0.26).g * 0.4;
-    float nearRocks = 1.0 - smoothstep(800.0, 3200.0, camDistM);
-    float rockPoke = smoothstep(0.54, 0.76, boulderN) * steep * nearRocks;
-    float rockCollar = smoothstep(0.40, 0.56, boulderN) * (1.0 - rockPoke) * steep * 0.88;
-    float foam = clamp(steep * (0.38 + 0.85 * foamNoise) + rockCollar, 0.0, 0.96);
-    vec3 rapidWaterCol = mix(col, vec3(0.14, 0.24, 0.25) * diff, steep * 0.55);
-    vec3 foamCol = vec3(0.86, 0.90, 0.93) * (0.80 + 0.20 * diff);
-    vec3 boulderCol = vec3(0.08, 0.078, 0.075) * (0.65 + 0.35 * diff);
-    col = mix(rapidWaterCol, foamCol, foam);
-    col = mix(col, boulderCol, rockPoke * 0.88);
-    rockBreakAlpha = 1.0 - rockPoke * 0.55 * smoothstep(0.35, 0.92, abs(vAcrossU));
+    float bCoarse = texture2D(uLookNoise, worldM * 0.035 + vec2(0.19, 0.63)).r;
+    // Distinct step-pool rhythm: ~80% clear dark reflective pools, ~20% narrow aerated drops.
+    float stepPhase = vAlongM * 0.095 + bCoarse * 3.2;
+    float stepDrop = pow(0.5 + 0.5 * sin(stepPhase), 4.0);
+    float gradeDrop = smoothstep(0.10, 0.26, vLocalGrade) * (0.12 + 0.88 * stepDrop);
+    float stepIntensity = clamp(gradeDrop + smoothstep(0.18, 0.34, vGrade) * stepDrop * 0.35, 0.0, 1.0);
+
+    // Discrete ~2.3 m cellular boulders in stream space (more along margins, sparse mid-channel).
+    float nearRocks = 1.0 - smoothstep(450.0, 1800.0, camDistM);
+    float rockPoke = 0.0;
+    float rockDome = 0.0;
+    float rockWake = 0.0;
+    if (nearRocks > 0.01) {
+      vec2 bUv = flowUv * 0.42;
+      vec2 bv = rivBoulderVoronoi(bUv);
+      float bankProb = mix(0.76, 0.44, smoothstep(0.32, 0.90, abs(vAcrossU)));
+      float hasRock = step(bankProb, bv.y);
+      float rad = mix(0.20, 0.35, fract(bv.y * 7.13));
+      rockPoke = (1.0 - smoothstep(rad * 0.68, rad, bv.x)) * hasRock * steep * nearRocks;
+      rockDome = clamp(1.0 - bv.x / max(rad, 0.01), 0.0, 1.0);
+
+      // Thin wispy downstream whitewater wake behind emergent boulders only.
+      vec2 bvUp = rivBoulderVoronoi((flowUv - vec2(1.25, 0.0)) * 0.42);
+      float hasUpRock = step(bankProb, bvUp.y);
+      float radUp = mix(0.20, 0.35, fract(bvUp.y * 7.13));
+      float wakeMask = (1.0 - smoothstep(radUp * 0.50, radUp * 1.15, bvUp.x)) * hasUpRock * (1.0 - rockPoke);
+      rockWake = wakeMask * (0.35 + 0.65 * nB.a) * steep * nearRocks;
+    }
+
+    // Flow-elongated froth streaks strictly localized at step drops + thin boulder wakes.
+    vec2 streakUv = vec2(vAlongM * 0.14 - p0 * 1.8, vAcrossU * vHalfW * 0.65);
+    float streakN = textureGrad(uLookNoise, streakUv, fDx * 0.14, fDy * 0.65).r * 0.60 + nB.a * 0.40;
+    float cascadeFoam = stepIntensity * smoothstep(0.46, 0.82, streakN + stepDrop * 0.32);
+    float foam = clamp(cascadeFoam * 0.78 + rockWake * (0.32 + 0.38 * stepIntensity), 0.0, 0.82);
+
+    // Clear dark olive-teal/slate reflective mountain pools dominate between steps.
+    vec3 poolWaterCol = mix(vec3(0.014, 0.042, 0.052), vec3(0.024, 0.062, 0.070), 1.0 - stepIntensity) * diff;
+    vec3 clearMountainWater = mix(poolWaterCol, skyRefl * 0.86, clamp(refl * 1.08, 0.22, 0.86)) + uAtmoSunColor * spec * 0.90;
+    vec3 foamCol = vec3(0.78, 0.86, 0.90) * (0.82 + 0.18 * diff);
+    vec3 wetRockBase = mix(vec3(0.032, 0.036, 0.040), vec3(0.155, 0.150, 0.140), smoothstep(0.15, 0.85, rockDome));
+    vec3 boulderCol = wetRockBase * (0.64 + 0.36 * diff);
+
+    col = mix(col, clearMountainWater, steep * 0.92);
+    col = mix(col, foamCol, foam);
+    col = mix(col, boulderCol, rockPoke * 0.95);
+    rockBreakAlpha = 1.0 - rockPoke * 0.22 * smoothstep(0.55, 0.95, abs(vAcrossU));
   } else if (vIsWaterfall > 0.5) {
     col = mix(col, vec3(0.82, 0.87, 0.90), 0.55);
   }
 
-  float absorb = mix(0.42, 0.97, dClear);
-  float alpha = clamp((refl + (1.0 - refl) * absorb) + steep * 0.24, 0.40, 0.97);
+  float absorb = mix(0.44, 0.97, dClear);
+  float alpha = clamp((refl + (1.0 - refl) * absorb) + steep * 0.22 + aerialGlint * 0.34, 0.45, 0.98);
   alpha *= edgeAlpha * shoreAlpha * distFade * rockBreakAlpha * vCoverage;
   if (alpha < 0.01) discard;
 
   vec3 hdir = normalize(vWorldPos - cameraPosition);
   vec3 hazeC = atmoSkyColor(normalize(vec3(hdir.x, hdir.y * 0.2, hdir.z)));
-  float hz = atmoHazeAmount(cameraPosition, vWorldPos);
+  float hz = atmoHazeAmount(cameraPosition, vWorldPos) * (1.0 - isTrunk * 0.34);
   col = mix(col, hazeC, hz);
 
   gl_FragColor = vec4(col, alpha);
@@ -297,6 +383,21 @@ export const WorldV2Rivers: React.FC<WorldV2RiversProps> = ({
   }, [bundle.extentM, renderSize, heightUnits, lookNoiseTex, timeUniform, pxUniform]);
 
   const meshRef = useRef<THREE.Mesh>(null);
+
+  useEffect(() => {
+    const net = getCachedRiverNetwork(bundle);
+    const w = window as unknown as Record<string, unknown>;
+    w.__wv2RiverNet = {
+      polylines: net.polylines,
+      size: net.size,
+      extentM: bundle.extentM || WORLD_EXTENT_M,
+      renderSize,
+      heightUnits,
+    };
+    return () => {
+      if (w.__wv2RiverNet) delete w.__wv2RiverNet;
+    };
+  }, [bundle, renderSize, heightUnits]);
 
   useFrame((state) => {
     setUniformValue(timeUniform, state.clock.elapsedTime);

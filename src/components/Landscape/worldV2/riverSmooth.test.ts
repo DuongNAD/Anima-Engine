@@ -9,6 +9,7 @@ import {
   computeRiverWidthHistogram,
   computeRiverWidthM,
   extractRiverNetwork,
+  isTrunkRiver,
   type RiverMaskInput,
 } from './riverSmooth';
 import { WaterKind } from './types';
@@ -155,5 +156,107 @@ describe('riverSmooth', () => {
     expect(hist.totalCells).toBe(pathPts.length);
     expect(hist.beforeMinM).toBeGreaterThanOrEqual(40);
     expect(hist.afterP50M).toBeLessThan(15);
+  });
+
+  it('computes Strahler order >= 3, traces trunks unbroken past joining tributaries, and keeps raw localGrade', () => {
+    const size = 64;
+    const bundle = makeRiverTestBundle(size, 2560);
+    const addLink = (x: number, y: number, h: number, q: number, dxByte = 255, dyByte = 128) => {
+      const i = y * size + x;
+      bundle.waterKind[i] = WaterKind.River;
+      bundle.heightM[i] = h;
+      bundle.waterHeightM[i] = h + 1;
+      bundle.hydroFlowRgba[i * 4] = dxByte;
+      bundle.hydroFlowRgba[i * 4 + 1] = dyByte;
+      bundle.hydroFlowRgba[i * 4 + 2] = q;
+      bundle.hydroFlowRgba[i * 4 + 3] = 180;
+    };
+    // Branch A & B (order 1) merge at x=16 into order 2
+    for (let x = 8; x <= 15; x += 1) {
+      addLink(x, 24, 300 - x * 2, 3);
+      addLink(x, 16 + (x - 8), 310 - x * 2, 3, 218, 218);
+    }
+    // Branch C & D (order 1) merge at (24, 16) -> order 2 descending to meet at (24, 24) -> order 3!
+    for (let y = 8; y <= 15; y += 1) {
+      addLink(24, y, 320 - y * 2, 3, 128, 255);
+      addLink(24 - (16 - y), y, 325 - y * 2, 3, 218, 218);
+    }
+    for (let y = 16; y < 24; y += 1) addLink(24, y, 285 - y * 2, 8, 128, 255);
+    // Main stem from x=16..48 with step drop at x=36..37 and minor order-1 side creek at x=30
+    for (let x = 16; x <= 48; x += 1) {
+      const stepDrop = x >= 37 ? 12 : 0;
+      const q = x >= 24 ? 50 : 12;
+      addLink(x, 24, 240 - x * 0.4 - stepDrop, q);
+    }
+    for (let y = 32; y > 24; y -= 1) addLink(30, y, 260 + (y - 24) * 2, 2, 128, 1);
+
+    const net = extractRiverNetwork(bundle);
+    const trunkHit = net.queryNearestRiver(40 / (size - 1), 24 / (size - 1), 100);
+    expect(trunkHit).not.toBeNull();
+    expect(trunkHit!.strahler).toBeGreaterThanOrEqual(3);
+    expect(isTrunkRiver(trunkHit!.halfW, trunkHit!.strahler)).toBe(true);
+
+    // Unbroken trunk passes continuously through confluence at x=30
+    const mainTrunk = net.polylines.find((l) => l.some((p) => p.x <= 18) && l.some((p) => p.x >= 44));
+    expect(mainTrunk).toBeDefined();
+    // Step drop near x=36 has strictly higher localGrade than flat reach near x=20
+    const flatPt = mainTrunk!.reduce((a, b) => (Math.abs(a.x - 20) < Math.abs(b.x - 20) ? a : b));
+    const stepPt = mainTrunk!.reduce((a, b) => (Math.abs(a.x - 36) < Math.abs(b.x - 36) ? a : b));
+    expect(stepPt.localGrade).toBeGreaterThan(flatPt.localGrade * 3);
+  });
+
+  it('prunes 1-cell diagonal wart pixels beside channels while snapping real multi-cell tributaries to smoothed trunks', () => {
+    const size = 48;
+    const bundle = makeRiverTestBundle(size, 1920);
+    // Curved main channel with a staircase jog near x=24 so Laplacian moves cell (24,24)
+    const stem: Array<[number, number]> = [];
+    for (let x = 8; x <= 21; x += 1) stem.push([x, 22]);
+    stem.push([22, 23], [23, 24], [24, 24], [25, 24], [26, 23], [27, 22]);
+    for (let x = 28; x <= 40; x += 1) stem.push([x, 22]);
+    stem.forEach(([x, y], idx) => {
+      const i = y * size + x;
+      bundle.waterKind[i] = WaterKind.River;
+      bundle.heightM[i] = 200 - idx * 0.6;
+      bundle.waterHeightM[i] = bundle.heightM[i] + 1.0;
+      bundle.hydroFlowRgba[i * 4] = 255;
+      bundle.hydroFlowRgba[i * 4 + 1] = 128;
+      bundle.hydroFlowRgba[i * 4 + 2] = 40;
+      bundle.hydroFlowRgba[i * 4 + 3] = 180;
+    });
+    bundle.waterKind[22 * size + 41] = WaterKind.Ocean;
+    bundle.heightM[22 * size + 41] = 150;
+
+    // 1-cell diagonal wart stub at (18, 21) draining into (18, 22)
+    const wartIdx = 21 * size + 18;
+    bundle.waterKind[wartIdx] = WaterKind.River;
+    bundle.heightM[wartIdx] = 205;
+    bundle.waterHeightM[wartIdx] = 206;
+    bundle.hydroFlowRgba[wartIdx * 4] = 128;
+    bundle.hydroFlowRgba[wartIdx * 4 + 1] = 255;
+    bundle.hydroFlowRgba[wartIdx * 4 + 2] = 1;
+    bundle.hydroFlowRgba[wartIdx * 4 + 3] = 140;
+
+    // Real 6-cell tributary draining into (24, 24)
+    for (let y = 30; y >= 25; y -= 1) {
+      const i = y * size + 24;
+      bundle.waterKind[i] = WaterKind.River;
+      bundle.heightM[i] = 200 + (y - 24) * 2;
+      bundle.waterHeightM[i] = bundle.heightM[i] + 1.0;
+      bundle.hydroFlowRgba[i * 4] = 128;
+      bundle.hydroFlowRgba[i * 4 + 1] = 1;
+      bundle.hydroFlowRgba[i * 4 + 2] = 5;
+      bundle.hydroFlowRgba[i * 4 + 3] = 150;
+    }
+
+    const net = extractRiverNetwork(bundle);
+    // Only the main stem and real 6-cell tributary remain; the 1-cell wart is pruned.
+    expect(net.polylines.length).toBe(2);
+    const trib = net.polylines.find((l) => l[0].y >= 29);
+    const main = net.polylines.find((l) => l[0].x <= 9 && l[l.length - 1].x >= 39);
+    expect(trib).toBeDefined();
+    expect(main).toBeDefined();
+    const tribEnd = trib![trib!.length - 1];
+    const minDistToMain = Math.min(...main!.map((p) => Math.hypot(p.x - tribEnd.x, p.y - tribEnd.y)));
+    expect(minDistToMain).toBeLessThan(0.6);
   });
 });

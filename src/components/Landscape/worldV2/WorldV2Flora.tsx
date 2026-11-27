@@ -563,7 +563,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           if (pu < 0 || pu > 1 || pv < 0 || pv > 1) continue;
           const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
           const rHit = riverNetwork.queryNearestRiver(pu, pv, 45);
-          if (rHit && rHit.distM < rHit.halfW + 1.5) continue;
+          if (rHit && rHit.distM < rHit.halfW + 3.2) continue;
           env.elevM = (groundY - seaY) / unitsPerMY;
           const gx = Math.min(SEA_GRID - 1, Math.floor(pu * SEA_GRID));
           const gy = Math.min(SEA_GRID - 1, Math.floor(pv * SEA_GRID));

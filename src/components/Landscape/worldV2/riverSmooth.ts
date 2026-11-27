@@ -28,6 +28,8 @@ export interface RiverPoint {
   q: number;
   alongM: number;
   grade: number;
+  localGrade: number;
+  strahler: number;
   signedCurv: number;
   bankDropM: number;
   cue: number;
@@ -40,6 +42,8 @@ export interface RiverNearestHit {
   halfW: number;
   bankDropM: number;
   grade: number;
+  localGrade: number;
+  strahler: number;
   q: number;
   /** Positive on the INSIDE of a bend (point bar), negative on the OUTSIDE (cut bank). */
   bendSide: number;
@@ -48,6 +52,10 @@ export interface RiverNearestHit {
   projU: number;
   projV: number;
   isWaterfall: boolean;
+}
+
+export function isTrunkRiver(halfW: number, strahler: number): boolean {
+  return strahler >= 3 || halfW * 2 >= 10.0;
 }
 
 export interface RiverWidthBucket {
@@ -83,6 +91,8 @@ interface RawVertex {
   halfW: number;
   q: number;
   grade: number;
+  localGrade: number;
+  strahler: number;
   cue: number;
   isWaterfall: boolean;
 }
@@ -233,13 +243,28 @@ function thinCollinearLowQ(pts: readonly RawVertex[]): RawVertex[] {
   return out;
 }
 
-function smoothAndSubdividePolyline(pts: readonly RawVertex[]): RawVertex[] {
-  if (pts.length <= 2) return pts.slice();
+function smoothAndSubdividePolyline(
+  pts: readonly RawVertex[],
+  onLaplacian?: (smoothed: readonly RawVertex[]) => void,
+): RawVertex[] {
+  if (pts.length <= 2) {
+    onLaplacian?.(pts);
+    return pts.slice();
+  }
 
   const orig = pts;
   let cur = pts.map((p) => ({ ...p }));
+  let maxHalfW = 0;
+  let maxOrd = 1;
+  for (let k = 0; k < cur.length; k += 1) {
+    if (cur[k].halfW > maxHalfW) maxHalfW = cur[k].halfW;
+    if (cur[k].strahler > maxOrd) maxOrd = cur[k].strahler;
+  }
 
-  for (let iter = 0; iter < 4; iter += 1) {
+  // Pull centerline gently on trunk/curved channels so S-bends arc cleanly without zig-zag corners.
+  const lapIters = isTrunkRiver(maxHalfW, maxOrd) || maxHalfW >= 3.5 ? 6 : 4;
+  const maxDisp = lapIters === 6 ? 1.45 : 1.2;
+  for (let iter = 0; iter < lapIters; iter += 1) {
     const next = cur.map((p) => ({ ...p }));
     for (let k = 1; k < cur.length - 1; k += 1) {
       const lx = 0.25 * cur[k - 1].x + 0.5 * cur[k].x + 0.25 * cur[k + 1].x;
@@ -249,8 +274,8 @@ function smoothAndSubdividePolyline(pts: readonly RawVertex[]): RawVertex[] {
       const dx = lx - ox;
       const dy = ly - oy;
       const d = Math.hypot(dx, dy);
-      if (d > 1.2) {
-        const s = 1.2 / d;
+      if (d > maxDisp) {
+        const s = maxDisp / d;
         next[k].x = ox + dx * s;
         next[k].y = oy + dy * s;
       } else {
@@ -266,46 +291,61 @@ function smoothAndSubdividePolyline(pts: readonly RawVertex[]): RawVertex[] {
     }
     cur = next;
   }
+  onLaplacian?.(cur);
 
   // Thin collinear low-q reaches before Chaikin corner cutting so triangle counts stay modest.
-  const thinned = thinCollinearLowQ(cur);
-  const out: RawVertex[] = [{ ...thinned[0] }];
-  for (let k = 0; k < thinned.length - 1; k += 1) {
-    const a = thinned[k];
-    const b = thinned[k + 1];
-    out.push({
-      x: 0.75 * a.x + 0.25 * b.x,
-      y: 0.75 * a.y + 0.25 * b.y,
-      halfW: 0.75 * a.halfW + 0.25 * b.halfW,
-      q: 0.75 * a.q + 0.25 * b.q,
-      grade: 0.75 * a.grade + 0.25 * b.grade,
-      cue: 0.75 * a.cue + 0.25 * b.cue,
-      isWaterfall: a.isWaterfall || b.isWaterfall,
-    });
-    out.push({
-      x: 0.25 * a.x + 0.75 * b.x,
-      y: 0.25 * a.y + 0.75 * b.y,
-      halfW: 0.25 * a.halfW + 0.75 * b.halfW,
-      q: 0.25 * a.q + 0.75 * b.q,
-      grade: 0.25 * a.grade + 0.75 * b.grade,
-      cue: 0.25 * a.cue + 0.75 * b.cue,
-      isWaterfall: a.isWaterfall || b.isWaterfall,
-    });
+  let stage = thinCollinearLowQ(cur);
+  // Fluidly curve wide sinuous rivers (2nd Chaikin pass on W >= 11 m keeps segment chord <= ~12-18 m).
+  const passes = maxHalfW >= 5.5 ? 2 : 1;
+  for (let pass = 0; pass < passes; pass += 1) {
+    const sub: RawVertex[] = [{ ...stage[0] }];
+    for (let k = 0; k < stage.length - 1; k += 1) {
+      const a = stage[k];
+      const b = stage[k + 1];
+      sub.push({
+        x: 0.75 * a.x + 0.25 * b.x,
+        y: 0.75 * a.y + 0.25 * b.y,
+        halfW: 0.75 * a.halfW + 0.25 * b.halfW,
+        q: 0.75 * a.q + 0.25 * b.q,
+        grade: 0.75 * a.grade + 0.25 * b.grade,
+        localGrade: 0.75 * a.localGrade + 0.25 * b.localGrade,
+        strahler: Math.max(a.strahler, b.strahler),
+        cue: 0.75 * a.cue + 0.25 * b.cue,
+        isWaterfall: a.isWaterfall || b.isWaterfall,
+      });
+      sub.push({
+        x: 0.25 * a.x + 0.75 * b.x,
+        y: 0.25 * a.y + 0.75 * b.y,
+        halfW: 0.25 * a.halfW + 0.75 * b.halfW,
+        q: 0.25 * a.q + 0.75 * b.q,
+        grade: 0.25 * a.grade + 0.75 * b.grade,
+        localGrade: 0.25 * a.localGrade + 0.75 * b.localGrade,
+        strahler: Math.max(a.strahler, b.strahler),
+        cue: 0.25 * a.cue + 0.75 * b.cue,
+        isWaterfall: a.isWaterfall || b.isWaterfall,
+      });
+    }
+    sub.push({ ...stage[stage.length - 1] });
+    stage = sub;
   }
-  out.push({ ...thinned[thinned.length - 1] });
-  return out;
+  return stage;
 }
 
 function enrichPolylineMetrics(raw: readonly RawVertex[], texelM: number): RiverPoint[] {
   const n = raw.length;
   const out: RiverPoint[] = new Array(n);
-  let alongM = 0;
+  const cumAlong = new Float64Array(n);
+  for (let k = 1; k < n; k += 1) {
+    cumAlong[k] = cumAlong[k - 1] + Math.hypot(raw[k].x - raw[k - 1].x, raw[k].y - raw[k - 1].y) * texelM;
+  }
+  const curvArcM = 140;
   for (let k = 0; k < n; k += 1) {
-    if (k > 0) {
-      alongM += Math.hypot(raw[k].x - raw[k - 1].x, raw[k].y - raw[k - 1].y) * texelM;
-    }
-    const iIn0 = Math.max(0, k - 6);
-    const iOut1 = Math.min(n - 1, k + 6);
+    const alongM = cumAlong[k];
+    let iIn0 = k;
+    while (iIn0 > 0 && alongM - cumAlong[iIn0] < curvArcM) iIn0 -= 1;
+    let iOut1 = k;
+    while (iOut1 < n - 1 && cumAlong[iOut1] - alongM < curvArcM) iOut1 += 1;
+
     const inDx = raw[k].x - raw[iIn0].x;
     const inDz = raw[k].y - raw[iIn0].y;
     const outDx = raw[iOut1].x - raw[k].x;
@@ -321,12 +361,12 @@ function enrichPolylineMetrics(raw: readonly RawVertex[], texelM: number): River
       // Right-hand turn (tangent turns toward right-normal (-tz, tx)) => positive cross(T_in, T_out).
       const cross = tx0 * tz1 - tz0 * tx1;
       const turn = Math.asin(clamp(cross, -1, 1));
-      signedCurv = clamp(turn / 0.65, -1, 1);
+      signedCurv = clamp(turn / 0.58, -1, 1);
     }
-    // Smooth grade across +/-4 vertices so isolated L1 stair steps don't flash white foam patches.
+    // Smooth macro grade across +/-2 vertices while preserving unsmoothed localGrade for step foam.
     let gSum = 0;
     let gCnt = 0;
-    for (let gk = Math.max(0, k - 4); gk <= Math.min(n - 1, k + 4); gk += 1) {
+    for (let gk = Math.max(0, k - 2); gk <= Math.min(n - 1, k + 2); gk += 1) {
       gSum += raw[gk].grade;
       gCnt += 1;
     }
@@ -340,6 +380,8 @@ function enrichPolylineMetrics(raw: readonly RawVertex[], texelM: number): River
       q: raw[k].q,
       alongM,
       grade: smoothGrade,
+      localGrade: raw[k].localGrade,
+      strahler: raw[k].strahler,
       signedCurv,
       bankDropM,
       cue: raw[k].cue,
@@ -378,15 +420,12 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
     const slope = 1 - Math.sqrt(Math.max(0, 1 - nx * nx - nz * nz));
     slopeArr[i] = slope;
     halfWidthArr[i] = computeRiverWidthM(q, texelM, slope, wk) * 0.5;
-    const qNorm = Math.min(1, q / 110);
-    let cue = Math.round(28 + Math.sqrt(qNorm) * 162);
-    if (wk === WaterKind.Waterfall) cue = Math.min(255, cue + 60);
-    cueArr[i] = cue;
   }
 
   const nextCell = new Int32Array(count).fill(-1);
   const inDegree = new Uint16Array(count);
   const gradeArr = new Float32Array(count);
+  const localGradeArr = new Float32Array(count);
   const wfArr = new Uint8Array(count);
 
   for (let y = 0; y < size; y += 1) {
@@ -442,12 +481,58 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
     }
   }
 
-  // Longitudinal grade + waterfall cliff flagging + steepness cue boost
+  // Exact topological Strahler order + dominant upstream parent continuity on channel DAG
+  const remIn = new Int32Array(inDegree);
+  const maxOrd = new Uint8Array(count);
+  const cntMax = new Uint8Array(count);
+  const strahlerArr = new Uint8Array(count);
+  const upLen = new Uint32Array(count);
+  const mainParent = new Int32Array(count).fill(-1);
+  const topoQ: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    if (isChannel[i] && remIn[i] === 0) topoQ.push(i);
+  }
+  for (let qi = 0; qi < topoQ.length; qi += 1) {
+    const u = topoQ[qi];
+    const ord = maxOrd[u] === 0 ? 1 : cntMax[u] >= 2 ? maxOrd[u] + 1 : maxOrd[u];
+    strahlerArr[u] = ord;
+    const lenU = upLen[u] + 1;
+    const v = nextCell[u];
+    if (v >= 0 && isChannel[v]) {
+      if (ord > maxOrd[v]) {
+        maxOrd[v] = ord;
+        cntMax[v] = 1;
+      } else if (ord === maxOrd[v]) {
+        cntMax[v] += 1;
+      }
+      const prevP = mainParent[v];
+      const better =
+        prevP < 0 ||
+        ord > strahlerArr[prevP] ||
+        (ord === strahlerArr[prevP] && qArr[u] > qArr[prevP]) ||
+        (ord === strahlerArr[prevP] && qArr[u] === qArr[prevP] && lenU > upLen[prevP]);
+      if (better) {
+        mainParent[v] = u;
+        upLen[v] = lenU;
+      }
+      remIn[v] -= 1;
+      if (remIn[v] === 0) topoQ.push(v);
+    }
+  }
+  for (let i = 0; i < count; i += 1) {
+    if (isChannel[i] && strahlerArr[i] === 0) {
+      strahlerArr[i] = Math.max(1, maxOrd[i]);
+    }
+  }
+
+  // Longitudinal grade + local step grade + waterfall flagging + trunk/rapids cue
   for (let i = 0; i < count; i += 1) {
     if (!isChannel[i]) continue;
+    const wk = waterKind[i];
+    const q = qArr[i];
     const nxt = nextCell[i];
     let longSlope = 0;
-    if (waterKind[i] === WaterKind.Waterfall) wfArr[i] = 1;
+    if (wk === WaterKind.Waterfall) wfArr[i] = 1;
     if (nxt >= 0) {
       const ax = i % size;
       const ay = Math.floor(i / size);
@@ -460,25 +545,33 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
         if (isChannel[nxt]) wfArr[nxt] = 1;
       }
     }
+    localGradeArr[i] = Math.max(slopeArr[i] * 0.65, longSlope);
     const grade = Math.max(slopeArr[i], longSlope * 0.85);
     gradeArr[i] = grade;
-    if (inDegree[i] >= 2 || longSlope > 0.12 || slopeArr[i] > 0.16) {
-      cueArr[i] = Math.min(255, Math.max(cueArr[i] + 55, 200));
+    const isTrunk = isTrunkRiver(halfWidthArr[i], strahlerArr[i]);
+    let cue = isTrunk
+      ? Math.round(138 + Math.min(1, q / 110) * 60)
+      : Math.round(22 + Math.min(1, q / 35) * 86);
+    if (wk === WaterKind.Waterfall || inDegree[i] >= 2 || longSlope > 0.12 || slopeArr[i] > 0.16) {
+      cue = Math.min(255, Math.max(cue + 55, 205));
     }
+    cueArr[i] = cue;
   }
 
   const visitedStart = new Uint8Array(count);
-  const polylines: RiverPoint[][] = [];
-
-  const pushPolyline = (rawPts: RawVertex[]): void => {
-    if (rawPts.length < 2) return;
-    const smoothed = smoothAndSubdividePolyline(rawPts);
-    polylines.push(enrichPolylineMetrics(smoothed, texelM));
-  };
+  const traced: Array<{
+    pts: RawVertex[];
+    rawCells: number[];
+    joinCell: number;
+    maxOrd: number;
+  }> = [];
 
   const traceFrom = (startIdx: number): void => {
     const pts: RawVertex[] = [];
+    const rawCells: number[] = [];
     const localSeen = new Set<number>();
+    let joinCell = -1;
+    let maxOrd = 1;
     let cur = startIdx;
     while (cur >= 0) {
       const cx = cur % size;
@@ -492,57 +585,102 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
             halfW: prev.halfW,
             q: prev.q,
             grade: prev.grade * 0.5,
+            localGrade: prev.localGrade * 0.5,
+            strahler: prev.strahler,
             cue: prev.cue,
             isWaterfall: false,
           });
+          rawCells.push(cur);
         }
         break;
       }
+      if (strahlerArr[cur] > maxOrd) maxOrd = strahlerArr[cur];
       pts.push({
         x: cx,
         y: cy,
         halfW: halfWidthArr[cur],
         q: qArr[cur],
         grade: gradeArr[cur],
+        localGrade: localGradeArr[cur],
+        strahler: strahlerArr[cur],
         cue: cueArr[cur],
         isWaterfall: wfArr[cur] === 1,
       });
+      rawCells.push(cur);
       if (localSeen.has(cur)) break;
       localSeen.add(cur);
       visitedStart[cur] = 1;
 
       const nxt = nextCell[cur];
       if (nxt < 0) break;
-      if (isChannel[nxt] && inDegree[nxt] >= 2) {
+      // Continue dominant trunks unbroken through confluences; only terminate joining minor tributaries.
+      if (
+        isChannel[nxt] &&
+        ((mainParent[nxt] >= 0 && mainParent[nxt] !== cur) || visitedStart[nxt])
+      ) {
+        if (strahlerArr[nxt] > maxOrd) maxOrd = strahlerArr[nxt];
         pts.push({
           x: nxt % size,
           y: Math.floor(nxt / size),
           halfW: Math.max(halfWidthArr[cur], halfWidthArr[nxt] * 0.88),
           q: Math.max(qArr[cur], qArr[nxt]),
           grade: gradeArr[nxt],
+          localGrade: localGradeArr[nxt],
+          strahler: strahlerArr[nxt],
           cue: cueArr[nxt],
           isWaterfall: wfArr[nxt] === 1,
         });
+        rawCells.push(nxt);
+        joinCell = nxt;
         break;
       }
       cur = nxt;
     }
     if (pts.length >= 2) {
+      // Prune 1-pixel dead-end raster wart stubs beside channels so they don't render as floating sticks.
+      if (pts.length <= 2 && inDegree[startIdx] === 0 && joinCell >= 0) {
+        return;
+      }
       if (inDegree[startIdx] === 0 && pts.length >= 4) {
         pts[0] = { ...pts[0], halfW: Math.max(RIVER_WIDTH_MIN_M * 0.5, pts[0].halfW * 0.85) };
       }
-      pushPolyline(pts);
+      traced.push({ pts, rawCells, joinCell, maxOrd });
     }
   };
 
   for (let i = 0; i < count; i += 1) {
-    if (isChannel[i] && (inDegree[i] === 0 || inDegree[i] >= 2)) {
+    if (isChannel[i] && mainParent[i] < 0) {
       traceFrom(i);
     }
   }
   for (let i = 0; i < count; i += 1) {
     if (isChannel[i] && !visitedStart[i]) {
       traceFrom(i);
+    }
+  }
+
+  traced.sort((a, b) => b.maxOrd - a.maxOrd || b.pts.length - a.pts.length);
+  const smoothedCellPos = new Map<number, { x: number; y: number }>();
+  const polylines: RiverPoint[][] = [];
+  for (let i = 0; i < traced.length; i += 1) {
+    const item = traced[i];
+    if (item.joinCell >= 0) {
+      const snap = smoothedCellPos.get(item.joinCell);
+      if (snap) {
+        const lastIdx = item.pts.length - 1;
+        item.pts[lastIdx] = { ...item.pts[lastIdx], x: snap.x, y: snap.y };
+      }
+    }
+    const smoothed = smoothAndSubdividePolyline(item.pts, (lap) => {
+      for (let k = 0; k < lap.length && k < item.rawCells.length; k += 1) {
+        const cellIdx = item.rawCells[k];
+        if (!smoothedCellPos.has(cellIdx)) {
+          smoothedCellPos.set(cellIdx, { x: lap[k].x, y: lap[k].y });
+        }
+      }
+    });
+    if (smoothed.length >= 2) {
+      polylines.push(enrichPolylineMetrics(smoothed, texelM));
     }
   }
 
@@ -559,6 +697,9 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
   const segBhw = new Float32Array(totalSegs);
   const segAg = new Float32Array(totalSegs);
   const segBg = new Float32Array(totalSegs);
+  const segAlg = new Float32Array(totalSegs);
+  const segBlg = new Float32Array(totalSegs);
+  const segOrd = new Uint8Array(totalSegs);
   const segAc = new Float32Array(totalSegs);
   const segBc = new Float32Array(totalSegs);
   const segAq = new Float32Array(totalSegs);
@@ -584,6 +725,9 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
       segBhw[sCursor] = b.halfW;
       segAg[sCursor] = a.grade;
       segBg[sCursor] = b.grade;
+      segAlg[sCursor] = a.localGrade;
+      segBlg[sCursor] = b.localGrade;
+      segOrd[sCursor] = Math.max(a.strahler, b.strahler);
       segAc[sCursor] = a.signedCurv;
       segBc[sCursor] = b.signedCurv;
       segAq[sCursor] = a.q;
@@ -677,6 +821,8 @@ export function extractRiverNetwork(bundle: RiverMaskInput): RiverNetwork {
               halfW,
               bankDropM: clamp(1.0 + Math.sqrt(Math.max(0.5, halfW)) * 0.42, 1.0, 3.0),
               grade: segAg[s] + (segBg[s] - segAg[s]) * t,
+              localGrade: segAlg[s] + (segBlg[s] - segAlg[s]) * t,
+              strahler: segOrd[s],
               q: segAq[s] + (segBq[s] - segAq[s]) * t,
               bendSide: sideNorm * curv,
               dirX,
@@ -740,7 +886,8 @@ export function buildSmoothedRiverMaskData(bundle: RiverMaskInput): Uint8Array {
       const rz = tx;
 
       const maxW = Math.max(a.halfW, b.halfW);
-      const reachTex = Math.ceil((maxW + 36) / texelM);
+      const isTrunk = isTrunkRiver(maxW, Math.max(a.strahler, b.strahler));
+      const reachTex = Math.ceil((maxW + (isTrunk ? 76 : 36)) / texelM);
       const minX = Math.max(0, Math.floor(Math.min(a.x, b.x)) - reachTex);
       const maxX = Math.min(size - 1, Math.ceil(Math.max(a.x, b.x)) + reachTex);
       const minY = Math.max(0, Math.floor(Math.min(a.y, b.y)) - reachTex);

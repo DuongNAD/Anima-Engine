@@ -355,6 +355,7 @@ function pageInstallPin() {
       st.followed = f.last;
     }
     if (p && camera && camera.position) {
+      st.camera = camera;
       camera.position.set(p.position[0], p.position[1], p.position[2]);
       camera.lookAt(p.target[0], p.target[1], p.target[2]);
       camera.updateMatrixWorld(true);
@@ -397,6 +398,141 @@ function pageWaitFrames({ minFrames, minMs, capMs }) {
     };
     requestAnimationFrame(tick);
   });
+}
+
+function pageMeasureTrunkVisibility() {
+  const net = window.__wv2RiverNet;
+  const st = window.__mapCapture;
+  const w = window.__world;
+  if (!net || !net.polylines || !st || !st.camera || !w || !w.elevation) return null;
+  const cam = st.camera;
+  cam.updateMatrixWorld(true);
+  if (typeof cam.updateProjectionMatrix === 'function') cam.updateProjectionMatrix();
+  const vm = cam.matrixWorldInverse.elements;
+  const pm = cam.projectionMatrix.elements;
+  const cpos = cam.position;
+  const R = net.renderSize || 2400;
+  const H = net.heightUnits || 168;
+  const extentM = net.extentM || 81920;
+  const edgeScale = 40960 / extentM;
+  const invSize = 1 / Math.max(1, net.size - 1);
+  const mPerUnit = extentM / R;
+  const fovRad = ((cam.fov || 55) * Math.PI) / 180;
+  const viewH = Math.max(1, window.innerHeight || 720);
+  const pxPerUnit = (2 * Math.tan(fovRad * 0.5)) / viewH;
+  const N = w.size;
+  const sea = w.seaLevel ?? 0;
+
+  const elevAt = (x, z) => {
+    const u = x / R + 0.5;
+    const v = z / R + 0.5;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return sea;
+    const fx = u * (N - 1);
+    const fy = v * (N - 1);
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    const x1 = Math.min(N - 1, x0 + 1);
+    const y1 = Math.min(N - 1, y0 + 1);
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const E = w.elevation;
+    return (
+      E[y0 * N + x0] * (1 - tx) * (1 - ty) +
+      E[y0 * N + x1] * tx * (1 - ty) +
+      E[y1 * N + x0] * (1 - tx) * ty +
+      E[y1 * N + x1] * tx * ty
+    );
+  };
+
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const smoothstep = (e0, e1, x) => {
+    const t = clamp01((x - e0) / Math.max(1e-6, e1 - e0));
+    return t * t * (3 - 2 * t);
+  };
+
+  let totalMapTrunkM = 0;
+  let inFrustumTrunkM = 0;
+  let visibleTrunkM = 0;
+
+  for (let p = 0; p < net.polylines.length; p++) {
+    const line = net.polylines[p];
+    for (let k = 1; k < line.length; k++) {
+      const a = line[k - 1];
+      const b = line[k];
+      const strahler = Math.max(a.strahler || 1, b.strahler || 1);
+      const wM = a.halfW + b.halfW;
+      if (!(strahler >= 3 || wM >= 10.0)) continue;
+      const u = ((a.x + b.x) * 0.5) * invSize;
+      const v = ((a.y + b.y) * 0.5) * invSize;
+      const edgeD = Math.min(u, 1 - u, v, 1 - v);
+      if (edgeD < 0.014 * edgeScale) continue;
+      const wx = (u - 0.5) * R;
+      const wz = (v - 0.5) * R;
+      const e = elevAt(wx, wz);
+      if (e < sea - 0.002) continue;
+      const wy = e * H;
+
+      const segM = Math.hypot(b.x - a.x, b.y - a.y) * (extentM / net.size);
+      totalMapTrunkM += segM;
+
+      const vx = vm[0] * wx + vm[4] * wy + vm[8] * wz + vm[12];
+      const vy = vm[1] * wx + vm[5] * wy + vm[9] * wz + vm[13];
+      const vz = vm[2] * wx + vm[6] * wy + vm[10] * wz + vm[14];
+      const vw = vm[3] * wx + vm[7] * wy + vm[11] * wz + vm[15];
+      const cx = pm[0] * vx + pm[4] * vy + pm[8] * vz + pm[12] * vw;
+      const cy = pm[1] * vx + pm[5] * vy + pm[9] * vz + pm[13] * vw;
+      const cz = pm[2] * vx + pm[6] * vy + pm[10] * vz + pm[14] * vw;
+      const cw = pm[3] * vx + pm[7] * vy + pm[11] * vz + pm[15] * vw;
+      if (cw <= 0.1) continue;
+      const ndcX = cx / cw;
+      const ndcY = cy / cw;
+      const ndcZ = cz / cw;
+      if (Math.abs(ndcX) > 1.0 || Math.abs(ndcY) > 1.0 || ndcZ < -1.0 || ndcZ > 1.0) continue;
+
+      inFrustumTrunkM += segM;
+
+      let occluded = false;
+      for (let s = 1; s <= 6; s++) {
+        const t = s / 7;
+        const sx = cpos.x + (wx - cpos.x) * t;
+        const sy = cpos.y + (wy - cpos.y) * t;
+        const sz = cpos.z + (wz - cpos.z) * t;
+        if (elevAt(sx, sz) * H > sy + 0.55) {
+          occluded = true;
+          break;
+        }
+      }
+      if (occluded) continue;
+
+      const camDist = Math.hypot(wx - cpos.x, wy - cpos.y, wz - cpos.z);
+      const camDistM = camDist * mPerUnit;
+      const pxWorldM = camDist * pxPerUnit * mPerUnit;
+      const halfW = wM * 0.5;
+      const maxTrunkExpand = Math.max(halfW * 2.4, Math.min(115.0, Math.max(halfW * 7.0, pxWorldM * 0.92)));
+      const expandedHalfW = Math.min(maxTrunkExpand, pxWorldM * 0.92);
+      const geomHalfW = Math.max(halfW, expandedHalfW);
+      const rawCov = clamp01(halfW / Math.max(geomHalfW, 0.01));
+      const trunkCovFloor = 0.56 + 0.36 * clamp01((wM - 4.0) / 22.0 + (strahler >= 4 ? 0.36 : 0));
+      const cov = Math.max(trunkCovFloor, Math.pow(rawCov, 0.30));
+      const trunkFloor = 0.64 + 0.30 * clamp01((wM - 4.0) / 22.0 + (strahler >= 4 ? 0.35 : 0));
+      const maxVisM = Math.max(220000, wM * 680);
+      const distFade = Math.max(trunkFloor, 1 - smoothstep(maxVisM * 0.44, maxVisM, camDistM));
+      const haze = 1 - Math.exp(-camDistM / 35000);
+      const effVis = cov * distFade * (1 - haze * 0.34);
+      const onScreenPx = (geomHalfW * 2) / Math.max(1e-4, pxWorldM);
+      if (onScreenPx >= 0.75 && effVis >= 0.14) {
+        visibleTrunkM += segM;
+      }
+    }
+  }
+
+  return {
+    totalMapTrunkKm: Math.round(totalMapTrunkM / 100) / 10,
+    inFrustumTrunkKm: Math.round(inFrustumTrunkM / 100) / 10,
+    visibleTrunkKm: Math.round(visibleTrunkM / 100) / 10,
+    visibleShareInFrustumPct: inFrustumTrunkM > 0 ? Math.round((visibleTrunkM / inFrustumTrunkM) * 1000) / 10 : 0,
+    visibleShareOfMapPct: totalMapTrunkM > 0 ? Math.round((visibleTrunkM / totalMapTrunkM) * 1000) / 10 : 0,
+  };
 }
 
 function pageReseatOnNearPatch(viewId) {
@@ -1157,105 +1293,239 @@ function pageAnalyseWorld() {
     }
   }
 
-  // riverbend (opt-in): meandering lowland river bend viewed from 40 m up.
+  // riverbend (opt-in): genuine sinuous meandering lowland bend viewed from 40 m up.
   {
     const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
     const uYc = H / (metrics.elevSpanM || 7200);
-    const stepC = 7;
+    const rNet = window.__wv2RiverNet;
     let bestBend = null;
-    for (let gy = Math.floor(N * 0.06); gy < Math.floor(N * 0.94); gy += 4) {
-      for (let gx = Math.floor(N * 0.06); gx < Math.floor(N * 0.94); gx += 4) {
-        const i = gy * N + gx;
-        if (w.riverAmt[i] < 110 || w.flow[i] < 0.07 || w.elevation[i] < sea + 0.002 || w.elevation[i] > sea + 0.08 || (w.water && w.water[i] > 0)) continue;
-        if (w.slope && w.slope[i] > 0.07) continue;
-        // Look in a ~280 m neighborhood for uphill vs downhill river vectors to measure meander turn angle
-        let upV = null;
-        let dnV = null;
-        let bestUpE = w.elevation[i];
-        let bestDnE = w.elevation[i];
-        for (let dy = -stepC; dy <= stepC; dy++) {
-          for (let dx = -stepC; dx <= stepC; dx++) {
-            const d = Math.hypot(dx, dy);
-            if (d < 4.0 || d > stepC + 0.5) continue;
-            const ni = (gy + dy) * N + (gx + dx);
-            if (w.riverAmt[ni] < 80) continue;
-            const ne = w.elevation[ni];
-            if (ne > bestUpE) { bestUpE = ne; upV = [-dx / d, -dy / d]; }
-            if (ne < bestDnE) { bestDnE = ne; dnV = [dx / d, dy / d]; }
+    if (rNet && Array.isArray(rNet.polylines)) {
+      const nSize = rNet.size || 2048;
+      const nExtentM = rNet.extentM || (metrics.extentM || 81920);
+      const nTexelM = nExtentM / Math.max(1, nSize - 1);
+      const minElevM = metrics.elevMinM ?? -1500;
+      const spanElevM = metrics.elevSpanM ?? 7200;
+      for (let p = 0; p < rNet.polylines.length; p++) {
+        const line = rNet.polylines[p];
+        if (line.length < 24) continue;
+        const cum = new Float64Array(line.length);
+        for (let k = 1; k < line.length; k++) {
+          cum[k] = cum[k - 1] + Math.hypot(line[k].x - line[k - 1].x, line[k].y - line[k - 1].y) * nTexelM;
+        }
+        for (let k = 6; k < line.length - 6; k += 2) {
+          const pt = line[k];
+          if (pt.halfW < 4.5 || pt.grade > 0.04) continue;
+          const rx = (pt.x / Math.max(1, nSize - 1) - 0.5) * R;
+          const rz = (pt.y / Math.max(1, nSize - 1) - 0.5) * R;
+          if (Math.abs(rx) > R * 0.46 || Math.abs(rz) > R * 0.46) continue;
+          const e = elevAt(rx, rz);
+          const hM = minElevM + e * spanElevM;
+          if (e < sea + 0.002 || hM > 420) continue;
+
+          // ~180 m limbs & ~320 m sinuosity chord
+          let iA = k;
+          while (iA > 0 && cum[k] - cum[iA] < 180) iA--;
+          let iB = k;
+          while (iB < line.length - 1 && cum[iB] - cum[k] < 180) iB++;
+          let i0 = k;
+          while (i0 > 0 && cum[k] - cum[i0] < 320) i0--;
+          let i1 = k;
+          while (i1 < line.length - 1 && cum[i1] - cum[k] < 320) i1++;
+
+          const ax = line[k].x - line[iA].x;
+          const az = line[k].y - line[iA].y;
+          const bx = line[iB].x - line[k].x;
+          const bz = line[iB].y - line[k].y;
+          const la = Math.hypot(ax, az);
+          const lb = Math.hypot(bx, bz);
+          if (la < 1 || lb < 1) continue;
+          const dot = Math.max(-1, Math.min(1, (ax * bx + az * bz) / (la * lb)));
+          const turn = Math.acos(dot);
+          const arcM = cum[i1] - cum[i0];
+          const chordM = Math.hypot(line[i1].x - line[i0].x, line[i1].y - line[i0].y) * nTexelM;
+          const sin = chordM > 20 ? arcM / chordM : 1;
+          if (turn < 1.05 || sin < 1.30) continue;
+
+          const treeCnt = treesNear(rx, rz, 36);
+          let bisX = ax / la - bx / lb;
+          let bisZ = az / la - bz / lb;
+          const bLen = Math.hypot(bisX, bisZ);
+          if (bLen > 1e-4) { bisX /= bLen; bisZ /= bLen; } else { bisX = -bz / lb; bisZ = ax / la; }
+          const cxProbe = rx - bisX * 115 * unitsPerM - (ax / la) * 35 * unitsPerM;
+          const czProbe = rz - bisZ * 115 * unitsPerM - (az / la) * 35 * unitsPerM;
+          const camTrees = treesNear(cxProbe, czProbe, 34);
+          const canopyPenalty = 1 / (1 + treeCnt * 0.65 + camTrees * 3.0);
+          const widthM = pt.halfW * 2;
+          const score = Math.min(34, widthM) * (sin * sin) * (turn / 1.57) * canopyPenalty;
+          if (!bestBend || score > bestBend.score) {
+            bestBend = {
+              x: rx,
+              z: rz,
+              widthM,
+              turn,
+              sin,
+              score,
+              upV: [ax / la, az / la],
+              dnV: [bx / lb, bz / lb],
+            };
           }
         }
-        if (!upV || !dnV) continue;
-        const dot = Math.max(-1, Math.min(1, upV[0] * dnV[0] + upV[1] * dnV[1]));
-        const turn = Math.acos(dot);
-        if (turn < 0.72) continue;
-        const canopyPenalty = w.biome[i] === 7 ? 0.35 : 1.0;
-        const score = (w.flow[i] * w.flow[i] * w.flow[i]) * turn * canopyPenalty;
-        if (!bestBend || score > bestBend.score) {
-          bestBend = { gx, gy, x: cellToR(gx), z: cellToR(gy), flow: w.flow[i], turn, score, upV, dnV };
+      }
+    }
+    if (!bestBend) {
+      const stepC = 7;
+      for (let gy = Math.floor(N * 0.08); gy < Math.floor(N * 0.92); gy += 4) {
+        for (let gx = Math.floor(N * 0.08); gx < Math.floor(N * 0.92); gx += 4) {
+          const i = gy * N + gx;
+          if (w.riverAmt[i] < 110 || w.flow[i] < 0.07 || w.elevation[i] < sea + 0.002 || w.elevation[i] > sea + 0.08 || (w.water && w.water[i] > 0)) continue;
+          if (w.slope && w.slope[i] > 0.07) continue;
+          let upV = null;
+          let dnV = null;
+          let bestUpE = w.elevation[i];
+          let bestDnE = w.elevation[i];
+          for (let dy = -stepC; dy <= stepC; dy++) {
+            for (let dx = -stepC; dx <= stepC; dx++) {
+              const d = Math.hypot(dx, dy);
+              if (d < 4.0 || d > stepC + 0.5) continue;
+              const ni = (gy + dy) * N + (gx + dx);
+              if (w.riverAmt[ni] < 80) continue;
+              const ne = w.elevation[ni];
+              if (ne > bestUpE) { bestUpE = ne; upV = [-dx / d, -dy / d]; }
+              if (ne < bestDnE) { bestDnE = ne; dnV = [dx / d, dy / d]; }
+            }
+          }
+          if (!upV || !dnV) continue;
+          const dot = Math.max(-1, Math.min(1, upV[0] * dnV[0] + upV[1] * dnV[1]));
+          const turn = Math.acos(dot);
+          if (turn < 0.72) continue;
+          const canopyPenalty = w.biome[i] === 7 ? 0.35 : 1.0;
+          const score = (w.flow[i] * w.flow[i] * w.flow[i]) * turn * canopyPenalty;
+          if (!bestBend || score > bestBend.score) {
+            bestBend = { x: cellToR(gx), z: cellToR(gy), widthM: 12, turn, sin: 1.2, score, upV, dnV };
+          }
         }
       }
     }
     if (!bestBend) skip('riverbend', 'no meandering lowland river bend found');
     else {
-      let bisX = -(bestBend.dnV[0] - bestBend.upV[0]);
-      let bisZ = -(bestBend.dnV[1] - bestBend.upV[1]);
+      // Position camera outside/slightly upstream of the bend apex so both curve limbs + inside bar are visible
+      let bisX = bestBend.upV[0] - bestBend.dnV[0];
+      let bisZ = bestBend.upV[1] - bestBend.dnV[1];
       const bLen = Math.hypot(bisX, bisZ);
       if (bLen > 1e-4) { bisX /= bLen; bisZ /= bLen; } else { bisX = -bestBend.dnV[1]; bisZ = bestBend.dnV[0]; }
-      const backM = 95;
-      const cx = bestBend.x + bisX * backM * unitsPerM;
-      const cz = bestBend.z + bisZ * backM * unitsPerM;
+      const backM = 115;
+      const cx = bestBend.x - bisX * backM * unitsPerM - bestBend.upV[0] * 35 * unitsPerM;
+      const cz = bestBend.z - bisZ * backM * unitsPerM - bestBend.upV[1] * 35 * unitsPerM;
+      const tx = bestBend.x + bisX * 22 * unitsPerM;
+      const tz = bestBend.z + bisZ * 22 * unitsPerM;
       const cY = Math.max(elevAt(cx, cz) * H, meshSurfAt(cx, cz)) + 40 * Math.max(uYc, unitsPerM);
-      const tY = Math.max(elevAt(bestBend.x, bestBend.z) * H, meshSurfAt(bestBend.x, bestBend.z));
+      const tY = Math.max(elevAt(tx, tz) * H, meshSurfAt(tx, tz));
       const pos = [cx, cY, cz];
-      const tgt = [bestBend.x, tY, bestBend.z];
+      const tgt = [tx, tY, tz];
       put(
         'riverbend',
         { position: pos, target: tgt, azimuthDeg: deg(azTo(pos, tgt)), pitchDeg: deg(Math.atan2(tY - cY, backM * unitsPerM)), lineOfSight: 'unchecked (40 m above bend)' },
-        `lowland river bend (${deg(bestBend.turn)} deg turn) from 40 m up, flow ${bestBend.flow.toFixed(3)} (${biomeAt(bestBend.x, bestBend.z)})`,
+        `sinuous lowland river bend (${deg(bestBend.turn)} deg turn, sinuosity ${bestBend.sin.toFixed(2)}, W~${bestBend.widthM.toFixed(0)} m) from 40 m up (${biomeAt(bestBend.x, bestBend.z)})`,
       );
     }
   }
 
-  // mountainstream (opt-in): steep mountain reach showing narrow broken white-water beds.
+  // mountainstream (opt-in): steep variable-grade mountain reach showing dark pools, boulders, and step foam.
   {
     const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
     const uYc = H / (metrics.elevSpanM || 7200);
+    const rNet = window.__wv2RiverNet;
     let ms = null;
-    for (let gy = Math.floor(N * 0.08); gy < Math.floor(N * 0.92); gy += 2) {
-      for (let gx = Math.floor(N * 0.08); gx < Math.floor(N * 0.92); gx += 2) {
-        const i = gy * N + gx;
-        if (w.riverAmt[i] < 100 || w.flow[i] < 0.02 || w.flow[i] > 0.18 || (w.water && w.water[i] > 0)) continue;
-        const elev = w.elevation[i];
-        const sl = w.slope ? w.slope[i] : 0;
-        if (elev < sea + 0.12 || elev > sea + 0.45 || sl < 0.10 || sl > 0.36) continue;
-        // Require sustained steep reach (>= 55 m drop over ~400 m) so camera sees white-water rapids
-        const px0 = cellToR(gx);
-        const pz0 = cellToR(gy);
-        const dn = downhillAz(px0, pz0);
-        if (dn === null) continue;
-        const dnElev = elevAt(px0 + 200 * unitsPerM * Math.cos(dn), pz0 + 200 * unitsPerM * Math.sin(dn));
-        const upElev = elevAt(px0 - 200 * unitsPerM * Math.cos(dn), pz0 - 200 * unitsPerM * Math.sin(dn));
-        const sustainDrop = upElev - dnElev;
-        if (sustainDrop < 0.008) continue;
-        const score = w.flow[i] * sustainDrop * Math.max(0.1, sl) * 100;
-        if (!ms || score > ms.score) {
-          ms = { x: px0, z: pz0, flow: w.flow[i], slope: sl, dnAz: dn, score };
+    if (rNet && Array.isArray(rNet.polylines)) {
+      const nSize = rNet.size || 2048;
+      const minElevM = metrics.elevMinM ?? -1500;
+      const spanElevM = metrics.elevSpanM ?? 7200;
+      for (let p = 0; p < rNet.polylines.length; p++) {
+        const line = rNet.polylines[p];
+        if (line.length < 16) continue;
+        for (let k = 6; k < line.length - 6; k += 2) {
+          const pt = line[k];
+          if (pt.halfW < 1.4 || pt.halfW > 4.6) continue;
+          const rx = (pt.x / Math.max(1, nSize - 1) - 0.5) * R;
+          const rz = (pt.y / Math.max(1, nSize - 1) - 0.5) * R;
+          if (Math.abs(rx) > R * 0.42 || Math.abs(rz) > R * 0.42) continue;
+          const e = elevAt(rx, rz);
+          const hM = minElevM + e * spanElevM;
+          if (hM < 450 || hM > 2500) continue;
+
+          let minLG = Infinity;
+          let maxLG = 0;
+          let sumG = 0;
+          let cnt = 0;
+          for (let j = k - 5; j <= k + 5; j++) {
+            const lg = line[j].localGrade ?? line[j].grade;
+            if (lg < minLG) minLG = lg;
+            if (lg > maxLG) maxLG = lg;
+            sumG += line[j].grade;
+            cnt++;
+          }
+          const avgG = sumG / Math.max(1, cnt);
+          if (avgG < 0.08 || avgG > 0.165 || minLG > 0.09 || maxLG < 0.14) continue;
+          const dx = line[k + 4].x - line[k - 4].x;
+          const dz = line[k + 4].y - line[k - 4].y;
+          const dL = Math.hypot(dx, dz);
+          if (dL < 1e-3) continue;
+          const contrast = Math.min(0.22, Math.max(0.02, maxLG - minLG));
+          const treeCnt = treesNear(rx, rz, 24);
+          // Frame obliquely downstream from slightly upstream so sky/valley horizon is visible above the rapids!
+          const azDn = Math.atan2(dz, dx);
+          const viewAz = azDn + Math.PI + 0.38;
+          const cxProbe = rx + 52 * unitsPerM * Math.cos(viewAz);
+          const czProbe = rz + 52 * unitsPerM * Math.sin(viewAz);
+          const camTrees = treesNear(cxProbe, czProbe, 18);
+          const sunFacing = -0.6 * Math.cos(azDn) - 0.5 * Math.sin(azDn) > -0.25 ? 1.4 : 0.8;
+          const score = Math.min(8, pt.halfW * 2) * contrast * sunFacing * (0.5 + avgG * 2) / (1 + treeCnt * 0.18 + camTrees * 0.8);
+          if (!ms || score > ms.score) {
+            ms = { x: rx, z: rz, widthM: pt.halfW * 2, slope: avgG, dnAz: azDn, viewAz, score };
+          }
+        }
+      }
+    }
+    if (!ms) {
+      const minSlope = N <= 1024 ? 0.055 : 0.09;
+      const minDrop = N <= 1024 ? 0.004 : 0.007;
+      for (let gy = Math.floor(N * 0.08); gy < Math.floor(N * 0.92); gy += 2) {
+        for (let gx = Math.floor(N * 0.08); gx < Math.floor(N * 0.92); gx += 2) {
+          const i = gy * N + gx;
+          if (w.riverAmt[i] < 95 || w.flow[i] < 0.015 || w.flow[i] > 0.18 || (w.water && w.water[i] > 0)) continue;
+          const elev = w.elevation[i];
+          const sl = w.slope ? w.slope[i] : 0;
+          if (elev < sea + 0.10 || elev > sea + 0.45 || sl < minSlope || sl > 0.22) continue;
+          const px0 = cellToR(gx);
+          const pz0 = cellToR(gy);
+          const dn = downhillAz(px0, pz0);
+          if (dn === null) continue;
+          const dnElev = elevAt(px0 + 200 * unitsPerM * Math.cos(dn), pz0 + 200 * unitsPerM * Math.sin(dn));
+          const upElev = elevAt(px0 - 200 * unitsPerM * Math.cos(dn), pz0 - 200 * unitsPerM * Math.sin(dn));
+          const sustainDrop = upElev - dnElev;
+          if (sustainDrop < minDrop) continue;
+          const score = w.flow[i] * sustainDrop * Math.max(0.08, sl) * 100;
+          if (!ms || score > ms.score) {
+            ms = { x: px0, z: pz0, widthM: 3.5, slope: sl, dnAz: dn, viewAz: dn + Math.PI + 0.38, score };
+          }
         }
       }
     }
     if (!ms) skip('mountainstream', 'no sustained steep mountain stream reach found');
     else {
-      const distM = 75;
-      const cx = ms.x + distM * unitsPerM * Math.cos(ms.dnAz + 0.22);
-      const cz = ms.z + distM * unitsPerM * Math.sin(ms.dnAz + 0.22);
-      const tY = Math.max(elevAt(ms.x, ms.z) * H, meshSurfAt(ms.x, ms.z));
-      const cY = Math.max(elevAt(cx, cz) * H, meshSurfAt(cx, cz)) + 18 * Math.max(uYc, unitsPerM);
+      const distM = 52;
+      const cx = ms.x + distM * unitsPerM * Math.cos(ms.viewAz ?? (ms.dnAz + Math.PI + 0.38));
+      const cz = ms.z + distM * unitsPerM * Math.sin(ms.viewAz ?? (ms.dnAz + Math.PI + 0.38));
+      const tx = ms.x + 28 * unitsPerM * Math.cos(ms.dnAz);
+      const tz = ms.z + 28 * unitsPerM * Math.sin(ms.dnAz);
+      const tY = Math.max(elevAt(tx, tz) * H, meshSurfAt(tx, tz));
+      const cY = Math.max(elevAt(cx, cz) * H, meshSurfAt(cx, cz)) + 11 * Math.max(uYc, unitsPerM);
       const pos = [cx, cY, cz];
-      const tgt = [ms.x, tY, ms.z];
+      const tgt = [tx, tY, tz];
       put(
         'mountainstream',
         { position: pos, target: tgt, azimuthDeg: deg(azTo(pos, tgt)), pitchDeg: deg(Math.atan2(tY - cY, distM * unitsPerM)), lineOfSight: 'unchecked (steep reach)' },
-        `steep mountain stream (slope ${ms.slope.toFixed(2)}, flow ${ms.flow.toFixed(3)}) (${biomeAt(ms.x, ms.z)})`,
+        `steep mountain stream (grade ${ms.slope.toFixed(2)}, W~${ms.widthM.toFixed(1)} m) (${biomeAt(ms.x, ms.z)})`,
       );
     }
   }
@@ -1859,7 +2129,11 @@ async function main() {
         const followed = await page.evaluate(() => window.__mapCapture.followed);
         if (followed) entry.pose = { position: null, target: followed.map((n) => Math.round(n * 10) / 10) };
       }
-      log(`${id}: ${entry.fps.medianFps ?? '–'} fps median, ${entry.fps.p5Fps ?? '–'} p5 (warmup max ${entry.warmup.maxFrameMs} ms), ${entry.counters?.total?.calls ?? '–'} calls, ${fmt(entry.counters?.total?.triangles)} tris`);
+      if (id === 'overview' || id === 'horizon' || id === 'river' || id === 'forest') {
+        const tv = await page.evaluate(pageMeasureTrunkVisibility);
+        if (tv) entry.trunkVisibility = tv;
+      }
+      log(`${id}: ${entry.fps.medianFps ?? '–'} fps median, ${entry.fps.p5Fps ?? '–'} p5 (warmup max ${entry.warmup.maxFrameMs} ms), ${entry.counters?.total?.calls ?? '–'} calls, ${fmt(entry.counters?.total?.triangles)} tris${entry.trunkVisibility ? ` · trunks ${entry.trunkVisibility.visibleShareInFrustumPct}% frustum (${entry.trunkVisibility.visibleTrunkKm}/${entry.trunkVisibility.inFrustumTrunkKm} km)` : ''}`);
     }
     phase = 'end';
     await page.evaluate(pageWaitFrames, { minFrames: 2, minMs: 200, capMs: 5000 });

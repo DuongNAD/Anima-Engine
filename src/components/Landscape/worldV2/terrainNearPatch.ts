@@ -330,38 +330,54 @@ export function buildNearPatchBuffers(params: NearPatchBuildParams, skirtDepthUn
       let waterY: number | null = null;
       const hit = riverNetwork.queryNearestRiver(u, v, 110);
       if (hit && !hit.isWaterfall && detailY > seaY + 0.02) {
-        const carveOuterM = Math.max(hit.halfW + 18, 28);
-        if (hit.distM <= carveOuterM + 26) {
+        const isSteepStream = hit.grade > 0.075 && hit.halfW < 4.5;
+        const bendIn = Math.max(-1, Math.min(1, hit.bendSide));
+        const carveBedHalfW = isSteepStream
+          ? Math.max(hit.halfW + 6.5, 11.0)
+          : Math.max(hit.halfW + 13.0, 20.0);
+        const bankRampM = isSteepStream
+          ? 8.5
+          : bendIn > 0
+            ? 14 + bendIn * 10
+            : 12;
+        if (hit.distM <= carveBedHalfW + bankRampM + 8) {
           const cElev = l0Cache.sampleHeightM(hit.projU, hit.projV);
           const centerY =
             cElev !== null
               ? ((cElev - ELEV_MIN_M) / ELEV_SPAN_M) * heightUnits
               : sampleElevation(world, hit.projU, hit.projV) * heightUnits;
           const bankJitterM = Math.sin(hit.projU * 1300 + hit.projV * 970) * 0.25;
+          const bankDropM = isSteepStream
+            ? Math.min(2.4, Math.max(1.35, 1.25 + hit.grade * 4.5))
+            : hit.bankDropM;
           const computedWaterY = Math.max(
             seaY + 0.01,
-            centerY - (hit.bankDropM + bankJitterM) * uPerM,
+            centerY - (bankDropM + bankJitterM) * uPerM,
           );
           waterY = computedWaterY;
 
-          const carveBedHalfW = Math.max(hit.halfW + 13.0, 20.0);
-          const bendIn = Math.max(-1, Math.min(1, hit.bendSide));
-          const bedDepthM =
-            bendIn > 0
-              ? 1.1 + (0.50 - 1.1) * bendIn
+          const bedDepthM = isSteepStream
+            ? 0.9 + Math.min(0.6, hit.grade * 2.5)
+            : bendIn > 0
+              ? 1.1 + (0.45 - 1.1) * bendIn
               : Math.min(2.4, 1.2 + Math.sqrt(Math.max(0.5, hit.halfW)) * 0.22 + -bendIn * 0.4);
-          const bankRampM = bendIn > 0 ? 13 + bendIn * 8 : 12;
 
           if (hit.distM <= carveBedHalfW) {
             const centerFactor = 1 - 0.55 * smoothstep(0, carveBedHalfW, hit.distM);
-            const bedTargetY = Math.max(
+            let bedTargetY = Math.max(
               seaY + 0.005,
               computedWaterY - bedDepthM * uPerM * centerFactor,
             );
+            // Low gently sloped slip-off bar on inside of wide sinuous bends
+            if (!isSteepStream && bendIn > 0.15 && hit.halfW >= 4.0 && hit.distM > hit.halfW * 0.72) {
+              const barRise = smoothstep(hit.halfW * 0.72, carveBedHalfW, hit.distM) * bendIn;
+              bedTargetY = Math.max(bedTargetY, computedWaterY + (-0.25 + 0.65 * barRise) * uPerM);
+            }
             detailY = Math.min(detailY, bedTargetY);
           } else if (hit.distM < carveBedHalfW + bankRampM) {
             const bankT = smoothstep(carveBedHalfW, carveBedHalfW + bankRampM, hit.distM);
-            const lipY = Math.max(seaY + 0.005, computedWaterY - 0.35 * uPerM);
+            const lipOffsetM = !isSteepStream && bendIn > 0.15 && hit.halfW >= 4.0 ? 0.35 * bendIn : -0.35;
+            const lipY = Math.max(seaY + 0.005, computedWaterY + lipOffsetM * uPerM);
             const bankTargetY = lipY + (detailY - lipY) * bankT;
             detailY = Math.min(detailY, bankTargetY);
           }
