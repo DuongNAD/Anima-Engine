@@ -209,9 +209,9 @@ export function configureAtmosphere(
   // above a few hundred metres look through almost none of it.
   atmosphereUniforms.uAtmoMarineDensity.value = -Math.log(0.85) / (2000 * unitsPerM);
   atmosphereUniforms.uAtmoMarineH.value = 60 * unitsPerMY;
-  // Trade cumulus: flat bases ~1.9 km above the sea, tops up to ~2.4 km above that.
-  atmosphereUniforms.uAtmoCloudY.value = seaY + 1900 * unitsPerMY;
-  atmosphereUniforms.uAtmoCloudTop.value = 2400 * unitsPerMY;
+  // Trade cumulus: fewer, higher, broader clouds (~3.2 km base, tops up to ~2.2 km above that).
+  atmosphereUniforms.uAtmoCloudY.value = seaY + 3200 * unitsPerMY;
+  atmosphereUniforms.uAtmoCloudTop.value = 2200 * unitsPerMY;
   atmosphereUniforms.uAtmoMPerUnit.value = 1 / unitsPerM;
   atmosphereUniforms.uAtmoMPerUnitY.value = 1 / unitsPerMY;
   if (!cloudNoiseTex) cloudNoiseTex = buildLookNoiseTexture();
@@ -414,8 +414,8 @@ return texture2D(uAtmoGroundTex,pM/(uAtmoMPerUnit*uAtmoRenderSize*2.0)+0.5).rg;
 vec2 q=pM-uAtmoWind*uAtmoTime;
 vec2 w=normalize(uAtmoWind);
 float street=0.5+0.5*cos(dot(q,vec2(-w.y,w.x))*0.0015+region*7.0);
-float sea=smoothstep(0.48,0.8,region)*(0.1+0.24*street);
-return clamp(sea+land*0.6,0.0,0.82);
+float sea=smoothstep(0.62,0.86,region)*(0.08+0.22*street);
+return clamp(sea+land*0.58,0.0,0.82);
 }
 float atmoCloudRegion(vec2 pM){
 vec4 r=texture2D(uAtmoCloudTex,(pM-uAtmoWind*uAtmoTime)/97000.0+0.53);
@@ -424,13 +424,12 @@ return r.a*0.7+r.b*0.3;
 ` +
   // Local cloud top as a fraction of the slab (0 = clear sky) for cloudiness C. Noise in
   // wind-aligned coordinates (cells stretched along the wind) is thresholded at 1 - C, so a
-  // cloudy region merges into wide fields and a clear one keeps a few small cells; inside a cell
-  // the top rises like a dome, higher where it is cloudier.
+  // cloudy region merges into wide fields and a clear one keeps a few large, well-spaced cells.
   `float atmoCloudTop(vec2 pM,float C){
 vec2 q=pM-uAtmoWind*uAtmoTime;
 vec2 w=normalize(uAtmoWind);
 vec2 a=vec2(dot(q,w)*0.62,dot(q,vec2(-w.y,w.x)));
-float n=texture2D(uAtmoCloudTex,a/7200.0+0.13).r*0.6+texture2D(uAtmoCloudTex,a/2600.0+0.71).g*0.4;
+float n=texture2D(uAtmoCloudTex,a/13500.0+0.13).r*0.6+texture2D(uAtmoCloudTex,a/4800.0+0.71).g*0.4;
 n=0.5+(n-0.5)*1.45;
 float x=(n-(1.0-C))/max(C,0.05);
 return x<=0.0?0.0:sqrt(min(x*1.8,1.0))*mix(0.25,1.0,C);

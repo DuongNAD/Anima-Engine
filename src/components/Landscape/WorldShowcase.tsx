@@ -659,7 +659,7 @@ export const WorldShowcase: React.FC = () => {
           sunTilt={worldV2Bundle ? V2_SUN_TILT : 0}
           look={Boolean(worldV2Bundle)}
           cloudGrid={Math.round(
-            (effectiveQuality === 'high' ? 210 : effectiveQuality === 'medium' ? 160 : 110) *
+            (effectiveQuality === 'high' ? 105 : effectiveQuality === 'medium' ? 80 : 56) *
               renderScale.cloudGridScale,
           )}
           cloudTileExtents={renderScale.cloudTileExtents}

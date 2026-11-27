@@ -95,21 +95,18 @@ p=camM+mod(p-camM+0.5*uTile,uTile)-0.5*uTile;
 gl_Position=vec4(2.0,2.0,2.0,1.0);
 vec2 dom=atmoCloudDom(p);
 float C=atmoCloudC(p,dom.g,atmoCloudRegion(p));
-if(C<0.03)return;
+if(C<0.11)return;
 float top=atmoCloudTop(p,C);
 vec2 pu=p/uAtmoMPerUnit;
 ` +
-  // Real-size cumulus: ~0.5-1.6 km across over the sea (thin cells), growing to ~3 km and
-  // taller where the cell is thick (the windward bank). Thin ones are 1.6-2.4 times wider than
-  // tall seen from the side; the centre sits low, so the condensation level cuts a flat base,
-  // and in thick cells some puffs ride higher, building the bank upward. Coarser grids (medium,
-  // low) grow their clouds a little so the bank does not fall apart into separate puffs.
-  `float rM=mix(250.0,2000.0,pow(top,1.5))*(0.75+0.5*fract(aCell.z*7.13))*sqrt(clamp(sp/1000.0,1.0,4.0));
-float asp=mix(2.0,1.1,top)*(0.8+0.4*fract(aCell.w*5.31));
+  // Fewer, larger, higher cumulus: ~1.9-6.8 km wide horizontal banks with crisp flat bases
+  // sliced along the condensation level.
+  `float rM=mix(950.0,3400.0,pow(top,1.2))*(0.75+0.5*fract(aCell.z*7.13))*sqrt(clamp(sp/1000.0,1.0,4.0));
+float asp=mix(3.2,1.9,top)*(0.8+0.4*fract(aCell.w*5.31));
 vec3 rc=normalize(vec3(pu.x,uAtmoCloudY,pu.y)-cameraPosition);
 float ryM=rM*mix(1.0,1.0/asp,1.0-smoothstep(0.08,0.4,-rc.y));
-float cy=uAtmoCloudY+(0.3+1.1*top*fract(aCell.z*3.17))*ryM/uAtmoMPerUnitY;
-if(top<0.02||dom.r>cy-0.3*ryM/uAtmoMPerUnitY)return;
+float cy=uAtmoCloudY+(0.08+0.32*top*fract(aCell.z*3.17))*ryM/uAtmoMPerUnitY;
+if(top<0.08||dom.r>cy-0.3*ryM/uAtmoMPerUnitY)return;
 vec3 c=vec3(pu.x,cy,pu.y);
 vR=rM/uAtmoMPerUnit;
 vRy=ryM/uAtmoMPerUnit;
@@ -165,7 +162,7 @@ for(int k=0;k<5;k++){
 if(k>=nl)break;
 float fk=float(k);
 vec3 h=fract(vSeed*vec3(17.3+fk*7.1,29.1+fk*3.7,41.7+fk*5.3));
-vec2 o=k==0?vec2(0.0,0.05):vec2((h.x-0.5)*0.84,(h.y-0.3)*0.5);
+vec2 o=k==0?vec2(0.0,0.04):vec2((h.x-0.5)*1.15,(h.y-0.35)*0.34);
 float rad=k==0?0.55:0.3+0.22*h.z;
 vec2 dl=(vUv-o)/rad;
 float w=exp(-dot(dl,dl)*wob/0.12);
@@ -185,7 +182,7 @@ vec3 rd=normalize(wp-cameraPosition);
 ` +
   // Soft rim, flat base at the condensation level, thinning near the camera.
   `float ryM=vRy*uAtmoMPerUnit;
-float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-0.08*ryM,0.2*ryM,hB),side)*smoothstep(300.0,1100.0,dM);
+float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-0.02*ryM,0.14*ryM,hB),side)*smoothstep(300.0,1100.0,dM);
 ` +
   // Soft where the card meets the terrain (the coarse height map stands in for a depth
   // buffer), and gone when the camera is inside or right next to the puff.
@@ -193,9 +190,9 @@ float a=(1.0-smoothstep(0.45,1.0,r2))*mix(1.0,smoothstep(-0.08*ryM,0.2*ryM,hB),s
 a*=vNear;
 vec3 sd=normalize(uAtmoSunDir);
 ` +
-  // Gentle shading (cumulus are not billiard balls): a little sun on the lit side, a grey
-  // base darkening toward the condensation level when seen from below or the side.
-  `float sunL=clamp(dot(n,sd)*mix(0.25,0.45,side)+mix(0.78,0.58,side),0.0,1.0)*mix(1.0,mix(0.5,1.0,smoothstep(0.0,1.2*ryM,hB)),side);
+  // Gentle shading (cumulus are not billiard balls): a little sun on the lit side, a cool
+  // slate-grey flat base darkening toward the condensation level when seen from below/side.
+  `float sunL=clamp(dot(n,sd)*mix(0.25,0.45,side)+mix(0.78,0.58,side),0.0,1.0)*mix(1.0,mix(0.42,1.0,smoothstep(0.0,1.1*ryM,hB)),side);
 vec3 col=mix(vec3(0.60,0.64,0.72),vec3(1.0,0.985,0.95),sunL)*mix(0.93,1.04,nz.g);
 col+=vec3(1.0,0.95,0.85)*pow(max(dot(rd,sd),0.0),8.0)*0.35*smoothstep(0.3,1.0,r2);
 col=mix(col,vHazeC,vHaze);
