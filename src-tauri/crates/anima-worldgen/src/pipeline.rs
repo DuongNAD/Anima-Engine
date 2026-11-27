@@ -467,6 +467,7 @@ fn apply_caprock_knickpoint_sapping(
     dx_m: f32,
     extent_m: f32,
     sapping_gain: f32,
+    opt_in_bench_sapping: bool,
 ) {
     let n = lvl * lvl;
     if lvl < 64 || sapping_gain <= 0.0 || bedrock_h.len() != n || lithology_id.len() != n {
@@ -546,6 +547,27 @@ fn apply_caprock_knickpoint_sapping(
     } else {
         ((run_limit / dx_m).round() as usize).clamp(1, 3)
     };
+    let gorge_steps = if opt_in_bench_sapping && is_large_82km && dx_m >= 20.0 {
+        ((200.0 / dx_m).round() as usize).clamp(4, 12)
+    } else if is_large_82km && dx_m >= 20.0 {
+        ((100.0 / dx_m).round() as usize).clamp(4, 10)
+    } else {
+        10
+    };
+    let gorge_end_elev = |start: usize| -> f32 {
+        let mut g_cur = start;
+        for _ in 0..gorge_steps {
+            let d = d8_dir[g_cur];
+            let Some(nxt) = step_nb(g_cur, d) else {
+                break;
+            };
+            if total[nxt] <= 2.5 {
+                break;
+            }
+            g_cur = nxt;
+        }
+        total[g_cur]
+    };
     let mut cands: Vec<(f32, usize, usize, f32)> = Vec::new();
 
     for r in 3..(lvl - 3) {
@@ -561,6 +583,7 @@ fn apply_caprock_knickpoint_sapping(
             let mut cur = u;
             let mut dist_m = 0.0_f32;
             let mut soft_cell = None;
+            let mut ledge_cell = None;
             for _ in 0..k_steps {
                 let d = d8_dir[cur];
                 let Some(nxt) = step_nb(cur, d) else {
@@ -581,18 +604,50 @@ fn apply_caprock_knickpoint_sapping(
                     {
                         break;
                     }
+                } else if opt_in_bench_sapping
+                    && (dist_m >= 1.5 * dx_m
+                        || if is_large_82km {
+                            dx_m >= 20.0
+                        } else {
+                            dx_m > 20.0
+                        })
+                {
+                    ledge_cell = Some((nxt, dist_m));
                 }
                 cur = nxt;
             }
-            if let Some((base_v, d_uv)) = soft_cell {
-                cands.push((a_tilde[u], u, base_v, d_uv));
+            if !opt_in_bench_sapping {
+                if let Some((base_v, d_uv)) = soft_cell {
+                    cands.push((a_tilde[u], u, base_v, d_uv));
+                }
+            } else if let Some((base_v, d_uv)) = soft_cell {
+                if total[u] - gorge_end_elev(base_v) >= 10.0 {
+                    cands.push((a_tilde[u], u, base_v, d_uv));
+                }
+            } else if let Some((base_v, d_uv)) = ledge_cell {
+                let up_ok = best_up[u] == u32::MAX
+                    || total[best_up[u] as usize] - total[u] <= 24.0;
+                if up_ok
+                    && total[u] - total[base_v] >= 9.0
+                    && total[u] - gorge_end_elev(base_v) >= 18.0
+                {
+                    cands.push((a_tilde[u], u, base_v, d_uv));
+                }
             }
         }
     }
 
     cands.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let min_sp_sq = 310.0_f32 * 310.0_f32;
-    let accepted_cap = if is_large_82km { 135 } else { 54 };
+    let accepted_cap = if is_large_82km {
+        if opt_in_bench_sapping {
+            260
+        } else {
+            135
+        }
+    } else {
+        54
+    };
     let mut accepted: Vec<(usize, usize, f32)> = Vec::new();
     for (_, u, v, d_uv) in cands {
         if accepted.len() >= accepted_cap {
@@ -675,11 +730,6 @@ fn apply_caprock_knickpoint_sapping(
         // Propagate downstream plunge-gorge floor monotonically (no micro-pits).
         let mut prev_h = total[base_v];
         let mut g_cur = base_v;
-        let gorge_steps = if is_large_82km && dx_m >= 20.0 {
-            ((100.0 / dx_m).round() as usize).clamp(4, 10)
-        } else {
-            10
-        };
         for _ in 0..gorge_steps {
             let d = d8_dir[g_cur];
             let Some(nxt) = step_nb(g_cur, d) else {
@@ -1932,6 +1982,9 @@ pub fn run_worldgen_to_dir_with_schedule(
                 &mut lithology_id,
             )?;
             if lvl_u32 >= 512 && cfg.sapping_gain > 0.0 {
+                let opt_in_bench_sapping = cfg.uplift_roughness > 0.0
+                    || cfg.foothill_dissection > 0.0
+                    || cfg.plateau_dissection > 0.0;
                 apply_caprock_knickpoint_sapping(
                     &mut cur_bedrock,
                     &mut cur_sediment,
@@ -1941,6 +1994,7 @@ pub fn run_worldgen_to_dir_with_schedule(
                     lvl_dx,
                     cfg.extent_m,
                     cfg.sapping_gain,
+                    opt_in_bench_sapping,
                 );
             }
             apply_late_quaternary_piedmont_subsidence(
