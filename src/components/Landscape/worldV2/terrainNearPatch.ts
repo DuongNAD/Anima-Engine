@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { World } from '../utils/worldGen';
 import { sampleElevation } from '../utils/worldSample';
 import { L0HeightTileCache } from './l0HeightCache';
-import { getCachedSmoothedRiverMaskData, RIVER_SDF_ZERO_BYTE } from './riverSmooth';
+import { getCachedRiverNetwork } from './riverSmooth';
 import { ELEV_MIN_M, ELEV_SPAN_M, SEA_LEVEL_NORM, type WorldV2LoadedBundle } from './types';
 import { evaluateDrawnWaterfall } from './waterfallFit';
 
@@ -279,8 +279,7 @@ export function buildNearPatchBuffers(params: NearPatchBuildParams, skirtDepthUn
   const side = patchRes + 1;
   const uPerM = heightUnits / ELEV_SPAN_M;
   const seaY = SEA_LEVEL_NORM * heightUnits;
-  const rivMask = getCachedSmoothedRiverMaskData(bundle);
-  const rSize = bundle.size;
+  const riverNetwork = getCachedRiverNetwork(bundle);
 
   // Kept waterfall plunge depressions evaluated over coarse heights inside this patch
   const wfPools: Array<{ x: number; z: number; targetY: number; radSq: number }> = [];
@@ -328,35 +327,45 @@ export function buildNearPatchBuffers(params: NearPatchBuildParams, skirtDepthUn
           ? ((l0M - ELEV_MIN_M) / ELEV_SPAN_M) * heightUnits
           : sampleElevation(world, u, v) * heightUnits;
 
-      // Bilinear sample of river mask so coarse texel borders never carve square trenches into the 20 m patch
-      const rfx = Math.min(rSize - 1, Math.max(0, u * (rSize - 1)));
-      const rfy = Math.min(rSize - 1, Math.max(0, v * (rSize - 1)));
-      const rx0 = Math.floor(rfx);
-      const ry0 = Math.floor(rfy);
-      const rx1 = Math.min(rSize - 1, rx0 + 1);
-      const ry1 = Math.min(rSize - 1, ry0 + 1);
-      const rtx = rfx - rx0;
-      const rty = rfy - ry0;
-      const ri00 = (ry0 * rSize + rx0) * 4;
-      const ri10 = (ry0 * rSize + rx1) * 4;
-      const ri01 = (ry1 * rSize + rx0) * 4;
-      const ri11 = (ry1 * rSize + rx1) * 4;
-      const hasStandingWater =
-        rivMask[ri00] === 255 || rivMask[ri10] === 255 || rivMask[ri01] === 255 || rivMask[ri11] === 255;
-      const rivSdfM =
-        ((rivMask[ri00] * (1 - rtx) + rivMask[ri10] * rtx) * (1 - rty) +
-          (rivMask[ri01] * (1 - rtx) + rivMask[ri11] * rtx) * rty) -
-        RIVER_SDF_ZERO_BYTE;
-      const flowEnergy =
-        ((rivMask[ri00 + 3] * (1 - rtx) + rivMask[ri10 + 3] * rtx) * (1 - rty) +
-          (rivMask[ri01 + 3] * (1 - rtx) + rivMask[ri11 + 3] * rtx) * rty) /
-        255;
-      const creekShrink = (1 - smoothstep(0.16, 0.44, flowEnergy)) * 13.5;
-      const chanSdf = rivSdfM + creekShrink;
-      if (detailY > seaY + 0.02 && chanSdf < 10 && !hasStandingWater) {
-        const wBank = 1 - smoothstep(-2.0, 10.0, chanSdf);
-        const carveM = (2.8 + Math.sqrt(flowEnergy) * 5.2) * wBank;
-        detailY = Math.max(seaY + 0.01, detailY - carveM * uPerM);
+      let waterY: number | null = null;
+      const hit = riverNetwork.queryNearestRiver(u, v, 110);
+      if (hit && !hit.isWaterfall && detailY > seaY + 0.02) {
+        const carveOuterM = Math.max(hit.halfW + 18, 28);
+        if (hit.distM <= carveOuterM + 26) {
+          const cElev = l0Cache.sampleHeightM(hit.projU, hit.projV);
+          const centerY =
+            cElev !== null
+              ? ((cElev - ELEV_MIN_M) / ELEV_SPAN_M) * heightUnits
+              : sampleElevation(world, hit.projU, hit.projV) * heightUnits;
+          const bankJitterM = Math.sin(hit.projU * 1300 + hit.projV * 970) * 0.25;
+          const computedWaterY = Math.max(
+            seaY + 0.01,
+            centerY - (hit.bankDropM + bankJitterM) * uPerM,
+          );
+          waterY = computedWaterY;
+
+          const carveBedHalfW = Math.max(hit.halfW + 13.0, 20.0);
+          const bendIn = Math.max(-1, Math.min(1, hit.bendSide));
+          const bedDepthM =
+            bendIn > 0
+              ? 1.1 + (0.50 - 1.1) * bendIn
+              : Math.min(2.4, 1.2 + Math.sqrt(Math.max(0.5, hit.halfW)) * 0.22 + -bendIn * 0.4);
+          const bankRampM = bendIn > 0 ? 13 + bendIn * 8 : 12;
+
+          if (hit.distM <= carveBedHalfW) {
+            const centerFactor = 1 - 0.55 * smoothstep(0, carveBedHalfW, hit.distM);
+            const bedTargetY = Math.max(
+              seaY + 0.005,
+              computedWaterY - bedDepthM * uPerM * centerFactor,
+            );
+            detailY = Math.min(detailY, bedTargetY);
+          } else if (hit.distM < carveBedHalfW + bankRampM) {
+            const bankT = smoothstep(carveBedHalfW, carveBedHalfW + bankRampM, hit.distM);
+            const lipY = Math.max(seaY + 0.005, computedWaterY - 0.35 * uPerM);
+            const bankTargetY = lipY + (detailY - lipY) * bankT;
+            detailY = Math.min(detailY, bankTargetY);
+          }
+        }
       }
       for (let p = 0; p < wfPools.length; p += 1) {
         const pool = wfPools[p];
@@ -380,7 +389,7 @@ export function buildNearPatchBuffers(params: NearPatchBuildParams, skirtDepthUn
       outTexData[idx * 4] = drawnY;
       outTexData[idx * 4 + 1] = drawnY - baseY;
       outTexData[idx * 4 + 2] = blend;
-      outTexData[idx * 4 + 3] = 0;
+      outTexData[idx * 4 + 3] = waterY !== null ? waterY : drawnY;
     }
   }
 

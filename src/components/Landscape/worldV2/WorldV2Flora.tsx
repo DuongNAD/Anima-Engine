@@ -28,6 +28,7 @@ import {
   bindAtmosphereUniforms,
 } from '../materials/atmosphere';
 import { NEAR_PATCH_SAMPLER_GLSL, bindNearPatchUniforms } from './terrainNearPatch';
+import { getCachedRiverNetwork } from './riverSmooth';
 
 export interface WorldV2FloraProps {
   bundle: WorldV2LoadedBundle;
@@ -469,10 +470,10 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   const stride = tier === 'high' ? 1 : 2;
   const standScale = tier === 'high' ? 1 : tier === 'medium' ? 0.8 : 0.65;
   const lite = tier === 'low';
-  const treeFar = tier === 'high' ? 350 : tier === 'medium' ? 280 : FLORA_FAR_UNITS_LOW;
-  const scrubFar = tier === 'high' ? 145 : tier === 'medium' ? 115 : FLORA_FAR_UNITS_LOW;
-  const nearCrownUnits = tier === 'high' ? 26 : 18;
-  const impostorUnits = tier === 'high' ? 36 : 30;
+  const treeFar = tier === 'high' ? 305 : tier === 'medium' ? 255 : FLORA_FAR_UNITS_LOW;
+  const scrubFar = tier === 'high' ? 140 : tier === 'medium' ? 110 : FLORA_FAR_UNITS_LOW;
+  const nearCrownUnits = tier === 'high' ? 24 : 18;
+  const impostorUnits = tier === 'high' ? 32 : 28;
   // WV2-LOOK: at real-world size a tree is under one texel of the 2048 shadow map spread over
   // the whole map, so its cast shadow was aliased noise that cost ~25-35% of the high-tier
   // frame. The canopy layer in the terrain shader carries the dark gaps instead.
@@ -497,6 +498,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
     // the sea, slope, biome), so a bake archetype becomes a plant that fits where it stands.
     const seaDist = seaDistanceGrid(world, meshResolution, heightUnits, seaY, SEA_GRID);
     const mPerSeaCell = extentM / SEA_GRID;
+    const riverNetwork = getCachedRiverNetwork(bundle);
     const env: FloraHabitat = { elevM: 0, distSeaM: 0, slope: 0, biome: 0 };
 
     let idx = 0;
@@ -560,6 +562,8 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
           const pv = pz / renderSize + 0.5;
           if (pu < 0 || pu > 1 || pv < 0 || pv > 1) continue;
           const groundY = sampleMeshHeight(world, pu, pv, meshResolution) * heightUnits;
+          const rHit = riverNetwork.queryNearestRiver(pu, pv, 45);
+          if (rHit && rHit.distM < rHit.halfW + 1.5) continue;
           env.elevM = (groundY - seaY) / unitsPerMY;
           const gx = Math.min(SEA_GRID - 1, Math.floor(pu * SEA_GRID));
           const gy = Math.min(SEA_GRID - 1, Math.floor(pv * SEA_GRID));
@@ -610,6 +614,104 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
             tint.setRGB(val * (0.9 + warm * 0.28), val * (0.98 + warm * 0.06), val * (1.06 - warm * 0.3));
           }
           perShapeColor[shape].push(tint.r, tint.g, tint.b);
+        }
+      }
+    }
+
+    // Look-layer riparian gallery vegetation along rivers (willows, shrubs, tree ferns in humid tropics).
+    if (!lite) {
+      const maxRiparian = tier === 'high' ? 16000 : 11000;
+      const alongStepM = tier === 'high' ? 32 : 42;
+      let ripPlaced = 0;
+      const invSizeMinus1 = 1 / Math.max(1, size - 1);
+
+      for (let p = 0; p < riverNetwork.polylines.length && ripPlaced < maxRiparian; p += 1) {
+        const line = riverNetwork.polylines[p];
+        if (line.length < 3) continue;
+        let nextStationM = 12;
+        for (let k = 1; k < line.length && ripPlaced < maxRiparian; k += 1) {
+          const pt = line[k];
+          if (pt.halfW < 1.5 || pt.isWaterfall || pt.alongM < nextStationM) continue;
+          nextStationM = pt.alongM + alongStepM * (0.65 + rnd() * 0.7);
+
+          const pPrev = line[k - 1];
+          const dx = pt.x - pPrev.x;
+          const dz = pt.y - pPrev.y;
+          const segLen = Math.hypot(dx, dz);
+          if (segLen < 1e-4) continue;
+          const rx = -dz / segLen;
+          const rz = dx / segLen;
+
+          const sides = rnd() < 0.4 ? [-1, 1] : [rnd() < 0.5 ? -1 : 1];
+          for (const side of sides) {
+            if (ripPlaced >= maxRiparian) break;
+            const bendSide = side * pt.signedCurv;
+            const bankOffsetM = pt.halfW + 2.2 + rnd() * 22.0;
+            // Keep open gravel/sand point bars clear on inside of bends.
+            if (bendSide > 0.32 && bankOffsetM < pt.halfW + 9.0) continue;
+
+            const u = pt.x * invSizeMinus1 + (rx * side * bankOffsetM) / extentM;
+            const v = pt.y * invSizeMinus1 + (rz * side * bankOffsetM) / extentM;
+            if (Math.min(u, 1 - u, v, 1 - v) < edgeSkip) continue;
+
+            const cx = Math.min(size - 1, Math.max(0, Math.floor(u * size)));
+            const cy = Math.min(size - 1, Math.max(0, Math.floor(v * size)));
+            const ci = cy * size + cx;
+            const bio = bundle.biomeIdsRgba[ci * 4] ?? 4;
+            // Skip ocean, beach, high rock/snow/alpine/glacier/tundra
+            if (
+              bio === 0 ||
+              bio === 1 ||
+              bio === 9 ||
+              bio === 11 ||
+              bio === 12 ||
+              bio === 18 ||
+              bio === 20
+            ) {
+              continue;
+            }
+            const rnx = (bundle.normalRg[ci * 2] / 255) * 2 - 1;
+            const rnz = (bundle.normalRg[ci * 2 + 1] / 255) * 2 - 1;
+            const rSlope = 1 - Math.sqrt(Math.max(0, 1 - rnx * rnx - rnz * rnz));
+            if (rSlope > 0.26) continue;
+
+            const groundY = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
+            const elevM = (groundY - seaY) / unitsPerMY;
+            if (groundY <= seaY + 0.6 * unitsPerMY || elevM > 2500) continue;
+
+            const isArid = bio === 2 || bio === 19 || bio === 17;
+            if (isArid && bankOffsetM > pt.halfW + 9.5) continue;
+
+            const rPick = rnd();
+            let shape: number;
+            if (isArid) {
+              shape = rPick < 0.28 ? LOOK_SPECIES.Willow : LOOK_SPECIES.Bush;
+            } else if ((bio === 6 || bio === 7 || bio === 10) && rPick > 0.90) {
+              shape = LOOK_SPECIES.TreeFern;
+            } else {
+              shape = rPick < 0.52 ? LOOK_SPECIES.Willow : LOOK_SPECIES.Bush;
+            }
+
+            const sizeSpec = LOOK_SPECIES_SIZE[shape];
+            const hM = sizeSpec.minM + (sizeSpec.maxM - sizeSpec.minM) * (0.25 + rnd() * 0.65);
+            const h = hM * unitsPerM;
+            const wJ = 0.78 + rnd() * 0.5;
+            const wx = (u - 0.5) * renderSize;
+            const wz = (v - 0.5) * renderSize;
+            dummy.position.set(wx, groundY - h * 0.04, wz);
+            dummy.rotation.set((rnd() - 0.5) * 0.08, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.08);
+            dummy.scale.set(h * wJ, h * (0.88 + rnd() * 0.28), h * (0.78 + rnd() * 0.5));
+            dummy.updateMatrix();
+            const e = dummy.matrix.elements;
+            const list = perShape[shape];
+            for (let j = 0; j < 16; j += 1) list.push(e[j]);
+
+            const val = 0.78 + rnd() * 0.36;
+            const warm = rnd() * 0.55;
+            tint.setRGB(val * (0.88 + warm * 0.25), val * (1.02 + warm * 0.04), val * (0.94 - warm * 0.18));
+            perShapeColor[shape].push(tint.r, tint.g, tint.b);
+            ripPlaced += 1;
+          }
         }
       }
     }
@@ -674,7 +776,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
       }
     }
     return out;
-  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale, lite, edgeSkip, treeFar, scrubFar, nearCrownUnits, impostorUnits]);
+  }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale, lite, edgeSkip, treeFar, scrubFar, nearCrownUnits, impostorUnits, tier]);
 
   useEffect(() => {
     return () => {

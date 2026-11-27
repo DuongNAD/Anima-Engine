@@ -258,9 +258,8 @@ function finish(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
 }
 
 /**
- * Compact 4-to-6 triangle closed volumetric crown impostor for distant trees (> ~1 km).
- * Uses each species' foliage gradient and outward-biased `crownNormals` with zero alpha-discard
- * overdraw so far forests match 3D crowns in lighting and tint at 7-10x fewer triangles.
+ * Compact <= 9 triangle volumetric impostor silhouette (including 3-tri trunk for elevated
+ * canopies so mid/far trees along open river valleys never float).
  */
 export function makeFloraImpostorGeometry(speciesId: number): THREE.BufferGeometry {
   const w = LOOK_SPECIES_SIZE[speciesId]?.widthRatio ?? 0.8;
@@ -300,7 +299,20 @@ export function makeFloraImpostorGeometry(speciesId: number): THREE.BufferGeomet
   const pb = paintGradient(botCap, lo, hi, cy - halfH, cy + halfH);
   crownNormals(pt, 0, cy - halfH * 0.15, 0, 0.55);
   crownNormals(pb, 0, cy - halfH * 0.15, 0, 0.55);
-  return finish([pt, pb]);
+
+  const hasTrunk =
+    speciesId !== LOOK_SPECIES.Rock &&
+    speciesId !== LOOK_SPECIES.Bush &&
+    speciesId !== LOOK_SPECIES.Mangrove &&
+    speciesId !== LOOK_SPECIES.TreeFern;
+  if (!hasTrunk) return finish([pt, pb]);
+
+  const stemH = Math.max(0.25, cy - halfH * 0.35);
+  const stemR = Math.max(0.032, crownR * 0.14);
+  const stem = new THREE.ConeGeometry(stemR, stemH, 3, 1, true).translate(0, stemH * 0.5, 0);
+  const pStem = paintGradient(stem, '#35261a', '#4f3b29', 0, stemH);
+  pStem.computeVertexNormals();
+  return finish([pStem, pt, pb]);
 }
 
 /**

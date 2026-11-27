@@ -107,12 +107,12 @@ describe('flora look: habitat rules', () => {
     );
   });
 
-  it('builds closed <= 8 triangle impostor silhouettes for every species', () => {
+  it('builds compact <= 9 triangle impostor silhouettes for every species', () => {
     for (const speciesId of Object.values(LOOK_SPECIES)) {
       const geom = makeFloraImpostorGeometry(speciesId);
       const triCount = geom.index ? geom.index.count / 3 : geom.attributes.position.count / 3;
       expect(triCount).toBeGreaterThanOrEqual(4);
-      expect(triCount).toBeLessThanOrEqual(8);
+      expect(triCount).toBeLessThanOrEqual(9);
       expect(geom.attributes.normal).toBeDefined();
       expect(geom.attributes.color).toBeDefined();
       geom.dispose();

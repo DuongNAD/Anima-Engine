@@ -37,6 +37,8 @@ export interface TerrainPbrMaterialParams {
   edgeScale?: number;
   /** WV2-LOOK r13: enable carved-channel bank tilt & thin wet bank shading (`high`/`medium`). */
   carveBanks?: boolean;
+  /** WV2-LOOK r14: true when `WorldV2Rivers` renders the 3D water surface (`high`/`medium`). */
+  hasRiverMesh?: boolean;
 }
 
 export interface TerrainPbrShaderHandle {
@@ -81,6 +83,7 @@ uniform sampler2D uLookShore;
 uniform float uElevMinM;
 uniform float uElevSpanM;
 uniform float uCarveBanks;
+uniform float uHasRiverMesh;
 ${GRASS_PATCH_GLSL}
 ${GRASS_FIELD_GLSL}
 `;
@@ -175,7 +178,13 @@ vec3 lkGround=lkMacro
   `lkGround*=mix(0.86,1.10,lkNHi.r)*mix(0.92,1.06,lkNVHi.a);
 lkGround=mix(lkGround,lkGround*vec3(1.12,1.0,0.72),smoothstep(0.55,0.85,lkNHi.g)*0.45);
 vec4 lkGrassM=texture2D(uLookGrass,vMapUv);
-float lkGrassCov=lkGrassM.r*(1.0-lkMask.r)*(1.0-lkMask.g)*(1.0-lkMask.a*0.85);
+vec4 rivMaskEarly=texture2D(uRiverMask,vMapUv);
+float rivSdfEarly=rivMaskEarly.r*255.0-80.0;
+float rivBendEarly=(rivMaskEarly.g*255.0-128.0)/127.0;
+float rivHalfWEarly=rivMaskEarly.b*63.75;
+float barClearW=rivBendEarly>0.12?clamp(rivHalfWEarly*0.75*rivBendEarly,2.5,16.0):1.5;
+float lkRivClear=rivHalfWEarly>0.2?smoothstep(0.5,max(2.0,barClearW),rivSdfEarly):1.0;
+float lkGrassCov=lkGrassM.r*(1.0-lkMask.r)*(1.0-lkMask.g)*(1.0-lkMask.a*0.85)*lkRivClear;
 float lkCamDistM=lkCamDist*uAtmoMPerUnit;
 float lkTurfDist=1.0-smoothstep(450.0,1600.0,lkCamDistM);
 vec2 lkWorldM=lkP*uAtmoMPerUnit;
@@ -315,6 +324,7 @@ float lkWet=0.0;
 float lkSpray=0.0;
 float lkRivWater=0.0;
 float lkRivBank=0.0;
+float lkRivBar=0.0;
 float lkRivFoam=0.0;
 vec2 lkRivTilt=vec2(0.0);
 ` +
@@ -382,26 +392,51 @@ diffuseColor.rgb=lkGround;
 float lkAoInd=clamp(lkAo,0.35,1.0);
 float lkSunVis=1.0;
 {
-vec4 rivMask=texture2D(uRiverMask,vMapUv);
-float rivSdf=rivMask.r*255.0-80.0;
-rivSdf+=(lkNHi.r-0.5)*3.2*(1.0-smoothstep(250.0,900.0,lkCamDist));
+vec4 rivMask=rivMaskEarly;
+float rivSdf=rivSdfEarly;
+float bendInside=rivBendEarly;
+float rivHalfW=rivHalfWEarly;
 float flowEnergy=rivMask.a;
-// Leopold-Maddock creek narrowing inside the unbroken L1 SDF envelope, plus cliff narrowing so
-// vertical waterfall walls don't paint wide horizontal polygons down 60 m drops.
-float creekShrink=(1.0-smoothstep(0.16,0.44,flowEnergy))*13.5;
-float cliffPinch=smoothstep(0.18,0.36,lkSlope)*15.0;
-float cSdf=rivSdf+creekShrink+cliffPinch;
-if(cSdf<16.0&&lkHm<3650.0){
+float rivWarp=(lkNHi.r-0.5)*min(max(rivHalfW,1.0)*0.55,3.6)*(1.0-smoothstep(250.0,900.0,lkCamDist));
+float cSdf=rivSdf+rivWarp;
+float rivWidthM=rivHalfW*2.0;
+float maxBankVisM=mix(rivWidthM*850.0,220000.0,smoothstep(6.0,14.0,rivWidthM));
+maxBankVisM=max(maxBankVisM,smoothstep(0.11,0.22,lkSlope)*11000.0);
+float rivDistFade=1.0-smoothstep(maxBankVisM*0.42,maxBankVisM,lkCamDist*uAtmoMPerUnit);
+if(cSdf<24.0&&lkHm<3650.0&&rivHalfW>0.2&&rivDistFade>0.01){
   float lkNoGlacier=1.0-smoothstep(2850.0,3650.0,lkHm);
-  float lkRivAllow=(1.0-lkSnow*0.85)*lkNoGlacier;
-  float lkRivAA=max(1.3,fwidth(cSdf)*1.15);
-  float headFade=smoothstep(0.10,0.28,flowEnergy);
-  float cliffFade=1.0-smoothstep(0.28,0.46,lkSlope)*0.75;
-  lkRivWater=(1.0-smoothstep(-lkRivAA,lkRivAA,cSdf))*lkRivAllow*mix(0.62,1.0,headFade)*cliffFade;
-  lkRivBank=smoothstep(-0.5,0.8,cSdf)*(1.0-smoothstep(1.5,4.2,cSdf))*lkRivAllow;
-  float bankAo=1.0-smoothstep(0.0,11.0,max(0.0,cSdf))*0.12*uCarveBanks*lkRivAllow;
-  diffuseColor.rgb*=mix(1.0,0.68,lkRivBank)*bankAo;
-  if(uCarveBanks>0.5&&cSdf>-1.5&&cSdf<14.0){
+  float lkRivAllow=(1.0-lkSnow*0.85)*lkNoGlacier*rivDistFade;
+  float isRockyReach=clamp(smoothstep(0.08,0.20,lkSlope)+smoothstep(0.76,0.92,flowEnergy),0.0,1.0);
+  // Gravel/sand point bars on the inside of river bends (bendInside > 0).
+  float barW=rivHalfW>=3.0?clamp(rivHalfW*0.75*max(0.0,bendInside),2.5,16.0):0.0;
+  float onBar=barW>0.1?(1.0-smoothstep(max(0.5,barW-3.0),barW+1.8,cSdf))
+    *smoothstep(-max(1.0,rivHalfW*0.45),0.8,cSdf)
+    *smoothstep(0.22,0.45,bendInside)*lkRivAllow:0.0;
+  if(onBar>0.01){
+    vec3 gravelCol=mix(vec3(0.22,0.195,0.145),vec3(0.32,0.28,0.21),lkNHi.r)*mix(0.82,1.18,lkNVHi.g);
+    gravelCol*=mix(0.64,1.0,smoothstep(-0.2,1.8,cSdf));
+    diffuseColor.rgb=mix(diffuseColor.rgb,gravelCol,onBar*0.88);
+    lkRivBar=onBar;
+  }
+  // Mud or cobble margins on outer cut-banks & straight reaches.
+  float marginLimit=mix(2.6,6.0,smoothstep(2.0,12.0,rivHalfW));
+  float bankBand=smoothstep(-max(0.8,rivHalfW*0.35),0.6,cSdf)*(1.0-smoothstep(1.2,marginLimit,cSdf))*lkRivAllow;
+  float marginWeight=bankBand*(1.0-onBar*0.85);
+  if(marginWeight>0.01){
+    vec3 mudCol=mix(vec3(0.082,0.066,0.046),vec3(0.125,0.100,0.072),lkNHi.g)*mix(0.85,1.15,lkNVHi.b);
+    vec3 cobbleCol=mix(vec3(0.090,0.088,0.085),vec3(0.165,0.158,0.148),lkNVHi.r);
+    diffuseColor.rgb=mix(diffuseColor.rgb,mix(mudCol,cobbleCol,isRockyReach),marginWeight*0.86);
+    lkRivBank=marginWeight;
+  }
+  float bankAo=1.0-smoothstep(0.0,11.0,max(0.0,cSdf))*0.06*uCarveBanks*lkRivAllow;
+  diffuseColor.rgb*=bankAo;
+  // Submerged riverbed silt & pebbles under translucent 3D river surface.
+  float inBed=(1.0-smoothstep(-0.6,1.2,cSdf))*lkRivAllow*(1.0-onBar*0.5);
+  if(inBed>0.01){
+    vec3 bedCol=mix(vec3(0.055,0.052,0.042),vec3(0.082,0.078,0.070),isRockyReach)*mix(0.86,1.14,lkNVHi.r);
+    diffuseColor.rgb=mix(diffuseColor.rgb,bedCol,inBed*0.92);
+  }
+  if(uCarveBanks>0.5&&cSdf>-1.0&&cSdf<14.0){
     vec2 rTx=1.0/vec2(textureSize(uRiverMask,0));
     float rsX=texture2D(uRiverMask,vMapUv+vec2(rTx.x,0.0)).r-texture2D(uRiverMask,vMapUv-vec2(rTx.x,0.0)).r;
     float rsZ=texture2D(uRiverMask,vMapUv+vec2(0.0,rTx.y)).r-texture2D(uRiverMask,vMapUv-vec2(0.0,rTx.y)).r;
@@ -409,41 +444,22 @@ if(cSdf<16.0&&lkHm<3650.0){
     float gLen=length(gBank);
     if(gLen>1e-4){
       float shoulder=smoothstep(-1.0,2.5,cSdf)*(1.0-smoothstep(4.5,13.5,cSdf))*lkRivAllow;
-      lkRivTilt+=-(gBank/gLen)*shoulder*0.28;
+      lkRivTilt+=-(gBank/gLen)*shoulder*0.26;
     }
   }
-  if(lkRivWater>0.01){
-    vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
-    float flowLen=length(rawFlow);
-    float validFlow=smoothstep(0.12,0.50,flowEnergy)*smoothstep(0.05,0.45,flowLen);
-    vec2 flowDir=flowLen>0.05?(rawFlow/flowLen):vec2(0.7,0.7);
-    vec2 flowPerp=vec2(-flowDir.y,flowDir.x);
-    float bedSlope=clamp(lkSlope,0.0,0.55);
-    float speed=mix(0.24,1.15,smoothstep(0.025,0.16,bedSlope))+flowEnergy*0.18;
-    float p0=fract(uTime*speed*0.45);
-    float p1=fract(p0+0.5);
-    float blend=abs(2.0*p0-1.0);
-    // Directional multi-tap advection in continuous world XZ avoids multiplying 8-bit quantized flowDir by large lkP.
-    vec2 adv0=flowDir*(p0*1.65);
-    vec2 adv1=flowDir*(p1*1.65);
-    vec2 sStep=flowDir*0.55;
-    float st0=0.5*(texture2D(uLookNoise,lkP*0.72-adv0).g+texture2D(uLookNoise,lkP*0.72-adv0+sStep).g);
-    float st1=0.5*(texture2D(uLookNoise,lkP*0.72-adv1+vec2(0.37,0.19)).g+texture2D(uLookNoise,lkP*0.72-adv1+sStep+vec2(0.37,0.19)).g);
-    float ripFine=texture2D(uLookNoise,lkP*2.2-flowDir*(uTime*speed*0.7)).b;
-    float flowStreak=mix(st0,st1,blend)*0.65+ripFine*0.35;
-    float depthCue=clamp(flowEnergy*1.15,0.0,1.0);
-    vec3 calmCol=mix(vec3(0.010,0.044,0.062),vec3(0.022,0.084,0.100),depthCue);
-    vec3 rapidCol=mix(calmCol,vec3(0.035,0.125,0.175),smoothstep(0.06,0.18,bedSlope));
-    vec3 rivBody=mix(calmCol,rapidCol,smoothstep(0.05,0.18,bedSlope));
-    rivBody*=mix(0.84,1.22,clamp(flowStreak,0.0,1.0));
-    float confFoam=smoothstep(0.78,0.96,flowEnergy);
-    float slopeBreakFoam=smoothstep(0.09,0.20,bedSlope);
-    float rapids=max(slopeBreakFoam*0.78,confFoam*0.88);
-    lkRivFoam=clamp(rapids*smoothstep(0.54,0.86,flowStreak),0.0,0.55);
-    rivBody=mix(rivBody,vec3(0.58,0.68,0.75),lkRivFoam);
-    lkRivTilt=mix(vec2(0.0),flowDir*((flowStreak-0.5)*0.22)+flowPerp*((st0-st1)*0.16),validFlow);
-    diffuseColor.rgb=mix(diffuseColor.rgb,rivBody,lkRivWater*0.92);
-    lkAoInd=mix(lkAoInd,0.84,lkRivWater*0.55);
+  // Low-tier fallback (no 3D river ribbon mesh): draw clean un-beaded shader water.
+  if(uHasRiverMesh<0.5){
+    float lkRivAA=max(1.2,fwidth(cSdf)*1.15);
+    lkRivWater=(1.0-smoothstep(-lkRivAA,lkRivAA,cSdf))*lkRivAllow;
+    if(lkRivWater>0.01){
+      float depthCue=clamp(flowEnergy*1.15,0.0,1.0);
+      vec3 calmCol=mix(vec3(0.014,0.048,0.068),vec3(0.025,0.086,0.102),depthCue);
+      float rapids=max(smoothstep(0.08,0.20,lkSlope)*0.78,smoothstep(0.78,0.96,flowEnergy)*0.88);
+      lkRivFoam=clamp(rapids*smoothstep(0.45,0.82,lkNHi.g),0.0,0.65);
+      vec3 rivBody=mix(calmCol,vec3(0.62,0.72,0.78),lkRivFoam);
+      diffuseColor.rgb=mix(diffuseColor.rgb,rivBody,lkRivWater*0.92);
+      lkAoInd=mix(lkAoInd,0.84,lkRivWater*0.55);
+    }
   }
 }
 if(uUseBakedHorizon>0.5){
@@ -599,7 +615,7 @@ return cx*blend.x+cy*blend.y+cz*blend.z;
       )
       .replace(
         '#include <roughnessmap_fragment>',
-        '#include <roughnessmap_fragment>\n\troughnessFactor = mix(roughnessFactor, 0.16, lkWet);\n\troughnessFactor = mix(roughnessFactor, 0.34, lkRivBank);\n\troughnessFactor = mix(roughnessFactor, mix(0.14, 0.38, lkRivFoam), lkRivWater);',
+        '#include <roughnessmap_fragment>\n\troughnessFactor = mix(roughnessFactor, 0.16, lkWet);\n\troughnessFactor = mix(roughnessFactor, 0.72, lkRivBar);\n\troughnessFactor = mix(roughnessFactor, 0.30, lkRivBank);\n\troughnessFactor = mix(roughnessFactor, mix(0.14, 0.38, lkRivFoam), lkRivWater);',
       )
       .replace('#include <fog_fragment>', WV2_LOOK_OUTPUT);
 }
@@ -672,6 +688,7 @@ export function createTerrainPbrMaterial(
     uElevMinM: { value: params.elevMinM ?? -1500 },
     uElevSpanM: { value: params.elevSpanM ?? 7200 },
     uCarveBanks: { value: params.carveBanks ? 1 : 0 },
+    uHasRiverMesh: { value: params.hasRiverMesh ? 1 : 0 },
   };
 
   const normScale = params.normalScale ?? 1;
@@ -705,6 +722,7 @@ export function createTerrainPbrMaterial(
       shader.uniforms.uElevMinM = lookUniforms.uElevMinM;
       shader.uniforms.uElevSpanM = lookUniforms.uElevSpanM;
       shader.uniforms.uCarveBanks = lookUniforms.uCarveBanks;
+      shader.uniforms.uHasRiverMesh = lookUniforms.uHasRiverMesh;
       bindAtmosphereUniforms(shader.uniforms);
       applyWv2LookShader(shader, edgeScale);
       return;

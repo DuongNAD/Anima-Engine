@@ -44,7 +44,7 @@ const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'wa
 //   vista      low oblique (~2.2 km above the sea) along the main massif, sky and horizon in frame.
 //   meadow     eye height (~2.2 m) in the grassland or savanna nearest the map centre, looking
 //              towards the highest peak: the ground cover (grass) at walking range.
-const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun', 'riverbank', 'waterfallup'];
+const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun', 'riverbank', 'waterfallup', 'riverbend', 'mountainstream'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -449,9 +449,24 @@ function pageReseatOnNearPatch(viewId) {
     }
   } else if (viewId === 'riverbank') {
     const curY = st.pose.position[1];
-    const nextY = Math.max(curY, npY + 2.4 * Math.max(uYc, unitsPerM));
-    if (Math.abs(nextY - curY) > 0.02) {
+    const nextY = npY + 2.4 * Math.max(uYc, unitsPerM);
+    const dy = nextY - curY;
+    if (Math.abs(dy) > 0.02) {
       st.pose.position[1] = nextY;
+      st.pose.target[1] += dy * 0.5;
+      return true;
+    }
+  } else if (viewId === 'riverbend') {
+    const curY = st.pose.position[1];
+    const nextY = npY + 40.0 * Math.max(uYc, unitsPerM);
+    if (Math.abs(nextY - curY) > 0.05) {
+      st.pose.position[1] = nextY;
+      return true;
+    }
+  } else if (viewId === 'mountainstream') {
+    const minY = npY + 14.0 * Math.max(uYc, unitsPerM);
+    if (st.pose.position[1] < minY) {
+      st.pose.position[1] = minY;
       return true;
     }
   } else if (viewId === 'waterfall' || viewId === 'waterfallup') {
@@ -1105,7 +1120,7 @@ function pageAnalyseWorld() {
     }
   }
 
-  // riverbank (opt-in): 2.0 m above drawn bank of a strong inland river, looking downstream.
+  // riverbank (opt-in): 2.4 m above sloped bank of a lowland river, looking diagonally downstream.
   {
     const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
     const uYc = H / (metrics.elevSpanM || 7200);
@@ -1113,9 +1128,8 @@ function pageAnalyseWorld() {
     for (let gy = Math.floor(N * 0.12); gy < Math.floor(N * 0.88); gy += 2) {
       for (let gx = Math.floor(N * 0.12); gx < Math.floor(N * 0.88); gx += 2) {
         const i = gy * N + gx;
-        if (w.riverAmt[i] < 120 || w.flow[i] < 0.05 || w.elevation[i] < sea + 0.004 || w.elevation[i] > sea + 0.14 || (w.water && w.water[i] > 0)) continue;
-        if (w.slope && w.slope[i] > 0.18) continue;
-        // Prefer lower-elevation broad valley rivers over steep high mountain canyons
+        if (w.riverAmt[i] < 120 || w.flow[i] < 0.05 || w.elevation[i] < sea + 0.004 || w.elevation[i] > sea + 0.12 || (w.water && w.water[i] > 0)) continue;
+        if (w.slope && w.slope[i] > 0.14) continue;
         const score = w.flow[i] - Math.max(0, w.elevation[i] - sea) * 1.5;
         if (!rb || score > rb[3]) rb = [cellToR(gx), cellToR(gy), w.flow[i], score];
       }
@@ -1124,19 +1138,124 @@ function pageAnalyseWorld() {
     else {
       const dnAz = downhillAz(rb[0], rb[1]) ?? 0;
       const sideAz = dnAz + Math.PI / 2;
-      const bankOff = 44 * unitsPerM;
-      const lookAhead = 220 * unitsPerM;
+      const qApprox = Math.max(0, Math.pow(2, rb[2] * 2 * 10) - 1);
+      const halfWM = Math.max(3, Math.min(26, (1.2 + 2.6 * Math.sqrt(qApprox)) * 0.5));
+      const bankOff = (halfWM + 4.5) * unitsPerM;
+      const lookAhead = 135 * unitsPerM;
       const bx = rb[0] + bankOff * Math.cos(sideAz);
       const bz = rb[1] + bankOff * Math.sin(sideAz);
       const bY = Math.max(elevAt(bx, bz) * H, meshSurfAt(bx, bz));
-      const tx = rb[0] + lookAhead * Math.cos(dnAz);
-      const tz = rb[1] + lookAhead * Math.sin(dnAz);
-      const tY = Math.max(elevAt(tx, tz) * H, meshSurfAt(tx, tz));
-      const pos = [bx, bY + 2.0 * Math.max(uYc, unitsPerM), bz];
+      const tx = rb[0] + lookAhead * Math.cos(dnAz) - 5 * unitsPerM * Math.cos(sideAz);
+      const tz = rb[1] + lookAhead * Math.sin(dnAz) - 5 * unitsPerM * Math.sin(sideAz);
+      const tY = Math.max(elevAt(tx, tz) * H, meshSurfAt(tx, tz)) - 1.5 * Math.max(uYc, unitsPerM);
+      const pos = [bx, bY + 2.4 * Math.max(uYc, unitsPerM), bz];
       put(
         'riverbank',
-        { position: pos, target: [tx, tY, tz], azimuthDeg: deg(azTo(pos, [tx, tY, tz])), pitchDeg: -2, lineOfSight: 'unchecked (2 m bank height)' },
-        `riverbank at 2.0 m looking downstream, flow ${rb[2].toFixed(3)} (${biomeAt(rb[0], rb[1])})`,
+        { position: pos, target: [tx, tY, tz], azimuthDeg: deg(azTo(pos, [tx, tY, tz])), pitchDeg: -4, lineOfSight: 'unchecked (2.4 m bank height)' },
+        `riverbank at 2.4 m looking downstream (W~${(halfWM * 2).toFixed(0)} m), flow ${rb[2].toFixed(3)} (${biomeAt(rb[0], rb[1])})`,
+      );
+    }
+  }
+
+  // riverbend (opt-in): meandering lowland river bend viewed from 40 m up.
+  {
+    const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
+    const uYc = H / (metrics.elevSpanM || 7200);
+    const stepC = 7;
+    let bestBend = null;
+    for (let gy = Math.floor(N * 0.06); gy < Math.floor(N * 0.94); gy += 4) {
+      for (let gx = Math.floor(N * 0.06); gx < Math.floor(N * 0.94); gx += 4) {
+        const i = gy * N + gx;
+        if (w.riverAmt[i] < 110 || w.flow[i] < 0.07 || w.elevation[i] < sea + 0.002 || w.elevation[i] > sea + 0.08 || (w.water && w.water[i] > 0)) continue;
+        if (w.slope && w.slope[i] > 0.07) continue;
+        // Look in a ~280 m neighborhood for uphill vs downhill river vectors to measure meander turn angle
+        let upV = null;
+        let dnV = null;
+        let bestUpE = w.elevation[i];
+        let bestDnE = w.elevation[i];
+        for (let dy = -stepC; dy <= stepC; dy++) {
+          for (let dx = -stepC; dx <= stepC; dx++) {
+            const d = Math.hypot(dx, dy);
+            if (d < 4.0 || d > stepC + 0.5) continue;
+            const ni = (gy + dy) * N + (gx + dx);
+            if (w.riverAmt[ni] < 80) continue;
+            const ne = w.elevation[ni];
+            if (ne > bestUpE) { bestUpE = ne; upV = [-dx / d, -dy / d]; }
+            if (ne < bestDnE) { bestDnE = ne; dnV = [dx / d, dy / d]; }
+          }
+        }
+        if (!upV || !dnV) continue;
+        const dot = Math.max(-1, Math.min(1, upV[0] * dnV[0] + upV[1] * dnV[1]));
+        const turn = Math.acos(dot);
+        if (turn < 0.72) continue;
+        const canopyPenalty = w.biome[i] === 7 ? 0.35 : 1.0;
+        const score = (w.flow[i] * w.flow[i] * w.flow[i]) * turn * canopyPenalty;
+        if (!bestBend || score > bestBend.score) {
+          bestBend = { gx, gy, x: cellToR(gx), z: cellToR(gy), flow: w.flow[i], turn, score, upV, dnV };
+        }
+      }
+    }
+    if (!bestBend) skip('riverbend', 'no meandering lowland river bend found');
+    else {
+      let bisX = -(bestBend.dnV[0] - bestBend.upV[0]);
+      let bisZ = -(bestBend.dnV[1] - bestBend.upV[1]);
+      const bLen = Math.hypot(bisX, bisZ);
+      if (bLen > 1e-4) { bisX /= bLen; bisZ /= bLen; } else { bisX = -bestBend.dnV[1]; bisZ = bestBend.dnV[0]; }
+      const backM = 95;
+      const cx = bestBend.x + bisX * backM * unitsPerM;
+      const cz = bestBend.z + bisZ * backM * unitsPerM;
+      const cY = Math.max(elevAt(cx, cz) * H, meshSurfAt(cx, cz)) + 40 * Math.max(uYc, unitsPerM);
+      const tY = Math.max(elevAt(bestBend.x, bestBend.z) * H, meshSurfAt(bestBend.x, bestBend.z));
+      const pos = [cx, cY, cz];
+      const tgt = [bestBend.x, tY, bestBend.z];
+      put(
+        'riverbend',
+        { position: pos, target: tgt, azimuthDeg: deg(azTo(pos, tgt)), pitchDeg: deg(Math.atan2(tY - cY, backM * unitsPerM)), lineOfSight: 'unchecked (40 m above bend)' },
+        `lowland river bend (${deg(bestBend.turn)} deg turn) from 40 m up, flow ${bestBend.flow.toFixed(3)} (${biomeAt(bestBend.x, bestBend.z)})`,
+      );
+    }
+  }
+
+  // mountainstream (opt-in): steep mountain reach showing narrow broken white-water beds.
+  {
+    const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
+    const uYc = H / (metrics.elevSpanM || 7200);
+    let ms = null;
+    for (let gy = Math.floor(N * 0.08); gy < Math.floor(N * 0.92); gy += 2) {
+      for (let gx = Math.floor(N * 0.08); gx < Math.floor(N * 0.92); gx += 2) {
+        const i = gy * N + gx;
+        if (w.riverAmt[i] < 100 || w.flow[i] < 0.02 || w.flow[i] > 0.18 || (w.water && w.water[i] > 0)) continue;
+        const elev = w.elevation[i];
+        const sl = w.slope ? w.slope[i] : 0;
+        if (elev < sea + 0.12 || elev > sea + 0.45 || sl < 0.10 || sl > 0.36) continue;
+        // Require sustained steep reach (>= 55 m drop over ~400 m) so camera sees white-water rapids
+        const px0 = cellToR(gx);
+        const pz0 = cellToR(gy);
+        const dn = downhillAz(px0, pz0);
+        if (dn === null) continue;
+        const dnElev = elevAt(px0 + 200 * unitsPerM * Math.cos(dn), pz0 + 200 * unitsPerM * Math.sin(dn));
+        const upElev = elevAt(px0 - 200 * unitsPerM * Math.cos(dn), pz0 - 200 * unitsPerM * Math.sin(dn));
+        const sustainDrop = upElev - dnElev;
+        if (sustainDrop < 0.008) continue;
+        const score = w.flow[i] * sustainDrop * Math.max(0.1, sl) * 100;
+        if (!ms || score > ms.score) {
+          ms = { x: px0, z: pz0, flow: w.flow[i], slope: sl, dnAz: dn, score };
+        }
+      }
+    }
+    if (!ms) skip('mountainstream', 'no sustained steep mountain stream reach found');
+    else {
+      const distM = 75;
+      const cx = ms.x + distM * unitsPerM * Math.cos(ms.dnAz + 0.22);
+      const cz = ms.z + distM * unitsPerM * Math.sin(ms.dnAz + 0.22);
+      const tY = Math.max(elevAt(ms.x, ms.z) * H, meshSurfAt(ms.x, ms.z));
+      const cY = Math.max(elevAt(cx, cz) * H, meshSurfAt(cx, cz)) + 18 * Math.max(uYc, unitsPerM);
+      const pos = [cx, cY, cz];
+      const tgt = [ms.x, tY, ms.z];
+      put(
+        'mountainstream',
+        { position: pos, target: tgt, azimuthDeg: deg(azTo(pos, tgt)), pitchDeg: deg(Math.atan2(tY - cY, distM * unitsPerM)), lineOfSight: 'unchecked (steep reach)' },
+        `steep mountain stream (slope ${ms.slope.toFixed(2)}, flow ${ms.flow.toFixed(3)}) (${biomeAt(ms.x, ms.z)})`,
       );
     }
   }

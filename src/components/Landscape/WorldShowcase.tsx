@@ -30,6 +30,7 @@ import {
 import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adapter';
 import type { WorldV2LoadedBundle } from './worldV2/types';
 import WorldV2Flora from './worldV2/WorldV2Flora';
+import WorldV2Rivers from './worldV2/WorldV2Rivers';
 import WorldV2Spray from './worldV2/WorldV2Spray';
 import WorldV2GroundCover from './worldV2/WorldV2GroundCover';
 import WorldV2ErrorPanel from './worldV2/WorldV2ErrorPanel';
@@ -752,6 +753,16 @@ export const WorldShowcase: React.FC = () => {
           heightRatio={heightRatio}
           sunDir={sunDir}
         />
+        {worldV2Bundle && effectiveQuality !== 'low' ? (
+          <WorldV2Rivers
+            bundle={worldV2Bundle}
+            world={world}
+            renderSize={renderSize}
+            heightRatio={heightRatio}
+            meshResolution={meshRes}
+            tier={effectiveQuality}
+          />
+        ) : null}
         {worldV2Bundle ? (
           <WorldV2Spray
             bundle={worldV2Bundle}

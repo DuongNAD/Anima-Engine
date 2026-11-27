@@ -520,12 +520,16 @@ gcY=sampleNearPatch(gcPw).r;
 vec4 gcM=texture2D(uGcMask,clamp(gcUv,0.0,1.0));
 vec4 gcRiv=texture2D(uGcRiver,clamp(gcUv,0.0,1.0));
 float gcRivSdf=gcRiv.r*255.0-80.0;
-float gcRivShrink=(1.0-smoothstep(0.16,0.44,gcRiv.a))*13.5;
-float gcRivKeep=smoothstep(2.0,7.5,gcRivSdf+gcRivShrink);
+float gcRivBend=(gcRiv.g*255.0-128.0)/127.0;
+float gcRivHalfW=gcRiv.b*63.75;
+float gcBarKeep=gcRivBend>0.25?smoothstep(max(1.5,clamp(gcRivHalfW*0.65*gcRivBend,2.0,12.0))-1.0,clamp(gcRivHalfW*0.65*gcRivBend,2.0,12.0)+2.0,gcRivSdf):1.0;
+float gcRivKeep=(gcRivHalfW>0.2?smoothstep(0.6,2.0,gcRivSdf)*gcBarKeep:1.0);
+float gcReedBand=step(0.6,gcRivHalfW)*smoothstep(0.6,2.0,gcRivSdf)*(1.0-smoothstep(4.5,11.5,gcRivSdf))
+  *(1.0-smoothstep(0.20,0.45,gcRivBend))*step(0.08,gcM.g)*(1.0-smoothstep(0.76,0.92,gcM.b));
 vec2 gcWorldM=gcPw*uGcMPerUnit;
 vec4 gcClump=lkGrassClump(gcWorldM);
 float gcPatch=lkGrassPatch(gcPw);
-vGcDry=clamp(gcM.b+(gcClump.x-0.5)*0.28+gcPatch*0.20,0.0,1.0);
+vGcDry=mix(clamp(gcM.b+(gcClump.x-0.5)*0.28+gcPatch*0.20,0.0,1.0),0.26,gcReedBand*0.65);
 vGcClumpTint=gcClump.y;
 float isSeed=step(1.5,aBladeMeta.z);
 float isFlower=step(0.5,aBladeMeta.z)*(1.0-isSeed);
@@ -534,9 +538,10 @@ float gcDistM=gcDist*uGcMPerUnit;
 vGcDistM=gcDistM;
 float seedShow=smoothstep(0.24,0.60,vGcDry);
 float dryHerbNeed=gcM.r*seedShow;
+float gcBaseDens=max(gcM.r*(1.0-0.18*max(gcPatch,0.0))*(1.0-smoothstep(0.68,1.15,gcClump.w)*0.22),gcReedBand*0.92);
 float gcDens=uGcIsHerb>0.5
 ?max(gcM.a*(1.0-0.45*vGcDry),dryHerbNeed*0.52)
-:gcM.r*(1.0-0.18*max(gcPatch,0.0))*(1.0-smoothstep(0.68,1.15,gcClump.w)*0.22);
+:gcBaseDens;
 float outerStart=uGcIsTussock>0.5?uGcRadius*0.18:uGcRadius*0.32;
 float gcOuterFade=pow(1.0-smoothstep(outerStart,uGcRadius,gcDist),1.35);
 float gcInnerScale=uGcInner>0.001?mix(0.58,1.0,smoothstep(uGcInner*0.45,uGcInner*1.35,gcDist)):1.0;
@@ -554,14 +559,15 @@ vGcSeedHead=isSeed;
 float hBio=max(0.25,gcM.g*2.0);
 float clumpH=mix(0.68,1.34,gcClump.z);
 float farScale=uGcIsTussock>0.5?mix(1.0,0.72,smoothstep(45.0,145.0,gcDistM)):1.0;
-float hMul=mix(hBio,0.55+hBio*0.45,uGcIsHerb)*clumpH*(0.84+0.32*fract(gcSeed*37.0))*farScale;
+float reedH=mix(1.0,2.2,gcReedBand);
+float hMul=mix(hBio,0.55+hBio*0.45,uGcIsHerb)*clumpH*(0.84+0.32*fract(gcSeed*37.0))*farScale*reedH;
 if(isSeed>0.5){
 hMul*=mix(0.18,1.05,seedShow)*step(0.05,seedShow);
 }
 gcT.y*=hMul;
 mat3 instRot=mat3(instanceMatrix);
 vec3 gcWorldLocal=instRot*gcT;
-float bendPow=pow(bladeT,1.55);
+float bendPow=pow(bladeT,1.55)*mix(1.0,0.58,gcReedBand);
 vec2 clumpLean=(gcClump.xy-0.5)*0.30*bendPow;
 vec3 windField=lkGrassWind(gcWorldM,uGcTime);
 vGcGust=windField.z;
@@ -632,7 +638,7 @@ diffuseColor.rgb=mix(finalGrass,petalCol,vGcFlower)*cloudVis;
           )
           .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkGcWp'));
     };
-    mat.customProgramCacheKey = () => `wv2-look-groundcover-v8-${kind}`;
+    mat.customProgramCacheKey = () => `wv2-look-groundcover-v9-${kind}`;
     return mat;
   }, [textures, instances, meshResolution, renderSize, radiusUnits, innerUnits, unitsPerM, timeUniform, kind, useCells]);
 

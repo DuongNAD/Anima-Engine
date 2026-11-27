@@ -18,7 +18,7 @@ import type { QualityTier } from './utils/qualityTiers';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 import { ELEV_MIN_M, ELEV_SPAN_M, type WorldV2LoadedBundle } from './worldV2/types';
 import { worldRenderScale } from './worldV2/worldScale';
-import { carveWorldV2RiverAndWaterfallChannels } from './worldV2/channelCarve';
+import { getCachedCarvedCoarseHeights } from './worldV2/channelCarve';
 import { L0HeightTileCache } from './worldV2/l0HeightCache';
 import {
   buildNearPatchBuffers,
@@ -90,8 +90,18 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       }
     }
 
-    if (worldV2 && tier !== 'low') {
-      carveWorldV2RiverAndWaterfallChannels(positions, res, world, worldV2, renderSize, heightUnits);
+    if (worldV2) {
+      const carvedY = getCachedCarvedCoarseHeights(
+        world,
+        worldV2,
+        res,
+        renderSize,
+        heightUnits,
+        tier !== 'low',
+      );
+      for (let i = 0; i < verts; i += 1) {
+        positions[i * 3 + 1] = carvedY[i];
+      }
     }
 
     const fullIndices = new Uint32Array(res * res * 6);
@@ -221,6 +231,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         heightUnits: renderSize * heightRatio,
         edgeScale: worldRenderScale(worldV2?.extentM).edgeScale,
         carveBanks: tier !== 'low',
+        hasRiverMesh: Boolean(worldV2) && tier !== 'low',
       }),
     [textures, worldV2, renderSize, heightRatio, tier],
   );
