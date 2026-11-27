@@ -2,7 +2,7 @@
 title: Installing and Running Anima Engine (0.9)
 status: active
 owner: maintainers
-last_reviewed: 2026-11-26
+last_reviewed: 2026-11-27
 review_cycle: per-release
 ---
 
@@ -24,8 +24,8 @@ Under `QD-REL09` (`#255`) and `QD-FOCUS FOCUS-2` (`#314`), installer distributio
 3. Scroll to **Artifacts** and download the bundle for your operating system:
    - **`anima-engine-windows-installers`** — contains the Windows installer(s): Windows Installer (`.msi`) and/or NSIS setup executable (`.exe`).
    - **`anima-engine-macos-bundles`** — contains the macOS disk image (`.dmg`) and application bundle (`.app`) when macOS unsigned builds ship under `QD-M4` (`#255`, contingent on `NM-2` checksum parity).
-4. **World v2 tile pack (`QD-1126AM`, `FOCUS-2` step 3):** after `WV2-BIG-3` and owner approval, the single public `81.92 km` (`4096² @ 20 m`) pre-baked tile pack (**about 190 MB, final size set at WV2-BIG-3**) is published once on GitHub Releases (`QD-GATES-1125 (4)` `#288`), with final `world_sha256`, `sim_world_identity`, and `release_archive_sha256` values **set at WV2-BIG-3**.
-5. Verify the run link, commit SHA, and release archive hash (`set at WV2-BIG-3`) match your release note or test invitation before extracting or opening the archive.
+4. **World v2 tile pack (`QD-1126AM`, `FOCUS-2` step 3):** `WV2-BIG-3` (`#332`, `8d58a580`, `MAP-D8` `9/15`) committed the `81.92 km` (`4096² @ 20 m`) `BIG_4096_v2` world (`world_sha256 = 01956959c751458d279a9e675046de5627fb6095e1451138c41d750a7f88d821`, `sim_world_identity = 1d3130054d6939425003817fccf78b284e34632b64b7443e5d6b380e60203e31`, `sim_256.anmw3` = `1,445,892` B, `release_archive_sha256 = 4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f`); once the owner's release gate passes (`QD-GATES-1125 (4)` `#288`), the single public tile pack `world_v2_1d313005_tiles.tar.gz` (**`190,071,986` B**, `3,817` entries / `3,560` `.ktx2` tiles; **still unpublished, pending the owner's release gate**) is published once on GitHub Releases.
+5. Verify the run link, commit SHA, and release archive hash (`4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f` for `world_v2_1d313005_tiles.tar.gz`) match your release note or test invitation before extracting or opening the archive.
 
 ---
 
@@ -67,7 +67,7 @@ Under owner decisions `QD-REL09` G2 and `QD-OPENC` (`#255`), `0.9` installers sh
 As noted in [`CLAUDE.md`](../../CLAUDE.md#gotchas) and [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md), the full Bevy/Tauri desktop application is resource-intensive and has previously frozen or shut down constrained dev laptops when run alongside heavy builds:
 
 - **Use Low quality on integrated GPUs:** Select the **Low** graphics tier on integrated graphics (e.g., Intel Iris Xe) and leave **High** for discrete GPUs. The `WV2-6` Intel Iris Xe target is `<= 8 GB` RSS, `<= 4 GB` VRAM, and `<= 60` draw calls ([`2026-11-26-wv2-6-iris-xe-runbook.md`](../ai/planning/2026-11-26-wv2-6-iris-xe-runbook.md), `#289`).
-- **World loading & startup delay:** Allow **Start Simulation** to enable before clicking repeatedly. On trunk `f684049d` (`WV2-7` `#279`), desktop simulation boots provisional `C01` and rejects legacy pre-World-v2 saves while the screen still renders the v1 map until `WV2-6` merges; in the target `v0.9.0-rc.1` / `v0.9.0` builds (`QD-FOCUS FOCUS-2` `#314`, `WV2-D2` `#295`), the viewer loads the pre-baked `81.92 km` (`4096² @ 20 m`) World v2 tile pack (**about 190 MB, final size set at WV2-BIG-3**; final hashes and sizes **set at WV2-BIG-3**).
+- **World loading & startup delay:** Allow **Start Simulation** to enable before clicking repeatedly. On trunk `8d58a580` (`WV2-BIG-3` `#332`, following `WV2-7` `#279`), desktop simulation boots the `81.92 km` `BIG_4096_v2` world (`sim_world_identity = 1d313005…`, `1,445,892` B; prior provisional `C01` preset is preserved at `src-tauri/crates/anima-worldgen/presets/wv2_c01_40960.toml`, `288` B, SHA-256 `f460fa73…`) and rejects legacy pre-World-v2 and old `C01` saves while the screen still renders the v1 map until `WV2-6` merges; in the target `v0.9.0-rc.1` / `v0.9.0` builds (`QD-FOCUS FOCUS-2` `#314`, `WV2-D2` `#295`), the viewer loads the pre-baked `81.92 km` (`4096² @ 20 m`) World v2 tile pack (`world_v2_1d313005_tiles.tar.gz`, `190,071,986` B, SHA-256 `4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f`; **still unpublished, pending the owner's release gate**).
 - **Founding population (`ANIMA_FOUNDING_POPULATION`):** Defaults to `10` if unset (`10,000` ceiling). Per `QD-SCALE-TRIAL` (`#255`), interactive shared trials/demos target **about `100` animals** (`~0.33 ms/tick` headless vs `5.64 ms/tick` at `1,000` agents); setting `ANIMA_FOUNDING_POPULATION=100` or `200` before launching populates the world visibly without overloading weaker laptops (see [`OWNER_TRIAL_RUN.md`](OWNER_TRIAL_RUN.md)).
 - **Headless checks and experiments do not need the desktop app:** Automated Rust tests (`cargo test --features desktop`), Vitest suites, and `anima-lab` headless experiments run without spawning a Tauri window or WebGL renderer.
 
