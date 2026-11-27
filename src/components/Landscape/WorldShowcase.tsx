@@ -25,6 +25,7 @@ import { loadWorldV2Cached, resolveWorldSourceMode, resolveWorldV2Mip } from './
 import { worldV2RenderMeta, type WorldV2RenderMeta } from './worldV2/worldV2Adapter';
 import {
   resolveWorldHeightRatio,
+  resolveWorldSimEntityScaleRatio,
   type WorldV2LoadedBundle,
 } from './worldV2/types';
 import WorldV2Flora from './worldV2/WorldV2Flora';
@@ -597,6 +598,11 @@ export const WorldShowcase: React.FC = () => {
   const sunDir = sunDirectionForTime(timeOfDay);
   const worldV2Meta = worldV2Bundle ? worldV2RenderMeta(worldV2Bundle) : null;
   const activeHeightRatio = resolveWorldHeightRatio(worldSourceMode, worldV2Bundle?.extentM);
+  const simEntityScaleRatio = resolveWorldSimEntityScaleRatio(
+    worldSourceMode,
+    worldV2Bundle?.extentM,
+    RENDER_SIZE,
+  );
   // Canonical poses are published in the canonical [-100, 100] bounds; the scene is a different
   // span with its own vertical exaggeration. One conversion, in `mapManifest.ts`.
   const capturePose = capture
@@ -774,6 +780,7 @@ export const WorldShowcase: React.FC = () => {
           renderSize={RENDER_SIZE}
           heightRatio={activeHeightRatio}
           meshResolution={MESH_RES}
+          entityScaleRatio={simEntityScaleRatio}
           qualityTier={effectiveQuality}
           onEnvironmentalState={simEnvChannel.publish}
         />
@@ -783,6 +790,7 @@ export const WorldShowcase: React.FC = () => {
             renderSize={RENDER_SIZE}
             heightRatio={activeHeightRatio}
             meshResolution={MESH_RES}
+            entityScaleRatio={simEntityScaleRatio}
             channel={simEnvChannel}
             onCountsChange={setSimEnvCounts}
           />

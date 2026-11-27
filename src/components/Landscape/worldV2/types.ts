@@ -1,5 +1,8 @@
+import type { AgentType } from '../../../types/generated/AgentType';
+import { CREATURE_BODY_SCALE } from '../utils/agentPose';
 import type { QualityTier } from '../utils/qualityTiers';
 import type { AnmwV3Sim, CaveNetwork, FloraSectorBlob } from '../utils/worldArtifactV3';
+import { simScale } from '../utils/liveAgentTransform';
 import {
   WV2_ELEV_MAX_M,
   WV2_ELEV_MIN_M,
@@ -39,6 +42,43 @@ export function resolveWorldHeightRatio(
     return BIG_WORLD_HEIGHT_RATIO;
   }
   return DEFAULT_HEIGHT_RATIO;
+}
+
+/**
+ * Resolution-agnostic body/entity scale multiplier for World v2 `extentM >= BIG_WORLD_EXTENT_M`
+ * (`WV2-SYNTH-SCALE` Option 1a): drops `simScale` magnification (`renderSize / 200`) to `1` so
+ * creatures render at `0.32` u/sim u (`67.2 px` at `dist = 8`) while C01 and World v1 stay `1`.
+ */
+export function resolveWorldSimEntityScaleRatio(
+  worldSourceMode: 'v1' | 'v2',
+  extentM: number | null | undefined,
+  renderSize: number,
+): number {
+  if (
+    worldSourceMode === 'v2' &&
+    typeof extentM === 'number' &&
+    Number.isFinite(extentM) &&
+    extentM >= BIG_WORLD_EXTENT_M
+  ) {
+    const scale = simScale(renderSize);
+    return Number.isFinite(scale) && scale > 0 ? 1 / scale : 1;
+  }
+  return 1;
+}
+
+export function resolveCreatureEyeRadius(
+  agentType: AgentType | null,
+  headRadius: number,
+  scaleRatio = 1,
+): number {
+  const floorScale = scaleRatio === 1 ? CREATURE_BODY_SCALE : CREATURE_BODY_SCALE * scaleRatio;
+  return agentType === 'predator'
+    ? Math.max(headRadius * 0.28, 0.22 * floorScale)
+    : Math.max(headRadius * 0.24, 0.2 * floorScale);
+}
+
+export function resolveContactShadowY(groundY: number, scaleRatio = 1): number {
+  return groundY + (scaleRatio === 1 ? 0.08 : 0.08 * scaleRatio);
 }
 
 export const WORLD_V2_FLORA_BASE_STRIDE: Readonly<Record<QualityTier, number>> = {
