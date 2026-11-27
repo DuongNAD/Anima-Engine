@@ -727,6 +727,39 @@ QD-GATES-1125 = the owner delegated the open release and world gates to the lead
             (5) C16 SEL2P2-FREEZE: anima-case opens the win/sel2p2-freeze draft PR, a peer verifies that
             it freezes exactly QD-SEL2P2-D1..D7 and the VIAB-2 settings, and the lead merges it when it
             is VERIFIED at the head and green. That merge is the preregistration freeze.
+QD-GATES-1127 = the owner's answers to the eight gates of START_2026-11-27_AM, given together on the
+            lead's recommendations (owner in chat, 2026-11-27 11:43 ICT: "Duyệt các cổng như đề xuất").
+            Each item grants only what it names.
+            (1) The single public tile release (FOCUS-2 step 3) is approved. It is a GitHub prerelease,
+            not a draft, tagged v0.9.0-internal at 6c6b86c7c859aa03f55a346bf12deb6bdec815ec, with one
+            asset: world_v2_1d313005_tiles.tar.gz, 190,071,986 B, SHA-256
+            4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f, copied from the hub's
+            BIG-3-EVIDENCE pack. The owner publishes it himself; the lead and the agents never create a
+            release or upload tiles. After the asset exists, card CI-TILES (anima-case, reviewer
+            anima-mac) adds a ci.yml step on #291 that fetches the pack and checks its size and hash
+            before test:e2e.
+            (2) SEL2-P2 provenance, option 1 of anima-case's BLOCKED of 2026-11-26: the confirmation is
+            re-emitted once from the 48 checkpoints of the single run, with the same binary (5217be55...)
+            and no rebuild, after src-tauri/gen/schemas/ is restored (the two files differ only in line
+            endings). Zero seeds are simulated again. The original confirmation/ is kept outside the
+            repository. Every file other than provenance must come out byte-identical to it, and
+            RESULT.md states the deviation, including that smoke/provenance.json still lists the two
+            paths. The verifier is not edited. QD-SEL2P2-RUN otherwise stands.
+            (3) WV2-6-INSTR is authorized as the runbook's §4.3 frontend card (anima-mac, reviewer
+            anima-case). It lands on the trunk, so that builds B0 and A1 both carry the recorder.
+            IX-D1..IX-D7 are approved as written. PresentMon is not approved (NR-D7 unchanged).
+            (4) The Iris Xe run: the owner operates it on the Dell from the runbook, after (1), (3) and
+            the two installers exist. Agents never run the desktop app.
+            (5) Not answered by this yes: the WB-D5 look check of HEIGHT_RATIO 0.10 is the owner's own
+            eye check of the WV2-BIG-4 captures, and it stays open.
+            (6) #291 WV2-6 merges after (1), (3), (4) and the WB-D5 look, on the owner's go.
+            (7) LR-GSHAPE-GATE is confirmed: "no other gate worse" is judged gate by gate, so a candidate
+            that turns any passing gate to FAIL is rejected. G3 (#325) turns C3.Lakes from PASS to FAIL
+            on HYDRO, so #325 is closed as rejected. A new G3 variant would be a new, pre-registered
+            candidate.
+            (8) The MP-5.2 security-report channel is GitHub private vulnerability reporting. The owner
+            enables it in the repository's settings, and SECURITY.md (#335) names it. #335 merges once
+            it is VERIFIED with the channel filled in and the setting is on.
 QD-WV2-LOOK = after the owner judged the World v2 C01 scene not yet realistic (2026-11-25 evening),
             the lead prototyped a rendering-only realism pass on mac/wv2-look-proto, on top of #291 at
             2693116c: slope/altitude terrain shading with side-plane projection on steep faces, aerial

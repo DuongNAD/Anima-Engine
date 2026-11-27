@@ -5,7 +5,7 @@ title: WV2-6 Dell Iris Xe Performance Gate Runbook
 description: Owner execution runbook for the WV2-6 Dell Iris Xe Low-quality 1,000-creature before/after performance gate, covering build-pair acquisition, app setup, existing vs missing instrumentation, proposed measurement protocol, and result template
 status: proposed
 owner: anima-dell
-last_reviewed: 2026-11-26
+last_reviewed: 2026-11-27
 ---
 
 # `WV2-6` — Dell Iris Xe Performance Gate Runbook
@@ -274,7 +274,7 @@ Copy this section into the gate report (or `test_runs/owner_irisxe_wv2_6_result.
 
 ### 6.4 Gate Verdict & Owner Decisions
 
-- **Proposed Protocol (`IX-D1..IX-D7`):** `[ ] Approved as written` / `[ ] Approved with changes: ____`
-- **Instrumentation Choice:** `[ ] Authorize WV2-6-INSTR frontend card` / `[ ] Also approve PresentMon (NR-D7)`
+- **Proposed Protocol (`IX-D1..IX-D7`):** `[x] Approved as written` / `[ ] Approved with changes: ____` (owner, 2026-11-27, `QD-GATES-1127 (3)` in `AGENT_WORKFLOW.md`)
+- **Instrumentation Choice:** `[x] Authorize WV2-6-INSTR frontend card` / `[ ] Also approve PresentMon (NR-D7)` (owner, 2026-11-27, `QD-GATES-1127 (3)`: `PresentMon` not approved)
 - **Final `WV2-6` Iris Xe Gate Result:** `[ ] PASS` / `[ ] FAIL` / `[ ] BLOCKED-ON-INSTRUMENTATION`
 - **Owner / Operator Notes:** `____`
