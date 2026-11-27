@@ -8,7 +8,7 @@
 //   3. `WORLD_V2_RELEASE_BASE_URL` (GitHub Release download constant — never creates releases/tags).
 //
 // Usage:
-//   node scripts/fetch_world_v2_tiles.mjs [--archive PATH | --dir PATH | --verify-only] [--out DIR]
+//   node scripts/fetch_world_v2_tiles.mjs [--archive PATH | --dir PATH | --verify-only] [--out DIR] [--expected-bytes N] [--expected-sha256 HEX]
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -83,11 +83,16 @@ export function verifyIndexAndSim256(repoRoot) {
   };
 }
 
-export function verifyArchiveSha256(archivePath, expectedSha256) {
+export function verifyArchiveSha256(archivePath, expectedSha256, expectedBytes = null) {
   if (!existsSync(archivePath)) {
     throw new Error(`Tile archive not found: ${archivePath}`);
   }
   const bytes = readFileSync(archivePath);
+  if (expectedBytes !== null && bytes.byteLength !== expectedBytes) {
+    throw new Error(
+      `Tile archive byte length mismatch (${archivePath}): expected ${expectedBytes}, got ${bytes.byteLength}`,
+    );
+  }
   const actual = sha256Hex(bytes);
   const expected = expectedSha256.toLowerCase();
   if (actual !== expected) {
@@ -148,16 +153,33 @@ function copyCheckedCoreFiles(indexBytes, simBytes, outDir) {
 }
 
 async function downloadReleaseArchive(url, dstPath) {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch World v2 tile release from ${url} (HTTP ${res.status}). ` +
-        `If the public release is not yet published, set ANIMA_WORLD_V2_TILES_ARCHIVE to the verified local .tar.gz path.`,
-    );
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        const retryable = res.status >= 500 && attempt < maxAttempts;
+        if (retryable) {
+          await new Promise((r) => setTimeout(r, 3000));
+          continue;
+        }
+        throw new Error(
+          `Failed to fetch World v2 tile release from ${url} (HTTP ${res.status}). ` +
+            `If the public release is not yet published, set ANIMA_WORLD_V2_TILES_ARCHIVE to the verified local .tar.gz path.`,
+        );
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      mkdirSync(dirname(dstPath), { recursive: true });
+      writeFileSync(dstPath, buf);
+      return;
+    } catch (err) {
+      if (attempt < maxAttempts && !(err instanceof Error && err.message.includes('HTTP 4'))) {
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+      throw err;
+    }
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  mkdirSync(dirname(dstPath), { recursive: true });
-  writeFileSync(dstPath, buf);
 }
 
 export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = process.env) {
@@ -166,6 +188,8 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
   let sourceDir = env.ANIMA_WORLD_V2_TILES_DIR ?? '';
   let outDir = '';
   let verifyOnly = false;
+  let expectedBytes = null;
+  let expectedSha256 = '';
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -177,11 +201,23 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
       sourceDir = argv[++i];
     } else if (arg === '--out' && argv[i + 1]) {
       outDir = resolve(argv[++i]);
+    } else if (arg === '--expected-bytes' && argv[i + 1]) {
+      const parsed = Number(argv[++i]);
+      if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+        throw new Error(`Invalid --expected-bytes value: ${argv[i]}`);
+      }
+      expectedBytes = parsed;
+    } else if (arg === '--expected-sha256' && argv[i + 1]) {
+      const candidate = argv[++i].trim();
+      if (!/^[0-9a-f]{64}$/i.test(candidate)) {
+        throw new Error(`Invalid --expected-sha256 value: ${candidate}`);
+      }
+      expectedSha256 = candidate.toLowerCase();
     } else if (arg === '--verify-only') {
       verifyOnly = true;
     } else if (arg === '--help' || arg === '-h') {
       console.log(
-        'Usage: node scripts/fetch_world_v2_tiles.mjs [--archive PATH | --dir PATH | --verify-only] [--out DIR]',
+        'Usage: node scripts/fetch_world_v2_tiles.mjs [--archive PATH | --dir PATH | --verify-only] [--out DIR] [--expected-bytes N] [--expected-sha256 HEX]',
       );
       return { verified: 0, outDir: '' };
     } else {
@@ -191,6 +227,12 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
 
   const targetDir = outDir || join(repoRoot, 'public', 'world-v2');
   const { index, indexBytes, simBytes, bundleIdentity } = verifyIndexAndSim256(repoRoot);
+  const archiveSha256 = expectedSha256 || index.release_archive_sha256.toLowerCase();
+  if (expectedSha256 && expectedSha256 !== index.release_archive_sha256.toLowerCase()) {
+    throw new Error(
+      `Expected archive SHA-256 mismatch against artifacts/world-v2/index.json: expected ${expectedSha256}, index has ${index.release_archive_sha256.toLowerCase()}`,
+    );
+  }
 
   if (verifyOnly) {
     const count = verifyStagedTiles(index, targetDir);
@@ -209,7 +251,7 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
 
   if (archivePath) {
     const absArchive = resolve(archivePath);
-    const info = verifyArchiveSha256(absArchive, index.release_archive_sha256);
+    const info = verifyArchiveSha256(absArchive, archiveSha256, expectedBytes);
     assertArchiveExcludesIndexJson(absArchive);
     rmSync(targetDir, { recursive: true, force: true });
     mkdirSync(targetDir, { recursive: true });
@@ -217,7 +259,7 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
     copyCheckedCoreFiles(indexBytes, simBytes, targetDir);
     const count = verifyStagedTiles(index, targetDir);
     console.log(
-      `fetch_world_v2_tiles: extracted & verified ${count} entries from ${absArchive} (${info.byteLength} B, bundle=${bundleIdentity.slice(0, 8)})`,
+      `fetch_world_v2_tiles: extracted & verified ${count} entries from ${absArchive} (${info.byteLength} B, sha256=${info.sha256.slice(0, 8)}, bundle=${bundleIdentity.slice(0, 8)})`,
     );
     return { verified: count, outDir: targetDir, bundleIdentity };
   }
@@ -237,8 +279,9 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
     return { verified: count, outDir: targetDir, bundleIdentity };
   }
 
-  // If already staged and 100% verified (including bundle_identity), skip download cleanly.
-  if (existsSync(targetDir) && existsSync(join(targetDir, 'index.json'))) {
+  // If already staged and 100% verified (including bundle_identity), skip download cleanly
+  // unless an explicit --expected-bytes archive check was requested.
+  if (expectedBytes === null && existsSync(targetDir) && existsSync(join(targetDir, 'index.json'))) {
     const stagedIdxSha = sha256Hex(readFileSync(join(targetDir, 'index.json')));
     if (stagedIdxSha === bundleIdentity) {
       const count = verifyStagedTiles(index, targetDir);
@@ -254,7 +297,7 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
   const tmpArchive = join(repoRoot, 'artifacts', 'world-v2', '.tmp-world-v2-tiles.tar.gz');
   try {
     await downloadReleaseArchive(url, tmpArchive);
-    verifyArchiveSha256(tmpArchive, index.release_archive_sha256);
+    const info = verifyArchiveSha256(tmpArchive, archiveSha256, expectedBytes);
     assertArchiveExcludesIndexJson(tmpArchive);
     rmSync(targetDir, { recursive: true, force: true });
     mkdirSync(targetDir, { recursive: true });
@@ -262,7 +305,7 @@ export async function runFetchWorldV2Tiles(argv = process.argv.slice(2), env = p
     copyCheckedCoreFiles(indexBytes, simBytes, targetDir);
     const count = verifyStagedTiles(index, targetDir);
     console.log(
-      `fetch_world_v2_tiles: downloaded & verified ${count} entries from ${url} (bundle=${bundleIdentity.slice(0, 8)})`,
+      `fetch_world_v2_tiles: downloaded & verified ${count} entries from ${url} (${info.byteLength} B, sha256=${info.sha256.slice(0, 8)}, bundle=${bundleIdentity.slice(0, 8)})`,
     );
     return { verified: count, outDir: targetDir, bundleIdentity };
   } finally {

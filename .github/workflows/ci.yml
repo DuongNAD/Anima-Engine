@@ -474,6 +474,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check_e2e_specs.mjs
 
+      - name: Fetch and verify World v2 tiles for Playwright E2E
+        if: ${{ !cancelled() }}
+        run: >-
+          node scripts/fetch_world_v2_tiles.mjs
+          --expected-bytes 190071986
+          --expected-sha256 4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f
+
       - name: npm run test:e2e (Playwright)
         if: ${{ !cancelled() }}
         run: npm run test:e2e
