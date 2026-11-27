@@ -39,8 +39,11 @@ function computeChannelHalfWidthM(
   qByte: number,
   depthM: number,
 ): number {
-  const baseHalfW = 12 + Math.sqrt(qByte / 255) * 32 + Math.min(1, Math.max(0, depthM) / 4) * 10;
-  return Math.max(texelM * 0.58, baseHalfW);
+  // Leopold-Maddock width scaling (~sqrt(discharge)): small q=1 creeks shrink in shader via flowCue,
+  // while keeping a continuous unbroken capsule SDF on the L1 grid.
+  const qNorm = Math.min(1, Math.max(1, qByte) / 105);
+  const leopoldW = 6 + Math.sqrt(qNorm) * 40 + Math.min(1, Math.max(0, depthM) / 4) * 6;
+  return Math.max(texelM * 0.56, leopoldW);
 }
 
 function smoothAndSubdividePolyline(
@@ -141,17 +144,15 @@ export function buildSmoothedRiverMaskData(
     const ch = wk === WaterKind.River || wk === WaterKind.Waterfall || wk === WaterKind.DeltaTurbid;
     if (!ch) continue;
 
-    const nx = (normalRg[i * 2] / 255) * 2 - 1;
-    const nz = (normalRg[i * 2 + 1] / 255) * 2 - 1;
-    const slope = 1 - Math.sqrt(Math.max(0, 1 - nx * nx - nz * nz));
-    // Exclude tiny steep mountain wall gullies above 950 m.
-    if (heightM[i] > 950 && slope > 0.24) continue;
-
     isChannel[i] = 1;
     const q = hydroFlowRgba[o4 + 2];
     const depthM = Math.max(0.25, waterHeightM[i] - heightM[i]);
     halfWidthArr[i] = computeChannelHalfWidthM(texelM, q, depthM);
-    cueArr[i] = Math.min(255, Math.round(130 + Math.min(1, depthM / 4) * 65 + (q / 255) * 45));
+    const qNorm = Math.min(1, Math.max(0, q) / 110);
+    // Base flow-energy cue (0..190); confluences, waterfalls & steep breaks boost into foam range (195..255).
+    let cue = Math.round(28 + Math.sqrt(qNorm) * 162);
+    if (wk === WaterKind.Waterfall) cue = Math.min(255, cue + 60);
+    cueArr[i] = cue;
   }
 
   // Pick one deterministic D8 downstream neighbor per channel cell.
@@ -206,6 +207,19 @@ export function buildSmoothedRiverMaskData(
       } else if (bestStand >= 0) {
         nextCell[i] = bestStand;
       }
+    }
+  }
+
+  // Mark confluences & steep slope breaks with an aeration/foam boost in cueArr (alpha channel).
+  for (let i = 0; i < count; i += 1) {
+    if (!isChannel[i]) continue;
+    const nxt = nextCell[i];
+    const dropM = nxt >= 0 ? heightM[i] - heightM[nxt] : 0;
+    const nx = (normalRg[i * 2] / 255) * 2 - 1;
+    const nz = (normalRg[i * 2 + 1] / 255) * 2 - 1;
+    const slope = 1 - Math.sqrt(Math.max(0, 1 - nx * nx - nz * nz));
+    if (inDegree[i] >= 2 || dropM > 8 || slope > 0.16) {
+      cueArr[i] = Math.min(255, Math.max(cueArr[i] + 55, 200));
     }
   }
 
@@ -347,4 +361,14 @@ export function buildSmoothedRiverMaskData(
   }
 
   return out;
+}
+
+const smoothedRiverMaskCache = new WeakMap<WorldV2LoadedBundle, Uint8Array>();
+
+export function getCachedSmoothedRiverMaskData(bundle: WorldV2LoadedBundle): Uint8Array {
+  const hit = smoothedRiverMaskCache.get(bundle);
+  if (hit) return hit;
+  const built = buildSmoothedRiverMaskData(bundle);
+  smoothedRiverMaskCache.set(bundle, built);
+  return built;
 }

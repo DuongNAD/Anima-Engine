@@ -831,7 +831,7 @@ export function buildSplatTexture(world: World): THREE.DataTexture {
 }
 
 import { buildWorldV2GrassMask } from '../worldV2/grassTables';
-import { buildSmoothedRiverMaskData } from '../worldV2/riverSmooth';
+import { getCachedSmoothedRiverMaskData } from '../worldV2/riverSmooth';
 
 export interface WorldV2TerrainTextures {
   colorMap: THREE.DataTexture;
@@ -1144,7 +1144,7 @@ export function buildWorldV2TerrainTextures(
 
   // WV2-LOOK r11 river SDF mask: D8-traced polylines smoothed with Laplacian + Chaikin and
   // rasterized as a continuous capsule SDF (zero shoreline = byte 80; standing water = 255).
-  const riverData = buildSmoothedRiverMaskData(bundle);
+  const riverData = getCachedSmoothedRiverMaskData(bundle);
 
   const shoreSdfData = new Uint8Array(count * 4);
   for (let i = 0; i < count; i += 1) {

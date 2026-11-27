@@ -111,7 +111,9 @@ function buildCaveNetworkGeometry(
     const r1 = Math.max(0.06, (b.radius_m / extentM) * renderSize);
     const midY = (p0.y + p1.y) * 0.5;
     const rMid = (r0 + r1) * 0.5;
-    if (p0.y + r0 > g0 - 0.35 || p1.y + r1 > g1 - 0.35 || midY + rMid > gMid - 0.35) {
+    // Culled 1.4 units (~48 m) below the uncarved terrain mesh so carved riverbeds
+    // and waterfall drops (<= 38 m) never expose underground cave pipes.
+    if (p0.y + r0 > g0 - 1.4 || p1.y + r1 > g1 - 1.4 || midY + rMid > gMid - 1.4) {
       continue;
     }
     const seg = new THREE.CylinderGeometry(r1, r0, len, 6, 1, true);

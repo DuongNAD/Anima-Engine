@@ -766,6 +766,7 @@ export const WorldShowcase: React.FC = () => {
           renderSize={renderSize}
           heightRatio={heightRatio}
           meshResolution={meshRes}
+          tier={effectiveQuality}
         />
         {capture !== null || showDecoration ? (
           <>

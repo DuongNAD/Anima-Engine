@@ -8,6 +8,7 @@ import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
 import { ELEV_SPAN_M, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './worldV2/types';
 import { ATMOSPHERE_FRAGMENT_PARS, atmosphereUniforms } from './materials/atmosphere';
 import { edgeThreshold, glslFloat, replaceOnce, worldRenderScale } from './worldV2/worldScale';
+import { buildWorldV2LakeSdfTexture, LAKE_SDF_RANGE_M, LAKE_SDF_SIZE } from './worldV2/lakeSdf';
 
 export interface WorldWaterProps {
   world: World;
@@ -82,6 +83,8 @@ uniform float uUseWorldV2Water;
   `uniform float uDepthMPerUnit;
 uniform float uMPerUnitH;
 uniform float uSdfTexel;
+uniform float uHeightUnits;
+uniform float uLakeSdfRange;
 varying vec3 vWorldPos;
 ${ATMOSPHERE_FRAGMENT_PARS}
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
@@ -219,6 +222,27 @@ if(uMaskOn>0.5){offM=500.0;expo=0.0;}
   // read as deep open ocean (no shallow rim tracing the map's straight border).
   `depthM=mix(depthM,max(depthM,400.0),edgeBand);
 ` +
+  // Lakes on World v2 use the smooth 1024^2 Chamfer SDF (R = signed shore dist, G/B = 16-bit
+  // nearest-lake level), giving crisp shorelines, soft shallow depth, and zero bbox-quad overlap.
+  `float lakeShoreFoam=0.0;
+  float lakeSdfM=500.0;
+  if(uMaskOn>0.5){
+    vec2 pM=vWorldPos.xz*uMPerUnitH;
+    vec4 lakeTex=texture2D(uLakeMask,clamp(uv,0.0,1.0));
+    float organicWarp=(lkNoise(pM*0.042)-0.5)*14.0+(lkNoise(pM*0.13)-0.5)*4.5;
+    lakeSdfM=(lakeTex.r-0.5)*2.0*uLakeSdfRange+organicWarp;
+    ivec2 lIdx=ivec2(clamp(uv,0.0,0.9999)*float(${LAKE_SDF_SIZE}));
+    vec4 lakeExact=texelFetch(uLakeMask,lIdx,0);
+    float targetLakeY=((lakeExact.g*255.0*256.0+lakeExact.b*255.0)/65535.0)*uHeightUnits;
+    float planeMatch=1.0-smoothstep(0.06,0.16,abs(vWorldPos.y-targetLakeY));
+    float fwL=max(2.5,fwidth(lakeSdfM)*1.3);
+    float inLakeMask=smoothstep(-fwL,fwL,lakeSdfM)*planeMatch;
+    if(inLakeMask<0.01)discard;
+    float edgeDist=max(0.0,lakeSdfM);
+    depthM=mix(min(depthM,edgeDist*0.22),max(depthM,edgeDist*0.18),smoothstep(6.0,45.0,edgeDist));
+    lakeShoreFoam=smoothstep(6.0,0.5,edgeDist)*smoothstep(-1.5,1.2,lakeSdfM)*0.22*inLakeMask;
+  }
+` +
   // Depth colour (CST-04): clear and green over the swash and bar, teal over the shelf,
   // saturated deep blue offshore; the light tint is held to the near-shore band.
   `float nearShore=(1.0-smoothstep(280.0,500.0,offM))*(1.0-edgeBand);
@@ -230,6 +254,12 @@ dTeal=mix(dTeal,1.0,vEdge);
 dDeep=mix(dDeep,1.0,vEdge);
 vec3 wcol=mix(vec3(0.22,0.50,0.46),vec3(0.06,0.32,0.37),dClear);
 wcol=mix(wcol,vec3(0.02,0.11,0.27),dDeep);
+if(uMaskOn>0.5){
+  vec3 shallowLake=vec3(0.09,0.28,0.27);
+  vec3 midLake=vec3(0.04,0.21,0.28);
+  vec3 deepLake=vec3(0.015,0.09,0.20);
+  wcol=mix(mix(shallowLake,midLake,dClear),deepLake,dTeal);
+}
 ` +
   // Abyssal plain beyond the island: a touch darker the further off the map.
   `wcol=mix(wcol,vec3(0.012,0.075,0.21),smoothstep(1.0,1.8,boxN)*isOcean);
@@ -339,7 +369,7 @@ float sw=fpM/6.0*0.6+0.02;
 float swashD=swash*(0.45+0.4*lkNoise(sp*0.13+2.0));
 swash=smoothstep(0.62-swashD*0.3-sw,0.62-swashD*0.3+sw,m)*swashD*1.4*mix(0.6,1.0,det);
 }
-foamAmt=max(foamAmt,swash*(1.0-vEdge));
+foamAmt=max(foamAmt,max(swash*(1.0-vEdge),lakeShoreFoam));
 ` +
   // Ripples, sun glints, sky fresnel.
   `vec3 nrm=vec3(0.0,1.0,0.0);
@@ -387,7 +417,8 @@ a*=smoothstep(0.0,0.8,depthM);
   `a*=1.0-smoothstep(5.0,40.0,sdfSigned)*isOcean*(1.0-edgeBand);
 a=mix(a,1.0,vEdge);
 if(uMaskOn>0.5){
-a*=smoothstep(0.2,0.55,texture2D(uLakeMask,clamp(uv,0.0,1.0)).r);
+  float fwL=max(2.5,fwidth(lakeSdfM)*1.3);
+  a*=smoothstep(-fwL,fwL,lakeSdfM)*smoothstep(0.0,2.2,max(depthM,lakeSdfM*0.18));
 }
 ` +
   // Spray (CST-01): a faint bright haze over the breaking surf, then the shared aerial
@@ -514,6 +545,7 @@ interface WaterUniformInputs {
   depthMPerUnit: number;
   mPerUnitH: number;
   sdfTexel: number;
+  heightUnits: number;
   /** Seed only: `useFrame` writes `uSunDir` every frame from the live prop. */
   sunDir: [number, number, number];
 }
@@ -558,6 +590,8 @@ function makeWaterUniforms(
     uDepthMPerUnit: { value: inputs.depthMPerUnit },
     uMPerUnitH: { value: inputs.mPerUnitH },
     uSdfTexel: { value: inputs.sdfTexel },
+    uHeightUnits: { value: inputs.heightUnits },
+    uLakeSdfRange: { value: LAKE_SDF_RANGE_M },
     ...atmosphereUniforms,
   };
 }
@@ -594,9 +628,11 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world, heightUnits]);
 
-  // Per-cell lake mask (1 where standing water fills the cell), soft-edged by the GPU's
-  // bilinear filter so basin shorelines stay smooth.
+  // Lake mask: 1024^2 Chamfer SDF + 16-bit nearest-lake level on World v2, or v1 proxy mask.
   const lakeMaskTex = useMemo(() => {
+    if (worldV2) {
+      return buildWorldV2LakeSdfTexture(worldV2);
+    }
     const { size, water } = world;
     const data = new Uint8Array(size * size);
     for (let i = 0; i < data.length; i++) data[i] = water[i] > 0 ? 255 : 0;
@@ -607,7 +643,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.needsUpdate = true;
     return tex;
-  }, [world]);
+  }, [world, worldV2]);
 
   const { shoreSdfTex, hydroFlowTex } = useMemo(() => {
     if (worldV2) {
@@ -663,6 +699,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       depthMPerUnit: ELEV_SPAN_M / Math.max(1e-6, heightUnits),
       mPerUnitH: (worldV2?.extentM ?? WORLD_EXTENT_M) / renderSize,
       sdfTexel: 1 / Math.max(1, worldV2?.size ?? 1),
+      heightUnits,
       sunDir: uniformInputSunDir,
     }),
     [heightTex, lakeMaskTex, shoreSdfTex, hydroFlowTex, worldV2, renderSize, seaY, heightUnits, uniformInputSunDir],

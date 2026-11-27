@@ -18,6 +18,7 @@ import type { QualityTier } from './utils/qualityTiers';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 import { ELEV_MIN_M, ELEV_SPAN_M, type WorldV2LoadedBundle } from './worldV2/types';
 import { worldRenderScale } from './worldV2/worldScale';
+import { carveWorldV2RiverAndWaterfallChannels } from './worldV2/channelCarve';
 
 export interface WorldTerrainProps {
   world: World;
@@ -74,6 +75,10 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       }
     }
 
+    if (worldV2 && tier !== 'low') {
+      carveWorldV2RiverAndWaterfallChannels(positions, res, world, worldV2, renderSize, heightUnits);
+    }
+
     const indices = new Uint32Array(res * res * 6);
     let o = 0;
     for (let gy = 0; gy < res; gy++) {
@@ -98,7 +103,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     geom.setIndex(new THREE.BufferAttribute(indices, 1));
     geom.computeVertexNormals();
     return geom;
-  }, [world, renderSize, heightRatio, meshResolution]);
+  }, [world, worldV2, renderSize, heightRatio, meshResolution, tier]);
 
   const textures = useMemo(() => {
     if (worldV2) {
@@ -139,8 +144,9 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         normalScale: worldV2 ? 0.45 : 1,
         heightUnits: renderSize * heightRatio,
         edgeScale: worldRenderScale(worldV2?.extentM).edgeScale,
+        carveBanks: tier !== 'low',
       }),
-    [textures, worldV2, renderSize, heightRatio],
+    [textures, worldV2, renderSize, heightRatio, tier],
   );
 
   useEffect(() => {

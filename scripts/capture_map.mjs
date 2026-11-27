@@ -44,7 +44,7 @@ const VIEW_IDS = ['overview', 'horizon', 'coast', 'peak', 'river', 'forest', 'wa
 //   vista      low oblique (~2.2 km above the sea) along the main massif, sky and horizon in frame.
 //   meadow     eye height (~2.2 m) in the grassland or savanna nearest the map centre, looking
 //              towards the highest peak: the ground cover (grass) at walking range.
-const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun'];
+const OPTIONAL_VIEW_IDS = ['coastnear', 'vista', 'meadow', 'meadowsun', 'riverbank', 'waterfallup'];
 
 const HELP = `Map visual check (prototype) — screenshots + FPS of ~8 world views.
 
@@ -989,6 +989,42 @@ function pageAnalyseWorld() {
     }
   }
 
+  // riverbank (opt-in): 2.0 m above drawn bank of a strong inland river, looking downstream.
+  {
+    const unitsPerM = metrics.extentM ? R / metrics.extentM : R / 81920;
+    const uYc = H / (metrics.elevSpanM || 7200);
+    let rb = null;
+    for (let gy = Math.floor(N * 0.12); gy < Math.floor(N * 0.88); gy += 2) {
+      for (let gx = Math.floor(N * 0.12); gx < Math.floor(N * 0.88); gx += 2) {
+        const i = gy * N + gx;
+        if (w.riverAmt[i] < 120 || w.flow[i] < 0.05 || w.elevation[i] < sea + 0.004 || w.elevation[i] > sea + 0.14 || (w.water && w.water[i] > 0)) continue;
+        if (w.slope && w.slope[i] > 0.18) continue;
+        // Prefer lower-elevation broad valley rivers over steep high mountain canyons
+        const score = w.flow[i] - Math.max(0, w.elevation[i] - sea) * 1.5;
+        if (!rb || score > rb[3]) rb = [cellToR(gx), cellToR(gy), w.flow[i], score];
+      }
+    }
+    if (!rb) skip('riverbank', 'no gentle lowland river cell found');
+    else {
+      const dnAz = downhillAz(rb[0], rb[1]) ?? 0;
+      const sideAz = dnAz + Math.PI / 2;
+      const bankOff = 44 * unitsPerM;
+      const lookAhead = 220 * unitsPerM;
+      const bx = rb[0] + bankOff * Math.cos(sideAz);
+      const bz = rb[1] + bankOff * Math.sin(sideAz);
+      const bY = Math.max(elevAt(bx, bz) * H, meshSurfAt(bx, bz));
+      const tx = rb[0] + lookAhead * Math.cos(dnAz);
+      const tz = rb[1] + lookAhead * Math.sin(dnAz);
+      const tY = Math.max(elevAt(tx, tz) * H, meshSurfAt(tx, tz));
+      const pos = [bx, bY + 2.0 * Math.max(uYc, unitsPerM), bz];
+      put(
+        'riverbank',
+        { position: pos, target: [tx, tY, tz], azimuthDeg: deg(azTo(pos, [tx, tY, tz])), pitchDeg: -2, lineOfSight: 'unchecked (2 m bank height)' },
+        `riverbank at 2.0 m looking downstream, flow ${rb[2].toFixed(3)} (${biomeAt(rb[0], rb[1])})`,
+      );
+    }
+  }
+
   // 6. forest: the 32-unit square with the most trees.
   {
     const BIN = 32;
@@ -1086,6 +1122,35 @@ function pageAnalyseWorld() {
     }
     if (pick) {
       put('waterfall', pick.pose, `waterfall #${pick.rank} by drop of ${w.waterfallCount} (drop ${pick.drop.toFixed(1)} units), from ${pick.dist} units downstream, a little above its base`);
+      // waterfallup (opt-in): close-up from downstream plunge pool looking up at the lip & mist.
+      const kUp = pick.k;
+      const yawUp = w.waterfallYaw[kUp];
+      const lipUp = [w.waterfallX[kUp] * cellUnitToR, w.waterfallZ[kUp] * cellUnitToR];
+      const dUp = drawn(kUp);
+      const cUp = dUp ? dUp.centre : [lipUp[0] + Math.cos(yawUp), w.waterfallTopE[kUp] * H - pick.drop / 2, lipUp[1] + Math.sin(yawUp)];
+      const baseYUp = cUp[1] - pick.drop / 2;
+      const lookT = [cUp[0], cUp[1] + pick.drop * 0.15, cUp[2]];
+      let upPose = null;
+      for (const distU of [4.5, 6.5, 9.0, 12.0]) {
+        if (upPose) break;
+        for (const offU of [0, 0.28, -0.28, 0.55, -0.55]) {
+          const azU = yawUp + offU;
+          const xU = cUp[0] + distU * Math.cos(azU);
+          const zU = cUp[2] + distU * Math.sin(azU);
+          if (!insideMap(xU, zU)) continue;
+          const yU = Math.max(baseYUp + 0.15, groundAt(xU, zU) + 0.12);
+          if (yU > lookT[1]) continue;
+          const pU = [xU, yU, zU];
+          if (!losClear(pU, lookT)) continue;
+          upPose = { position: pU, target: lookT, azimuthDeg: deg(azTo(pU, lookT)), pitchDeg: deg(Math.atan2(lookT[1] - yU, distU)), lineOfSight: 'clear' };
+          break;
+        }
+      }
+      if (upPose) {
+        put('waterfallup', upPose, `waterfall #${pick.rank} framed from plunge pool looking upward`);
+      } else {
+        skip('waterfallup', 'no clear plunge-pool upward view found');
+      }
     } else {
       const k = order[0];
       const x = w.waterfallX[k] * cellUnitToR;
@@ -1093,6 +1158,7 @@ function pageAnalyseWorld() {
       const drop = Math.max(1.2, w.waterfallDrop[k] * H);
       const t = [x, w.waterfallTopE[k] * H - drop / 2, z];
       put('waterfall', frame(t, Math.max(15, drop * 6), 10, w.waterfallYaw[k]), `tallest of ${w.waterfallCount} waterfalls, drop ${drop.toFixed(1)} units (no clear downstream view found)`);
+      skip('waterfallup', 'no kept waterfall with downstream plunge view');
     }
   }
 

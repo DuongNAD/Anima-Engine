@@ -6,6 +6,7 @@ import type { World } from '../utils/worldGen';
 import type { QualityTier } from '../utils/qualityTiers';
 import { WORLD_EXTENT_M, type WorldV2LoadedBundle } from './types';
 import { buildWorldV2GrassMask, GRASS_FIELD_GLSL, GRASS_PATCH_GLSL } from './grassTables';
+import { getCachedSmoothedRiverMaskData } from './riverSmooth';
 import {
   ATMOSPHERE_FRAGMENT_PARS,
   atmosphereFragmentApply,
@@ -313,6 +314,7 @@ function seeded(seed: number): () => number {
 interface GroundCoverTextures {
   heightTex: THREE.DataTexture;
   maskTex: THREE.DataTexture;
+  riverTex: THREE.DataTexture;
   size: number;
 }
 
@@ -432,6 +434,7 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
     const uniforms = {
       uGcHeight: { value: textures.heightTex },
       uGcMask: { value: textures.maskTex },
+      uGcRiver: { value: textures.riverTex },
       uGcSize: { value: textures.size },
       uGcMeshRes: { value: meshResolution },
       uGcRender: { value: renderSize },
@@ -452,6 +455,7 @@ const GroundCoverLayer: React.FC<GroundCoverLayerProps> = ({
 attribute vec4 aBladeMeta;
 uniform sampler2D uGcHeight;
 uniform sampler2D uGcMask;
+uniform sampler2D uGcRiver;
 uniform float uGcSize;
 uniform float uGcMeshRes;
 uniform float uGcRender;
@@ -498,6 +502,10 @@ float gcY=(gcF.x+gcF.y<1.0)
 ?hA+(hB-hA)*gcF.x+(hC-hA)*gcF.y
 :hD+(hC-hD)*(1.0-gcF.x)+(hB-hD)*(1.0-gcF.y);
 vec4 gcM=texture2D(uGcMask,clamp(gcUv,0.0,1.0));
+vec4 gcRiv=texture2D(uGcRiver,clamp(gcUv,0.0,1.0));
+float gcRivSdf=gcRiv.r*255.0-80.0;
+float gcRivShrink=(1.0-smoothstep(0.16,0.44,gcRiv.a))*13.5;
+float gcRivKeep=smoothstep(2.0,7.5,gcRivSdf+gcRivShrink);
 vec2 gcWorldM=gcPw*uGcMPerUnit;
 vec4 gcClump=lkGrassClump(gcWorldM);
 float gcPatch=lkGrassPatch(gcPw);
@@ -520,6 +528,7 @@ float gcRingThresh=uGcInner>0.001?gcOuterFade:1.0;
 float gcKeep=step(gcSeed,gcDens*mix(1.0,0.52+0.48*gcRingThresh,step(0.001,gcDens)))
 *gcOuterFade*gcInnerScale
 *step(uAtmoSeaY+0.02,gcY)
+*gcRivKeep
 *step(0.0,gcUv.x)*step(gcUv.x,1.0)*step(0.0,gcUv.y)*step(0.0,1.0-gcUv.y);
 vec3 gcT=transformed;
 float bladeT=clamp(aBladeMeta.y,0.0,1.0);
@@ -607,7 +616,7 @@ diffuseColor.rgb=mix(finalGrass,petalCol,vGcFlower)*cloudVis;
           )
           .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkGcWp'));
     };
-    mat.customProgramCacheKey = () => `wv2-look-groundcover-v6-${kind}`;
+    mat.customProgramCacheKey = () => `wv2-look-groundcover-v7-${kind}`;
     return mat;
   }, [textures, instances, meshResolution, renderSize, radiusUnits, innerUnits, unitsPerM, timeUniform, kind]);
 
@@ -678,13 +687,27 @@ export const WorldV2GroundCover: React.FC<WorldV2GroundCoverProps> = ({
     heightTex.magFilter = THREE.LinearFilter;
     heightTex.needsUpdate = true;
     const maskTex = buildWorldV2GrassMask(bundle, world);
-    return { heightTex, maskTex, size };
+    const riverBytes = getCachedSmoothedRiverMaskData(bundle);
+    const riverTex = new THREE.DataTexture(
+      riverBytes,
+      bundle.size,
+      bundle.size,
+      THREE.RGBAFormat,
+      THREE.UnsignedByteType,
+    );
+    riverTex.minFilter = THREE.LinearFilter;
+    riverTex.magFilter = THREE.LinearFilter;
+    riverTex.wrapS = THREE.ClampToEdgeWrapping;
+    riverTex.wrapT = THREE.ClampToEdgeWrapping;
+    riverTex.needsUpdate = true;
+    return { heightTex, maskTex, riverTex, size };
   }, [bundle, world, heightUnits]);
 
   useEffect(
     () => () => {
       textures.heightTex.dispose();
       textures.maskTex.dispose();
+      textures.riverTex.dispose();
     },
     [textures],
   );

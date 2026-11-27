@@ -68,4 +68,43 @@ describe('riverSmooth', () => {
     expect(mask[(24 * size + 25) * 4]).toBeLessThan(RIVER_SDF_ZERO_BYTE);
     expect(mask[(26 * size + 25) * 4] - RIVER_SDF_ZERO_BYTE).toBeGreaterThan(15);
   });
+
+  it('keeps high steep mountain headwaters connected and boosts energy at confluences', () => {
+    const size = 48;
+    const bundle = makeRiverTestBundle(size, 1920);
+    // Steep high-altitude creek (heightM > 1400, normal slope > 0.3) joining a main trunk at (24, 24).
+    for (let k = 8; k <= 34; k += 1) {
+      const i = k * size + 24;
+      bundle.waterKind[i] = WaterKind.River;
+      bundle.heightM[i] = 1800 - k * 30;
+      bundle.waterHeightM[i] = bundle.heightM[i] + 1.0;
+      bundle.normalRg[i * 2] = 220; // steep normal_x
+      bundle.normalRg[i * 2 + 1] = 128;
+      bundle.hydroFlowRgba[i * 4] = 128;
+      bundle.hydroFlowRgba[i * 4 + 1] = 255;
+      bundle.hydroFlowRgba[i * 4 + 2] = k < 24 ? 4 : 60;
+      bundle.hydroFlowRgba[i * 4 + 3] = 180;
+    }
+    // Side tributary joining (24, 24)
+    for (let x = 16; x < 24; x += 1) {
+      const i = 24 * size + x;
+      bundle.waterKind[i] = WaterKind.River;
+      bundle.heightM[i] = 1800 - 20 * 30 + (24 - x) * 15;
+      bundle.waterHeightM[i] = bundle.heightM[i] + 1.0;
+      bundle.hydroFlowRgba[i * 4] = 255;
+      bundle.hydroFlowRgba[i * 4 + 1] = 128;
+      bundle.hydroFlowRgba[i * 4 + 2] = 12;
+      bundle.hydroFlowRgba[i * 4 + 3] = 180;
+    }
+
+    const mask = buildSmoothedRiverMaskData(bundle);
+    // High steep creek cell is kept (water < 80)
+    expect(mask[(12 * size + 24) * 4]).toBeLessThan(RIVER_SDF_ZERO_BYTE);
+    // Downstream high-q trunk is strictly wider (more negative SDF) than headwater creek
+    const headSdf = mask[(12 * size + 24) * 4];
+    const trunkSdf = mask[(30 * size + 24) * 4];
+    expect(trunkSdf).toBeLessThanOrEqual(headSdf);
+    // Confluence (24, 24) carries boosted foam/energy byte in alpha (>= 200)
+    expect(mask[(24 * size + 24) * 4 + 3]).toBeGreaterThanOrEqual(200);
+  });
 });
