@@ -14,6 +14,26 @@
 
 ---
 
+# 2026-11-27 (Update 3) — `WV2-6` Iris Xe Gate `PASS with flags` (`#341` / `#342`), `#291` All Checks Green, Open Release-Path Defects & `STATE-SYNC r11`
+
+- **Merged into trunk (`aeb51835`, `3` PRs since `r10` base `06e2217c`):**
+  - **`#341`** (`DECISIONS-1127C`, `aeb51835`, `verdicts/DECISIONS-1127C_deea25bf.md`): recorded `QD-GATES-1127C (1)–(5)` (`#338` `"Approve option 2"`, `#291` `"Option 1: match trees"` + measured `6×` reduction `1.92 -> 0.32 u/sim u` per `verdicts/WV2-SYNTH-SCALE_4c29b5e0.md` + `0.32` lead ruling, `#339` `"Start world experiment"`, and owner `"Chấp nhận ĐẠT"` accepting the Dell Iris Xe gate as **PASS with flags**).
+  - **`#342`** (`IRISXE-RUNBOOK-SYNC`, `874a53fc`, `verdicts/IRISXE-RUNBOOK-SYNC_2c5a8697.md`): updated [`2026-11-26-wv2-6-iris-xe-runbook.md`](docs/ai/planning/2026-11-26-wv2-6-iris-xe-runbook.md) (`Path A` CI runs `46011345936`/`46011422941`, byte-size build ID `76,269,568`/`267,457,536` B, AC `Balanced`, Dual GPU, `>= 5 GB` free RAM, zero `anima-engine` check, `-ExecutionPolicy Bypass`, `PerfOverlay.tsx` clipboard behavior, and filled §6.1–§6.4 6-run `PASS with flags` record; §5 `IX-D1..IX-D7` unchanged). [`RELEASE_CHECKLIST.md`](docs/how-to/RELEASE_CHECKLIST.md) §4 Iris Xe gate line ticked `[x]` with the 5 flags.
+  - **`#340`** (`STATE-SYNC r10`, `88b595a3`, `verdicts/STATE-SYNC_r10_e63c35df.md`): reconciled state docs at `06e2217c`.
+- **`#291` (`win/wv2-6` @ `9c208e45`, open Draft; merges only on owner's decision):**
+  - **Every CI check is green:** `Rust (src-tauri)`, `Frontend`, `determinism` (re-run green after 45-minute timeout), and `Release Build` on Windows and macOS.
+  - **`6` reviews `VERIFIED`:** `CI-TILES` (`aff94b94`), `WV2-SYNTH-ANCHORS` (`24c8e0f5`), `N1b` (`a5f7dcdb`), `WV2-SYNTH-SCALE` (`4c29b5e0`), `IRISXE-A1-WORKFLOW` (`9c208e45`), and `IRISXE-BUILDS` (`9c208e45`). Waiting on `SIM-TREES-SEA` check of `A1`.
+- **Open release-path defects (`STATE_OF_THE_PROJECT.md` §3.00 backlog):**
+  - **`APP-EXIT`:** `anima-case` diagnosed root cause in `test_runs/anima-case_APP-EXIT.md` (`src-tauri/src/lib.rs:204-264` misses `CloseRequested`); fix pending.
+  - **`WEBVIEW-MEM`:** `anima-mac`, pending (`msedgewebview2` reached `4.35–4.65 GB` during Iris Xe runs).
+  - **`SIM-TREES-SEA`:** `anima-mac`, pending (open check on `#291` `A1`).
+- **Ongoing experiments & prototypes:**
+  - **`#339`** (`win/wv2-shape-exp`, `[EXPERIMENT - do not merge] WV2-SHAPE-EXP`): **`M1` `VERIFIED` at `8a5ac786`** (`verdicts/SHAPE-EXP-M1_8a5ac786.md`); **`M2` running at `f312da1e`**.
+  - **Prototype `mac/wv2-look-proto` (never merges):** reached **`R16`** at `f8554f33` (prototype only).
+  - See [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17) for `FOCUS-6` counters (`10` proposed / `0` implemented living-world, `14` proposed / `8` non-proposed total designs; `3` `RESULT.md`: `1` primary-conclusive / `2` not conclusive).
+
+---
+
 # 2026-11-27 (Update 2) — `v0.9.0-internal` Tiles Published, `SEL2-P2` (`#330` `equivalent_to_zero`), `WV2-6-INSTR` (`#338`), `MP-5.2` (`#335`), `QD-GATES-1127` (`#336`), `WV2-NEXT-WORLD-OPTIONS` (`#337`), `WV2-SHAPE-EXP` (`#339` `M0`), `#291` `N1b` & `STATE-SYNC r10`
 
 - **Merged into trunk (`06e2217c`, `7` PRs since `r9` base `8d58a580`):**
