@@ -247,8 +247,10 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       dummy.updateMatrix();
       if (typeof foam.setMatrixAt === 'function') foam.setMatrixAt(i, dummy.matrix);
     }
-    curtain.userData.keptCount = keptCount;
-    curtain.userData.totalCount = count;
+    if (curtain.userData) {
+      curtain.userData.keptCount = keptCount;
+      curtain.userData.totalCount = count;
+    }
     if (curtain.instanceMatrix) curtain.instanceMatrix.needsUpdate = true;
     if (foam.instanceMatrix) foam.instanceMatrix.needsUpdate = true;
   }, [world, worldV2, count, renderSize, heightUnits, meshResolution]);
