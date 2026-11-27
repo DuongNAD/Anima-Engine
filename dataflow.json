@@ -2,6 +2,8 @@
   "nodes": [
     "anima_engine_lib",
     "AppState",
+    "handle_run_event",
+    "shutdown_engine_for_exit",
     "ai",
     "commands",
     "core",
@@ -104,6 +106,18 @@
       "to": "core",
       "via": "src-tauri/src/physics/spatial.rs:1",
       "invariant": "physics systems read and update ECS Position, Velocity, and MapBounds components with zero heap allocations per tick"
+    },
+    {
+      "from": "handle_run_event",
+      "to": "core",
+      "via": "src-tauri/src/lib.rs:214",
+      "invariant": "handle_run_event receives LaunchPersistencePolicy by value and triggers exit shutdown on final window close or ExitRequested without touching live ECS state"
+    },
+    {
+      "from": "shutdown_engine_for_exit",
+      "to": "core",
+      "via": "src-tauri/src/lib.rs:252",
+      "invariant": "shutdown_engine_for_exit enqueues one best-effort exit autosave through core::simulation_loop::enqueue_save_request and stops SimulationEngine idempotently"
     }
   ]
 }

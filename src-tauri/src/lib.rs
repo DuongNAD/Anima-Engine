@@ -202,64 +202,95 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(move |app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { .. } = event {
-            let state = app_handle.state::<AppState>();
-            let engine = &state.engine;
+        handle_run_event(app_handle, &event, launch_persistence);
+    });
+}
 
-            if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
-                if !launch_persistence.write_exit_autosave {
-                    eprintln!("[anima] fresh-start process is exiting; autosave remains untouched");
-                    engine.stop();
-                    return;
-                }
+/// Handles Tauri application run-loop lifecycle events, stopping the simulation engine
+/// idempotently before the final window and its WebView2 controller are torn down.
+pub fn handle_run_event<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    event: &tauri::RunEvent,
+    launch_persistence: core::resources::LaunchPersistencePolicy,
+) {
+    match event {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed,
+            ..
+        } => {
+            let other_windows_open = app_handle
+                .webview_windows()
+                .keys()
+                .any(|open_label| open_label != label);
+            if !other_windows_open {
+                shutdown_engine_for_exit(app_handle, launch_persistence);
+            }
+        }
+        tauri::RunEvent::ExitRequested { .. } => {
+            shutdown_engine_for_exit(app_handle, launch_persistence);
+        }
+        _ => {}
+    }
+}
 
-                let (tx, rx) = std::sync::mpsc::channel();
-                if let Err(error) =
-                    core::simulation_loop::enqueue_save_request(&engine.save_request_tx, tx)
-                {
-                    eprintln!("exit autosave skipped: {error}");
-                } else {
-                    // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
-                    // dropped deliberately — the autosave is best-effort and there is no one left
-                    // to tell, whereas the explicit save command surfaces the reason.
-                    if let Ok(Ok(saved_state)) = rx.recv_timeout(std::time::Duration::from_secs(2))
-                    {
-                        if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
-                            // Same directory, same envelope, same atomic write as an explicit
-                            // save. The old form was `to_string_pretty` into `fs::write`, which
-                            // truncates the destination before writing a byte — so a crash or a
-                            // full disk during exit destroyed the autosave the user already had in
-                            // order to fail at producing a new one. It also wrote a bare state with
-                            // no schema version, which the load command could not read back.
-                            let saves = app_data_dir.join("saves");
-                            if let Err(error) = std::fs::create_dir_all(&saves) {
-                                eprintln!(
-                                    "exit autosave failed: could not create {}: {error}",
-                                    saves.display()
-                                );
-                            } else {
-                                let target = saves.join(crate::commands::save_paths::AUTOSAVE_NAME);
-                                match crate::core::snapshot::SnapshotEnvelope::seal(saved_state) {
-                                    Ok(envelope) => {
-                                        if let Err(error) =
-                                            crate::core::snapshot::write_atomic(&target, &envelope)
-                                        {
-                                            eprintln!(
-                                                "exit autosave failed while writing {}: {error}",
-                                                target.display()
-                                            );
-                                        }
-                                    }
-                                    Err(error) => eprintln!(
-                                        "exit autosave refused invalid checkpoint state: {error}"
-                                    ),
+fn shutdown_engine_for_exit<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    launch_persistence: core::resources::LaunchPersistencePolicy,
+) {
+    let state = app_handle.state::<AppState>();
+    let engine = &state.engine;
+
+    if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
+        if !launch_persistence.write_exit_autosave {
+            eprintln!("[anima] fresh-start process is exiting; autosave remains untouched");
+            engine.stop();
+            return;
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        if let Err(error) = core::simulation_loop::enqueue_save_request(&engine.save_request_tx, tx)
+        {
+            eprintln!("exit autosave skipped: {error}");
+        } else {
+            // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
+            // dropped deliberately — the autosave is best-effort and there is no one left
+            // to tell, whereas the explicit save command surfaces the reason.
+            if let Ok(Ok(saved_state)) = rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+                    // Same directory, same envelope, same atomic write as an explicit
+                    // save. The old form was `to_string_pretty` into `fs::write`, which
+                    // truncates the destination before writing a byte — so a crash or a
+                    // full disk during exit destroyed the autosave the user already had in
+                    // order to fail at producing a new one. It also wrote a bare state with
+                    // no schema version, which the load command could not read back.
+                    let saves = app_data_dir.join("saves");
+                    if let Err(error) = std::fs::create_dir_all(&saves) {
+                        eprintln!(
+                            "exit autosave failed: could not create {}: {error}",
+                            saves.display()
+                        );
+                    } else {
+                        let target = saves.join(crate::commands::save_paths::AUTOSAVE_NAME);
+                        match crate::core::snapshot::SnapshotEnvelope::seal(saved_state) {
+                            Ok(envelope) => {
+                                if let Err(error) =
+                                    crate::core::snapshot::write_atomic(&target, &envelope)
+                                {
+                                    eprintln!(
+                                        "exit autosave failed while writing {}: {error}",
+                                        target.display()
+                                    );
                                 }
+                            }
+                            Err(error) => {
+                                eprintln!("exit autosave refused invalid checkpoint state: {error}")
                             }
                         }
                     }
                 }
-                engine.stop();
             }
         }
-    });
+        engine.stop();
+    }
 }
