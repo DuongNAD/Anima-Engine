@@ -9,6 +9,8 @@ import {
   SYNTHETIC_TICK_INTERVAL_MS,
   createSyntheticTickGenerator,
   parseSyntheticReplaySearch,
+  selectWorldV2LandAnchors,
+  type SyntheticAnchorWorld,
   type SyntheticTicksOptions,
 } from './syntheticTicks';
 
@@ -894,15 +896,46 @@ export function createRecordingFileTickSource(
 }
 
 /**
+ * Matches `resolveWorldSourceMode(search, envMode) === 'v2'` without importing the World v2
+ * tile loader/codec graph into `tickRecording`.
+ */
+export function isWorldV2Search(
+  search: string,
+  envMode = (import.meta as { env?: { MODE?: string } }).env?.MODE,
+): boolean {
+  const params = new URLSearchParams(search);
+  const explicit = params.get('world');
+  if (explicit === 'v2') return true;
+  if (explicit === 'v1') return false;
+  if (params.get('capture') === '1') return false;
+  if (envMode === 'test') return false;
+  return true;
+}
+
+/**
  * Resolve the active `TickSource` from a URL query string.
- * - `?replay=synthetic&agents=N` -> deterministic synthetic fixture (`RW0-2`)
+ * - `?replay=synthetic&agents=N` -> deterministic synthetic fixture (`RW0-2`, using deterministic
+ *   World v2 land anchors when running on World v2)
  * - `?replay=<file>` -> recorded JSON replay (`RW0-3`)
  * - `?capture=1` (with no `replay`) -> `null` so canonical map captures stay creature-free
  * - default (or `?record=1`) -> Tauri `simulation-tick` source (`RW0-1`, optionally recording)
  */
-export function resolveTickSourceFromSearch(search: string): TickSource | null {
+export function resolveTickSourceFromSearch(
+  search: string,
+  world?: SyntheticAnchorWorld | null,
+): TickSource | null {
   const syntheticOpts = parseSyntheticReplaySearch(search);
   if (syntheticOpts !== null) {
+    if (isWorldV2Search(search)) {
+      const candidateWorld =
+        world !== undefined
+          ? world
+          : typeof window !== 'undefined'
+            ? (window.__world ?? null)
+            : null;
+      const anchors = selectWorldV2LandAnchors(candidateWorld);
+      return createSyntheticTickSource({ ...syntheticOpts, anchors });
+    }
     return createSyntheticTickSource(syntheticOpts);
   }
 
