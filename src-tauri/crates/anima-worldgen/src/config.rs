@@ -112,6 +112,12 @@ pub struct WorldV2Config {
     /// Opt-in initial massif bedrock fraction (`1.0` = trunk pre-formed massifs; `< 1.0` grows from lower initial relief).
     #[serde(default = "default_one_f32")]
     pub init_bedrock_frac: f32,
+    /// Opt-in scalloped piedmont & oblique foothill dissection for `MultiEnvironment` (`0.0` = trunk).
+    #[serde(default)]
+    pub foothill_dissection: f32,
+    /// Opt-in boundary warp and canyon/cuesta dissection on `MultiEnvironment` caprock plateau (`0.0` = trunk).
+    #[serde(default)]
+    pub plateau_dissection: f32,
 }
 
 const fn default_channel_init() -> f32 {
@@ -184,6 +190,8 @@ impl Default for WorldV2Config {
             force_pure_d8: false,
             uplift_roughness: 0.0,
             init_bedrock_frac: default_one_f32(),
+            foothill_dissection: 0.0,
+            plateau_dissection: 0.0,
         }
     }
 }
@@ -294,6 +302,13 @@ impl WorldV2Config {
         if !self.init_bedrock_frac.is_finite() || !(0.05..=1.0).contains(&self.init_bedrock_frac) {
             return Err(err("init_bedrock_frac must lie within [0.05, 1.0]"));
         }
+        if !self.foothill_dissection.is_finite() || !(0.0..=2.0).contains(&self.foothill_dissection)
+        {
+            return Err(err("foothill_dissection must lie within [0.0, 2.0]"));
+        }
+        if !self.plateau_dissection.is_finite() || !(0.0..=2.0).contains(&self.plateau_dissection) {
+            return Err(err("plateau_dissection must lie within [0.0, 2.0]"));
+        }
         Ok(())
     }
 }
@@ -347,6 +362,19 @@ mod tests {
             assert!(!cfg.force_pure_d8);
             assert_eq!(cfg.uplift_roughness.to_bits(), 0.0_f32.to_bits());
             assert_eq!(cfg.init_bedrock_frac.to_bits(), 1.0_f32.to_bits());
+            assert_eq!(cfg.foothill_dissection.to_bits(), 0.0_f32.to_bits());
+            assert_eq!(cfg.plateau_dissection.to_bits(), 0.0_f32.to_bits());
         }
+    }
+
+    #[test]
+    fn shape_exp_preset_toml_parses_and_validates() {
+        let raw = include_str!("../presets/wv2_big_81920_shape_exp.toml");
+        let cfg: WorldV2Config = toml::from_str(raw).expect("parse wv2_big_81920_shape_exp.toml");
+        assert_eq!(cfg.layout, WorldLayout::MultiEnvironment);
+        assert!((cfg.extent_m - 81_920.0).abs() < 1e-3);
+        assert!(cfg.foothill_dissection > 0.0);
+        assert!(cfg.plateau_dissection > 0.0);
+        assert!(cfg.validate().is_ok());
     }
 }

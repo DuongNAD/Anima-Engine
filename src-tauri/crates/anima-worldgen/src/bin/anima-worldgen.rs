@@ -74,6 +74,8 @@ struct WorldV2PresetOverride {
     force_pure_d8: Option<bool>,
     uplift_roughness: Option<f32>,
     init_bedrock_frac: Option<f32>,
+    foothill_dissection: Option<f32>,
+    plateau_dissection: Option<f32>,
 }
 
 fn usage_text() -> &'static str {
@@ -423,6 +425,12 @@ fn load_config(args: &GenerateArgs) -> Result<WorldV2Config, String> {
         }
         if let Some(v) = ov.init_bedrock_frac {
             cfg.init_bedrock_frac = v;
+        }
+        if let Some(v) = ov.foothill_dissection {
+            cfg.foothill_dissection = v;
+        }
+        if let Some(v) = ov.plateau_dissection {
+            cfg.plateau_dissection = v;
         }
     }
     cfg.validate()
