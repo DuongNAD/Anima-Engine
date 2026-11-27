@@ -280,6 +280,10 @@ lkGround*=lkDetail;
 vec2 lkUvDy=dFdy(vMapUv);
 float lkWet=0.0;
 float lkSpray=0.0;
+float lkRivWater=0.0;
+float lkRivBank=0.0;
+float lkRivFoam=0.0;
+vec2 lkRivTilt=vec2(0.0);
 ` +
   // tangent-space tilt from beach ripples and the berm face
   `vec2 lkRipple=vec2(0.0);
@@ -347,20 +351,34 @@ float lkSunVis=1.0;
 {
 vec4 rivMask = texture2D(uRiverMask, vMapUv);
 float riv=rivMask.r;
-if(riv>0.01){
-vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
-float flowLen=length(rawFlow);
-float validFlow=smoothstep(0.35,0.75,rivMask.a)*step(0.2,flowLen);
-vec2 flowDir=flowLen>0.2?(rawFlow/flowLen):vec2(0.0);
-float phaseJitter = texture2D(uDetail, vMapUv * 24.0).r;
-float p0=fract(uTime*0.30+phaseJitter);
-float p1=fract(uTime*0.30+phaseJitter+0.5);
-float blend=abs(2.0*p0-1.0);
-vec2 advUvBase=vMapUv*220.0;
-float adv0=texture2D(uDetail,advUvBase-flowDir*(p0*1.25)).r*2.0;
-float adv1=texture2D(uDetail,advUvBase-flowDir*(p1*1.25)).r*2.0;
-float advected=mix(adv0,adv1,blend);
-diffuseColor.rgb=mix(diffuseColor.rgb,lkMacro*mix(1.0,advected,validFlow),clamp(riv*0.85,0.0,0.85));
+if(riv>0.03){
+  lkRivWater=smoothstep(0.26,0.58,riv)*(1.0-lkSnow)*(1.0-smoothstep(0.24,0.42,lkSlope)*smoothstep(800.0,1400.0,lkHm));
+  lkRivBank=smoothstep(0.03,0.26,riv)*(1.0-lkRivWater)*(1.0-lkSnow);
+  diffuseColor.rgb*=mix(1.0,0.48,lkRivBank);
+  if(lkRivWater>0.01){
+    vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
+    float flowLen=length(rawFlow);
+    float validFlow=smoothstep(0.25,0.70,rivMask.a)*step(0.15,flowLen);
+    vec2 flowDir=flowLen>0.15?(rawFlow/flowLen):vec2(0.7,0.7);
+    float phaseJitter=texture2D(uDetail,vMapUv*24.0).r;
+    float p0=fract(uTime*0.36+phaseJitter);
+    float p1=fract(uTime*0.36+phaseJitter+0.5);
+    float blend=abs(2.0*p0-1.0);
+    vec2 advUvBase=vMapUv*260.0;
+    float adv0=texture2D(uDetail,advUvBase-flowDir*(p0*1.4)).r;
+    float adv1=texture2D(uDetail,advUvBase-flowDir*(p1*1.4)).r;
+    float advected=mix(adv0,adv1,blend);
+    float ripFine=texture2D(uLookNoise,lkP*1.8-flowDir*(uTime*0.28)).g;
+    float depthCue=clamp((rivMask.a-0.4)*1.8,0.0,1.0);
+    vec3 rivBody=mix(vec3(0.014,0.064,0.088),vec3(0.034,0.120,0.132),depthCue);
+    rivBody*=mix(0.84,1.22,clamp(advected*0.65+ripFine*0.35,0.0,1.0));
+    float rapids=smoothstep(0.06,0.15,lkSlope)*(1.0-smoothstep(0.15,0.24,lkSlope))*smoothstep(0.68,0.95,rivMask.a);
+    lkRivFoam=clamp(rapids*smoothstep(0.55,0.88,advected*0.6+ripFine*0.5),0.0,0.38);
+    rivBody=mix(rivBody,vec3(0.50,0.60,0.66),lkRivFoam);
+    lkRivTilt=mix(vec2(0.0),flowDir*((advected-0.5)*0.22)+vec2(ripFine-0.5,(adv0-adv1)*0.6)*0.12,validFlow);
+    diffuseColor.rgb=mix(diffuseColor.rgb,rivBody,lkRivWater*0.88);
+    lkAoInd=mix(lkAoInd,0.82,lkRivWater*0.5);
+  }
 }
 if(uUseBakedHorizon>0.5){
 vec4 hzn=texture2D(uHorizonMap,vMapUv)*1.5707963;
@@ -395,20 +413,25 @@ float rough=0.20+lkRock*0.8+lkMask.r*0.3-lkSnow*0.15;
 mapN.xy+=g*0.16*rough*lkNf+lkRipple+lkTurfTilt;
 normal=normalize(tbn*mapN);
 }
+if(lkRivWater>0.01){
+  vec3 lkRivUp=normalize((viewMatrix*vec4(lkRivTilt.x,1.0,lkRivTilt.y,0.0)).xyz);
+  normal=normalize(mix(normal,lkRivUp,lkRivWater*0.84));
+}
 }
 `;
 
-// Output stage (after tone mapping, in display space like the sky dome): wet ground mirrors the
-// sky at grazing angles, spray softens surf-side ground, then the shared aerial perspective.
+// Output stage (after tone mapping, in display space like the sky dome): wet ground and rivers
+// mirror the sky at grazing angles, spray softens surf-side ground, then shared aerial perspective.
 const WV2_LOOK_OUTPUT = /* glsl */ `
 {
-if(lkWet>0.01){
+float lkSurfWet=max(lkWet,lkRivWater*(1.0-lkRivFoam*0.75));
+if(lkSurfWet>0.01){
 vec3 lkV=normalize(cameraPosition-vW3WorldPos);
-vec3 lkWn=normalize(vec3(lkBn.x*0.35,1.0,lkBn.y*0.35));
+vec3 lkWn=normalize(vec3(mix(lkBn.x*0.35,lkRivTilt.x,lkRivWater),1.0,mix(lkBn.y*0.35,lkRivTilt.y,lkRivWater)));
 float lkF=0.02+0.98*pow(1.0-max(dot(lkWn,lkV),0.0),5.0);
 vec3 lkR=reflect(-lkV,lkWn);
 lkR.y=abs(lkR.y);
-gl_FragColor.rgb=mix(gl_FragColor.rgb,atmoSkyColor(normalize(lkR)),clamp(lkF*1.6+0.08,0.0,0.7)*lkWet);
+gl_FragColor.rgb=mix(gl_FragColor.rgb,atmoSkyColor(normalize(lkR)),clamp(lkF*1.6+0.12*lkRivWater+0.08*lkWet,0.0,0.75)*lkSurfWet);
 }
 vec3 lkHd=normalize(vW3WorldPos-cameraPosition);
 vec3 lkHazeC=atmoSkyColor(normalize(vec3(lkHd.x,lkHd.y*0.2,lkHd.z)));
@@ -510,7 +533,7 @@ return cx*blend.x+cy*blend.y+cz*blend.z;
       )
       .replace(
         '#include <roughnessmap_fragment>',
-        '#include <roughnessmap_fragment>\n\troughnessFactor = mix(roughnessFactor, 0.16, lkWet);',
+        '#include <roughnessmap_fragment>\n\troughnessFactor = mix(roughnessFactor, 0.16, lkWet);\n\troughnessFactor = mix(roughnessFactor, 0.34, lkRivBank);\n\troughnessFactor = mix(roughnessFactor, 0.08, lkRivWater * (1.0 - lkRivFoam * 0.7));',
       )
       .replace('#include <fog_fragment>', WV2_LOOK_OUTPUT);
 }

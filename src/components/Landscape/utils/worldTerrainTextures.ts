@@ -831,6 +831,7 @@ export function buildSplatTexture(world: World): THREE.DataTexture {
 }
 
 import { buildWorldV2GrassMask } from '../worldV2/grassTables';
+import { WaterKind } from '../worldV2/types';
 
 export interface WorldV2TerrainTextures {
   colorMap: THREE.DataTexture;
@@ -1141,19 +1142,66 @@ export function buildWorldV2TerrainTextures(
     normalData[o4 + 3] = 255;
   }
 
-  // River mask aligned to `terrainPbrMaterial.ts` Vlachos flow advection channels:
-  // R = river strength, G = ux, B = uz, A = flow validity from normalized Q.
+  // WV2-LOOK r10 river mask: combine `water_surface` (`River`, `Waterfall`, `DeltaTurbid`) and
+  // `waterHeightM - heightM` with `hydro_flow`. Attenuate on steep cliff faces so headwater rills
+  // don't paint bright stripes down dry mountainsides, and add a 1-texel wet riverbank margin.
+  // R = water/bank strength, G = ux, B = uz, A = depth/rapids cue.
   const riverData = new Uint8Array(count * 4);
   for (let i = 0; i < count; i += 1) {
     const o4 = i * 4;
     const ux = bundle.hydroFlowRgba[o4];
     const uz = bundle.hydroFlowRgba[o4 + 1];
     const q = bundle.hydroFlowRgba[o4 + 2];
-    const riv = bundle.hydroFlowRgba[o4 + 3];
-    riverData[o4] = riv;
+    const hydroRiv = bundle.hydroFlowRgba[o4 + 3];
+    const wk = bundle.waterKind[i];
+    const isStanding =
+      wk === WaterKind.Ocean || wk === WaterKind.FreshwaterLake || wk === WaterKind.EndorheicLake;
+    const isChannel = wk === WaterKind.River || wk === WaterKind.Waterfall || wk === WaterKind.DeltaTurbid;
     riverData[o4 + 1] = ux;
     riverData[o4 + 2] = uz;
-    riverData[o4 + 3] = riv > 8 ? Math.max(180, q) : 0;
+    if (isStanding) continue;
+    const nx = (bundle.normalRg[i * 2] / 255) * 2 - 1;
+    const nz = (bundle.normalRg[i * 2 + 1] / 255) * 2 - 1;
+    const slope = 1 - Math.sqrt(Math.max(0, 1 - nx * nx - nz * nz));
+    // Only damp tiny headwater rills high up on steep mountain walls; keep valley rivers bold.
+    const highSteepDamp =
+      bundle.heightM[i] > 950 ? 1 - Math.min(1, Math.max(0, (slope - 0.14) / 0.16)) : 1;
+    if (isChannel) {
+      const depthM = Math.max(0.25, bundle.waterHeightM[i] - bundle.heightM[i]);
+      const flowKeep = Math.min(1, 0.72 + (q / 255) * 0.55 + (hydroRiv / 255) * 0.5);
+      const strength = Math.round(255 * Math.max(0.2, flowKeep * (0.2 + 0.8 * highSteepDamp)));
+      riverData[o4] = strength;
+      riverData[o4 + 3] = Math.min(
+        255,
+        Math.round((130 + Math.min(1, depthM / 4) * 65 + (q / 255) * 45) * (0.35 + 0.65 * highSteepDamp)),
+      );
+    } else if (hydroRiv > 24 && highSteepDamp > 0.25) {
+      riverData[o4] = Math.min(200, Math.round(hydroRiv * 1.5 * highSteepDamp));
+      riverData[o4 + 3] = Math.round(Math.max(90, q) * highSteepDamp);
+    }
+  }
+  for (let y = 1; y < size - 1; y += 1) {
+    const row = y * size;
+    for (let x = 1; x < size - 1; x += 1) {
+      const i = row + x;
+      const wk = bundle.waterKind[i];
+      if (
+        riverData[i * 4] > 0 ||
+        wk === WaterKind.Ocean ||
+        wk === WaterKind.FreshwaterLake ||
+        wk === WaterKind.EndorheicLake
+      ) {
+        continue;
+      }
+      if (
+        riverData[(i - 1) * 4] >= 160 ||
+        riverData[(i + 1) * 4] >= 160 ||
+        riverData[(i - size) * 4] >= 160 ||
+        riverData[(i + size) * 4] >= 160
+      ) {
+        riverData[i * 4] = 44;
+      }
+    }
   }
 
   const shoreSdfData = new Uint8Array(count * 4);
@@ -1170,7 +1218,7 @@ export function buildWorldV2TerrainTextures(
     normalMap: createRgbaTex(normalData, size, THREE.NoColorSpace, true),
     roughnessMap: buildRoughnessTexture(world),
     detailMap: buildDetailTexture(),
-    riverMaskMap: createRgbaTex(riverData, size, THREE.NoColorSpace, false),
+    riverMaskMap: createRgbaTex(riverData, size, THREE.NoColorSpace, true),
     splatMap: buildSplatTexture(world),
     horizonMap: createRgbaTex(new Uint8Array(bundle.horizonRgba), size, THREE.NoColorSpace, false),
     // Mipmapped: the WV2-LOOK terrain samples it on every pixel, far ones included.
