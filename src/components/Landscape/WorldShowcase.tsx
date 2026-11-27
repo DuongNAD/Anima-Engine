@@ -129,6 +129,24 @@ function applyShadowPass(
   // calling each one a `Mesh` and reading `.material` off it was a claim that was false for most of
   // the scene and merely happened to yield `undefined`.
   scene.traverse((o: THREE.Object3D) => {
+    if (!enabled && 'shadow' in o && o.shadow && typeof o.shadow === 'object') {
+      const shadow = o.shadow as {
+        map?: { dispose: () => void; depthTexture?: { dispose: () => void } | null } | null;
+        mapPass?: { dispose: () => void } | null;
+      };
+      if (shadow.map) {
+        if (shadow.map.depthTexture) {
+          shadow.map.depthTexture.dispose();
+          shadow.map.depthTexture = null;
+        }
+        shadow.map.dispose();
+        shadow.map = null;
+      }
+      if (shadow.mapPass) {
+        shadow.mapPass.dispose();
+        shadow.mapPass = null;
+      }
+    }
     if (!('material' in o)) return;
     const mat: unknown = o.material;
     if (Array.isArray(mat)) {
@@ -594,7 +612,13 @@ export const WorldShowcase: React.FC = () => {
         {perfOpen && capture === null ? <PerfFrameBridge bridgeRef={perfBridgeRef} /> : null}
 
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}
-        <WorldSky timeOfDay={timeOfDay} speed={speed} worldScale={RENDER_SIZE} />
+        <WorldSky
+          timeOfDay={timeOfDay}
+          speed={speed}
+          worldScale={RENDER_SIZE}
+          castShadow={qualityConfig.shadows}
+          shadowMapSize={qualityConfig.shadowMapSize}
+        />
         <WorldWeather
           weather={weather}
           precipitationRate={precipFor(weather)}

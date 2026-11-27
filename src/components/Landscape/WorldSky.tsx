@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getWorldLightRig, type SkyParams } from './utils/skyParams';
@@ -56,6 +56,39 @@ export interface WorldSkyProps {
   speed?: number;
   /** Overall scale; dome/orbit/star radii derive from this (≈ camera far budget). */
   worldScale?: number;
+  /** Whether the sun directional light casts dynamic shadows (disabled at Low/Medium tiers). */
+  castShadow?: boolean;
+  /** Shadow map edge resolution (px) when shadows are enabled. */
+  shadowMapSize?: number;
+}
+
+interface ShadowMapResource {
+  map: {
+    dispose: () => void;
+    depthTexture?: { dispose: () => void } | null;
+    width?: number;
+    height?: number;
+  } | null;
+  mapPass?: { dispose: () => void } | null;
+}
+
+function disposeDirectionalShadowTarget(light: THREE.DirectionalLight | null): void {
+  if (!light || !('shadow' in light) || !light.shadow || typeof light.shadow !== 'object') {
+    return;
+  }
+  const shadow = light.shadow as unknown as ShadowMapResource;
+  if (shadow.map) {
+    if (shadow.map.depthTexture) {
+      shadow.map.depthTexture.dispose();
+      shadow.map.depthTexture = null;
+    }
+    shadow.map.dispose();
+    shadow.map = null;
+  }
+  if (shadow.mapPass) {
+    shadow.mapPass.dispose();
+    shadow.mapPass = null;
+  }
 }
 
 interface CloudDescriptor {
@@ -137,11 +170,32 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   timeOfDay = 12,
   speed = 1.0,
   worldScale = 400,
+  castShadow = true,
+  shadowMapSize = 2048,
 }) => {
   const cloudsRef = useRef<THREE.Group>(null);
+  const sunLightRef = useRef<THREE.DirectionalLight>(null);
   const tmpColor = useMemo(() => new THREE.Color(), []);
   const HAZE = useMemo(() => new THREE.Color('#eef6fb'), []);
   const skyUniforms = useMemo(() => createSkyUniforms(), []);
+
+  useEffect(() => {
+    const light = sunLightRef.current;
+    if (!light) return;
+    if (!castShadow) {
+      disposeDirectionalShadowTarget(light);
+      return;
+    }
+    const existingMap = light.shadow?.map;
+    if (existingMap && (existingMap.width !== shadowMapSize || existingMap.height !== shadowMapSize)) {
+      disposeDirectionalShadowTarget(light);
+    }
+  }, [castShadow, shadowMapSize]);
+
+  useEffect(() => {
+    const light = sunLightRef.current;
+    return () => disposeDirectionalShadowTarget(light);
+  }, []);
 
   const DOME_R = worldScale * 6.5; // 2600 @400 — beyond camera maxDistance (1200)
   const ORBIT_R = worldScale * 4.5; // 1800
@@ -265,13 +319,14 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       </mesh>
 
       <directionalLight
+        ref={sunLightRef}
         name="world-sun-light"
         position={sunPosition}
         color={params.sunColor}
         intensity={lightRig.sunIntensity}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        castShadow={castShadow}
+        shadow-mapSize-width={shadowMapSize}
+        shadow-mapSize-height={shadowMapSize}
         shadow-camera-far={ORBIT_R * 2}
         shadow-camera-left={-worldScale * 0.7}
         shadow-camera-right={worldScale * 0.7}
