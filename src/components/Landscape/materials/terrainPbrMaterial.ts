@@ -219,44 +219,50 @@ float lkLichen=smoothstep(0.52,0.80,lkNMid.a)*(1.0-smoothstep(2600.0,3600.0,lkHm
 lkScree=mix(lkScree,vec3(0.10,0.12,0.07),lkLichen*0.55);
 lkGround=mix(lkGround,lkScree,lkMask.r);
 ` +
-  // Bedrock on steep faces (and on rock-biome moderate slopes), with altitude strata.
-  `float lkSteepLo=0.25+(lkNMid.r-0.5)*0.12;
-float lkRock=smoothstep(lkSteepLo,lkSteepLo+0.15,lkSlope+(lkNHi.a-0.5)*0.08);
-lkRock=max(lkRock,lkMask.r*smoothstep(0.12,0.26,lkSlope+(lkNHi.a-0.5)*0.16));
+  // Bedrock on steep faces (and high-alpine wind-exposed slopes/ridges), with altitude strata.
+  `float lkSlopeEff=max(lkSlope,lkGSlope*1.25);
+float lkSteepLo=0.18+(lkNMid.r-0.5)*0.10-smoothstep(2800.0,4100.0,lkHm)*0.09;
+float lkRock=smoothstep(lkSteepLo,lkSteepLo+0.13,lkSlope+(lkNHi.a-0.5)*0.08);
+lkRock=max(lkRock,lkMask.r*smoothstep(0.08,0.20,lkSlope+(lkNHi.a-0.5)*0.14));
+float lkRidgeN=lkNLo.b*0.44+lkNMid.r*0.36+lkNHi.g*0.20;
+float lkScour=smoothstep(0.35,0.56,lkRidgeN+lkSlopeEff*2.8+(lkAo-0.80)*0.45);
+lkRock=max(lkRock,smoothstep(2850.0,3750.0,lkHm)*smoothstep(0.018,0.085,lkSlopeEff+(lkNMid.r-0.5)*0.04));
+lkRock=max(lkRock,smoothstep(3400.0,4500.0,lkHm)*lkScour*0.92);
 vec4 lkRHi=lkNHi;
 float lkStrataMask=smoothstep(0.35,0.75,lkNMid.b);
 float lkStrata=sin(lkHm*0.042+(lkNMid.r-0.5)*5.0+(lkNLo.g-0.5)*9.0+(lkRHi.r-0.5)*2.0);
-vec3 lkRockCol=mix(vec3(0.095,0.094,0.098),vec3(0.20,0.168,0.135),
-smoothstep(0.30,0.70,lkNLo.b+(lkNMid.g-0.5)*0.4));
+vec3 lkRockLo=mix(vec3(0.095,0.094,0.098),vec3(0.045,0.048,0.056),smoothstep(2800.0,4000.0,lkHm));
+vec3 lkRockHi=mix(vec3(0.20,0.168,0.135),vec3(0.125,0.118,0.112),smoothstep(2800.0,4000.0,lkHm));
+vec3 lkRockCol=mix(lkRockLo,lkRockHi,smoothstep(0.30,0.70,lkNLo.b+(lkNMid.g-0.5)*0.4));
 lkRockCol*=1.0+lkStrata*0.10*lkStrataMask;
-lkRockCol*=mix(0.88,1.12,lkRHi.g);
+lkRockCol*=mix(0.84,1.15,lkRHi.g);
 lkGround=mix(lkGround,lkRockCol,lkRock);
 ` +
-  // Snow: altitude band with a noisy snowline, the baked snow/glacier biomes, and slope shedding.
-  `float lkSnowLine=3500.0+(lkNLo.a-0.5)*900.0+(lkNMid.a-0.5)*380.0;
-float lkSnowRaw=max(smoothstep(lkSnowLine-140.0,lkSnowLine+280.0,lkHm),lkMask.g);
-float lkShed=1.0-smoothstep(0.24,0.46,lkSlope+(lkNHi.b-0.5)*0.14);
+  // Snow: altitude + multi-scale noise + realistic alpine slope shedding (1-ny ~0.03..0.12 = 14..28 deg)
+  // plus wind-scoured granite ribs so summit caps show jagged rock through snowdrifts.
+  `float lkSnowLine=3600.0+(lkNLo.a-0.5)*950.0+(lkNMid.a-0.5)*420.0+(lkNHi.r-0.5)*160.0-lkMask.g*220.0;
+float lkSnowRaw=smoothstep(lkSnowLine-180.0,lkSnowLine+340.0,lkHm);
+float lkShed=1.0-smoothstep(0.025,0.115,lkSlopeEff+(lkNMid.r-0.5)*0.05+(lkNHi.b-0.5)*0.035);
+lkShed*=(1.0-lkScour*0.95);
 ` +
-  // On steep faces snow survives on ledges and in patches (isotropic), not in fall-line strips.
-  `float lkLedge=smoothstep(0.35,0.85,sin(lkWp.y*1.6+(lkNMid.r-0.5)*6.0)*0.5+0.5)
-*smoothstep(0.40,0.70,lkNMid.g);
-` +
-  // Ledge/patch detail is sub-pixel past ~0.5 km of view distance: fade it to its mean there or
-  // it aliases into white speckle along the snow edge in the overview.
-  `float lkPatchNear=1.0-smoothstep(250.0,700.0,lkCamDist);
-lkLedge=mix(0.12,lkLedge,lkPatchNear);
-lkShed=mix(lkShed,max(lkShed,lkLedge*0.85),lkStretch);
-float lkSnow=smoothstep(0.30,0.62,lkSnowRaw*lkShed
-+(lkNHi.b-0.5)*mix(0.30,0.22,lkStretch)*mix(0.5,1.0,lkPatchNear)
-+(lkNMid.b-0.5)*0.45*lkStretch);
-vec3 lkSnowCol=vec3(0.70,0.73,0.78)
-*mix(0.92,1.05,lkNMid.b)
-*mix(0.92,1.02,lkNHi.r)
+  // On steep faces snow survives on sheltered ledges and couloirs, faded far away to prevent speckle.
+  `float lkLedge=smoothstep(0.38,0.86,sin(lkWp.y*1.6+(lkNMid.r-0.5)*6.0)*0.5+0.5)
+*smoothstep(0.45,0.75,lkNMid.g);
+float lkPatchNear=1.0-smoothstep(250.0,700.0,lkCamDist);
+lkLedge=mix(0.08,lkLedge,lkPatchNear);
+lkShed=mix(lkShed,max(lkShed,lkLedge*0.55),lkStretch);
+float lkSnow=smoothstep(0.28,0.62,lkSnowRaw*lkShed
++(lkNHi.b-0.5)*mix(0.24,0.16,lkStretch)*mix(0.5,1.0,lkPatchNear)
++(lkNMid.b-0.5)*0.32*lkStretch);
+vec3 lkSnowShade=mix(vec3(0.44,0.55,0.70),vec3(0.80,0.83,0.87),clamp(lkAo*0.72+lkNMid.g*0.28,0.0,1.0));
+vec3 lkSnowCol=lkSnowShade
+*mix(0.92,1.06,lkNMid.b)
+*mix(0.92,1.03,lkNHi.r)
 *mix(0.95,1.01,lkNVHi.a);
 lkGround=mix(lkGround,lkSnowCol,lkSnow);
 ` +
-  // Snow fills the baked rills: their AO / cast-shadow texels must not paint fall-line stripes.
-  `lkAo=mix(lkAo,0.92+0.08*lkNHi.r,lkSnow*0.75);
+  // Keep gentle snow-pocket relief readable without repainting fall-line stripes.
+  `lkAo=mix(lkAo,0.80+0.20*lkNHi.r,lkSnow*0.45);
 ` +
   // Close-range grain. Procedural only: the CC0 photo layers tile every ~12 units (~400 m),
   // so at this world scale their pebbles read as boulder-sized camouflage.
@@ -351,9 +357,10 @@ float lkSunVis=1.0;
 {
 vec4 rivMask = texture2D(uRiverMask, vMapUv);
 float riv=rivMask.r;
-if(riv>0.03){
-  lkRivWater=smoothstep(0.26,0.58,riv)*(1.0-lkSnow)*(1.0-smoothstep(0.14,0.28,lkGSlope));
-  lkRivBank=smoothstep(0.03,0.26,riv)*(1.0-lkRivWater)*(1.0-lkSnow);
+if(riv>0.03&&lkHm<3400.0){
+  float lkNoGlacier=1.0-smoothstep(2700.0,3400.0,lkHm);
+  lkRivWater=smoothstep(0.26,0.58,riv)*(1.0-lkSnow)*(1.0-smoothstep(0.04,0.11,lkGSlope))*lkNoGlacier;
+  lkRivBank=smoothstep(0.03,0.26,riv)*(1.0-lkRivWater)*(1.0-lkSnow)*lkNoGlacier;
   diffuseColor.rgb*=mix(1.0,0.48,lkRivBank);
   if(lkRivWater>0.01){
     vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
