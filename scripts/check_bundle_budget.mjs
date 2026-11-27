@@ -99,7 +99,8 @@ const CHUNK_BUDGET_KIB = {
  * sibling components statically import `Biome`/`FloraType`/`WORLD_GEN_VERSION` from `worldGen.ts`.
  * Raised 2006 -> 2060 KiB (2026-11-26, reason: 'prototype, WV2-6' — measured 2039.3 KiB; adds
  * lazy-loaded World v2 viewer codecs/SHA-256 loader & `fflate` zlib decompression in 3D routes;
- * `main` startup bundle stays unchanged at 273.7 KiB <= 320 KiB).
+ * `main` startup bundle stays unchanged at 273.7 KiB <= 320 KiB). Also accommodates the lazy
+ * `PerfOverlay.tsx` chunk merged from trunk `WV2-6-INSTR` (`#338`).
  */
 const TOTAL_BUDGET_KIB = 2060;
 

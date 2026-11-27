@@ -1,0 +1,134 @@
+{
+  "build": {
+    "binary_sha256": "5217be55851b1389afcb6d4078df6f1630c3ac335095cccb8cc5b39cfc661186",
+    "git_commit": "247abf42c8fffaf96a756342a60e1b5c2cab49cb",
+    "git_describe": "247abf4",
+    "git_dirty_paths": [
+      "artifacts/experiments/sel2-p2/confirmation/",
+      "artifacts/experiments/sel2-p2/smoke/"
+    ],
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "host": {
+    "arch": "x86_64",
+    "os": "windows"
+  },
+  "kind": "sel2p2-confirmation-provenance",
+  "manifests": {
+    "manifest_fingerprints_as_run": {
+      "scarce_drift": 744136517526112560,
+      "scarce_mut0": 5470178364124816479,
+      "selected": 7494779222623021622
+    },
+    "sha256_as_committed": {
+      "sel2p2-preregistration.json": "99c4b22534fe2fc1245b99d645e55015b6a6e4f7e534f3bddfd88002120752e2",
+      "sel2p2-scarce-drift.json": "e3551d55d627d2569d2d8804d6e0f38d6bbf8353dcd1f6be9068d7c8ea2668f9",
+      "sel2p2-scarce-mut0.json": "90f6c42238cd96eb54870cbab537cf41698a5297d20efa63eb7412bc4b36988e",
+      "sel2p2-selected.json": "3d858724b2fa6361288f5e1fdb75d13404dca76bce904d6387cc04ae18005f98"
+    }
+  },
+  "mode": "confirm",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "preregistration_id": "sel2-p2-food-scarcity-body-mass",
+  "preregistration_status": "FROZEN",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "registry_fingerprint": 1935740381389641332,
+  "seeds": {
+    "execution_order": [
+      900001,
+      901001,
+      902001,
+      903001,
+      904001,
+      905001,
+      906001,
+      907001,
+      908001,
+      909001,
+      910001,
+      911001,
+      912001,
+      913001,
+      914001,
+      915001,
+      916001,
+      917001,
+      918001,
+      919001,
+      920001,
+      921001,
+      922001,
+      923001,
+      924001,
+      925001,
+      926001,
+      927001,
+      928001,
+      929001,
+      930001,
+      931001,
+      932001,
+      933001,
+      934001,
+      935001,
+      936001,
+      937001,
+      938001,
+      939001,
+      940001,
+      941001,
+      942001,
+      943001,
+      944001,
+      945001,
+      946001,
+      947001
+    ],
+    "n_requested": 48,
+    "smoke_seed": 999931,
+    "total_runs_executed": 144
+  },
+  "smoke_reference": {
+    "gate_pass": true,
+    "git_commit": "247abf42c8fffaf96a756342a60e1b5c2cab49cb",
+    "host_arch": "x86_64",
+    "host_os": "windows",
+    "profile": "release",
+    "provenance_sha256": "3dc5fff72c909c1e5321fb15538f5adbcbbfd0d8a5b1271038ef2cf89060987d",
+    "smoke_dir": "artifacts/experiments/sel2-p2/smoke",
+    "smoke_report_sha256": "a5d8ada94854188c5fc89082778d1ccd41c1e87e8185e20a2b34a71363adaff9",
+    "world_identity_observed": {
+      "checksum": 3152323152,
+      "generator_version": 1,
+      "height": 256,
+      "seed": 1337,
+      "width": 256
+    }
+  },
+  "stop_reason": null,
+  "stopped_early": false,
+  "terrain_source": "generated",
+  "timing": {
+    "ended_utc": "2026-11-27T04:55:47Z",
+    "started_utc": "2026-11-27T04:55:46Z",
+    "wall_clock_seconds": 0.1027432
+  },
+  "world_artifact_prerun_check": {
+    "anima_world_artifact_unset": true,
+    "temp_artifact_absent": true,
+    "temp_artifact_filename": "anima_world_artifact.anmw",
+    "temp_artifact_path": "C:/Users/Admin/AppData/Local/Temp/anima_world_artifact.anmw"
+  },
+  "world_identity": {
+    "checksum": 3152323152,
+    "generator_version": 1,
+    "height": 256,
+    "seed": 1337,
+    "width": 256
+  },
+  "world_identity_all_runs_identical": true
+}
