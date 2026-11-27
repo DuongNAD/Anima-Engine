@@ -676,6 +676,8 @@ fn eval_multi_strat_and_envelope(
         * (5_380.0 * uplift1
             + 420.0 * env1 * sech2((z_r_m - 0.70 * extent_m) / 16_000.0)
             + 260.0 * crest1);
+    let shipped_uplift1 = uplift1;
+    let shipped_massif1_h = base_massif1_h;
     if cfg.uplift_roughness > 0.0 {
         let r = f64::from(cfg.uplift_roughness);
         let fault_fbm = fbm_4(
@@ -764,6 +766,11 @@ fn eval_multi_strat_and_envelope(
                             * lee_scale1
                             * flank_carve1))
                 .max(0.0);
+            let summit_t = ((shipped_massif1_h - 3_400.0) / 1_100.0).clamp(0.0, 1.0);
+            let summit_keep = 0.88 * summit_t * summit_t * (3.0 - 2.0 * summit_t);
+            uplift1 = uplift1 * (1.0 - summit_keep) + shipped_uplift1 * summit_keep;
+            base_massif1_h =
+                base_massif1_h * (1.0 - summit_keep) + shipped_massif1_h * summit_keep;
         } else {
             base_massif1_h = piedmont_gate1
                 * (5_380.0 * uplift1
