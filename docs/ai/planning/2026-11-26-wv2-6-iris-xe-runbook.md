@@ -71,10 +71,7 @@ To isolate the rendering change of `WV2-6` cleanly without conflating simulation
 > **Tile Pack Published (`v0.9.0-internal`, `QD-GATES-1127 (1)` / `FOCUS-2` step 3) & `A1` Acquisition Path:**
 > - **Tile pack status:** The single public World v2 tile pack is **now published** by the owner as GitHub pre-release [`v0.9.0-internal`](https://github.com/DuongNAD/Anima-Engine/releases/tag/v0.9.0-internal) (`publishedAt: 2026-11-27T04:48:13Z`, targeting `6c6b86c7c859aa03f55a346bf12deb6bdec815ec`) with one asset: `world_v2_1d313005_tiles.tar.gz` (`190,071,986` B, SHA-256 `4fdad1df3acd6ad32075365e754fbb56e5c511ff01ebaa47ae14d9267c7d7d0f`).
 > - **`B0` path (`.github/workflows/release-build.yml`):** Standard CI artifact path via GitHub Actions **`Release Build`** (`QD-REL09 G3`); trunk `release-build.yml` runs `npm run tauri:build` directly and needs no tiles.
-> - **`A1` path (pending `anima-case`'s `IRISXE-BUILDS` report):** Trunk `.github/workflows/release-build.yml` does not fetch World v2 tiles (`scripts/fetch_world_v2_tiles.mjs` and the `v0.9.0-internal` fetch step in `ci.yml` live on `#291`, not yet on trunk). For `A1` on `#291`:
->   - **Path A:** Add the verified `fetch_world_v2_tiles.mjs` step (fetching `v0.9.0-internal` with SHA-256 verification) to `#291`'s `.github/workflows/release-build.yml` so CI bundles the tiles into the `Release Build (Windows)` installer artifact.
->   - **Path B:** Build an internal unsigned Windows test installer directly from `#291`'s exact head commit with locally staged verified tiles (`QD-GATES-1125 (3)` / `QD-TRIAL-V3`, never published externally).
->   - **Current status:** Which path (`Path A` vs. `Path B`) applies for `A1` is **pending `test_runs/anima-case_IRISXE-BUILDS.md`** (`START_2026-11-27_NIGHT.md` `anima-case N2`). Record the chosen path and tile evidence verbatim in §6.1 before running.
+> - **`A1` path (Path A confirmed by `test_runs/anima-case_IRISXE-BUILDS.md`):** `#291` at `9c208e45` adds `fetch_world_v2_tiles.mjs` to `.github/workflows/release-build.yml`, bundling the verified `v0.9.0-internal` World v2 tiles cleanly into the CI Windows installer (`Anima-Engine_0.1.0_x64-setup.exe` is `~221 MB` / `220,676,826` B for `A1`, vs. `~29 MB` / `28,771,406` B for `B0` at `88b595a3`). Verified `release-build.yml` CI runs: **`46011345936`** (`B0`, `88b595a3`) and **`46011422941`** (`A1`, `9c208e45`). Record those run IDs, commit SHAs, and installer hashes in §6.1.
 
 ### 2.2 Getting Windows Installers from CI (`.github/workflows/release-build.yml`)
 
@@ -105,7 +102,7 @@ Per `QD-REL09 G3` (`docs/how-to/AGENT_WORKFLOW.md:401-402`) and [`docs/how-to/IN
    ```
    Alternatively, open **GitHub -> Actions -> Release Build -> select run -> Artifacts -> `anima-engine-windows-installers`** while signed in to GitHub.
 4. Record the SHA-256 of both `.exe` / `.msi` installers (`Get-FileHash <installer> -Algorithm SHA256`).
-5. **Installing unsigned builds cleanly:** Because `0.9` pre-release installers are unsigned (`QD-REL09 G2`), Microsoft Defender SmartScreen shows **Windows protected your PC** -> click **More info** -> **Run anyway** (`docs/how-to/INSTALL.md` §3). Both `B0` and `A1` share `identifier: "com.anima.engine"` (`src-tauri/tauri.conf.json:5`), so uninstall `B0` via Windows **Installed apps** (or run the `A1` installer cleanly after finishing `B0`, or extract/install sequentially between interleaved passes) and verify the installed `Anima-Engine.exe` timestamp/hash before each test run.
+5. **Installing unsigned builds cleanly:** Because `0.9` pre-release installers are unsigned (`QD-REL09 G2`), Microsoft Defender SmartScreen shows **Windows protected your PC** -> click **More info** -> **Run anyway** (`docs/how-to/INSTALL.md` §3). Both `B0` and `A1` share `identifier: "com.anima.engine"` (`src-tauri/tauri.conf.json:5`), and the NSIS installer's directory page lets the owner choose any drive/folder (e.g., `E:\Anima-Engine` or `D:\Anima-Engine`) — **install both builds into the same folder**, uninstalling cleanly between runs. Note that the installed `anima-engine.exe` SHA-256 differs from the MSI-unpacked binary while its byte size is identical; **identify the installed build by byte size**: `B0` = **`76,269,568` B**, `A1` = **`267,457,536` B** (`~267 MB`).
 
 ---
 
@@ -114,23 +111,28 @@ Per `QD-REL09 G3` (`docs/how-to/AGENT_WORKFLOW.md:401-402`) and [`docs/how-to/IN
 ### 3.1 Pre-Flight on the Dell (`AGENT_RULES.md §5`)
 
 Before launching either build:
-1. Plug the Dell Vostro 3530 into **AC mains power** and set a fixed Windows power mode (record it in §6).
-2. Confirm **zero** Rust/Cargo activity twice, 60 s apart:
+1. **Power mode (`MSG_20261127_153800`):** Plug the Dell Vostro 3530 into **AC mains power** and check the Windows power mode. `Best Power Efficiency` held this Dell's CPU at about `1.7 GHz`; use **`Balanced`** (AC overlay `00000000-0000-0000-0000-000000000000`) and record it in §6.
+2. **Dual GPU (`Intel Iris Xe` + `NVIDIA GeForce MX550`):** The Dell Vostro 3530 carries two GPUs. Before recording:
+   - Set `anima-engine.exe` to **Power saving** in **Settings → System → Display → Graphics**.
+   - Check **Task Manager's GPU engine** column after launch to confirm Intel Iris Xe (not MX550) handles the 3D workload.
+   - Note that the `#338` `PerfReportJson` does **not** record the GPU adapter name (`perfRecorder.ts:54-78`).
+3. Confirm **zero** Rust/Cargo activity twice, 60 s apart:
    ```powershell
    tasklist | findstr /i "cargo rustc"
    ```
    *(Must print nothing.)*
-3. Confirm at least **5 GB** free physical RAM and close browsers, IDEs, screen recorders, and background updaters:
+4. **Confirm zero lingering `anima-engine` processes:** Closing the window does not terminate `anima-engine.exe` (`anima-case` holds the `APP-EXIT` card). Before each run, verify zero `anima-engine` processes are running (`Get-Process anima-engine -ErrorAction SilentlyContinue` or Task Manager).
+5. **Confirm `>= 5 GB` free RAM and close heavy apps (not optional):** Close **Antigravity**, **Chrome**, and **Task Manager** (once GPU engine verification completes), plus screen recorders and background updaters, before recording (`3.96–4.16 GiB` free RAM was measured with Antigravity/Chrome open, below the `5 GB` floor; an earlier `B0` diagnostic trial recorded median `≈42.9 FPS`, `p5 ≈22.0 FPS`, and `46` draw calls at `Low` with `52%` RAM vs. `~7–8 FPS` at `94%` RAM with GPU `5%` busy):
    ```powershell
    powershell -c "$os=Get-CimInstance Win32_OperatingSystem; [math]::Round($os.FreePhysicalMemory/1MB, 2)"
    ```
-4. Keep Windows display resolution and scaling fixed across all runs (e.g., `1920x1080` at `100%` or `125%`, and keep the app window at default `1280x720` per `src-tauri/tauri.conf.json:16-17` or maximized — **identical** for `B0` and `A1`).
+6. Keep Windows display resolution and scaling fixed across all runs (e.g., `1920x1080` at `100%` or `125%`, and keep the app window at default `1280x720` per `src-tauri/tauri.conf.json:16-17` or maximized — **identical** for `B0` and `A1`).
 
 ### 3.2 Step 1 — Set `1,000` Creatures (Environment Variable, No UI Control)
 
 **UI check:** Neither [`src/App.tsx`](../../../src/App.tsx), [`src/components/SimulationControls.tsx`](../../../src/components/SimulationControls.tsx), nor [`src/components/ExperimentWorldControl.tsx`](../../../src/components/ExperimentWorldControl.tsx) provides a UI field to choose founding population count. Without an override, genesis spawns `DEFAULT_FOUNDING_POPULATION = 10` agents on `FoundingLayout::Line` (`src-tauri/src/core/resources.rs:1340,1400-1406`), and `ExperimentWorldControl` manifests spawn `100` (`QD-SCALE-TRIAL`).
 
-Instead, the desktop app reads founding population from process environment variables at startup. Launch the installed `Anima-Engine.exe` from **the same PowerShell session** where these variables are set:
+Instead, the desktop app reads founding population from process environment variables at startup. Launch the installed `Anima-Engine.exe` from **the same PowerShell session** where these variables are set (if using a helper launcher `.ps1` script such as `C:\irisxe\launch_irisxe.ps1`, note that Windows blocks unsigned scripts unless invoked with `powershell -ExecutionPolicy Bypass -File <script.ps1>`, and pass `-ExePath <path>` whenever the chosen install folder is not on the script's default search list):
 
 ```powershell
 # 1. Mandatory: ignore any existing saves/autosave.json (which may hold 10 agents)
@@ -200,7 +202,7 @@ Packaged Windows release installers built from trunk `>= e10c0efc` (`#338`) **no
 Merged files on trunk (`#338`): [`src/components/Landscape/PerfOverlay.tsx`](../../../src/components/Landscape/PerfOverlay.tsx), [`src/components/Landscape/utils/perfRecorder.ts`](../../../src/components/Landscape/utils/perfRecorder.ts), [`src/components/Landscape/WorldShowcase.tsx`](../../../src/components/Landscape/WorldShowcase.tsx), [`scripts/check_bundle_budget.mjs`](../../../scripts/check_bundle_budget.mjs) (`TOTAL_BUDGET_KIB = 2022`, owner `"Approve option 2"`), and [`tests/frontend/perfRecorder.test.ts`](../../../tests/frontend/perfRecorder.test.ts).
 
 1. **Open overlay (`capture === null` only):** Switch quality to **`Thấp`** (`Low`), complete the **`30 s` warm-up** (§5 `IX-D3`), then press **`F3`** (or click the HUD **`Perf`** button, `data-testid="perf-toggle-btn"`). `[data-testid="perf-overlay"]` renders heading **`Perf Telemetry (F3)`**.
-2. **Record `60 s`:** Click **`Record 60s`** (`data-testid="perf-record-60s-btn"`). During capture the button shows `Recording <sec>/60s…` and zero heap allocations occur inside `PerfRecorder.recordFrame()`. At `PERF_RECORD_DURATION_MS = 60_000` (`60 s`), the JSON report is copied to the clipboard (`navigator.clipboard.writeText`) and displayed in read-only `<textarea data-testid="perf-json-output">`. Press **`F3`** or click **`Close`** to hide the overlay (`LazyPerfOverlay` unmounts cleanly).
+2. **Record `60 s`:** Click **`Record 60s`** (`data-testid="perf-record-60s-btn"`). During capture the button shows `Recording <sec>/60s…` and zero heap allocations occur inside `PerfRecorder.recordFrame()`. **There is no "Copy JSON" button** (`PerfOverlay.tsx:220-250`): at `PERF_RECORD_DURATION_MS = 60_000` (`60 s`), the JSON report is copied automatically to the clipboard (`navigator.clipboard.writeText`) and shown in the read-only `<textarea data-testid="perf-json-output">` (`PerfOverlay.tsx:247-250`). Press **`F3`** or click **`Close`** to hide the overlay (`LazyPerfOverlay` unmounts cleanly).
 3. **Exported `PerfReportJson` fields (`perfRecorder.ts:54-78`, `buildPerfReportJson` `perfRecorder.ts:419`):**
    - `schema_version` (`1`), `timestamp_iso`, `frames`, `duration_ms`
    - `median_fps` (`1000 / p50`), `p5_fps` (`1000 / p95`), `p1_fps` (`1000 / p99`), `p50_frame_ms`, `p95_frame_ms`, `p99_frame_ms`, `worst_frame_ms`
@@ -228,53 +230,59 @@ Merged files on trunk (`#338`): [`src/components/Landscape/PerfOverlay.tsx`](../
 
 ## 6. Owner Result Table Template
 
-Copy this section into the gate report (or `test_runs/owner_irisxe_wv2_6_result.md`) and fill in measured values verbatim.
+Gate execution evidence archived in Hub report `test_runs/anima-dell_IRISXE-RUN/SUMMARY.md` (`MSG_20261127_163538`) and owner decision recorded in `MSG_20261127_165500`.
 
 ### 6.1 Build Pair & Host Provenance
 
 | Field | Before (`B0`) | After (`A1`) |
 |---|---|---|
-| Git commit SHA (`40`-char) | | |
-| Source (CI Workflow Run URL + ID, or `QD-TRIAL-V3` `anima-case` bundle) | | |
-| Installer filename & SHA-256 | | |
-| World artifact (`sim_256.anmw3` SHA-256 / tile pack version) | | |
-| Machine / OS / GPU Driver | Dell Vostro 3530 / Win `____` / Intel Iris Xe `____` | *(same)* |
-| Power & RAM at start (`AC?`, power mode, free RAM GB) | | |
-| Window size / Windows DPI scaling / `quality` clicked | `____` / `____%` / `Thấp` (`low`) | *(same)* |
-| Population verified (`1,000` live agents, mortality off) | `Yes / No` | `Yes / No` |
+| Git commit SHA (`40`-char) | `88b595a39a6d8d180c307eeb8dbf32730c113ff4` | `9c208e45eb2ae8382a94e36a050c3bdb031c0ac1` |
+| Source (CI Workflow Run URL + ID, or `QD-TRIAL-V3` `anima-case` bundle) | [Run `46011345936`](https://github.com/DuongNAD/Anima-Engine/actions/runs/46011345936) (job `140547355199`, `Path A`) | [Run `46011422941`](https://github.com/DuongNAD/Anima-Engine/actions/runs/46011422941) (job `140547619052`, `Path A`) |
+| Installer filename & SHA-256 | `Anima-Engine_0.1.0_x64-setup.exe` (`28,771,406` B, `fc4ff24e…`; installed exe `76,269,568` B) | `Anima-Engine_0.1.0_x64-setup.exe` (`220,676,826` B, `97fb2b95…`; installed exe `267,457,536` B) |
+| World artifact (`sim_256.anmw3` SHA-256 / tile pack version) | `sim_256.anmw3` `1d3130054d6939425003817fccf78b284e34632b64b7443e5d6b380e60203e31` (v1 viewer terrain) | `v0.9.0-internal` (`3,819` embedded `/world-v2/*` entries + `sim_256.anmw3` `1d313005…`) |
+| Machine / OS / GPU Driver | Dell Vostro 15 3530 / Windows 11 Home 10.0.26300 / Intel(R) Iris(R) Xe Graphics `32.0.101.7088` (+ NVIDIA MX550 `32.0.16.2101`, `0%` 3D util) | *(same)* |
+| Power & RAM at start (`AC?`, power mode, free RAM GB) | AC mains (`BatteryStatus=2`, `100%`), AC overlay `Balanced` (`00000000-0000-0000-0000-000000000000`, changed from `Best Power Efficiency`; owner kept `Balanced`), `8.85 GiB` free RAM at sweep start (`3.27–4.65 GiB` during capture) | *(same)* |
+| Window size / Windows DPI scaling / `quality` clicked | Viewport `1234.4×561.6` CSS px @ DPR `1.25` (`1920×1080`, `125%`) / `Thấp` (`low`) | *(same)* |
+| Population verified (`1,000` live agents, mortality off) | `Yes` (`1,008` agents; mortality/reproduction unset) | `Yes` (`1,007–1,011` agents; mortality/reproduction unset) |
 
 ### 6.2 Interleaved Run Log (`Low` Quality, `1,000` Creatures, `30 s` Warm-up + `60 s` Measure)
 
 | Run ID | Build | Pose | Median FPS | `p5` FPS | `p1` FPS | P50 Frame (ms) | P95 Frame (ms) | Peak Draw Calls (`<= 60`) | Total Triangles | Backend `full_tick` p50 / p95 (ms) | Notes / Anomalies |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|
-| `B0-1` | Before | | | | | | | | | | |
-| `A1-1` | After | | | | | | | | | | |
-| `B0-2` | Before | | | | | | | | | | |
-| `A1-2` | After | | | | | | | | | | |
-| `B0-3` | Before | | | | | | | | | | |
-| `A1-3` | After | | | | | | | | | | |
-| **Summary** | **Before (med-of-3)** | | | | | | | **Max:** | | | |
-| **Summary** | **After (med-of-3)** | | | | | | | **Max:** | | | |
-| **Delta** | **`After - Before`** | | | | | | | | | | |
+| `B0-1` | Before | `spawn` (`orbit`) | `21.51` | `7.81` | `7.09` | `46.5` | `128.0` | `20` | `471,482` | `not exported` | Warm-up `32.3 s`; Iris Xe `21.99%/36.13%`, MX550 `0%`; `msedgewebview2` `4,353.6 MB`; `ORPHAN` at `20 s` (`124.12 s` CPU) |
+| `A1-1` | After | `spawn` (`orbit`) | `22.47` | `7.89` | `7.21` | `44.5` | `126.8` | `27` | `778,476` | `not exported` | Warm-up `38.8 s`; Iris Xe `31.43%/52.35%`, MX550 `0%`; `Pages/sec=743.2` end; `ORPHAN` at `20 s` (`144.16 s` CPU); >20% outlier vs `A1-2`/`A1-3` |
+| `B0-2` | Before | `spawn` (`orbit`) | `24.04` | `7.96` | `7.16` | `41.6` | `125.7` | `20` | `471,482` | `not exported` | Warm-up `32.2 s`; Iris Xe `21.53%/33.8%`, MX550 `0%`; `msedgewebview2` `4,379.4 MB`; `ORPHAN` at `20 s` (`128.58 s` CPU) |
+| `A1-2` | After | `spawn` (`orbit`) | `64.94` | `24.57` | `8.45` | `15.4` | `40.7` | `27` | `778,622` | `not exported` | Warm-up `37.6 s`; Iris Xe `65.26%/91.48%`, MX550 `0%`; `msedgewebview2` `4,647.4 MB`; `ORPHAN` at `20 s` (`162.72 s` CPU) |
+| `B0-3` | Before | `spawn` (`orbit`) | `9.22` | `7.50` | `6.51` | `108.5` | `133.3` | `20` | `471,482` | `not exported` | Warm-up `32.3 s`; Iris Xe `19.8%/26.68%`, MX550 `0%`; `msedgewebview2` `4,437.6 MB`; `ORPHAN` at `20 s` (`141.58 s` CPU); >20% outlier vs `B0-1`/`B0-2` |
+| `A1-3` | After | `spawn` (`orbit`) | `72.46` | `32.05` | `9.35` | `13.8` | `31.2` | `27` | `779,322` | `not exported` | Warm-up `71.2 s` (`30 s` sleep + `39.6 s` CDP attach/click under load); Iris Xe `60.33%/72.99%`, MX550 `0%`; `ORPHAN` at `20 s` (`300.69 s` CPU) |
+| **Summary** | **Before (med-of-3)** | `spawn` | **`21.51`** | **`7.81`** | **`7.09`** | **`46.5`** | **`128.0`** | **Max: `20`** | `471,482` | `not exported` | All `6/6` valid; `100%` Iris Xe |
+| **Summary** | **After (med-of-3)** | `spawn` | **`64.94`** | **`24.57`** | **`8.45`** | **`15.4`** | **`40.7`** | **Max: `27`** | `778,622` | `not exported` | `A1` median `+43.43`, `p5` `+16.76` |
+| **Delta** | **`After - Before`** | `spawn` | **`+43.43`** | **`+16.76`** | **`+1.36`** | **`-31.1`** | **`-87.3`** | **`+7`** (`<= 60`) | `+307,140` | `—` | `IX-D7` Median/p5/Draw calls **PASS** |
 
 ### 6.3 Per-System Breakdown vs. `§3b` (`33.3 ms` Iris Xe `Low` Ceiling)
 
-*(If WebGL2 GPU timer queries are unavailable in WebView2/ANGLE, record `"unavailable"` in the GPU rows rather than estimating, and fill the Reserve/CPU row from `ANIMA_TICK_CAPTURE_OUT`.)*
+*(WebGL2 `gpu_timers` probed `'available'`, while `buildPerfReportJson` always emits `per_system_ms: 'unavailable'` — GPU rows recorded `"unavailable"` rather than estimating; `%APPDATA%\com.anima.engine\captures` contained no `ANIMA_TICK_CAPTURE_OUT` file after the `20 s` close timeout.)*
 
 | System (`§3b`) | `§3b` Low Budget (ms) | Before (ms) | After (ms) | Delta (ms) | Measurement Source | Status (`<= Budget` / `Over` / `Unavailable`) |
 |---|---:|---:|---:|---:|---|---|
-| Terrain | `6.0` | | | | | |
-| Vegetation | `6.0` | | | | | |
-| Water | `3.0` | | | | | |
-| Sky & Atmosphere | `1.5` | | | | | |
-| Creatures (`1,000`) | `5.0` | | | | | |
-| Post & Upscale | `4.0` | | | | | |
-| Reserve (CPU / Sim / UI) | `7.8` | | | | `tick_capture` (`full_tick` p50/p95) + UI | |
-| **Total Frame** | **`33.3`** | | | | | |
+| Terrain | `6.0` | `unavailable` | `unavailable` | `unavailable` | `PerfReportJson.per_system_ms` | `Unavailable` |
+| Vegetation | `6.0` | `unavailable` | `unavailable` | `unavailable` | `PerfReportJson.per_system_ms` | `Unavailable` |
+| Water | `3.0` | `unavailable` | `unavailable` | `unavailable` | `PerfReportJson.per_system_ms` | `Unavailable` |
+| Sky & Atmosphere | `1.5` | `unavailable` | `unavailable` | `unavailable` | `PerfReportJson.per_system_ms` | `Unavailable` |
+| Creatures (`1,000`) | `5.0` | `unavailable` | `unavailable` | `unavailable` | `PerfReportJson.per_system_ms` | `Unavailable` |
+| Post & Upscale | `4.0` | `unavailable` | `unavailable` | `unavailable` | `PerfReportJson.per_system_ms` | `Unavailable` |
+| Reserve (CPU / Sim / UI) | `7.8` | `not exported` | `not exported` | `—` | `tick_capture` (`captures/` absent after `20 s` exit wait) | `Unavailable` |
+| **Total Frame** | **`33.3`** | **`46.5`** (P50; P95 `128.0`) | **`15.4`** (P50; P95 `40.7`) | **`-31.1`** (P50; P95 `-87.3`) | `PerfOverlay.tsx` / `RESULTS_*.json` | `P50 <= Budget` (`P95 = 40.7`, `p5 = 24.57 < 25` flagged) |
 
 ### 6.4 Gate Verdict & Owner Decisions
 
 - **Proposed Protocol (`IX-D1..IX-D7`):** `[x] Approved as written` / `[ ] Approved with changes: ____` (owner, 2026-11-27, `QD-GATES-1127 (3)` in `AGENT_WORKFLOW.md`)
 - **Instrumentation Choice:** `[x] Authorize WV2-6-INSTR frontend card` / `[ ] Also approve PresentMon (NR-D7)` (owner, 2026-11-27, `QD-GATES-1127 (3)`: `PresentMon` not approved)
-- **Final `WV2-6` Iris Xe Gate Result:** `[ ] PASS` / `[ ] FAIL` / `[ ] BLOCKED-ON-INSTRUMENTATION`
-- **Owner / Operator Notes:** `____`
+- **Final `WV2-6` Iris Xe Gate Result:** `[x] PASS` — **`PASS with flags (owner, 2026-11-27, "Chấp nhận ĐẠT")`** / `[ ] FAIL` / `[ ] BLOCKED-ON-INSTRUMENTATION`
+- **Owner / Operator Notes (Recorded Flags; `MSG_20261127_165500`):**
+  1. `A1` `p5` FPS is `24.57`, below the `25.0 FPS` (`NR-D1`) floor.
+  2. Every run deviated more than `20%` from its build's other runs (`B0`: `21.51 / 24.04 / 9.22`; `A1`: `22.47 / 64.94 / 72.46`).
+  3. Antigravity and Task Manager were open during the automated runs.
+  4. One `msedgewebview2` process grew to `4.35–4.65 GB` (`anima-mac` holds the `WEBVIEW-MEM` card).
+  5. `anima-engine.exe` did not exit within `20 s` of `CloseMainWindow` (`anima-case` holds the `APP-EXIT` card).
+  - *Note:* Merging `#291` remains a separate owner decision (`DECISIONS-1127C` item `(5)`, `#341`).
