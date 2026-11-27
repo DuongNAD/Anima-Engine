@@ -355,18 +355,18 @@ diffuseColor.rgb=lkGround;
 float lkAoInd=clamp(lkAo,0.35,1.0);
 float lkSunVis=1.0;
 {
-vec4 rivMask = texture2D(uRiverMask, vMapUv);
-float riv=rivMask.r;
-if(riv>0.06&&lkHm<3400.0){
+vec4 rivMask=texture2D(uRiverMask,vMapUv);
+float rivSdf=rivMask.r*255.0-80.0;
+rivSdf+=(lkNHi.r-0.5)*5.0*(1.0-smoothstep(250.0,900.0,lkCamDist));
+if(rivSdf<12.0&&lkHm<3400.0){
   float lkNoGlacier=1.0-smoothstep(2700.0,3400.0,lkHm);
   float lkRivFar=smoothstep(85.0,260.0,lkCamDist);
-  float lkRivGrassKeep=mix(1.0-smoothstep(0.20,0.55,lkGrassCov),1.0,lkRivFar);
-  float lkBankGrassKeep=mix(1.0-smoothstep(0.30,0.72,lkGrassCov),1.0,lkRivFar);
-  float lkRivLo=mix(0.56,0.42,lkRivFar);
-  float lkRivHi=mix(0.86,0.72,lkRivFar);
-  lkRivWater=smoothstep(lkRivLo,lkRivHi,riv)*(1.0-lkSnow)*(1.0-smoothstep(0.04,0.11,lkGSlope))*lkNoGlacier*lkRivGrassKeep;
-  lkRivBank=smoothstep(0.10,lkRivLo,riv)*(1.0-lkRivWater)*(1.0-lkSnow)*lkNoGlacier*lkBankGrassKeep;
-  diffuseColor.rgb*=mix(1.0,0.48,lkRivBank);
+  float lkRivGrassKeep=mix(1.0-smoothstep(0.25,0.60,lkGrassCov),1.0,lkRivFar);
+  float lkRivAllow=(1.0-lkSnow)*(1.0-smoothstep(0.04,0.10,lkGSlope))*(1.0-smoothstep(0.14,0.24,lkSlope))*lkNoGlacier*lkRivGrassKeep;
+  float lkRivAA=max(1.6,fwidth(rivSdf)*1.25);
+  lkRivWater=(1.0-smoothstep(-lkRivAA,lkRivAA,rivSdf))*lkRivAllow;
+  lkRivBank=smoothstep(-0.8,1.2,rivSdf)*(1.0-smoothstep(2.0,6.5,rivSdf))*lkRivAllow;
+  diffuseColor.rgb*=mix(1.0,0.72,lkRivBank);
   if(lkRivWater>0.01){
     vec2 rawFlow=(rivMask.gb*255.0-128.0)/127.0;
     float flowLen=length(rawFlow);
