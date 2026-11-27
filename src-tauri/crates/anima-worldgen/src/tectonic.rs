@@ -592,7 +592,9 @@ fn eval_multi_strat_and_envelope(
     let cliff_arc_inland = if f_d > 0.0 {
         let v_cliff_w = v_rot + 0.025 * fbm_broad;
         let dv_ci = (v_cliff_w - 0.72) / 0.145;
-        libm::exp(-(dv_ci * dv_ci))
+        let smooth_ci = libm::exp(-(dv_ci * dv_ci));
+        let shore_keep = 0.55 * (1.0 - ((d_coast_m - 1_500.0) / 3_500.0).clamp(0.0, 1.0));
+        smooth_ci.max(cliff_arc * shore_keep)
     } else {
         cliff_arc
     };
@@ -693,13 +695,15 @@ fn eval_multi_strat_and_envelope(
             v_rot * ridge_freq * freq_scale,
         );
         let d_fault1 = d_ridge1_m + (2_600.0 * r) * fault_fbm + 1_150.0 * spur_wave * flank_w1;
+        let lee_damp1 = 1.0 / (1.0 + libm::exp((d_fault1 - 500.0) / 1_600.0));
+        let lee_scale1 = 0.20 + 0.80 * lee_damp1;
         let sub_ridge = if f_d > 0.0 {
             let sr_warp = fbm_4(
                 p.seed_u64 ^ 0x5B21_1111_2222_3333,
                 u_rot * 3.8 * freq_scale,
                 v_rot * 4.2 * freq_scale,
             );
-            sech2((d_fault1 - 4_600.0 * sr_warp) / 2_800.0) * env1
+            sech2((d_fault1 + 3_400.0 * sr_warp.abs()) / 2_800.0) * env1 * lee_damp1
         } else {
             sech2((d_fault1 - 5_200.0 * libm::sin(v_rot * TAU * 4.5 + p.phase_z)) / 2_800.0) * env1
         };
@@ -710,7 +714,7 @@ fn eval_multi_strat_and_envelope(
                     (u_rot * 0.78 + v_rot * 0.62) * 5.8 * freq_scale + 0.45 * fault_fbm,
                     (-u_rot * 0.62 + v_rot * 0.78) * 5.8 * freq_scale,
                 ));
-            cr_n * flank_w1
+            cr_n * flank_w1 * lee_scale1
         } else {
             let ob_coord = (d_ridge1_m * 0.707 + (z_r_m - 0.70 * extent_m) * 0.707) / 4_400.0;
             (0.5 + 0.5 * libm::sin(ob_coord + 2.4 * fault_fbm)) * flank_w1
@@ -724,7 +728,7 @@ fn eval_multi_strat_and_envelope(
         let block_term1 = if f_d > 0.0 {
             let summit_core1 = sech2(d_fault1 / 3_400.0) * env1;
             let b = block_gain * r * block_fbm;
-            b.max(-0.14 * summit_core1 - 0.85 * (1.0 - summit_core1))
+            b.max(-0.14 * summit_core1 - 0.85 * (1.0 - summit_core1)) * lee_scale1
         } else {
             block_gain * r * block_fbm
         };
@@ -757,6 +761,7 @@ fn eval_multi_strat_and_envelope(
                             * ridge_noise
                             * env1
                             * (0.25 + 0.75 * sech2(d_fault1 / 6_200.0))
+                            * lee_scale1
                             * flank_carve1))
                 .max(0.0);
         } else {
@@ -835,7 +840,10 @@ fn eval_multi_strat_and_envelope(
                 u_rot * 3.8 * freq_scale,
                 v_rot * 4.2 * freq_scale,
             );
-            let sub_ridge2 = sech2((d_fault2 - 4_000.0 * sr_warp2) / 2_600.0) * env2;
+            let lee_damp2 = 1.0 / (1.0 + libm::exp((d_fault2 - 500.0) / 1_600.0));
+            let lee_scale2 = 0.20 + 0.80 * lee_damp2;
+            let sub_ridge2 =
+                sech2((d_fault2 + 3_000.0 * sr_warp2.abs()) / 2_600.0) * env2 * lee_damp2;
             let cross_rib2 =
                 (1.0 - libm::fabs(fbm_4(
                     p.seed_u64 ^ 0xC205_6666_7777_8888,
@@ -854,14 +862,20 @@ fn eval_multi_strat_and_envelope(
                 * (0.05 + 0.95 * env2)
                 * (1.0
                     + 0.18 * fbm_broad.max(-0.15)
-                    + 0.32 * r * block_fbm2
-                    + 0.30 * r * cross_rib2)
+                    + 0.32 * r * block_fbm2 * lee_scale2
+                    + 0.30 * r * cross_rib2 * lee_scale2)
                     .max(0.20)
                 * flank_carve2)
                 .max(0.0);
             massif2_h = (3_150.0 * uplift2
                 + piedmont_gate2
-                    * (300.0 * r * block_fbm2 * env2 * sech2(d_fault2 / 4_500.0) * flank_carve2))
+                    * (300.0
+                        * r
+                        * block_fbm2
+                        * env2
+                        * sech2(d_fault2 / 4_500.0)
+                        * lee_scale2
+                        * flank_carve2))
                 .max(0.0);
         } else {
             uplift2 = (piedmont_gate2
@@ -885,7 +899,7 @@ fn eval_multi_strat_and_envelope(
         let fh_gate_m = 10_500.0 - 7_500.0 * cliff_arc_inland;
         let fh_t = ((smooth_d_coast_m - fh_gate_m) / 5_500.0).clamp(0.0, 1.0);
         let fh_gate = fh_t * fh_t * (3.0 - 2.0 * fh_t) * (1.0 - 0.55 * cliff_arc_inland);
-        let east_decay = sech2(((smooth_d_coast_m - 26_000.0).max(0.0)) / 20_000.0);
+        let east_decay = 1.0 / (1.0 + libm::exp((smooth_d_coast_m - 21_500.0) / 2_600.0));
         let ob_a = (u_rot * 0.82 + v_rot * 0.57) * 7.5 * freq_scale;
         let ob_b = (-u_rot * 0.57 + v_rot * 0.82) * 6.5 * freq_scale;
         let warp_f = fbm_4(p.seed_u64 ^ 0xF007_1111_2222_3333, ob_a, ob_b);
@@ -1147,30 +1161,16 @@ fn eval_cell_multi_raw(u: f64, v: f64, p: &TectonicParams, cfg: &WorldV2Config) 
             u * 7.5 * freq_scale,
             v * 7.5 * freq_scale,
         );
-        plateau_surface += p_d * (240.0 + 180.0 * cuesta_undul - 340.0 * canyon_trough);
+        plateau_surface +=
+            p_d * (140.0 + 360.0 * (plat_u_c - u) + 85.0 * cuesta_undul - 115.0 * canyon_trough);
     }
 
     let detail_gate = ((d_coast_m - 2_000.0) / 3_000.0).clamp(0.0, 1.0);
     let detail_amp = 20.0 + 75.0 * (massif_h / 2_000.0).clamp(0.0, 1.0);
     let base_surface = shelf_and_margin + massif_h;
-    let eastern_pediment = if cfg.foothill_dissection > 0.0 && d_coast_m > 18_000.0 {
-        let f_d = f64::from(cfg.foothill_dissection);
-        let e_t = ((d_coast_m - 18_000.0) / 8_000.0).clamp(0.0, 1.0);
-        let e_gate = e_t * e_t * (3.0 - 2.0 * e_t);
-        let e_ridge = 1.0
-            - libm::fabs(fbm_4(
-                p.seed_u64 ^ 0xEA57_1122_3344_5566,
-                (u * 0.85 - v * 0.52) * 6.5 * freq_scale,
-                (u * 0.52 + v * 0.85) * 6.5 * freq_scale,
-            ));
-        210.0 * f_d * e_gate * e_ridge * (1.0 - plateau_blend)
-    } else {
-        0.0
-    };
     let pre_basin_h = (1.0 - plateau_blend) * base_surface
         + plateau_blend * plateau_surface
         + volcano_h
-        + eastern_pediment
         + detail_amp
             * fbm_detail
             * detail_gate

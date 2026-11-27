@@ -13,18 +13,18 @@ volcano_relief_m = 3100.0
 caprock_min_m = 450.0
 caprock_max_m = 1100.0
 max_erodibility_contrast = 8.0
-fluvial_k_mult = 1.85
+fluvial_k_mult = 2.40
 coast_frac_amp = 0.058
-coast_cliff_share = 0.20
+coast_cliff_share = 0.22
 basin_amp = 1.45
 mfd_p = 1.90
 storm_runoff = 0.12
 
-# WV2-SHAPE-EXP M1 opt-in structural & erosion overrides (`m1r3_c_clean_fast`)
-uplift_roughness = 0.55
-foothill_dissection = 1.10
-plateau_dissection = 1.00
-fluvial_m = 0.48
-fine_steps_mult = 1.25
-hillslope_d_mult = 1.35
-init_jitter_m = 4.0
+# WV2-SHAPE-EXP M2 opt-in structural & erosion overrides (`m2g`)
+uplift_roughness = 0.48
+foothill_dissection = 0.95
+plateau_dissection = 0.85
+fluvial_m = 0.45
+fine_steps_mult = 1.0
+hillslope_d_mult = 1.12
+init_jitter_m = 0.0
