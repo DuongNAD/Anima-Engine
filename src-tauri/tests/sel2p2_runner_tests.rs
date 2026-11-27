@@ -118,6 +118,7 @@ fn manifest_template(
         observable_ids,
         exotic_interventions: Vec::new(),
         observer: ObserverPolicy::Absent,
+        island: None,
     }
 }
 

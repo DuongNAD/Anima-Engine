@@ -2701,6 +2701,7 @@ fn validate_smoke_dir_for_confirm(dir: &Path) -> Result<SmokeVerification, Strin
             height: wid_obj["height"].as_u64().ok_or("smoke wid height")? as u32,
             checksum: wid_obj["checksum"].as_u64().ok_or("smoke wid checksum")? as u32,
             sim_world_sha256,
+            genesis_phase: None,
         })
     } else {
         None
