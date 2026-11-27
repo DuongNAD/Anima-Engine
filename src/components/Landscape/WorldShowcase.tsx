@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import WorldTerrain from './WorldTerrain';
@@ -55,6 +55,7 @@ import {
   type QualitySelection,
   type QualityTier,
 } from './utils/qualityTiers';
+import type { PerfCanvasBridge } from './PerfOverlay';
 import {
   CAPTURE_READY_FLAG,
   CAPTURE_SETTLE_FRAMES,
@@ -175,6 +176,32 @@ const AutoQualityMonitor: React.FC<{
 
 const WEATHERS: WeatherKind[] = ['clear', 'rain', 'snow', 'fog'];
 
+const LazyPerfOverlay = React.lazy(() => import('./PerfOverlay'));
+
+function syncPerfBridge(
+  bridge: PerfCanvasBridge,
+  gl: unknown,
+  scene: unknown,
+  size: { width: number; height: number },
+): void {
+  bridge.gl = gl;
+  bridge.scene = scene;
+  bridge.size = size;
+}
+
+const PerfFrameBridge: React.FC<{
+  bridgeRef: React.MutableRefObject<PerfCanvasBridge>;
+}> = ({ bridgeRef }) => {
+  const { gl, scene, size } = useThree();
+  useLayoutEffect(() => {
+    syncPerfBridge(bridgeRef.current, gl, scene, size);
+  }, [bridgeRef, gl, scene, size]);
+  useFrame(() => {
+    bridgeRef.current.onFrame?.();
+  });
+  return null;
+};
+
 /** True only when a loaded world has every field the scene reads (guards against partial data). */
 function isWorldRenderable(w: World): boolean {
   const n = w.size * w.size;
@@ -288,6 +315,13 @@ export const WorldShowcase: React.FC = () => {
   });
   const [muted, setMuted] = useState(false);
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0, biome: 0, fps: 0, locked: false });
+  const [perfOpen, setPerfOpen] = useState(false);
+  const perfBridgeRef = useRef<PerfCanvasBridge>({
+    gl: null,
+    scene: null,
+    size: { width: 0, height: 0 },
+    onFrame: null,
+  });
 
   // Camera <-> HTML-overlay bridge: the rig writes here each frame; the minimap/HUD read it.
   const viewRef = useRef<CameraView>({ targetX: 0, targetZ: 0, camX: 0, camZ: 0 });
@@ -444,6 +478,18 @@ export const WorldShowcase: React.FC = () => {
     else audioManager.unmute();
   }, [muted]);
 
+  useEffect(() => {
+    if (capture !== null) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F3') {
+        e.preventDefault();
+        setPerfOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [capture]);
+
   if (!world || !isWorldRenderable(world)) {
     return (
       <div
@@ -545,6 +591,7 @@ export const WorldShowcase: React.FC = () => {
         {isAutoQualityAllowed(capture) && qualitySelection === 'auto' ? (
           <AutoQualityMonitor onChange={setAutoQuality} />
         ) : null}
+        {perfOpen && capture === null ? <PerfFrameBridge bridgeRef={perfBridgeRef} /> : null}
 
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}
         <WorldSky timeOfDay={timeOfDay} speed={speed} worldScale={RENDER_SIZE} />
@@ -757,6 +804,7 @@ export const WorldShowcase: React.FC = () => {
         fps={camReadout.fps}
         muted={muted}
         showDecoration={showDecoration}
+        perfOpen={perfOpen}
         simEnvCounts={simEnvCounts}
         simEnvIsSynthetic={simEnvChannel.isSynthetic()}
         onSpeed={setSpeed}
@@ -775,6 +823,7 @@ export const WorldShowcase: React.FC = () => {
         }}
         onMute={() => setMuted((m) => !m)}
         onToggleDecoration={() => setShowDecoration((d) => !d)}
+        onTogglePerf={() => setPerfOpen((open) => !open)}
         // Reset returns to the validated spawn, or does not exist. There is no third option and
         // specifically no origin fallback: `{ x: 0, z: 0 }` is the middle of the map, the middle of
         // this map is open ocean, and a browser reproduction of the old code put the readout biome
@@ -787,6 +836,18 @@ export const WorldShowcase: React.FC = () => {
             : null
         }
       />
+
+      {perfOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyPerfOverlay
+            bridgeRef={perfBridgeRef}
+            qualityTier={effectiveQuality}
+            renderSize={RENDER_SIZE}
+            heightRatio={HEIGHT_RATIO}
+            onClose={() => setPerfOpen(false)}
+          />
+        </React.Suspense>
+      ) : null}
 
       <WorldMinimap
         world={world}
@@ -824,6 +885,7 @@ const WorldHud: React.FC<{
   fps: number;
   muted: boolean;
   showDecoration: boolean;
+  perfOpen: boolean;
   simEnvCounts: SimEnvironmentCounts;
   simEnvIsSynthetic: boolean;
   onSpeed: (s: number) => void;
@@ -833,9 +895,10 @@ const WorldHud: React.FC<{
   onQualitySelection: (q: QualitySelection) => void;
   onMute: () => void;
   onToggleDecoration: () => void;
+  onTogglePerf: () => void;
   /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
   onReset: (() => void) | null;
-}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, simEnvCounts, simEnvIsSynthetic, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onReset }) => {
+}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, perfOpen, simEnvCounts, simEnvIsSynthetic, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onTogglePerf, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -980,6 +1043,16 @@ const WorldHud: React.FC<{
             onClick={onToggleDecoration}
           >
             {showDecoration ? 'Hide decoration' : 'Show decoration'}
+          </button>
+          <button
+            type="button"
+            data-testid="perf-toggle-btn"
+            aria-pressed={perfOpen}
+            title="Toggle performance telemetry overlay (F3)"
+            style={HUD_BTN(perfOpen)}
+            onClick={onTogglePerf}
+          >
+            Perf
           </button>
         </div>
       </div>
