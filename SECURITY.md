@@ -1,9 +1,6 @@
 # Security Policy (`MP-5.2`)
 
-> **Owner Slot — Reporting Channel (`TBD`):**
-> **The vulnerability reporting channel below is an owner decision slot (`TBD — owner selects and activates before merge`).**
-> Recommended option: **GitHub Private Vulnerability Reporting** (**Security** tab → **Report a vulnerability**, enabled by the maintainer in repository settings), matching [CONTRIBUTING.md](CONTRIBUTING.md#reporting-a-security-issue).
-> This file establishes the baseline policy for `v0.9.0` release hygiene ([RELEASE_CHECKLIST.md §5](docs/how-to/RELEASE_CHECKLIST.md#5-stage-5-governance--mp-51-external-user-sessions)) without listing personal contact addresses or unverified active channels.
+Per owner decision `QD-GATES-1127 (8)` (2026-11-27), Anima Engine accepts security reports through GitHub Private Vulnerability Reporting ([RELEASE_CHECKLIST.md §5](docs/how-to/RELEASE_CHECKLIST.md#5-stage-5-governance--mp-51-external-user-sessions), [CONTRIBUTING.md](CONTRIBUTING.md#reporting-a-security-issue)).
 
 ---
 
@@ -18,11 +15,11 @@ Anima Engine is pre-1.0 software. Security updates apply **only** to the latest 
 
 ---
 
-## Reporting a Vulnerability (`[OWNER SLOT — TBD]`)
+## Reporting a Vulnerability
 
-- **Selected channel (`TBD — owner selects and activates before merge`):** Pending owner confirmation in repository settings. **Recommended:** GitHub Private Vulnerability Reporting via the repository **Security** tab (**Report a vulnerability**).
+- **Private channel (`QD-GATES-1127 (8)`):** Report a vulnerability privately through GitHub by opening the repository's **Security** tab and choosing **Report a vulnerability** at <https://github.com/DuongNAD/Anima-Engine/security/advisories/new>.
 - **Do not open a public GitHub issue, discussion, or pull request** for a suspected security vulnerability.
-- **No personal email addresses** are used or listed for vulnerability intake.
+- No personal email addresses are used for vulnerability intake.
 
 When submitting a private report, please include as much of the following technical context as you can (without personal data or secrets):
 

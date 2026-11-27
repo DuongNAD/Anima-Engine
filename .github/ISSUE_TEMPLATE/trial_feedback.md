@@ -6,7 +6,7 @@ labels: trial-feedback
 assignees: ""
 ---
 
-> **Privacy reminder:** Do **not** include personal email addresses, real names, local account paths, or secrets. See [INSTALL.md](../../docs/how-to/INSTALL.md) for unsigned SmartScreen / Gatekeeper steps and GPU tier guidance, and [RELEASE_CHECKLIST.md §5.1](../../docs/how-to/RELEASE_CHECKLIST.md#51-mp-51-external-user-session-protocol) for trial session scope.
+> **Privacy reminder:** Do **not** include personal email addresses, real names, local account paths, or secrets. See [INSTALL.md](https://github.com/DuongNAD/Anima-Engine/blob/feat/ecological-selection/docs/how-to/INSTALL.md) for unsigned SmartScreen / Gatekeeper steps and GPU tier guidance, and [RELEASE_CHECKLIST.md §5.1](https://github.com/DuongNAD/Anima-Engine/blob/feat/ecological-selection/docs/how-to/RELEASE_CHECKLIST.md#51-mp-51-external-user-session-protocol) for trial session scope.
 
 ### Build Under Test
 - Release tag or candidate (e.g. `v0.9.0-rc.1` / GitHub Actions workflow run / commit SHA):
