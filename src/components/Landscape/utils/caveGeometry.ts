@@ -80,10 +80,11 @@ export function buildCavesGeometry(
    * pushes it into the hillside by that fraction of its radius so only the opening shows.
    * Defaults (1, 0) reproduce the original geometry exactly.
    */
-  opts: { scale?: number; sink?: number } = {},
+  opts: { scale?: number; sink?: number; seatOnDrawnSlope?: boolean } = {},
 ): THREE.BufferGeometry | null {
   const k = opts.scale ?? 1;
   const sinkF = opts.sink ?? 0;
+  const seatOnSlope = opts.seatOnDrawnSlope ?? false;
   const count = world.caveCount ?? 0;
   if (count === 0 || !world.caveX) return null;
 
@@ -109,17 +110,60 @@ export function buildCavesGeometry(
     // Centred cell coords -> normalized UV [0, 1] matching terrain & flora.
     const u = Math.min(1, Math.max(0, (cellX + world.size * 0.5) / world.size));
     const v = Math.min(1, Math.max(0, (cellZ + world.size * 0.5) / world.size));
-    const surfY = sampleMeshHeight(world, u, v, meshRes) * heightUnits - mouthR * sinkF * 0.35;
-    const sx = (u - 0.5) * renderSize - ox * mouthR * sinkF;
-    const sz = (v - 0.5) * renderSize - oz * mouthR * sinkF;
-
-    // Seat pocket downhill/above surfY so uphill terrain never pokes through the dark throat.
-    const tip = [sx + ox * 0.35 * k, surfY + mouthR * 0.45, sz + oz * 0.35 * k];
-    const mouth = [
+    const baseSurfY = sampleMeshHeight(world, u, v, meshRes) * heightUnits;
+    let surfY = baseSurfY - mouthR * sinkF * 0.35;
+    let sx = (u - 0.5) * renderSize - ox * mouthR * sinkF;
+    let sz = (v - 0.5) * renderSize - oz * mouthR * sinkF;
+    let tip = [sx + ox * 0.35 * k, surfY + mouthR * 0.45, sz + oz * 0.35 * k];
+    let mouth = [
       sx + ox * (0.35 * k + depth * 0.82),
       surfY + mouthR * 0.56,
       sz + oz * (0.35 * k + depth * 0.82),
     ];
+    if (seatOnSlope) {
+      const stepUv = (mouthR * 1.5) / renderSize;
+      const sideUv = (mouthR * 1.35) / renderSize;
+      const latX = -oz;
+      const latZ = ox;
+      const clampUv = (val: number): number => Math.min(1, Math.max(0, val));
+      const uBack = clampUv(u - ox * stepUv);
+      const vBack = clampUv(v - oz * stepUv);
+      const uFront = clampUv(u + ox * stepUv);
+      const vFront = clampUv(v + oz * stepUv);
+      const backY = sampleMeshHeight(world, uBack, vBack, meshRes) * heightUnits;
+      const frontY = sampleMeshHeight(world, uFront, vFront, meshRes) * heightUnits;
+      const leftBackY =
+        sampleMeshHeight(world, clampUv(uBack + latX * sideUv), clampUv(vBack + latZ * sideUv), meshRes) *
+        heightUnits;
+      const rightBackY =
+        sampleMeshHeight(world, clampUv(uBack - latX * sideUv), clampUv(vBack - latZ * sideUv), meshRes) *
+        heightUnits;
+      const leftMouthY =
+        sampleMeshHeight(world, clampUv(u + latX * sideUv), clampUv(v + latZ * sideUv), meshRes) *
+        heightUnits;
+      const rightMouthY =
+        sampleMeshHeight(world, clampUv(u - latX * sideUv), clampUv(v - latZ * sideUv), meshRes) *
+        heightUnits;
+      const rockCeilingY = Math.min(backY, leftBackY, rightBackY, leftMouthY, rightMouthY);
+      sx = (u - 0.5) * renderSize;
+      sz = (v - 0.5) * renderSize;
+      surfY = Math.min(baseSurfY, rockCeilingY - mouthR * 1.55);
+      tip = [
+        sx - ox * (depth + mouthR * 0.35),
+        surfY + mouthR * 0.16,
+        sz - oz * (depth + mouthR * 0.35),
+      ];
+      mouth = [sx - ox * (mouthR * 0.3), surfY + mouthR * 0.2, sz - oz * (mouthR * 0.3)];
+      const archTopY = mouth[1] + mouthR * 1.35;
+      // Cull entrances where the hillside drops below the front sill or rock cannot enclose the collar visor.
+      if (
+        archTopY > rockCeilingY - 0.05 ||
+        frontY < surfY - mouthR * 0.35 ||
+        baseSurfY - frontY > mouthR * 1.8
+      ) {
+        continue;
+      }
+    }
     let axx = mouth[0] - tip[0];
     let axy = mouth[1] - tip[1];
     let axz = mouth[2] - tip[2];

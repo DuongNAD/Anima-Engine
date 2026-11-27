@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from './utils/worldGen';
 import { buildCavesGeometry } from './utils/caveGeometry';
+import { sampleMeshHeight } from './utils/worldSample';
 import { ELEV_MIN_M, ELEV_SPAN_M, type WorldV2LoadedBundle } from './worldV2/types';
 import {
   ATMOSPHERE_FRAGMENT_PARS,
@@ -67,8 +68,10 @@ export interface WorldCavesProps {
 
 function buildCaveNetworkGeometry(
   worldV2: WorldV2LoadedBundle | null | undefined,
+  world: World,
   renderSize: number,
   heightUnits: number,
+  meshResolution: number,
 ): THREE.BufferGeometry | null {
   const net = worldV2?.caveNetwork;
   if (!net || net.edges.length === 0 || net.nodes.length === 0) return null;
@@ -80,23 +83,37 @@ function buildCaveNetworkGeometry(
     const a = net.nodes[edge.from_idx];
     const b = net.nodes[edge.to_idx];
     if (!a || !b) continue;
+    const u0 = Math.min(1, Math.max(0, a.x_m / extentM));
+    const v0 = Math.min(1, Math.max(0, a.z_m / extentM));
+    const u1 = Math.min(1, Math.max(0, b.x_m / extentM));
+    const v1 = Math.min(1, Math.max(0, b.z_m / extentM));
+    const g0 = sampleMeshHeight(world, u0, v0, meshResolution) * heightUnits;
+    const g1 = sampleMeshHeight(world, u1, v1, meshResolution) * heightUnits;
+    const gMid = sampleMeshHeight(world, (u0 + u1) * 0.5, (v0 + v1) * 0.5, meshResolution) * heightUnits;
+
     const p0 = new THREE.Vector3(
-      (a.x_m / extentM - 0.5) * renderSize,
+      (u0 - 0.5) * renderSize,
       ((a.y_m - ELEV_MIN_M) / ELEV_SPAN_M) * heightUnits,
-      (a.z_m / extentM - 0.5) * renderSize,
+      (v0 - 0.5) * renderSize,
     );
     const p1 = new THREE.Vector3(
-      (b.x_m / extentM - 0.5) * renderSize,
+      (u1 - 0.5) * renderSize,
       ((b.y_m - ELEV_MIN_M) / ELEV_SPAN_M) * heightUnits,
-      (b.z_m / extentM - 0.5) * renderSize,
+      (v1 - 0.5) * renderSize,
     );
     const delta = new THREE.Vector3().subVectors(p1, p0);
     const len = delta.length();
     if (len < 0.05) continue;
     // WV2-LOOK: the 0.3-unit floor made every tunnel >= 10 m thick; exposed stretches poked out
-    // of the slopes as dark tubes. Use the data radius with a small floor.
+    // of the slopes as dark tubes. Use the data radius with a small floor and cull any segment
+    // that rises above the drawn 512^2 terrain mesh.
     const r0 = Math.max(0.06, (a.radius_m / extentM) * renderSize);
     const r1 = Math.max(0.06, (b.radius_m / extentM) * renderSize);
+    const midY = (p0.y + p1.y) * 0.5;
+    const rMid = (r0 + r1) * 0.5;
+    if (p0.y + r0 > g0 - 0.35 || p1.y + r1 > g1 - 0.35 || midY + rMid > gMid - 0.35) {
+      continue;
+    }
     const seg = new THREE.CylinderGeometry(r1, r0, len, 6, 1, true);
     const mid = new THREE.Vector3().addVectors(p0, p1).multiplyScalar(0.5);
     const quat = new THREE.Quaternion().setFromUnitVectors(up, delta.normalize());
@@ -127,7 +144,7 @@ export const WorldCaves: React.FC<WorldCavesProps> = ({
         renderSize,
         heightUnits,
         meshResolution,
-        isV2 ? { scale: V2_CAVE_SCALE, sink: V2_CAVE_SINK } : {},
+        isV2 ? { scale: V2_CAVE_SCALE, sink: V2_CAVE_SINK, seatOnDrawnSlope: true } : {},
       ),
     [world, renderSize, heightUnits, meshResolution, isV2],
   );
@@ -146,8 +163,8 @@ export const WorldCaves: React.FC<WorldCavesProps> = ({
   }, [v2Materials]);
 
   const networkGeom = useMemo(
-    () => buildCaveNetworkGeometry(worldV2, renderSize, heightUnits),
-    [worldV2, renderSize, heightUnits],
+    () => buildCaveNetworkGeometry(worldV2, world, renderSize, heightUnits, meshResolution),
+    [worldV2, world, renderSize, heightUnits, meshResolution],
   );
 
   // Dispose geometries when the world changes or component unmounts.
@@ -158,7 +175,8 @@ export const WorldCaves: React.FC<WorldCavesProps> = ({
     };
   }, [geom, networkGeom]);
 
-  if (!geom && !networkGeom) return null;
+  const hasCaveSource = isV2 && (world.caveCount > 0 || (worldV2?.caveNetwork?.edges.length ?? 0) > 0);
+  if (!geom && !networkGeom && !hasCaveSource) return null;
   return (
     <group name="world-caves-group" userData={{ decorative: true }}>
       {geom && v2Materials ? (
