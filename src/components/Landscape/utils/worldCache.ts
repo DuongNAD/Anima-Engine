@@ -34,6 +34,7 @@ const DB_NAME = 'anima-world';
 const STORE = 'worlds';
 
 const memo = new Map<string, World>();
+const inFlight = new Map<string, Promise<World>>();
 
 function keyFor(seed: string | number, size: number, shape: string): string {
   return `world:v${WORLD_GEN_VERSION}:${seed}:${size}:${shape}`;
@@ -192,41 +193,54 @@ function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promi
  * previous session, and only (3) running the heavy generator (in a Web Worker) as a last
  * resort — after which the result is persisted so future starts read it straight back.
  */
-export async function loadOrGenerateWorld(seed: string | number, opts: WorldGenOptions = {}): Promise<World> {
+export function loadOrGenerateWorld(seed: string | number, opts: WorldGenOptions = {}): Promise<World> {
   const size = opts.size ?? 1024;
   const shape = opts.shape ?? 'continent';
   const key = keyFor(seed, size, shape);
 
   const memoized = memo.get(key);
-  if (memoized) return memoized;
+  if (memoized) return Promise.resolve(memoized);
 
-  if (typeof indexedDB !== 'undefined') {
-    try {
-      const cached = await idbGet(key);
-      if (isValid(cached, size)) {
-        memo.set(key, cached);
-        void persistWorldArtifact(cached);
-        return cached;
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+
+  const task = (async (): Promise<World> => {
+    if (typeof indexedDB !== 'undefined') {
+      try {
+        const cached = await idbGet(key);
+        if (isValid(cached, size)) {
+          memo.set(key, cached);
+          void persistWorldArtifact(cached);
+          return cached;
+        }
+      } catch {
+        /* fall through to generation */
       }
-    } catch {
-      /* fall through to generation */
     }
-  }
 
-  const generated = await generateWorldAsync(seed, opts);
-  memo.set(key, generated);
-  if (typeof indexedDB !== 'undefined') {
-    idbSet(key, generated).catch(() => {
-      /* best-effort persistence; rendering does not depend on it */
-    });
-  }
-  void persistWorldArtifact(generated);
-  return generated;
+    const generated = await generateWorldAsync(seed, opts);
+    memo.set(key, generated);
+    if (typeof indexedDB !== 'undefined') {
+      idbSet(key, generated).catch(() => {
+        /* best-effort persistence; rendering does not depend on it */
+      });
+    }
+    void persistWorldArtifact(generated);
+    return generated;
+  })().finally(() => {
+    if (inFlight.get(key) === task) {
+      inFlight.delete(key);
+    }
+  });
+
+  inFlight.set(key, task);
+  return task;
 }
 
 /** Drop the cached world(s) so the next load regenerates (e.g. after changing the seed). */
 export function clearWorldCache(): Promise<void> {
   memo.clear();
+  inFlight.clear();
   if (typeof indexedDB === 'undefined') return Promise.resolve();
   return new Promise((resolve) => {
     const req = indexedDB.deleteDatabase(DB_NAME);
