@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-27
 review_cycle: monthly
 ---
 
@@ -760,6 +760,46 @@ QD-GATES-1127 = the owner's answers to the eight gates of START_2026-11-27_AM, g
             (8) The MP-5.2 security-report channel is GitHub private vulnerability reporting. The owner
             enables it in the repository's settings, and SECURITY.md (#335) names it. #335 merges once
             it is VERIFIED with the channel filled in and the setting is on.
+QD-GATES-1127C = four owner chat decisions of 2026-11-27 recorded verbatim, plus one lead ruling
+            (labelled explicitly as a lead ruling; no new decision text added):
+            (1) Owner in chat, 2026-11-27: "Approve option 2" (WV2-6-INSTR bundle budget, landed in
+            #338 at e10c0efc / 684c6ed2, verdicts/WV2-6-INSTR_684c6ed2.md): lazy PerfOverlay.tsx, total
+            JS budget raised from 2006 to 2022 KiB, WorldShowcase chunk staying at most 175 KiB.
+            (Source: MSG_20261127_072100_from_owner_r10_facts_update_dell.md, START_2026-11-27_NIGHT.md.)
+            (2) Owner in chat, 2026-11-27: "Option 1: match trees" (WV2-SYNTH-SCALE on #291): on worlds
+            of 81.92 km and larger, synthetic creatures and food are drawn at the same non-metric scale
+            as #291's trees — a measured 6× reduction on BIG_4096_v2 from 1.92 to 0.32 render units
+            per sim unit (verdicts/WV2-SYNTH-SCALE_4c29b5e0.md); everything moves to true metres later,
+            together with the metric flora.
+            (Source: MSG_20261127_093100_from_owner_r10_facts_update2_dell.md, START_2026-11-27_NIGHT.md,
+            verdicts/WV2-SYNTH-SCALE_4c29b5e0.md.)
+            (3) Owner in chat, 2026-11-27: "Start world experiment" (WV2-SHAPE-EXP, PR #339 on
+            win/wv2-shape-exp, milestones M0 to M3 by anima-case with anima-mac reviewing; owner's
+            words: "sông các thứ đang cực tệ"): a side-branch experiment on #337 option B (the uplift
+            and erosion generator change) only. It is not a decision to replace the world, decides
+            neither #337 D1 nor D2, and makes no release change; v0.9.0-internal, BIG_4096_v2, and the
+            #337 owner slots stay open/unchanged until the owner sees the M3 candidate.
+            (Source: MSG_20261127_100200_from_owner_shape_exp_record_dell.md, START_2026-11-27_NIGHT.md.)
+            (4) LEAD RULING (not an owner decision; within the owner's "Option 1: match trees" and the
+            card's 40 px fallback, after anima-case stopped with BLOCKED MSG_20261127_094111 at 0.16):
+            use 0.32 render units per sim unit; scale only the two LiveAgents.tsx constants, and only
+            on the 81.92 km path; agentPose.ts unchanged (VERIFIED by anima-mac at 4c29b5e0,
+            verdicts/WV2-SYNTH-SCALE_4c29b5e0.md).
+            (Source: MSG_20261127_112000, recorded in MSG_20261127_112200_from_owner_r10_facts_update3_dell.md
+            and START_2026-11-27_NIGHT.md.)
+            (5) Owner in chat, 2026-11-27: "Chấp nhận ĐẠT" (accepting the WV2-6 Dell Iris Xe gate
+            as PASS with flags on the lead's IX-D7 computation over test_runs/anima-dell_IRISXE-RUN/SUMMARY.md:
+            6/6 valid runs, 100% of 3D work on Intel Iris Xe, AC overlay Balanced 00000000-0000-0000-0000-000000000000).
+            IX-D7 medians: Median FPS B0 21.51 / 24.04 / 9.22 -> 21.51 vs. A1 22.47 / 64.94 / 72.46 -> 64.94
+            (A1 64.94 >= B0 - max(1.0, 3%) = 20.51: PASS; absolute 30 FPS rule N/A because B0 < 30);
+            p5 FPS B0 7.81 / 7.96 / 7.50 -> 7.81 vs. A1 7.89 / 24.57 / 32.05 -> 24.57 (A1 24.57 >= 7.81 - 1.5 = 6.31: PASS);
+            draw-call peak B0 20 vs. A1 27 (<= 60: PASS). Flags recorded: A1 p5 24.57 < 25 (NR-D1);
+            every run >20% away from its build's other runs; Antigravity and Task Manager were open;
+            one msedgewebview2 process grew to 4.35-4.65 GB (anima-mac holds WEBVIEW-MEM); app does not
+            exit within 20 s of window closing (anima-case holds APP-EXIT). Merging #291 remains a
+            separate owner decision.
+            (Source: MSG_20261127_163538_from_anima-dell_irisxe_run_done.md, test_runs/anima-dell_IRISXE-RUN/SUMMARY.md,
+            MSG_20261127_165500_from_owner_irisxe_pass_record_dell.md.)
 QD-WV2-LOOK = after the owner judged the World v2 C01 scene not yet realistic (2026-11-25 evening),
             the lead prototyped a rendering-only realism pass on mac/wv2-look-proto, on top of #291 at
             2693116c: slope/altitude terrain shading with side-plane projection on steep faces, aerial
