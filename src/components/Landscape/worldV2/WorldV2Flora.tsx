@@ -37,6 +37,7 @@ export interface WorldV2FloraProps {
 }
 
 interface SpeciesBatch {
+  key: string;
   speciesId: number;
   geometry: THREE.BufferGeometry;
   /** Instance matrices sorted by grid cell (`cellStart`), 16 floats each. */
@@ -49,6 +50,8 @@ interface SpeciesBatch {
   /** Lowest / highest instance origin Y per cell (Infinity / -Infinity when empty). */
   cellMinY: Float32Array;
   cellMaxY: Float32Array;
+  /** Mutually exclusive near/far cell partition for close-range sculpted crowns (`all` = single batch). */
+  lodBand: 'all' | 'near' | 'far';
 }
 
 // prototype, to be replaced — WV2-LOOK r8 flora distance culling.
@@ -73,6 +76,9 @@ const FLORA_REPICK_DEG = 5;
 const FLORA_FOV_MARGIN_DEG = 20;
 /** Box padding around a cell's plant origins: a 38 m tree is ~1.1 units tall, ~0.8 wide. */
 const FLORA_BOX_PAD = 3;
+/** Close-range crown LOD boundary (~3.2 km around camera) for Acacia and Jungle. */
+const NEAR_CROWN_UNITS = 95;
+const NEAR_CROWN_UNITS_SQ = NEAR_CROWN_UNITS * NEAR_CROWN_UNITS;
 
 const _pickProj = new THREE.Matrix4();
 const _pickFrustum = new THREE.Frustum();
@@ -160,6 +166,13 @@ function writeNearCells(
       const b = batch.cellStart[c + 1];
       if (a === b) continue;
       const x0 = cx * grid.cellSize - half;
+      if (batch.lodBand !== 'all') {
+        const cX = x0 + grid.cellSize * 0.5 - cam.x;
+        const cZ = z0 + grid.cellSize * 0.5 - cam.z;
+        const isNearCell = cX * cX + cZ * cZ <= NEAR_CROWN_UNITS_SQ;
+        if (batch.lodBand === 'near' && !isNearCell) continue;
+        if (batch.lodBand === 'far' && isNearCell) continue;
+      }
       const dx = Math.max(0, x0 - cam.x, cam.x - (x0 + grid.cellSize));
       const dy = Math.max(0, batch.cellMinY[c] - cam.y, cam.y - batch.cellMaxY[c]);
       if (dx * dx + dy * dy + dz * dz > reach2) continue;
@@ -408,12 +421,22 @@ vLkFloraWp=(modelMatrix*lkFloraWp4).xyz;
           `
 #include <color_fragment>
 diffuseColor.rgb*=mix(1.0,0.55,1.0-smoothstep(uAtmoSeaY+0.01,uAtmoSeaY+0.07,vLkFloraWp.y));
+{
+  float lkNearLeaf=1.0-smoothstep(20.0,115.0,distance(vLkFloraWp,cameraPosition));
+  float lkIsLeaf=step(diffuseColor.r*0.92,diffuseColor.g);
+  if(lkNearLeaf>0.01&&lkIsLeaf>0.5){
+    vec4 lkLeafN0=texture2D(uAtmoCloudTex,vLkFloraWp.xz*0.42+vec2(vLkFloraWp.y*0.37,-vLkFloraWp.y*0.21));
+    vec4 lkLeafN1=texture2D(uAtmoCloudTex,vLkFloraWp.xz*1.35-vec2(vLkFloraWp.y*0.63,vLkFloraWp.y*0.41));
+    float lkDapple=mix(0.76,1.24,lkLeafN0.r*0.55+lkLeafN1.g*0.45);
+    diffuseColor.rgb*=mix(1.0,lkDapple,lkNearLeaf*0.85);
+  }
+}
 diffuseColor.rgb*=mix(0.6,1.0,atmoCloudShadow(vLkFloraWp));
 `,
         )
         .replace('#include <fog_fragment>', atmosphereFragmentApply('vLkFloraWp'));
   };
-  material.customProgramCacheKey = () => 'wv2-look-flora-v4';
+  material.customProgramCacheKey = () => 'wv2-look-flora-v5';
   return material;
 }
 
@@ -584,13 +607,38 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
     for (let shape = 0; shape < LOOK_SHAPE_COUNT; shape += 1) {
       const list = perShape[shape];
       if (list.length === 0) continue;
-      out.push({
-        speciesId: shape,
-        geometry: makeLookFloraGeometry(shape, lite),
-        count: list.length / 16,
-        grid,
-        ...sortIntoGrid(new Float32Array(list), new Float32Array(perShapeColor[shape]), grid),
-      });
+      const sorted = sortIntoGrid(new Float32Array(list), new Float32Array(perShapeColor[shape]), grid);
+      const splitNear = !lite && (shape === LOOK_SPECIES.Acacia || shape === LOOK_SPECIES.Jungle);
+      if (splitNear) {
+        out.push({
+          key: `${shape}-near`,
+          speciesId: shape,
+          geometry: makeLookFloraGeometry(shape, false, true),
+          count: list.length / 16,
+          grid,
+          ...sorted,
+          lodBand: 'near',
+        });
+        out.push({
+          key: `${shape}-far`,
+          speciesId: shape,
+          geometry: makeLookFloraGeometry(shape, false, false),
+          count: list.length / 16,
+          grid,
+          ...sorted,
+          lodBand: 'far',
+        });
+      } else {
+        out.push({
+          key: `${shape}-all`,
+          speciesId: shape,
+          geometry: makeLookFloraGeometry(shape, lite, false),
+          count: list.length / 16,
+          grid,
+          ...sorted,
+          lodBand: 'all',
+        });
+      }
     }
     return out;
   }, [bundle, world, renderSize, heightUnits, meshResolution, stride, standScale, lite, edgeSkip]);
@@ -612,7 +660,7 @@ export const WorldV2Flora: React.FC<WorldV2FloraProps> = ({
   return (
     <group name="world-v2-flora" userData={{ decorative: true, rwLayer: 'flora' }}>
       {batches.map((batch) => (
-        <FloraBatchMesh key={batch.speciesId} batch={batch} material={material} />
+        <FloraBatchMesh key={batch.key} batch={batch} material={material} />
       ))}
     </group>
   );

@@ -262,7 +262,7 @@ function finish(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
  * `lite` (low tier): trunk plus the main crown mass only (palms keep three fronds), so the low
  * tier can afford twice the trees for about the same triangles.
  */
-export function makeLookFloraGeometry(speciesId: number, lite = false): THREE.BufferGeometry {
+export function makeLookFloraGeometry(speciesId: number, lite = false, nearDetail = false): THREE.BufferGeometry {
   const w = LOOK_SPECIES_SIZE[speciesId]?.widthRatio ?? 0.8;
   const pick = (parts: THREE.BufferGeometry[], keep: number) => {
     if (!lite) return finish(parts);
@@ -305,29 +305,102 @@ export function makeLookFloraGeometry(speciesId: number, lite = false): THREE.Bu
     }
     case LOOK_SPECIES.Jungle: {
       const r = w * 0.5;
-      const top = jitter(new THREE.IcosahedronGeometry(r, 0), r * 0.25, 21).scale(1, 0.45, 1).translate(0, 0.84, 0);
-      const mid = jitter(new THREE.OctahedronGeometry(r * 0.7, 0), r * 0.2, 22).scale(1, 0.55, 1).translate(-r * 0.4, 0.62, r * 0.25);
-      const low = jitter(new THREE.OctahedronGeometry(r * 0.55, 0), r * 0.18, 23).scale(1, 0.5, 1).translate(r * 0.45, 0.55, -r * 0.3);
-      const a = paintGradient(top, '#0f2612', '#26461d', 0.65, 1.0);
-      const b = paintGradient(mid, '#0d2010', '#1d3a18', 0.45, 0.8);
-      const c = paintGradient(low, '#0e2211', '#20401a', 0.4, 0.7);
-      crownNormals(a, 0, 0.75, 0);
-      crownNormals(b, -r * 0.4, 0.55, r * 0.25);
-      crownNormals(c, r * 0.45, 0.5, -r * 0.3);
-      return pick([trunk(0.75, 0.035, '#4a3826'), a, b, c], 2);
+      if (nearDetail) {
+        const stem = new THREE.CylinderGeometry(0.032, 0.058, 0.68, 5, 1, true).translate(0, 0.34, 0);
+        const pStem = paintGradient(stem, '#3e2d1e', '#59442e', 0, 0.68);
+        pStem.computeVertexNormals();
+        const parts: THREE.BufferGeometry[] = [pStem];
+        for (let b = 0; b < 3; b += 1) {
+          const ang = (b / 3) * Math.PI * 2 + 0.4;
+          const bough = new THREE.CylinderGeometry(0.015, 0.026, 0.34, 3, 1, true)
+            .translate(0, 0.17, 0)
+            .rotateZ(-0.55)
+            .rotateY(ang)
+            .translate(0, 0.56, 0);
+          const pb = paintGradient(bough, '#463423', '#5c4631', 0.56, 0.86);
+          pb.computeVertexNormals();
+          parts.push(pb);
+        }
+        const pads: ReadonlyArray<readonly [number, number, number, number, number]> = [
+          [0, 0.84, 0, r * 0.72, 0.68],
+          [r * 0.42, 0.76, r * 0.18, r * 0.56, 0.64],
+          [-r * 0.44, 0.74, r * 0.26, r * 0.54, 0.66],
+          [r * 0.16, 0.72, -r * 0.45, r * 0.52, 0.62],
+          [-r * 0.25, 0.64, -r * 0.35, r * 0.48, 0.6],
+          [r * 0.48, 0.6, -r * 0.22, r * 0.44, 0.58],
+          [-r * 0.12, 0.9, r * 0.14, r * 0.46, 0.6],
+          [r * 0.15, 0.58, r * 0.44, r * 0.42, 0.58],
+        ];
+        pads.forEach(([px, py, pz, pr, sy], idx) => {
+          const dome = jitter(new THREE.OctahedronGeometry(pr, 1), pr * 0.26, 21 + idx)
+            .scale(1.06, sy, 0.96)
+            .translate(px, py, pz);
+          const pd = paintGradient(dome, '#0c210e', '#345a22', py - pr * sy, py + pr * sy);
+          crownNormals(pd, px * 0.5, py - pr * 0.25, pz * 0.5, 0.45);
+          parts.push(pd);
+        });
+        return finish(parts);
+      }
+      const top = jitter(new THREE.IcosahedronGeometry(r, 0), r * 0.25, 21).scale(1, 0.62, 1).translate(0, 0.82, 0);
+      const mid = jitter(new THREE.OctahedronGeometry(r * 0.72, 0), r * 0.22, 22).scale(1, 0.64, 1).translate(-r * 0.4, 0.64, r * 0.25);
+      const low = jitter(new THREE.OctahedronGeometry(r * 0.58, 0), r * 0.2, 23).scale(1, 0.6, 1).translate(r * 0.45, 0.58, -r * 0.3);
+      const sub = jitter(new THREE.OctahedronGeometry(r * 0.5, 0), r * 0.18, 24).scale(1, 0.58, 1).translate(r * 0.1, 0.62, r * 0.44);
+      const a = paintGradient(top, '#0f2612', '#2b4f1f', 0.6, 1.0);
+      const b = paintGradient(mid, '#0d2010', '#20421a', 0.42, 0.82);
+      const c = paintGradient(low, '#0e2211', '#23461b', 0.38, 0.74);
+      const d = paintGradient(sub, '#0e2211', '#254a1c', 0.4, 0.76);
+      crownNormals(a, 0, 0.72, 0);
+      crownNormals(b, -r * 0.4, 0.54, r * 0.25);
+      crownNormals(c, r * 0.45, 0.48, -r * 0.3);
+      crownNormals(d, r * 0.1, 0.52, r * 0.44);
+      return pick([trunk(0.75, 0.035, '#4a3826'), a, b, c, d], 2);
     }
     case LOOK_SPECIES.Acacia: {
-      // Umbrella of three flattened lobes, not a single disc.
       const r = w * 0.5;
-      const a0 = jitter(new THREE.OctahedronGeometry(r * 0.7, 0), r * 0.15, 31).scale(1, 0.32, 1).translate(r * 0.1, 0.88, 0);
-      const a1 = jitter(new THREE.OctahedronGeometry(r * 0.5, 0), r * 0.12, 32).scale(1, 0.3, 1).translate(-r * 0.45, 0.82, r * 0.3);
-      const a2 = jitter(new THREE.OctahedronGeometry(r * 0.45, 0), r * 0.12, 33).scale(1, 0.3, 1).translate(r * 0.35, 0.8, -r * 0.42);
+      if (nearDetail) {
+        const stem = trunk(0.5, 0.036, '#483828');
+        const parts: THREE.BufferGeometry[] = [stem];
+        for (let b = 0; b < 4; b += 1) {
+          const ang = (b / 4) * Math.PI * 2 + 0.35;
+          const len = 0.38 + (b % 2) * 0.06;
+          const bough = new THREE.CylinderGeometry(0.014, 0.024, len, 3, 1, true)
+            .translate(0, len * 0.5, 0)
+            .rotateZ(-0.68)
+            .rotateY(ang)
+            .translate(0, 0.46, 0);
+          const pb = paintGradient(bough, '#483828', '#5c4a35', 0.46, 0.8);
+          pb.computeVertexNormals();
+          parts.push(pb);
+        }
+        const pads: ReadonlyArray<readonly [number, number, number, number, number]> = [
+          [r * 0.06, 0.87, 0.02, r * 0.54, 0.42],
+          [-r * 0.48, 0.81, r * 0.24, r * 0.44, 0.4],
+          [r * 0.44, 0.79, -r * 0.36, r * 0.42, 0.42],
+          [-r * 0.22, 0.77, -r * 0.46, r * 0.38, 0.4],
+          [r * 0.32, 0.84, r * 0.38, r * 0.38, 0.42],
+          [-r * 0.14, 0.93, -r * 0.08, r * 0.36, 0.44],
+          [r * 0.52, 0.74, r * 0.06, r * 0.32, 0.38],
+        ];
+        pads.forEach(([px, py, pz, pr, sy], idx) => {
+          const lobe = jitter(new THREE.OctahedronGeometry(pr, 1), pr * 0.28, 31 + idx)
+            .scale(1.12, sy, 0.98)
+            .translate(px, py, pz);
+          const pl = paintGradient(lobe, '#222f11', idx % 2 === 0 ? '#5c6e2c' : '#4e5f29', py - pr * sy, py + pr * sy);
+          crownNormals(pl, px * 0.4, py - pr * 0.35, pz * 0.4, 0.65);
+          parts.push(pl);
+        });
+        return finish(parts);
+      }
+      // Standard far tier: forked silhouette + fuller organic cushions instead of flat paper slabs.
+      const a0 = jitter(new THREE.IcosahedronGeometry(r * 0.65, 0), r * 0.18, 31).scale(1, 0.44, 1).translate(r * 0.1, 0.86, 0);
+      const a1 = jitter(new THREE.OctahedronGeometry(r * 0.5, 0), r * 0.15, 32).scale(1, 0.42, 1).translate(-r * 0.45, 0.8, r * 0.28);
+      const a2 = jitter(new THREE.OctahedronGeometry(r * 0.46, 0), r * 0.14, 33).scale(1, 0.42, 1).translate(r * 0.36, 0.78, -r * 0.4);
       const parts = [a0, a1, a2].map((g, k) => {
-        const p = paintGradient(g, '#2c3616', k === 0 ? '#4c5826' : '#45512a', 0.74, 1.0);
-        crownNormals(p, 0, 0.7, 0, 0.8);
+        const p = paintGradient(g, '#283615', k === 0 ? '#53642a' : '#48572a', 0.7, 1.0);
+        crownNormals(p, 0, 0.66, 0, 0.7);
         return p;
       });
-      return pick([trunk(0.8, 0.035, '#4a3a2a'), ...parts], 2);
+      return pick([trunk(0.76, 0.035, '#4a3a2a'), ...parts], 2);
     }
     case LOOK_SPECIES.Palm: {
       const parts: THREE.BufferGeometry[] = [trunk(0.88, 0.03, '#6b5a44')];
