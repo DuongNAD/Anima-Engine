@@ -5,8 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { World } from './utils/worldGen';
 import { sceneElapsed } from './utils/sceneClock';
 import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
-import { ELEV_MIN_M, ELEV_SPAN_M, WORLD_EXTENT_M, WaterKind, type WorldV2LoadedBundle } from './worldV2/types';
-import { sampleMeshHeight } from './utils/worldSample';
+import { ELEV_SPAN_M, WORLD_EXTENT_M, type WorldV2LoadedBundle } from './worldV2/types';
 import { ATMOSPHERE_FRAGMENT_PARS, atmosphereUniforms } from './materials/atmosphere';
 import { edgeThreshold, glslFloat, replaceOnce, worldRenderScale } from './worldV2/worldScale';
 
@@ -595,36 +594,20 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world, heightUnits]);
 
-  // Per-cell lake mask (1 where standing water fills the cell), plus World v2 river surface mask
-  // from `water_surface` (`River`, `Waterfall`, `DeltaTurbid`).
-  const { lakeMaskTex, riverMaskTex } = useMemo(() => {
+  // Per-cell lake mask (1 where standing water fills the cell), soft-edged by the GPU's
+  // bilinear filter so basin shorelines stay smooth.
+  const lakeMaskTex = useMemo(() => {
     const { size, water } = world;
     const data = new Uint8Array(size * size);
     for (let i = 0; i < data.length; i++) data[i] = water[i] > 0 ? 255 : 0;
-    const lTex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
-    lTex.minFilter = THREE.LinearFilter;
-    lTex.magFilter = THREE.LinearFilter;
-    lTex.wrapS = THREE.ClampToEdgeWrapping;
-    lTex.wrapT = THREE.ClampToEdgeWrapping;
-    lTex.needsUpdate = true;
-
-    const rData = new Uint8Array(size * size);
-    if (worldV2) {
-      for (let i = 0; i < rData.length; i++) {
-        const wk = worldV2.waterKind[i];
-        if (wk === WaterKind.River || wk === WaterKind.Waterfall || wk === WaterKind.DeltaTurbid) {
-          rData[i] = 255;
-        }
-      }
-    }
-    const rTex = new THREE.DataTexture(rData, size, size, THREE.RedFormat, THREE.UnsignedByteType);
-    rTex.minFilter = THREE.LinearFilter;
-    rTex.magFilter = THREE.LinearFilter;
-    rTex.wrapS = THREE.ClampToEdgeWrapping;
-    rTex.wrapT = THREE.ClampToEdgeWrapping;
-    rTex.needsUpdate = true;
-    return { lakeMaskTex: lTex, riverMaskTex: rTex };
-  }, [world, worldV2]);
+    const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return tex;
+  }, [world]);
 
   const { shoreSdfTex, hydroFlowTex } = useMemo(() => {
     if (worldV2) {
@@ -693,8 +676,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     [uniformInputs],
   );
 
-  // One shared material for every lake plane (uniforms updated once per frame), and one for
-  // World v2 river channels where `waterHeightM` stands at or above the drawn mesh.
+  // One shared material for every lake plane (uniforms updated once per frame).
   const lakeMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -707,75 +689,6 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       }),
     [uniformInputs, waterFragment],
   );
-
-  const riverMaterial = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader,
-        fragmentShader: waterFragment,
-        uniforms: makeWaterUniforms(
-          { ...uniformInputs, lakeMaskTex: riverMaskTex },
-          '#2f8da8',
-          '#154666',
-          0.9,
-          0.015,
-          1,
-        ),
-        transparent: true,
-        depthWrite: false,
-        fog: false,
-      }),
-    [uniformInputs, riverMaskTex, waterFragment],
-  );
-
-  // World v2 wide river channel quads merged into ONE mesh (`world-rivers`, 1 draw call).
-  const riversGeom = useMemo(() => {
-    if (!worldV2) return null;
-    const { size, waterKind, waterHeightM, extentM } = worldV2;
-    const meshRes = worldRenderScale(extentM).meshResolution;
-    const gridSide = Math.min(256, size);
-    const step = Math.max(1, Math.floor(size / gridSide));
-    const quadSpan = (renderSize / (size - 1)) * step;
-    const quads: THREE.BufferGeometry[] = [];
-    for (let gy = 0; gy < size - 1; gy += step) {
-      for (let gx = 0; gx < size - 1; gx += step) {
-        let count = 0;
-        let sumH = 0;
-        let hasLake = false;
-        for (let dy = 0; dy < step && !hasLake; dy += 1) {
-          const y = Math.min(size - 1, gy + dy);
-          for (let dx = 0; dx < step; dx += 1) {
-            const x = Math.min(size - 1, gx + dx);
-            const idx = y * size + x;
-            const wk = waterKind[idx];
-            if (world.water[idx] > 0 || wk === WaterKind.FreshwaterLake || wk === WaterKind.EndorheicLake) {
-              hasLake = true;
-              break;
-            }
-            if (wk !== WaterKind.River && wk !== WaterKind.DeltaTurbid && wk !== WaterKind.Waterfall) continue;
-            const u = x / (size - 1);
-            const v = y / (size - 1);
-            const meshM = sampleMeshHeight(world, u, v, meshRes) * ELEV_SPAN_M + ELEV_MIN_M;
-            const diff = waterHeightM[idx] - meshM;
-            if (diff > -0.4 && waterHeightM[idx] > world.seaLevel * ELEV_SPAN_M + ELEV_MIN_M + 1.0) {
-              sumH += Math.max(waterHeightM[idx], meshM + 0.25);
-              count += 1;
-            }
-          }
-        }
-        if (hasLake || count === 0) continue;
-        const avgM = sumH / count;
-        const yUnits = ((avgM - ELEV_MIN_M) / ELEV_SPAN_M) * heightUnits + 0.04;
-        const cx = ((gx + step * 0.5) / (size - 1) - 0.5) * renderSize;
-        const cz = ((gy + step * 0.5) / (size - 1) - 0.5) * renderSize;
-        quads.push(new THREE.PlaneGeometry(quadSpan, quadSpan, 1, 1).rotateX(-Math.PI / 2).translate(cx, yUnits, cz));
-      }
-    }
-    if (quads.length === 0) return null;
-    const merged = mergeGeometries(quads, false);
-    quads.forEach((q) => q.dispose());
-    return merged;
-  }, [world, worldV2, renderSize, heightUnits]);
 
   // Lakes & ponds: one bbox quad per basin at its spill level, merged into (up to) TWO
   // geometries — liquid water and FROZEN water. Cold-climate basins (polar fringe, high
@@ -816,7 +729,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   useFrame((state) => {
     const t = sceneElapsed(state.clock);
     const fog = state.scene.fog as THREE.Fog | null; // WorldWeather owns scene.fog (linear)
-    const mats = [oceanMat.current, lakeMaterial, riverMaterial];
+    const mats = [oceanMat.current, lakeMaterial];
     for (const mat of mats) {
       if (!mat) continue;
       mat.uniforms.uTime.value = t;
@@ -833,16 +746,13 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return () => {
       heightTex.dispose();
       lakeMaskTex.dispose();
-      riverMaskTex.dispose();
       shoreSdfTex.dispose();
       hydroFlowTex.dispose();
       lakeMaterial.dispose();
-      riverMaterial.dispose();
       lakesGeom?.dispose();
-      riversGeom?.dispose();
       iceGeom?.dispose();
     };
-  }, [heightTex, lakeMaskTex, riverMaskTex, shoreSdfTex, hydroFlowTex, lakeMaterial, riverMaterial, lakesGeom, riversGeom, iceGeom]);
+  }, [heightTex, lakeMaskTex, shoreSdfTex, hydroFlowTex, lakeMaterial, lakesGeom, iceGeom]);
 
   return (
     <group name="world-water">
@@ -866,11 +776,6 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       {/* Every liquid lake & pond in ONE merged mesh (a single draw call, §6 decorative gate). */}
       {showDecorativeLakes && lakesGeom ? (
         <mesh geometry={lakesGeom} material={lakeMaterial} name="world-lakes" />
-      ) : null}
-
-      {/* World v2 river channels where waterHeight sits at/above the drawn terrain mesh. */}
-      {showDecorativeLakes && riversGeom ? (
-        <mesh geometry={riversGeom} material={riverMaterial} name="world-rivers" />
       ) : null}
 
       {/* Frozen lakes: opaque pale ice sheets over cold-climate basins. */}

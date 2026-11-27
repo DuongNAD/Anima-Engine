@@ -1175,9 +1175,9 @@ export function buildWorldV2TerrainTextures(
         255,
         Math.round((130 + Math.min(1, depthM / 4) * 65 + (q / 255) * 45) * (0.35 + 0.65 * highSteepDamp)),
       );
-    } else if (hydroRiv > 24 && highSteepDamp > 0.25) {
-      riverData[o4] = Math.min(200, Math.round(hydroRiv * 1.5 * highSteepDamp));
-      riverData[o4 + 3] = Math.round(Math.max(90, q) * highSteepDamp);
+    } else if (hydroRiv > 96 && highSteepDamp > 0.35) {
+      riverData[o4] = Math.min(110, Math.round(hydroRiv * 0.55 * highSteepDamp));
+      riverData[o4 + 3] = Math.round(Math.max(80, q) * highSteepDamp);
     }
   }
   for (let y = 1; y < size - 1; y += 1) {
