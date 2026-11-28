@@ -37,7 +37,10 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && needs.scope.outputs.docs_only != 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Step "kiểm ổn định (5 lần)" repeatedly hit the 45m cap on PR #330 (run 45944837267),
+    # PR #291 (run 46011336058), PR #344 (run 46048778389), and PR #346 (run 46058452891),
+    # while passing re-runs took 37-45m (44m57s slowest passing). Raise to 75m for headroom.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
