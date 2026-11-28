@@ -2,7 +2,7 @@
 title: Phả hệ, tiến hoá mở, Red Queen và phân định loài — đánh giá báo cáo ngoài
 status: proposed
 owner: simulation-architecture
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-24
 review_cycle: quarterly
 ---
 
@@ -36,7 +36,8 @@ review_cycle: quarterly
    là một cổng chứ không phải một mô-đun (§6).
 3. **Khoảng trống lớn nhất không nằm trong báo cáo gốc:** ca sinh liên tục của thế giới sống không
    được ghi vào lineage tracker (§1.2). Mọi line of descent, S43 hay phân định loài trên thế giới sống
-   đều cần việc này trước.
+   đều cần việc này trước. **Cập nhật 2026-11-24:** khe này đã đóng ở dạng opt-in bởi F-066 (#207),
+   xem §1.2.
 4. **Phần thống kê (§5 của báo cáo gốc) đã bị thay thế** bởi
    [`VIABILITY_PRICE_STATISTICS_RESEARCH_2026-11-22.md`](VIABILITY_PRICE_STATISTICS_RESEARCH_2026-11-22.md) (§7).
 5. **Mọi con số "đo" nổi bật đều `Chưa xác minh`** (§8) và không được dùng làm ngân sách hay ngưỡng cổng.
@@ -65,7 +66,17 @@ phả hệ kép"; đó là đề xuất của báo cáo, không phải định n
   trị trước khi `compact` chạy. Báo cáo gốc gợi ý (a), mượn từ `keep_unary_in_individuals` của tskit
   (`Nguồn ngoài`).
 
-### 1.2 Ca sinh của thế giới sống không vào lineage tracker (`Đã kiểm`)
+### 1.2 Ca sinh của thế giới sống không vào lineage tracker (`Đã kiểm`, đã sửa opt-in ở F-066)
+
+> **Cập nhật 2026-11-24.** Mục này tả trạng thái lúc rà soát (trunk 2026-11-22) và được giữ làm lịch sử.
+> PR #207 (F-066, [`FINDINGS.md`](../../FINDINGS.md)) đã đóng khe ở dạng **opt-in**: khoá
+> `live.lineage_tracking = 1` của adapter headless bật resource `LiveLineage`
+> (`src-tauri/src/core/live_lineage.rs`). Mỗi ca sinh có id riêng `birth-{run}-{n}`, một cạnh
+> `Clone`/`Mutate` từ id riêng của cha và `origin_tick`; mỗi ca chết ghi `destruction_tick`. Id duy nhất
+> nằm trong bảng phụ theo `Entity`, còn `AgentLineageId` giữ giá trị cũ `cha.thế_hệ`, nên bật khoá không
+> đổi quỹ đạo (cùng `world_checksum`, ADR-0008 động lực 4). Việc ghi nằm trong deferred command, không
+> trong system của vòng tick. Gate: `src-tauri/tests/live_lineage_tests.rs`. **Còn lại:** app desktop
+> chưa đặt khoá; nén vẫn giải phóng genotype trung gian (§1.1), nên lỗ thứ hai của ghi chú này vẫn mở.
 
 - Lời gọi `add_reproduction` duy nhất ngoài chính tracker là ở `simulation_loop.rs` dòng 956, trong
   vòng lặp MAP-Elites theo epoch.
@@ -97,7 +108,10 @@ phả hệ kép"; đó là đề xuất của báo cáo, không phải định n
   [`RESEARCH_SYNTHESIS_2026-11-13.md` §4](RESEARCH_SYNTHESIS_2026-11-13.md) đã đòi xuất sự kiện sinh và
   chết. `LineageNode` không có thời điểm chết (`lineage.rs` dòng 7–29), nên `destruction_time` chưa có
   nguồn.
-- `Suy luận`: xuất chuẩn này là một bước nhỏ sau khi §1.2 xong. Nó cho phép dùng công cụ phân tích
+- **Cập nhật 2026-11-24:** F-066 thêm `origin_tick` / `destruction_tick` (`Option<u64>`) vào
+  `LineageNode` cho các node do `live.lineage_tracking` ghi, nên `origin_time` và `destruction_time` nay
+  có nguồn trên quần thể live.
+- `Suy luận`: xuất chuẩn này là một bước nhỏ sau khi §1.2 xong (nay đã xong ở dạng opt-in). Nó cho phép dùng công cụ phân tích
   phả hệ bên ngoài mà không nhập code.
 
 ## 3. Bedau–Packard, MODES và bóng trung tính SEL2-D

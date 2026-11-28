@@ -2,7 +2,7 @@
 title: Sinh thái học Khả năng Sống sót, Phương trình Price và Thống kê cho QD-ISLAND
 status: proposed
 owner: architecture
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-25
 review_cycle: quarterly
 ---
 
@@ -257,6 +257,35 @@ Do đó, sau khi VIAB-1 đã hạ được tuyệt chủng xuống mức đo đ�
 ---
 
 ## 4. Gợi ý cho các thẻ đã có (VIAB-1, E3b, SEL2-P2, `QD-ISLAND`)
+
+> **Cập nhật 2026-11-24 — các gợi ý dưới đây đã đi tới đâu.** Phần này chỉ ghi trạng thái; bốn gợi ý
+> giữ nguyên làm lịch sử.
+> - **VIAB-1 đã chạy** ([kết quả](../ai/planning/2026-11-23-viab1-results.md), #215; kiểm lại ở
+>   [VIAB-1b](../ai/planning/2026-11-23-viab1b-results.md), #228). Phát hiện chính không nằm trong
+>   các cơ chế ở §1: nhánh `mut0` sụp cả khi **không** khan hiếm, vì mọi founder là cùng một genotype
+>   3 đốt khai cứng, chỉ sống được ở mức biên; quần thể có đột biến tự thoát bằng cách bỏ đốt đuôi
+>   ([chẩn đoán mut0](../ai/planning/2026-11-23-mut0-collapse-diagnosis.md)). Hệ quả là founder 2 đốt
+>   opt-in (`live.founder_genotype = 1`), sống `12/12` seed ở VIAB-1b.
+> - **E3b** (QĐ-E3B D1–D5): D3 lấy phân tích cặp đầy đủ làm chính, thêm Lee bounds và RMST làm đầu ra
+>   riêng cho các tương phản có `U`; D4 khoá SESOI $\pm\ln(1{,}5)$ với $N = 64$.
+> - **SEL2-P2** (QĐ-SEL2P2 D1–D7): họ khẳng định $m = 3$ với Holm, $\alpha = 0{,}05$ (D3, khớp gợi ý
+>   $m \le 3$ của mục 4); SESOI $\pm\ln(1{,}10)$ (D4); xử lý tuyệt chủng theo mẫu #214 R3 với Lee bounds,
+>   RMST(200k) và Lachin worst-rank (D6, khớp §3.4). Một lượt kiểm mù VIAB-2 12 seed × 200.000 tick chạy
+>   trước khi đóng băng (QĐ-VIAB2-R).
+> - **Chưa dùng:** cặp $r_c$ + $\hat{\Delta}_{\text{HL}}$ + BCa của §3.3, bộ đo Robertson–Price/MLS1
+>   (gợi ý 2) và việc đo $\hat{\rho}_{\text{CRN}}$ (gợi ý 3).
+> - **Cấu trúc tuổi (§2.1, §2.4):** [ADR-0013](../decisions/ADR-0013-live-creature-lifecycle.md)
+>   (**accepted** 2026-11-24) thêm tuổi theo lịch và giai đoạn sống opt-in. Khi được hiện thực, đó là
+>   nguồn cho phân rã theo tuổi $\sum_a [\Delta c(a,t)]\bar z(a,t)$ mà hiện code chưa có
+>   (`AgentEvaluation::survival_ticks` không phải tuổi).
+> - **Cập nhật 2026-11-25 — E3b đã có kết quả** ([`RESULT.md`](../../artifacts/experiments/e3b-productivity-gradient-body-mass/RESULT.md),
+>   [tóm tắt](../ai/planning/2026-11-24-e3b-results.md), #252; Chặng 4 qua cổng). 192 lượt, 64/64 cặp đầy đủ
+>   ở cả ba tương phản, không lượt nào tuyệt chủng hay hỏng. H2 (`T / U`) tương đương 0 với đủ lực; H1 và H3 `insufficient_evidence` (khoảng tin cậy quá rộng).
+>   Độ lệch chuẩn giữa các seed của $L_i$ (1,24–1,61) cao hơn giả định lúc lập kế hoạch (0,81). Điều này
+>   ủng hộ gợi ý 3 ở trên: đo các thành phần nhiễu trên seed hiệu chuẩn trước khi chốt $N$.
+
+Quyết định đầy đủ: các mục `QD-E3B`, `QD-SEL2P2-D1..D7` và `QD-VIAB2-R` trong
+[`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md).
 
 > Đây **không** phải cổng mới. Lộ trình chính thức là các thẻ trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) §3.00: khảo sát khả năng sống sót VIAB-1 (QĐ-VIAB), rồi đăng ký mới E3b và SEL2-P2, rồi các mốc của `QD-ISLAND`. Bốn mục dưới đây là gợi ý đầu vào cho các thẻ đó; mọi ngưỡng trong đó là giả thuyết, tiêu chí thật do bản đăng ký và chủ dự án khoá.
 

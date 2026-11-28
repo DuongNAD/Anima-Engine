@@ -2,7 +2,7 @@
 title: Nghiên cứu tỉ lệ bản đồ, kích thước sinh vật và kiến trúc tạo thế giới
 status: proposed
 owner: architecture
-last_reviewed: 2026-11-22
+last_reviewed: 2026-11-25
 review_cycle: quarterly
 ---
 
@@ -35,6 +35,31 @@ review_cycle: quarterly
 3. **Địa mạo học không ép đảo phải rộng `40 km`, nhưng đa đai khí hậu nhiệt đới có băng hà thì có (`Nguồn ngoài — bài báo` + `Suy luận`).** Theo Montgomery & Dietrich (1988, 1989, 1992) và định luật Hack, mạng sông dạng cành cây (dendritic) tự tương tự xuống tới lưu vực vài trăm mét – vài km; một hòn đảo `4–8 km` vẫn đạt chuẩn mạng sông `G-SHAPE`. Tuy nhiên, để chuyển tiếp mượt từ biển nhiệt đới lên núi tuyết vĩnh cửu (`ELA ~4.900 m`) mà núi không thành gai nhọn thì sườn cần rộng ~`20–40 km`.
 4. **Sinh thái học không gian cho thấy giới hạn hai đầu (`Nguồn ngoài — bài báo` + `Suy luận`).** Quá nhỏ so với tầm di chuyển gây đồng bộ bùng nổ–sụp đổ (Huffaker 1958; Durrett & Levin 1994) và thiếu vùng sống cho thú săn khối lượng lớn (Kelt & Van Vuren 2001; Jetz et al. 2004; Tamburello et al. 2015). Ngược lại, mở rộng bản đồ khi mật độ cá thể ít sẽ rơi vào "lời nguyền pha loãng" (curse of dilution).
 5. **Khuyến nghị thời điểm & hướng đi (`Suy luận`).** **Không** mở rộng map v1 (`worldGen.ts`) và **không** thay đổi `MapBounds = 200` trước khi đóng Chặng 4 (`VIAB-1 → E3b / SEL2-P2`). Thay vào đó: (a) giữ khả năng tham số hoá `world_extent_m` và `sim_bounds_extent` trong kiến trúc World v2 / `ANMW v3`; (b) sau Chặng 4, cân nhắc mở thêm preset **Đảo 1:1 cỡ vừa (`4–8 km`, `MapBounds = 512–800`, lưới sim `512²`, `CREATURE_BODY_SCALE = 1.0`)** cho giai đoạn Quan sát Quần đảo (`QD-ISLAND`); và (c) đưa `kurtkuehnert/bevy_terrain` (`MIT OR Apache-2.0`) làm ứng viên Pilot chính cho pha renderer native (`NR-SPIKE` / ADR-0011) kèm bắt buộc **Floating Origin / camera-relative `f32`**.
+
+> **Cập nhật 2026-11-24 — những gì đã đổi sau ngày viết (không đổi kết luận nào ở trên).**
+> - **Founder 2 đốt trong thí nghiệm.** Founder 3 đốt vẫn là mặc định của code, nhưng E3b và SEL2-P2
+>   dùng founder 2 đốt (genotype genesis bỏ lá đuôi) qua khoá opt-in `live.founder_genotype = 1`
+>   (QĐ-E3B D5 và QĐ-SEL2P2 D1 trong [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)). Con số
+>   "founder dài `~2,0–3,0` sim-units" ở kết luận 1 và §1 là của founder mặc định; founder 2 đốt ngắn
+>   hơn khoảng một đốt (`length = 1.0`), nên lệch tỉ lệ khi vẽ giảm nhưng không mất.
+> - **MAP-D4: artifact World v2 đầu tiên chưa qua cổng.** Thẻ WV2-4 (PR #249, merge 2026-11-24) đo
+>   ở `4096²` không ứng viên nào qua đủ 15 cổng (C01 qua 2/15). Gốc là mạng kênh bị cụt
+>   (`omega_max = 3`), kéo theo không có thác, diện tích hồ dưới sàn 11–31 lần, bờ biển trơn không
+>   vách và khoảng 4.600 gai nhọn ở 10 m. Chủ dự án quyết dùng tạm C01 với `"status": "provisional"`,
+>   giữ nguyên cổng và ngưỡng, và để việc sửa vật lý (khởi phát kênh và dòng chảy mặt, thác ở
+>   knickpoint, hồ, vách biển, làm mượt gai) cho thẻ sau **WV2-PHYS2** (mục `MAP-D4` trong
+>   [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)). `Suy luận`: điều này không mâu thuẫn với §2.2
+>   (Montgomery & Dietrich đòi ngưỡng $A S^n \ge C$, không đòi bề ngang), nhưng cho thấy khẳng định
+>   "đảo `4–8 km` vẫn đạt sông bậc Strahler 3–4 và thác ghềnh" ở §2.2 là giả thuyết chưa đo, và generator
+>   hiện tại chưa đạt điều đó ngay ở `40,96 km`. Phần khởi phát kênh của §2.2 và `landlab` làm oracle
+>   (§5, dòng 2 của bảng kho mã) là đầu vào trực tiếp cho WV2-PHYS2.
+> - **Cập nhật 2026-11-25 — WV2-PHYS2 xong, MAP-D5.** WV2-PHYS2 (PR #270) đưa generator mới vào trunk:
+>   ứng viên `S2_1` ở `4096²` qua 9/15 cổng (C01 vẫn 2/15), với ngưỡng khởi phát kênh mặc định
+>   `channel_init = 100` (C01 dùng 500). Chủ dự án quyết **giữ C01** làm thế giới tạm (MAP-D5, mục
+>   `MAP-D5` trong [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)): không sinh lại, `sim_world_identity`
+>   không đổi, WV2-7 khởi động desktop trên C01. Thẻ **WV2-PHYS3** làm tiếp sáu cổng `S2_1` còn trượt,
+>   trong đó có G-SHAPE.4 (R² của định luật Hack) và C3 (tỉ lệ diện tích hồ); thay C01 bằng ứng viên
+>   khác là một quyết định riêng. `Suy luận`: §2.2 (định luật Hack) giờ là đầu vào cho WV2-PHYS3.
 
 ---
 
